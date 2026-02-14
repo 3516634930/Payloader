@@ -297,39 +297,6 @@ Payloader/
 
 **零外部 UI 依赖** — 无任何 UI 库，纯手写 CSS，极致轻量。
 
-## 贡献
-
-欢迎 PR！载荷数据结构：
-
-```typescript
-{
-  id: 'unique-payload-id',
-  name: { zh: '载荷名称', en: 'Payload Name' },
-  description: { zh: '简要描述', en: 'Brief description' },
-  category: 'category-name',
-  tags: ['tag1', 'tag2'],
-  execution: [
-    {
-      title: { zh: '步骤标题', en: 'Step Title' },
-      command: `可执行命令`,
-      syntaxBreakdown: [
-        { part: 'cmd', explanation: { zh: '说明', en: 'Explanation' }, type: 'command' }
-      ],
-      description: { zh: '步骤说明', en: 'Step description' }
-    }
-  ]
-}
-```
-
-质量要求：
-- ✅ 每条载荷必须 **3+ 执行步骤**（完整攻击链）
-- ✅ 每步必须有 **syntaxBreakdown** 且包含 **type** 字段
-- ✅ WAF 绕过必须与标准版本**有实质区别**
-- ✅ 教程字段每项 **50+ 字符**
-- ✅ 在 `navigation.ts` 中添加导航条目
-- ✅ `npm run build` 必须零错误通过
-
----
 
 # 🇬🇧 English Documentation
 
