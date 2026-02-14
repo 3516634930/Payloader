@@ -565,26 +565,6 @@ Payloader/
 
 **Zero external UI dependencies** — no UI library, pure handwritten CSS.
 
-## Contributing
-
-PRs welcome! See the Chinese section above for payload data structure and quality requirements.
-
-```bash
-# 1. Fork & clone
-git clone https://github.com/3516634930/Payloader.git
-
-# 2. Create feature branch
-git checkout -b feature/add-new-payloads
-
-# 3. Edit data files & verify
-npm run build
-
-# 4. Commit & PR
-git add . && git commit -m "feat: add XXX payloads"
-git push origin feature/add-new-payloads
-```
-
----
 
 ## 📄 License
 
