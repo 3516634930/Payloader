@@ -166,7 +166,7 @@ export type TranslationKey = keyof typeof translations;
 export function t(key: TranslationKey, lang: Language, params?: Record<string, string | number>): string {
   const entry = translations[key];
   if (!entry) return key;
-  let text = entry[lang] || entry['zh'];
+  let text: string = entry[lang] || entry['zh'];
   if (params) {
     for (const [pk, pv] of Object.entries(params)) {
       text = text.replace(`{${pk}}`, String(pv));
