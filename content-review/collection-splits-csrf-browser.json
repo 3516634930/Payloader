@@ -1,0 +1,377 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "payloadBranches": [
+    {
+      "rootId": "web",
+      "id": "cors-security",
+      "name": {
+        "zh": "CORS 安全",
+        "en": "CORS Security"
+      }
+    }
+  ],
+  "collectionSplits": [
+    {
+      "sourceId": "csrf-bypass",
+      "replacements": [],
+      "toolTargets": [
+        {
+          "targetToolId": "csrf-defense-matrix-audit",
+          "targetName": {
+            "zh": "CSRF 防护矩阵审计",
+            "en": "CSRF Defense-Matrix Audit"
+          },
+          "targetDescription": {
+            "zh": "读取状态变更路由控制矩阵，并运行固定 Referer、Origin、SameSite Chromium 与 CORS Header 检查，定位不同请求路径的防护差异。",
+            "en": "Read the state-changing route-control matrix and run fixed Referer, Origin, SameSite Chromium, and CORS header checks to locate policy differences across request paths."
+          },
+          "targetCategory": {
+            "zh": "Web 安全测试工具",
+            "en": "Web Security Testing Tools"
+          },
+          "targetReferences": [
+            "https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html",
+            "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Origin",
+            "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Sec-Fetch-Site"
+          ],
+          "navRootId": "web-tools",
+          "navId": "csrf-defense-matrix-audit",
+          "navName": {
+            "zh": "CSRF 防护矩阵审计",
+            "en": "CSRF Defense Matrix Audit"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "读取路由控制矩阵",
+                "en": "Read the Route-Control Matrix"
+              },
+              "command": "node -e \"const fs=require('fs');const rows=JSON.parse(fs.readFileSync('fixtures/csrf-control-matrix.json','utf8'));console.table(rows.map(x=>({route:x.route,token_required:x.token_required,session_bound:x.session_bound,methods:x.methods.join(',')})))\"",
+              "description": {
+                "zh": "输出每条本地路由的 Token 必填、会话绑定和允许方法，作为检查基线。",
+                "en": "Output token-required, session-binding, and allowed-method policy for each local route as the audit baseline."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "比较 Referer 策略",
+                "en": "Compare Referer Policy"
+              },
+              "command": "for value in \"https://allowed.invalid/\" \"https://allowed.invalid.attacker.invalid/\" \"\"; do curl --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/lab/csrf/source-policy\" ${value:+-H \"Referer: $value\"} --data \"marker=CSRF_REFERER_MATRIX_B2\" | jq -c '{referer,allowed,reason}'; done",
+              "description": {
+                "zh": "用允许、后缀混淆和缺失三个固定 Referer 值比较服务端判定。",
+                "en": "Compare server decisions for fixed allowed, suffix-confused, and missing Referer values."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "比较 Origin 策略",
+                "en": "Compare Origin Policy"
+              },
+              "command": "for value in \"https://allowed.invalid\" \"https://allowed.invalid.attacker.invalid\" \"null\"; do curl --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/lab/csrf/source-policy\" -H \"Origin: $value\" --data \"marker=CSRF_ORIGIN_MATRIX_C3\" | jq -c '{origin,allowed,reason}'; done",
+              "description": {
+                "zh": "用允许、后缀混淆和 null 三个固定 Origin 值比较标准解析结果。",
+                "en": "Compare standard parsing for fixed allowed, suffix-confused, and null Origin values."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "运行 CSRF 浏览器防护矩阵",
+                "en": "Run the CSRF Browser Defense Matrix"
+              },
+              "command": "npx playwright test tests/csrf-defense-matrix.spec.mjs --project=chromium --reporter=line",
+              "description": {
+                "zh": "执行固定浏览器用例，统一记录 Token、来源 Header、Cookie 与请求类型的防护结果。",
+                "en": "Run fixed browser cases and record token, source-header, cookie, and request-type control results consistently."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "采集 CORS Header 矩阵",
+                "en": "Capture the CORS Header Matrix"
+              },
+              "command": "for value in \"https://allowed.invalid\" \"https://allowed.invalid.attacker.invalid\" \"null\"; do curl --silent --show-error --max-time 5 \"http://127.0.0.1:18080/lab/cors/policy\" -H \"Origin: $value\" -D - -o /dev/null | grep -Ei \"^(HTTP/|Access-Control-Allow-Origin:|Access-Control-Allow-Credentials:|Vary:)\"; done",
+              "description": {
+                "zh": "采集三个固定 Origin 的 ACAO、ACAC 与 Vary Header，不读取响应正文。",
+                "en": "Capture ACAO, ACAC, and Vary headers for three fixed origins without reading response bodies."
+              },
+              "platform": "all"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": []
+    },
+    {
+      "sourceId": "csrf-cors",
+      "targetPayloadIds": [
+        "cors-credentialed-read-boundary"
+      ],
+      "replacements": [
+        {
+          "id": "cors-credentialed-read-boundary",
+          "tags": [
+            "cors",
+            "origin",
+            "credentials",
+            "browser",
+            "localhost"
+          ],
+          "execution": [
+            {
+              "title": {
+                "zh": "反射 Origin 可见性样例",
+                "en": "Reflected-Origin Visibility Sample"
+              },
+              "command": "<!doctype html>\n<meta charset=\"utf-8\">\n<pre id=\"result\">pending</pre>\n<script>\nfetch(\"http://127.0.0.1:18080/lab/cors/credentialed-read?marker=CORS_REFLECT_A1\", {credentials: \"include\"})\n  .then(response => response.json())\n  .then(data => document.querySelector(\"#result\").textContent = JSON.stringify({marker: data.marker, visible: true}))\n  .catch(error => document.querySelector(\"#result\").textContent = error.name);\n</script>",
+              "description": {
+                "zh": "从独立本地 Origin 发起带凭据请求，并只显示返回 marker 和可见状态。",
+                "en": "Send a credentialed request from a separate local origin and display only the returned marker and visibility state."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            },
+            {
+              "title": {
+                "zh": "null Origin 可见性样例",
+                "en": "Null-Origin Visibility Sample"
+              },
+              "command": "<iframe sandbox=\"allow-scripts\" srcdoc=\"<pre id=result>pending</pre><script>fetch('http://127.0.0.1:18080/lab/cors/null-origin?marker=CORS_NULL_B2',{credentials:'include'}).then(r=>r.json()).then(d=>result.textContent=JSON.stringify({marker:d.marker,visible:true})).catch(e=>result.textContent=e.name)</script>\"></iframe>",
+              "description": {
+                "zh": "在 Sandbox srcdoc 的 null Origin 中请求本地 marker，并记录浏览器是否允许读取。",
+                "en": "Request a local marker from a sandboxed srcdoc null origin and record whether the browser permits reading."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "凭据响应长度样例",
+                "en": "Credentialed Response-Length Sample"
+              },
+              "command": "<script>\nfetch(\"http://127.0.0.1:18080/lab/cors/credentialed-read?marker=CORS_READ_C3\", {credentials: \"include\"})\n  .then(response => response.text())\n  .then(body => document.body.dataset.visibleLength = String(body.length))\n  .catch(error => document.body.dataset.error = error.name);\n</script>",
+              "description": {
+                "zh": "读取本地 marker 响应后只记录正文长度，不输出或外带内容。",
+                "en": "Read the local marker response and record only body length without outputting or exfiltrating content."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            },
+            {
+              "title": {
+                "zh": "JSON POST 响应可见性样例",
+                "en": "JSON POST Response-Visibility Sample"
+              },
+              "command": "<script>\nfetch(\"http://127.0.0.1:18080/lab/cors/state-marker\", {\n  method: \"POST\",\n  credentials: \"include\",\n  headers: {\"Content-Type\": \"application/json\"},\n  body: JSON.stringify({marker: \"CORS_POST_D4\"})\n}).then(response => document.body.dataset.status = String(response.status));\n</script>",
+              "description": {
+                "zh": "向本地合成状态端点发送 JSON marker，并只记录浏览器可见的响应状态。",
+                "en": "Send a JSON marker to a local synthetic-state endpoint and record only the browser-visible response status."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ]
+        }
+      ],
+      "toolTargets": [
+        {
+          "targetToolId": "cors-policy-audit",
+          "targetName": {
+            "zh": "CORS Origin 策略审计",
+            "en": "CORS Origin Policy Audit"
+          },
+          "targetDescription": {
+            "zh": "采集固定 Origin 的 CORS Header，并对三个混淆 Origin 运行标准 URL 允许列表检查，区分 Header 线索和浏览器可见性。",
+            "en": "Collect CORS headers for fixed origins and run standard-URL allowlist checks for three confused origins, distinguishing header leads from browser visibility."
+          },
+          "targetCategory": {
+            "zh": "Web 安全测试工具",
+            "en": "Web Security Testing Tools"
+          },
+          "targetReferences": [
+            "https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS",
+            "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Origin",
+            "https://fetch.spec.whatwg.org/#http-cors-protocol"
+          ],
+          "navRootId": "web-tools",
+          "navId": "cors-policy-audit",
+          "navName": {
+            "zh": "CORS Origin 策略审计",
+            "en": "CORS Policy Audit"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "采集允许、跨站与 null Header",
+                "en": "Capture Allowed, Cross-Site, and Null Headers"
+              },
+              "command": "for value in \"https://allowed.invalid\" \"https://cross-origin.invalid\" \"null\"; do curl --silent --show-error --max-time 5 \"http://127.0.0.1:18080/lab/cors/policy\" -H \"Origin: $value\" -D - -o /dev/null | grep -Ei \"^(HTTP/|Access-Control-Allow-Origin:|Access-Control-Allow-Credentials:|Vary:)\"; done",
+              "description": {
+                "zh": "采集三种 Origin 的 HTTP、ACAO、ACAC 与 Vary，不跟随跳转。",
+                "en": "Capture HTTP, ACAO, ACAC, and Vary for three origins without following redirects."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "比较正则混淆 Origin",
+                "en": "Compare Regex-Confused Origins"
+              },
+              "command": "for value in \"https://allowed.invalid.attacker.invalid\" \"https://attackallowed.invalid\" \"https://allowed-invalid.example\"; do curl --silent --show-error --max-time 5 \"http://127.0.0.1:18080/lab/cors/policy\" -H \"Origin: $value\" | jq -c '{origin,allowed,reason}'; done",
+              "description": {
+                "zh": "提交后缀域、前缀拼接和相似标签三个 Origin，输出解析后允许原因。",
+                "en": "Submit suffix-domain, prefix-concatenated, and similar-label origins and output parsed allow reasons."
+              },
+              "platform": "all"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": []
+    },
+    {
+      "sourceId": "csrf-samesite",
+      "targetPayloadIds": [
+        "samesite-browser-request-boundary"
+      ],
+      "replacements": [
+        {
+          "id": "samesite-browser-request-boundary",
+          "tags": [
+            "csrf",
+            "samesite",
+            "cookie",
+            "navigation",
+            "localhost"
+          ],
+          "execution": [
+            {
+              "title": {
+                "zh": "导航与子资源对照",
+                "en": "Navigation and Subresource Control"
+              },
+              "command": "<!doctype html>\n<a id=\"top\" href=\"http://127.0.0.1:18080/lab/csrf/samesite/navigation?marker=SAMESITE_NAV_A1\">Top-level navigation</a>\n<img src=\"http://127.0.0.1:18080/lab/csrf/samesite/subresource?marker=SAMESITE_IMG_A1\" alt=\"subresource control\">",
+              "description": {
+                "zh": "在同一页面触发顶级链接与 img 子资源，比较服务端收到的 Cookie marker。",
+                "en": "Trigger a top-level link and img subresource on one page and compare cookie markers observed by the server."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            },
+            {
+              "title": {
+                "zh": "弹窗回调请求样例",
+                "en": "Popup Callback Request Sample"
+              },
+              "command": "<!doctype html>\n<script>window.open(\"http://127.0.0.1:18080/lab/csrf/samesite/callback?marker=SAMESITE_CALLBACK_B2\", \"_blank\", \"noopener\");</script>",
+              "description": {
+                "zh": "通过 noopener 弹窗访问本地回调 marker，观察顶级浏览上下文中的 Cookie 行为。",
+                "en": "Open a local callback marker in a noopener popup and observe cookie behavior in a top-level browsing context."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "Schemeful Site 主机对照",
+                "en": "Schemeful-Site Host Control"
+              },
+              "command": "<!doctype html>\n<a href=\"http://127.0.0.1:18080/lab/csrf/samesite/site?marker=SAMESITE_IP_C3\">IP host</a>\n<a href=\"http://localhost:18080/lab/csrf/samesite/site?marker=SAMESITE_HOST_C3\">localhost host</a>",
+              "description": {
+                "zh": "比较 127.0.0.1 与 localhost 两个主机在本地浏览器中的 Site 判断和 Cookie 附带。",
+                "en": "Compare site classification and cookie inclusion for 127.0.0.1 and localhost in the local browser."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            },
+            {
+              "title": {
+                "zh": "客户端重定向请求样例",
+                "en": "Client-Redirect Request Sample"
+              },
+              "command": "<script>location.href = \"http://127.0.0.1:18080/lab/csrf/samesite/client-redirect?marker=SAMESITE_REDIRECT_D4\";</script>",
+              "description": {
+                "zh": "使用 location.href 导航到本地 marker，并记录导航请求是否附带 Cookie。",
+                "en": "Navigate to a local marker with location.href and record whether the navigation request includes the cookie."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ]
+        }
+      ],
+      "toolTargets": [
+        {
+          "targetToolId": "samesite-cookie-browser-audit",
+          "targetName": {
+            "zh": "SameSite Cookie 浏览器审计",
+            "en": "SameSite Cookie Browser Audit"
+          },
+          "targetDescription": {
+            "zh": "采集本地 Fixture 的完整 Set-Cookie，并在 Chromium 中比较 Lax、Strict、None 与未声明 Cookie 的导航、子资源、Fetch 和 Frame 行为。",
+            "en": "Capture complete Set-Cookie values from local fixtures and compare navigation, subresource, Fetch, and frame behavior for Lax, Strict, None, and unspecified cookies in Chromium."
+          },
+          "targetCategory": {
+            "zh": "Web 安全测试工具",
+            "en": "Web Security Testing Tools"
+          },
+          "targetReferences": [
+            "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie",
+            "https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html",
+            "https://web.dev/articles/samesite-cookies-explained"
+          ],
+          "navRootId": "web-tools",
+          "navId": "samesite-cookie-browser-audit",
+          "navName": {
+            "zh": "SameSite Cookie 浏览器审计",
+            "en": "SameSite Cookie Audit"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "采集 SameSite Set-Cookie",
+                "en": "Capture SameSite Set-Cookie"
+              },
+              "command": "curl --silent --show-error --max-time 5 -D - -o /dev/null \"http://127.0.0.1:18080/lab/csrf/samesite/set-cookie\" | grep -Ei \"^(HTTP/|Set-Cookie:)\"",
+              "description": {
+                "zh": "读取本地 Fixture 的 Set-Cookie Header，保存属性和值来源而不记录真实会话。",
+                "en": "Read Set-Cookie headers from the local fixture and preserve attributes plus value source without real sessions."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "运行 Chromium SameSite 矩阵",
+                "en": "Run the Chromium SameSite Matrix"
+              },
+              "command": "npx playwright test tests/csrf-samesite-matrix.spec.mjs --project=chromium --reporter=line",
+              "description": {
+                "zh": "运行固定 Playwright 用例并逐项输出 Cookie 配置、请求类型和服务端附带结果。",
+                "en": "Run fixed Playwright cases and report cookie setting, request type, and server-observed inclusion per case."
+              },
+              "platform": "all"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": []
+    }
+  ]
+}

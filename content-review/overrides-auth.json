@@ -1,0 +1,599 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "sourcePrefix": "auth",
+  "entries": [
+    {
+      "id": "auth-bypass",
+      "name": { "zh": "混合认证绕过输入与请求工作流", "en": "Mixed Authentication-Bypass Inputs and Request Workflows" },
+      "description": { "zh": "原条目混合 SQL/NoSQL 注入、PHP 类型处理、可信代理头、HTTP 方法与路径规范化差异，必须按实际解释器和授权边界拆分。", "en": "The source mixes SQL and NoSQL injection, PHP type handling, trusted-proxy headers, HTTP methods, and path-normalization differences and must be split by interpreter and authorization boundary." },
+      "category": { "zh": "认证漏洞", "en": "Authentication Vulnerabilities" },
+      "subCategory": { "zh": "认证与访问控制绕过拆分", "en": "Authentication and Access-Control Bypass Split" },
+      "prerequisites": [
+        { "zh": "准备未认证、普通用户和管理员三类合成主体，并为登录与受保护对象记录正常拒绝和允许基线。", "en": "Prepare synthetic unauthenticated, regular-user, and administrator principals and record normal deny and allow baselines for login and protected objects." },
+        { "zh": "确认每个输入最终到达 SQL、MongoDB 查询、PHP 比较、反向代理还是应用路由，禁止跨解释器推断。", "en": "Identify whether each input reaches SQL, a MongoDB query, PHP comparison, a reverse proxy, or an application route; do not infer behavior across interpreters." }
+      ],
+      "analysis": { "zh": "阳性证据是同一无权限主体仅改变一个输入后获得已认证主体或读取同一受保护对象，并由应用授权日志、数据库查询或代理到后端的规范化路径共同确认。登录页返回 200、错误文本变化、前端状态被修改、伪造头被回显、语法错误或不同路由返回公开内容都不是绕过证据。", "en": "Positive evidence requires the same unauthorized principal to gain an authenticated principal or read the same protected object after one input change, corroborated by authorization logs, database queries, or proxy-to-backend canonical paths. HTTP 200 on a login page, changed error text, client-side state edits, reflected spoofed headers, syntax errors, or public content from another route are not bypass evidence." },
+      "opsecTips": [
+        { "zh": "只读取一个不含敏感字段的固定标记对象；不得调用 DELETE、写入、管理员变更或真实账户操作。", "en": "Read only one fixed marker object without sensitive fields; do not invoke DELETE, writes, administrator changes, or real-account operations." },
+        { "zh": "删除测试账户与标记对象，清空 Cookie 和代理缓存，恢复可信代理与统一规范化配置，并核对未产生状态变更。", "en": "Delete test accounts and marker objects, clear cookies and proxy caches, restore trusted-proxy and canonicalization settings, and verify that no state changed." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "认证绕过不是一个单一语法类别。该集合中的 SQL、NoSQL、PHP 类型、代理头和路由变体由不同组件解释，只有将每组输入绑定到明确的数据流、主体和受保护对象，测试结论才可复现。", "en": "Authentication bypass is not one syntax class. SQL, NoSQL, PHP type, proxy-header, and route variants are interpreted by different components, so every group must be tied to a specific data flow, principal, and protected object." },
+        "vulnerability": { "zh": "根因可能是字符串拼接查询、把对象当凭证值、松散类型比较、信任未由受控代理写入的转发头，或代理与应用对方法和路径的规范化顺序不同。每种根因需要独立证据，不能用一个 200 响应概括。", "en": "Root causes include concatenated queries, treating objects as credential values, loose comparison, trusting forwarding headers not set by a controlled proxy, or inconsistent method and path normalization between proxy and application. Each cause needs independent evidence." },
+        "exploitation": { "zh": "先对规范登录和规范受保护路径建立基线，再按原命令索引逐组测试，每次只改变一种输入。将最终 SQL/查询对象、PHP 类型与返回值、代理原始/规范路径和应用主体关联；只有访问同一标记资源且主体不应具有权限时才记为阳性。", "en": "Baseline canonical login and protected paths, then test one source group at a time with one changed variable. Correlate final SQL or query objects, PHP types and return values, proxy raw and canonical paths, and the application principal; record positive only when the same marker resource is reached by an unauthorized principal." },
+        "mitigation": { "zh": "认证查询使用参数绑定和严格字符串 schema；失败时清空安全上下文；只信任由已知代理覆盖的转发头；在边缘与应用采用相同的路径和方法规范化，并对每个受保护对象执行服务端授权。", "en": "Use parameterized authentication queries and strict string schemas, clear security context on failure, trust forwarding headers only when overwritten by known proxies, align path and method normalization, and authorize every protected object server-side." },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        { "title": { "zh": "固定主体与对象基线", "en": "Fix principal and object baselines" }, "description": { "zh": "用三类合成主体访问同一登录流程和标记对象，记录主体、状态、对象 ID 与各层日志。", "en": "Exercise the same login flow and marker object with three synthetic principals, recording principal, status, object ID, and layered logs." } },
+        { "title": { "zh": "隔离首组输入边界", "en": "Isolate the first input boundary" }, "description": { "zh": "先单独复核 SQL 登录样例，不与 PHP、NoSQL、代理头或路径变体同时发送。", "en": "Review the SQL login samples independently without combining PHP, NoSQL, proxy-header, or path variants." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "逐解释器关联证据", "en": "Correlate evidence per interpreter" }, "description": { "zh": "把每个变体与最终解释器、规范值、认证主体和受保护对象关联，排除缓存与公开路由。", "en": "Correlate every variant with its final interpreter, canonical value, authenticated principal, and protected object while excluding caches and public routes." } },
+        { "title": { "zh": "拆分并回归授权边界", "en": "Split and regress authorization boundaries" }, "description": { "zh": "按五个目标条目保存原行，修复后重放正常与异常基线，确认合法登录保留且越权差异消失。", "en": "Preserve source lines across five target entries and replay normal and abnormal baselines after remediation to retain valid login while removing unauthorized differences." } }
+      ],
+      "references": [
+        "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "原条目跨越五类解释器或授权边界，并混入 curl 工作流与不可执行说明，不能作为单一认证 Payload 保留。",
+        "issuesResolved": ["corrected-bilingual-naming", "separated-interpreter-boundaries", "added-evidence-and-false-positive-criteria", "added-stop-and-cleanup-guidance", "added-authoritative-reference"],
+        "targetPayloadIds": ["auth-sql-login-bypass", "auth-php-credential-type-confusion", "auth-nosql-credential-operator", "auth-trusted-proxy-header", "auth-method-path-normalization"],
+        "targetToolIds": ["web-authentication-bypass"],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 -> auth-sql-login-bypass",
+          "execution 1-2 -> auth-php-credential-type-confusion",
+          "execution 3 -> auth-nosql-credential-operator",
+          "execution 4 and forwarding-header lines from wafBypass 1 -> auth-trusted-proxy-header",
+          "execution 5 -> web-authentication-bypass as an HTTP method and path request workflow",
+          "wafBypass 0 and HTTP/2 path lines from wafBypass 1 -> auth-method-path-normalization"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "execution 2 contains prose and PHP-version-dependent claims; PHP 8 type errors and comparison semantics require corrected, version-pinned controls",
+          "execution 5 includes DELETE against a placeholder target and must use read-only GET or HEAD marker requests",
+          "wafBypass 0 uses arrows and claimed status results that are not valid HTTP request syntax",
+          "wafBypass 1 presents HTTP/2 pseudo-headers as generic header text and must be replaced with an actual HTTP/2 client workflow"
+        ],
+        "reviewNotes": [
+          { "zh": "伪造 X-Forwarded-For 只有在应用错误信任客户端提供的头时才有意义，头部出现或被回显不是认证绕过。", "en": "Forged X-Forwarded-For matters only when the application incorrectly trusts a client-supplied header; presence or reflection is not authentication bypass." },
+          { "zh": "修改前端响应标志不能改变服务端主体，必须以受保护对象和授权日志确认。", "en": "Changing a client-side response flag cannot change the server principal; protected-object and authorization-log evidence is required." }
+        ]
+      }
+    },
+    {
+      "id": "auth-brute",
+      "name": { "zh": "认证速率与凭证测试工作流", "en": "Authentication Rate and Credential Test Workflows" },
+      "description": { "zh": "原条目全部是 Burp、curl 或 Python 自动化流程，涵盖用户名差异、OTP、参数规范化和速率限制，应迁入工具区而非作为 Payload 展示。", "en": "Every source block is a Burp, curl, or Python workflow covering username differences, OTPs, parameter normalization, and rate limits; it belongs in Tools rather than Payloads." },
+      "category": { "zh": "认证漏洞", "en": "Authentication Vulnerabilities" },
+      "subCategory": { "zh": "凭证与速率限制测试工具", "en": "Credential and Rate-Limit Testing Tools" },
+      "prerequisites": [
+        { "zh": "仅使用专用测试租户、合成账户和不会锁定真实用户的短字典，并预先批准最大请求数与并发度。", "en": "Use a dedicated test tenant, synthetic accounts, and a short wordlist that cannot lock real users, with maximum requests and concurrency approved in advance." },
+        { "zh": "可观察认证日志、限流键、验证码状态和账户锁定事件，并准备一个有效与一个不存在的合成用户名。", "en": "Authentication logs, rate-limit keys, CAPTCHA state, and lockout events are observable, with one valid and one nonexistent synthetic username prepared." }
+      ],
+      "analysis": { "zh": "阳性证据是受控请求超过既定阈值后仍能持续验证凭证，或不同合成用户名产生稳定、可统计区分且来自认证路径本身的响应。一次 200/302、页面长度差、网络抖动、缓存、代理错误或前端出现 dashboard 字样都不能证明枚举或限流缺陷。", "en": "Positive evidence is continued credential verification beyond the defined threshold, or statistically stable differences between controlled valid and nonexistent usernames attributable to authentication. One 200 or 302, body-length difference, network jitter, cache, proxy error, or the word dashboard in a page does not prove enumeration or a rate-limit flaw." },
+      "opsecTips": [
+        { "zh": "达到最小统计样本或首次出现锁定、短信/邮件发送、验证码消耗、服务抖动时立即停止。", "en": "Stop at the minimum statistical sample or immediately on lockout, message delivery, CAPTCHA consumption, or service instability." },
+        { "zh": "解锁合成账户、删除测试凭证与代理配置，清理临时响应和工具项目，并确认限流计数恢复。", "en": "Unlock synthetic accounts, delete test credentials and proxy configuration, remove temporary responses and tool projects, and confirm rate-limit counters recover." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "该条目描述的是如何驱动 Intruder、curl 和 Python 请求，而不是可插入目标参数的载荷。审校重点是请求预算、单变量对照、可靠成功判据以及账户与验证码状态的可恢复性。", "en": "This entry describes how to drive Intruder, curl, and Python requests rather than values inserted into a target parameter. Review focuses on request budgets, single-variable controls, reliable success criteria, and recoverable account and CAPTCHA state." },
+        "vulnerability": { "zh": "缺陷来自服务端未按账户、设备和可信网络信号组合限流，错误响应泄露账户存在性，或不同内容类型和参数形态绕过同一认证策略。客户端伪造 IP 头只有被错误信任时才影响限流键。", "en": "Flaws arise when the server lacks combined account, device, and trusted-network throttling, leaks account existence through responses, or applies inconsistent policy across content types and parameter shapes. Spoofed client IP headers matter only if incorrectly trusted." },
+        "exploitation": { "zh": "用两个合成用户名和固定错误密码交错发送少量请求，记录状态、长度、结构化错误、时延和认证日志。再在批准预算内切换一种参数或内容类型，检查限流键是否一致；不执行代理池轮换、全字典或分布式尝试。", "en": "Interleave a small number of requests for two synthetic usernames with one fixed wrong password, recording status, length, structured errors, timing, and authentication logs. Within the approved budget, change one parameter or content type and verify rate-limit-key consistency; do not run proxy rotation, full wordlists, or distributed attempts." },
+        "mitigation": { "zh": "采用分层节流、指数退避和合成账户友好的锁定策略，统一错误与时序，服务端强制 CAPTCHA/OTP 生命周期，并只使用受信代理覆盖的客户端地址。对异常凭证速率和参数形态建立告警。", "en": "Use layered throttling, exponential backoff, and safe lockout, normalize errors and timing, enforce CAPTCHA and OTP lifecycles server-side, and derive client addresses only from trusted proxies. Alert on anomalous credential rates and parameter shapes." },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        { "title": { "zh": "批准请求预算", "en": "Approve the request budget" }, "description": { "zh": "固定测试账户、错误凭证、请求上限、并发度和停止条件，确认不会影响真实用户。", "en": "Fix test accounts, wrong credentials, request limit, concurrency, and stop conditions so real users cannot be affected." } },
+        { "title": { "zh": "配置 Intruder 对照", "en": "Configure Intruder controls" }, "description": { "zh": "将源条目的 Pitchfork 模式作为工具配置记录，不把界面说明误作可执行 Payload。", "en": "Record the source Pitchfork mode as tool configuration rather than treating UI prose as an executable payload." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "测量服务端策略", "en": "Measure server-side policy" }, "description": { "zh": "交错发送最小样本并关联限流、锁定和验证码日志，排除缓存、网络与页面模板差异。", "en": "Interleave the minimum sample and correlate throttling, lockout, and CAPTCHA logs while excluding cache, network, and template differences." } },
+        { "title": { "zh": "清理并回归", "en": "Clean up and regress" }, "description": { "zh": "恢复合成账户与限流状态，修复后以同一预算确认合法登录可用且异常速率被一致抑制。", "en": "Restore synthetic accounts and throttle state, then confirm valid login remains available while anomalous rates are consistently suppressed." } }
+      ],
+      "references": [
+        "https://cheatsheetseries.owasp.org/cheatsheets/Credential_Stuffing_Prevention_Cheat_Sheet.html",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "tool",
+        "rationale": "七个命令块均为 Burp、curl 或 Python 的连续测试流程，不是独立可投递输入，必须迁入工具区。",
+        "issuesResolved": ["reclassified-as-tool", "defined-request-budget", "added-statistical-evidence-boundary", "rewrote-bilingual-content", "added-authoritative-references"],
+        "targetToolIds": ["burpsuite", "web-authentication-bypass", "password-spraying"],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0-1 -> burpsuite as Intruder attack-type configuration",
+          "execution 2-3 -> web-authentication-bypass as bounded username and OTP controls",
+          "execution 4 -> password-spraying only after replacement with a low-rate synthetic-account harness",
+          "wafBypass 0-1 -> web-authentication-bypass as trusted-proxy and parameter-normalization checks"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "execution 0-1 are Chinese UI prose rather than commands",
+          "execution 2 uses brittle single-response length and timing checks without repeated interleaved controls",
+          "execution 4 is a distributed proxy-rotation brute-force program and must be replaced by a bounded localhost synthetic-account harness",
+          "wafBypass 0 rotates spoofed headers and passwords and must become a non-evasive trusted-proxy configuration check"
+        ],
+        "reviewNotes": [
+          { "zh": "HTTP 302 或正文包含 dashboard 不是可靠登录成功判据，应核对服务端主体和固定标记对象。", "en": "HTTP 302 or a dashboard substring is not a reliable login-success criterion; verify the server principal and a fixed marker object." },
+          { "zh": "速率限制测试必须有请求预算，不能用真实账号、短信号码或完整字典。", "en": "Rate-limit testing requires a request budget and must not use real accounts, phone numbers, or full wordlists." }
+        ]
+      }
+    },
+    {
+      "id": "auth-session",
+      "name": { "zh": "会话标识、固定与 Cookie 边界混合集", "en": "Mixed Session Identifier, Fixation, and Cookie Boundaries" },
+      "description": { "zh": "原条目把 Cookie 属性检查、会话固定、网络抓包、随机性分析、Cookie Tossing 与 SameSite 导航混在一起，需要拆成工具工作流和浏览器/服务端 Payload。", "en": "The source combines cookie-attribute inspection, fixation, packet capture, randomness analysis, cookie tossing, and SameSite navigation and must be split into tool workflows and browser or server payloads." },
+      "category": { "zh": "认证漏洞", "en": "Authentication Vulnerabilities" },
+      "subCategory": { "zh": "会话管理边界拆分", "en": "Session-Management Boundary Split" },
+      "prerequisites": [
+        { "zh": "使用两个合成账户、隔离浏览器配置和固定无敏感字段标记对象，记录登录前后会话 ID 的哈希与主体。", "en": "Use two synthetic accounts, isolated browser profiles, and a fixed nonsensitive marker object, recording session-ID hashes and principals before and after login." },
+        { "zh": "若检查明文传输，只在自有封闭网络和测试流量中抓包；Cookie 域、路径、SameSite 和浏览器版本必须明确。", "en": "If reviewing cleartext transport, capture only owned test traffic on an isolated network; document cookie domain, path, SameSite mode, and browser version." }
+      ],
+      "analysis": { "zh": "阳性会话固定要求登录前受控会话 ID 在登录后未轮换且另一测试客户端可访问同一主体；Cookie Tossing 要求子域可设置的同名 Cookie 被主域安全逻辑选中；SameSite 仅证明凭据随导航发送，不能证明响应可读或状态变更。缺少属性、抓到测试 Cookie 或随机性工具给出低分本身都不是劫持。", "en": "Session fixation requires a controlled pre-login ID to survive authentication and authorize the same principal from another test client. Cookie tossing requires a same-name cookie set by a subdomain to be selected by main-domain security logic. SameSite can show credentials sent on navigation but not response readability or state change. A missing attribute, captured test cookie, or low randomness score alone is not hijacking." },
+      "opsecTips": [
+        { "zh": "仅复用可撤销的合成会话并读取一个标记对象；不得捕获第三方流量、真实 Cookie 或触发资金与资料变更。", "en": "Replay only revocable synthetic sessions and read one marker object; do not capture third-party traffic, real cookies, or trigger financial or profile changes." },
+        { "zh": "注销全部测试会话，删除 Cookie、抓包和临时脚本，清理浏览器站点数据并恢复 HTTPS 与 Cookie 策略。", "en": "Log out all test sessions, delete cookies, captures, and temporary scripts, clear browser site data, and restore HTTPS and cookie policy." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "会话安全需要区分服务端 ID 生命周期、传输保护、浏览器 Cookie 选择与跨站导航。原集合的 curl、Wireshark 和 Burp 操作属于工具流程，而 JavaScript 和请求片段需按浏览器与服务端行为分别验证。", "en": "Session security separates server-side identifier lifecycle, transport protection, browser cookie selection, and cross-site navigation. The source curl, Wireshark, and Burp operations are tool workflows, while JavaScript and request fragments need browser- and server-specific validation." },
+        "vulnerability": { "zh": "根因包括认证后不轮换会话、Cookie 作用域过宽、HTTP 明文传输、可预测 ID、同名 Cookie 解析顺序不一致，或把带 Cookie 的顶级导航错误当作已授权状态变更。每个边界的阳性证据不同。", "en": "Root causes include no post-authentication rotation, overbroad cookie scope, cleartext HTTP, predictable identifiers, inconsistent duplicate-cookie selection, or treating a credentialed top-level navigation as an authorized state change. Each boundary has different evidence." },
+        "exploitation": { "zh": "先记录登录前后 ID 哈希、Set-Cookie 属性和主体，再分别测试固定、受控重放和子域同名 Cookie。SameSite 场景只向无副作用 GET 标记页导航，并通过服务端日志确认 Cookie 是否发送；不能用转账 URL 作为测试样例。", "en": "Record pre- and post-login ID hashes, Set-Cookie attributes, and principals, then test fixation, controlled replay, and a subdomain same-name cookie separately. For SameSite, navigate only to a side-effect-free GET marker and use server logs to determine whether cookies were sent; do not use a transfer URL." },
+        "mitigation": { "zh": "认证和权限变化后轮换高熵会话 ID，强制 HTTPS、Secure、HttpOnly 与适当 SameSite，使用 host-only 或 __Host- Cookie，拒绝重复敏感 Cookie，并让所有状态变更使用非 GET 与 CSRF 防护。", "en": "Rotate high-entropy session IDs after authentication and privilege changes, enforce HTTPS, Secure, HttpOnly, and suitable SameSite, prefer host-only or __Host- cookies, reject duplicate sensitive cookies, and protect all state changes with non-GET methods and CSRF controls." },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        { "title": { "zh": "记录会话生命周期", "en": "Record the session lifecycle" }, "description": { "zh": "对登录前、登录后、提权后和注销后的会话 ID 做哈希关联，并保存服务端主体变化。", "en": "Hash-correlate session IDs before login, after login, after privilege change, and after logout, preserving server-principal transitions." } },
+        { "title": { "zh": "检查 Cookie 属性", "en": "Inspect cookie attributes" }, "description": { "zh": "使用源工具流程读取测试响应中的 Set-Cookie，不把客户端观察误作会话劫持。", "en": "Use the source tool workflow to read Set-Cookie on test responses without treating client observation as session hijacking." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "分离固定与浏览器选择", "en": "Separate fixation and browser selection" }, "description": { "zh": "独立验证会话轮换、同名 Cookie 选择和 SameSite 导航，并为每组保留正负对照。", "en": "Validate rotation, duplicate-cookie selection, and SameSite navigation independently with positive and negative controls." } },
+        { "title": { "zh": "撤销并回归会话", "en": "Revoke and regress sessions" }, "description": { "zh": "注销并撤销所有测试会话，修复后重放同一对照，确认正常登录仍可用且旧 ID 不再授权。", "en": "Log out and revoke all test sessions, then replay the same controls after remediation to retain valid login while old IDs no longer authorize." } }
+      ],
+      "references": [
+        "https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html",
+        "https://www.rfc-editor.org/rfc/rfc6265.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "原记录跨服务端会话生命周期、网络抓包和浏览器 Cookie 行为，并混入多个工具命令，必须拆分。",
+        "issuesResolved": ["separated-session-boundaries", "reclassified-tool-workflows", "corrected-samesite-evidence", "added-controlled-replay-scope", "added-authoritative-references"],
+        "targetPayloadIds": ["auth-session-fixation", "auth-cookie-tossing", "auth-samesite-navigation"],
+        "targetToolIds": ["web-authentication-bypass", "wireshark-tshark", "burpsuite"],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 -> web-authentication-bypass as a cookie-attribute workflow",
+          "execution 3 -> web-authentication-bypass as a session-randomness workflow",
+          "execution 1 -> auth-session-fixation plus web-authentication-bypass setup steps",
+          "execution 2 -> wireshark-tshark for isolated cleartext capture; controlled replay steps -> web-authentication-bypass",
+          "wafBypass 0 -> auth-cookie-tossing",
+          "wafBypass 1 -> auth-samesite-navigation"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "execution 1 includes a CRLF Set-Cookie injection example that is a separate response-splitting boundary",
+          "execution 2 uses a stolen-session placeholder and raw packet capture; replace it with synthetic local traffic and a revocable canary session",
+          "wafBypass 0 claims an approximate cookie limit as universal even though eviction behavior is browser and partition dependent",
+          "wafBypass 1 uses a state-changing transfer GET and must be replaced with a harmless marker navigation"
+        ],
+        "reviewNotes": [
+          { "zh": "SameSite=Lax 允许某些顶级导航携带 Cookie，不等于跨站页面能读取响应或完成授权状态变更。", "en": "SameSite=Lax allowing cookies on some top-level navigations does not mean the cross-site page can read the response or complete an authorized state change." },
+          { "zh": "Cookie 名称和重复 Cookie 选择必须基于真实浏览器与服务端解析证据。", "en": "Cookie-name and duplicate-cookie selection claims require evidence from the actual browser and server parser." }
+        ]
+      }
+    },
+    {
+      "id": "auth-password-reset",
+      "name": { "zh": "密码重置令牌与流程边界混合集", "en": "Mixed Password-Reset Token and Workflow Boundaries" },
+      "description": { "zh": "原条目同时包含 Host 头生成链接、验证码强度、令牌可预测性、账户绑定、步骤跳过和令牌重放，需要按根因拆分并把自动化流程迁入工具区。", "en": "The source combines Host-derived links, code strength, token predictability, account binding, step skipping, and token replay and must be split by root cause with automation moved to Tools." },
+      "category": { "zh": "认证漏洞", "en": "Authentication Vulnerabilities" },
+      "subCategory": { "zh": "密码重置流程拆分", "en": "Password-Reset Workflow Split" },
+      "prerequisites": [
+        { "zh": "使用自有邮件沙箱、两个合成账户和可回滚密码，记录每个重置请求、令牌哈希、账户 ID 与邮件任务 ID。", "en": "Use an owned mail sandbox, two synthetic accounts, and rollback passwords, recording each reset request, token hash, account ID, and mail-job ID." },
+        { "zh": "固定应用公开基址和可信代理配置，所有回调域均为自有测试域，且令牌尝试次数受严格预算控制。", "en": "Fix the application's public base URL and trusted-proxy configuration, use only owned callback domains, and strictly budget token attempts." }
+      ],
+      "analysis": { "zh": "阳性证据分别是邮件中的重置链接被不可信 Host 改写并把测试令牌送到受控域；低权限请求可重置另一合成账户；已用或过期令牌再次改变密码；或令牌在预算内可由已知生成规律预测。邮件未到达、响应 200、链接文本反射、状态码差异或脚本猜中自身生成的值都不是证据。", "en": "Positive evidence is an untrusted Host changing a mailed reset link and delivering a test token to an owned domain, an underprivileged request resetting another synthetic account, a used or expired token changing a password again, or a token predicted from a known generation rule within budget. Missing mail, HTTP 200, reflected link text, status differences, or a script matching its own generated value are not evidence." },
+      "opsecTips": [
+        { "zh": "只对合成账户执行一次可回滚密码变更；不得向真实收件人发信、遍历完整验证码空间或提交真实令牌。", "en": "Perform at most one reversible password change on a synthetic account; do not message real recipients, enumerate full code spaces, or submit real tokens." },
+        { "zh": "撤销全部测试令牌，恢复合成账户密码，删除邮件、回调日志和临时脚本，并核对没有未完成重置任务。", "en": "Revoke all test tokens, restore synthetic passwords, delete mail, callback logs, and temporary scripts, and verify no reset jobs remain pending." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "安全的密码重置流程必须把请求、令牌、账户、接收通道和最终密码变更绑定起来。Host 生成链接、短验证码、令牌随机性、步骤状态和一次性消费是不同边界，不能共享一个阳性判据。", "en": "A secure password-reset flow binds request, token, account, delivery channel, and final password change. Host-derived links, short codes, token randomness, workflow state, and one-time consumption are separate boundaries and cannot share one positive criterion." },
+        "vulnerability": { "zh": "根因包括从不可信请求头构造绝对 URL、令牌熵不足或泄露、未把令牌绑定到账户和用途、跳过验证状态、未原子消费令牌，以及只按可伪造客户端 IP 限流。每项都应有服务端状态证据。", "en": "Root causes include constructing absolute URLs from untrusted headers, weak or leaked tokens, failing to bind tokens to account and purpose, skipped verification state, non-atomic token consumption, and throttling only by spoofable client IP. Each requires server-state evidence." },
+        "exploitation": { "zh": "先向邮件沙箱申请一次正常重置并完成全流程，随后分别改变 Host、账户绑定、步骤顺序或令牌生命周期。每轮生成新令牌并只改变一个字段；令牌强度测试使用离线合成样本，不对在线端点运行 000000 到 999999。", "en": "Complete one normal reset through the mail sandbox, then independently change Host, account binding, step order, or token lifecycle. Generate a fresh token per run and change one field; assess strength with offline synthetic samples rather than sending 000000 through 999999 online." },
+        "mitigation": { "zh": "从配置生成 HTTPS 重置 URL，使用高熵单次短时令牌并存储其哈希，绑定账户、用途与请求，原子消费后再变更密码；统一响应，按账户和可信网络信号限流，并撤销现有会话。", "en": "Generate HTTPS reset URLs from configuration, use high-entropy single-use short-lived tokens stored as hashes and bound to account, purpose, and request, consume atomically before changing the password, normalize responses, throttle by account and trusted network signals, and revoke existing sessions." },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        { "title": { "zh": "完成正常重置基线", "en": "Complete a normal reset baseline" }, "description": { "zh": "在邮件沙箱中关联请求、邮件、令牌哈希、账户和一次可回滚密码变更。", "en": "Correlate request, mail, token hash, account, and one reversible password change in the mail sandbox." } },
+        { "title": { "zh": "隔离链接生成边界", "en": "Isolate link-generation boundaries" }, "description": { "zh": "仅向自有测试域提交源 Host 变体，检查实际邮件链接而不是响应中的回显文本。", "en": "Submit the source Host variants only to an owned test domain and inspect the actual mailed link rather than reflected response text." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "验证绑定与消费", "en": "Verify binding and consumption" }, "description": { "zh": "分别测试账户绑定、步骤状态、过期和已用令牌，确保每次只改变一个条件并记录数据库状态。", "en": "Test account binding, workflow state, expiry, and consumed tokens independently, changing one condition and recording database state." } },
+        { "title": { "zh": "撤销并回归流程", "en": "Revoke and regress the workflow" }, "description": { "zh": "撤销所有样本并恢复密码，修复后确认正常流程可用且旧令牌、错账户和不可信 Host 均被拒绝。", "en": "Revoke samples and restore passwords, then confirm valid reset remains usable while old tokens, wrong accounts, and untrusted Hosts are rejected." } }
+      ],
+      "references": [
+        "https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "原条目混合链接生成、令牌强度、账户绑定、状态机和重放，同时包含高请求量工具脚本，必须拆分。",
+        "issuesResolved": ["separated-reset-boundaries", "defined-mail-and-token-evidence", "added-online-attempt-budget", "reclassified-automation", "added-authoritative-references"],
+        "targetPayloadIds": ["auth-reset-host-header", "auth-reset-token-binding", "auth-reset-flow-state", "auth-reset-token-replay"],
+        "targetToolIds": ["burpsuite", "web-authentication-bypass"],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 and Host-related lines from execution 3 and wafBypass 0 -> auth-reset-host-header",
+          "execution 1-2 and wafBypass 1 -> web-authentication-bypass or burpsuite as bounded token-analysis workflows",
+          "account and UID lines from execution 3 -> auth-reset-token-binding",
+          "step-skip lines from execution 3 -> auth-reset-flow-state",
+          "used-token lines from execution 3 -> auth-reset-token-replay"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "execution 1 and wafBypass 1 perform unbounded online brute force and must be replaced with offline entropy analysis plus a tiny approved online sample",
+          "execution 3 changes passwords and uses victim, attacker, and hacked placeholders; replace with two synthetic accounts and a reversible marker password",
+          "Host examples use evil.com and ambiguous host:userinfo forms; replace with owned domains and standards-valid authorities",
+          "success checks based on status or the word success are not reliable without account-state verification"
+        ],
+        "reviewNotes": [
+          { "zh": "X-Forwarded-For 轮换不应作为速率限制绕过教程；审校应确认边缘是否覆盖并可信解析客户端地址。", "en": "X-Forwarded-For rotation should not be taught as a rate-limit bypass; review whether the edge overwrites and safely parses client addresses." },
+          { "zh": "绝对重置 URL 应来自配置，不应通过尝试多 Host 解析歧义来证明问题。", "en": "Absolute reset URLs should come from configuration; the issue should not be inferred from ambiguous multi-Host parsing alone." }
+        ]
+      }
+    },
+    {
+      "id": "auth-oauth",
+      "name": { "zh": "OAuth 授权请求与令牌绑定混合集", "en": "Mixed OAuth Authorization-Request and Token-Binding Boundaries" },
+      "description": { "zh": "原条目混合 state/登录 CSRF、redirect_uri 校验、scope 授权、令牌受众与刷新令牌流程，还包含 curl 和浏览器工具步骤，需要拆分。", "en": "The source mixes state and login CSRF, redirect_uri validation, scope authorization, token audience, and refresh-token flows with curl and browser tooling and must be split." },
+      "category": { "zh": "认证漏洞", "en": "Authentication Vulnerabilities" },
+      "subCategory": { "zh": "OAuth 2.0/OIDC 边界拆分", "en": "OAuth 2.0 and OIDC Boundary Split" },
+      "prerequisites": [
+        { "zh": "使用自有授权服务器、测试客户端、两个合成用户和精确登记的 HTTPS redirect URI，记录授权请求与令牌事件。", "en": "Use an owned authorization server, test client, two synthetic users, and an exactly registered HTTPS redirect URI, recording authorization and token events." },
+        { "zh": "每轮使用新的 state、nonce、PKCE verifier 和一次性 code，测试令牌仅包含无敏感字段 scope。", "en": "Use fresh state, nonce, PKCE verifier, and one-time code for every run, with test tokens limited to nonsensitive scopes." }
+      ],
+      "analysis": { "zh": "阳性需要证明错误会话可完成账户绑定、未登记 redirect URI 收到可兑换 code/token、未授权 scope 被资源服务器接受，或面向另一个客户端/受众的令牌访问同一标记资源。授权页错误、候选 URI 被反射、浏览器导航、不可兑换 code、fragment 出现在地址栏或资源服务器正确拒绝都不是漏洞证据。", "en": "Positive evidence requires the wrong session to complete account binding, an unregistered redirect URI to receive a redeemable code or token, an unauthorized scope to be accepted, or a token for another client or audience to access the same marker resource. Authorization errors, reflected candidate URIs, browser navigation, unredeemable codes, fragments in the address bar, or correct resource-server rejection are not evidence." },
+      "opsecTips": [
+        { "zh": "只使用短期测试 code/token 并访问一个只读标记资源；不得使用窃取令牌、管理员 scope 或真实第三方客户端。", "en": "Use only short-lived test codes and tokens to access one read-only marker resource; do not use stolen tokens, administrator scopes, or real third-party clients." },
+        { "zh": "撤销 code、access token 与 refresh token，删除测试绑定和回调日志，恢复客户端登记与 consent 配置。", "en": "Revoke codes, access tokens, and refresh tokens, delete test bindings and callback logs, and restore client registration and consent configuration." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "OAuth 安全结论必须区分浏览器授权请求、授权服务器重定向、客户端 code 交换和资源服务器令牌验证。原集合中的 HTML、参数字典和 curl 流程作用在不同阶段，不能合并为一个“OAuth 绕过”。", "en": "OAuth findings must distinguish browser authorization, authorization-server redirect, client code exchange, and resource-server token validation. The source HTML, parameter corpus, and curl workflows operate at different stages and cannot be one generic OAuth bypass." },
+        "vulnerability": { "zh": "根因包括授权响应未绑定浏览器会话、redirect URI 非精确匹配、PKCE 或 nonce 缺失、客户端超范围申请未经过 consent，以及资源服务器不校验 issuer、audience、client 和 scope。Token 出现在 URL 本身不等于可利用泄露。", "en": "Root causes include authorization responses not bound to browser sessions, inexact redirect matching, missing PKCE or nonce, overbroad scopes without consent, and resource servers failing to validate issuer, audience, client, and scope. A token appearing in a URL is not by itself exploitable leakage." },
+        "exploitation": { "zh": "先完成带 state、nonce 和 PKCE 的正常授权码流程，再分别移除或替换一个绑定值。redirect_uri 只使用已登记 URI 与一个自有未登记 URI对照；scope 与 audience 测试仅访问固定标记 API，并关联授权服务器与资源服务器日志。", "en": "Complete a normal authorization-code flow with state, nonce, and PKCE, then remove or replace one binding value at a time. Compare an exactly registered redirect URI with one owned unregistered URI, and test scope and audience only against a fixed marker API with authorization- and resource-server logs." },
+        "mitigation": { "zh": "采用授权码流与 PKCE，state 绑定浏览器事务，OIDC 校验 nonce；redirect URI 精确匹配，禁止开放重定向链；对 issuer、audience、client、scope、过期与 code 单次使用执行严格校验，并轮换 refresh token。", "en": "Use authorization code with PKCE, bind state to the browser transaction, validate OIDC nonce, exactly match redirect URIs, reject open-redirect chains, strictly validate issuer, audience, client, scope, expiry, and one-time codes, and rotate refresh tokens." },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        { "title": { "zh": "建立完整授权基线", "en": "Establish a complete authorization baseline" }, "description": { "zh": "记录授权请求、回调、code 交换和标记 API 的主体、客户端、scope 与事件 ID。", "en": "Record principal, client, scope, and event identifiers across authorization, callback, code exchange, and marker API." } },
+        { "title": { "zh": "隔离登录 CSRF", "en": "Isolate login CSRF" }, "description": { "zh": "只在两个合成账户间使用源 HTML 样例，核对 state 和浏览器事务绑定，不向真实用户投递。", "en": "Use the source HTML only between two synthetic accounts to verify state and browser-transaction binding without delivery to real users." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "分离重定向与令牌验证", "en": "Separate redirect and token validation" }, "description": { "zh": "分别验证 URI 精确匹配、scope consent、audience 与 refresh token 轮换，并关联两端日志。", "en": "Validate exact URI matching, scope consent, audience, and refresh-token rotation independently with logs from both servers." } },
+        { "title": { "zh": "撤销并回归 OAuth 客户端", "en": "Revoke and regress the OAuth client" }, "description": { "zh": "撤销所有测试凭证并恢复登记，修复后确认正常授权可用且错会话、错 URI 和错受众被拒绝。", "en": "Revoke all test credentials and restore registration, then confirm valid authorization remains while wrong sessions, URIs, and audiences are rejected." } }
+      ],
+      "references": [
+        "https://www.rfc-editor.org/rfc/rfc9700.html",
+        "https://cheatsheetseries.owasp.org/cheatsheets/OAuth2_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "原记录跨授权请求、重定向、code/token 与资源服务器四个边界，并混入工具工作流，必须拆分。",
+        "issuesResolved": ["corrected-oauth-stage-model", "added-state-pkce-and-audience-evidence", "separated-payloads-from-tools", "corrected-token-leakage-claims", "added-current-rfc-reference"],
+        "targetPayloadIds": ["auth-oauth-state-binding", "auth-oauth-redirect-uri", "auth-oauth-scope-audience"],
+        "targetToolIds": ["oauth-oidc-attacks", "burpsuite"],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 -> auth-oauth-state-binding",
+          "execution 1 and wafBypass 0 -> auth-oauth-redirect-uri",
+          "execution 2 -> oauth-oidc-attacks as state and PKCE workflow",
+          "execution 3 -> auth-oauth-scope-audience plus oauth-oidc-attacks token-validation workflow"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "replace attacker codes, domains, stolen tokens, and admin API calls with owned short-lived test artifacts and a read-only marker API",
+          "execution 3 incorrectly suggests URL fragments leak through Referer; fragments are not included in HTTP Referer headers",
+          "wafBypass 0 contains ambiguous or invalid authority/userinfo examples that must be replaced by parser-valid exact-match controls",
+          "state sampling alone does not test PKCE, nonce, authorization-response mix-up, or server-side transaction binding"
+        ],
+        "reviewNotes": [
+          { "zh": "RFC 9700 已将授权码流与 PKCE、精确 redirect URI 校验作为核心基线，旧 implicit-flow 描述不能直接套用。", "en": "RFC 9700 makes authorization code with PKCE and exact redirect validation core baselines; legacy implicit-flow claims cannot be applied generically." },
+          { "zh": "code 到达受控域仍需证明可兑换且未被客户端、PKCE 或重定向绑定阻止。", "en": "A code reaching an owned domain still must be shown redeemable and not neutralized by client, PKCE, or redirect binding." }
+        ]
+      }
+    },
+    {
+      "id": "auth-saml",
+      "name": { "zh": "SAML 断言、XML 与签名验证混合集", "en": "Mixed SAML Assertion, XML, and Signature Validation" },
+      "description": { "zh": "原条目混合无签名断言、XML 外部实体、断言重放、XML Signature Wrapping、NameID 规范化和编码工具命令，必须按处理阶段拆分。", "en": "The source mixes unsigned assertions, XML external entities, assertion replay, XML Signature Wrapping, NameID canonicalization, and encoding tools and must be split by processing stage." },
+      "category": { "zh": "认证漏洞", "en": "Authentication Vulnerabilities" },
+      "subCategory": { "zh": "SAML 协议与 XML 处理拆分", "en": "SAML Protocol and XML Processing Split" },
+      "prerequisites": [
+        { "zh": "使用自有 IdP/SP、测试证书和两个合成主体，记录 Response/Assertion ID、InResponseTo、Audience、Recipient、时间与签名引用。", "en": "Use an owned IdP and SP, test certificates, and two synthetic principals, recording Response and Assertion IDs, InResponseTo, Audience, Recipient, time, and signature references." },
+        { "zh": "XXE 仅使用无文件读取、无外网的本地 canary resolver；签名测试使用专用测试密钥和可销毁 SP。", "en": "For XXE, use a local canary resolver without file reads or egress; use a dedicated test key and disposable SP for signature tests." }
+      ],
+      "analysis": { "zh": "阳性签名缺陷要求 SP 接受未签名或攻击者签名的断言并建立错误主体；重放要求同一 Assertion ID 在过期或已消费后再次建立会话；XSW 要求业务层使用的断言与签名实际覆盖的节点不同；XXE 要求解析器服务端触发受控 canary。删除 Signature 后报错、XML 可解析、NameID 文本变化、Base64 成功或 DTD 出现在请求中都不是阳性。", "en": "A signature flaw requires the SP to accept an unsigned or attacker-signed assertion and create the wrong principal. Replay requires a consumed or expired Assertion ID to create another session. XSW requires business logic to use a node different from the signed node. XXE requires the server parser to trigger a controlled canary. Rejection after Signature removal, parseable XML, changed NameID text, successful Base64, or a DTD merely present in the request is not positive." },
+      "opsecTips": [
+        { "zh": "只建立一个合成低权限会话；不得读取系统文件、外带数据、使用真实 IdP 证书或向生产 ACS 提交断言。", "en": "Create at most one synthetic low-privilege session; do not read system files, exfiltrate data, use real IdP certificates, or submit assertions to a production ACS." },
+        { "zh": "注销测试会话，撤销测试证书，删除断言、XML、resolver 日志和 Burp 项目，并恢复签名及解析器策略。", "en": "Log out test sessions, revoke test certificates, delete assertions, XML, resolver logs, and Burp projects, and restore signature and parser policy." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "SAML Response 可能包含 Response 签名、Assertion 签名或两者，SP 还要验证引用节点、Audience、Recipient、InResponseTo 和时间。XML 解析安全与协议签名安全是独立边界，编码步骤只是工具操作。", "en": "A SAML Response may sign the Response, the Assertion, or both, while the SP also validates referenced nodes, Audience, Recipient, InResponseTo, and time. XML parser safety and protocol-signature safety are separate boundaries; encoding is only tooling." },
+        "vulnerability": { "zh": "根因包括只检查存在任意签名而未绑定消费节点、允许未签名断言、自签名证书被信任、未缓存 Assertion ID、XML 库允许外部实体，或不同组件对 NameID/XML 节点规范化不一致。", "en": "Root causes include checking for any signature without binding the consumed node, accepting unsigned assertions, trusting attacker certificates, failing to cache Assertion IDs, allowing external entities, or inconsistent NameID and XML-node canonicalization across components." },
+        "exploitation": { "zh": "先保存一个合法测试断言并验证所有协议字段，再一次只改变签名存在性、引用节点、Assertion ID 生命周期或本地实体。使用 XML 解析/签名日志和最终主体关联结果；不运行文件实体、外网 DTD 或命令执行链。", "en": "Preserve one valid test assertion and verify all protocol fields, then change only signature presence, referenced node, Assertion-ID lifecycle, or a local entity. Correlate XML parser and signature logs with the final principal; do not run file entities, external DTDs, or command-execution chains." },
+        "mitigation": { "zh": "使用维护中的 SAML 库并固定可信 IdP 证书，只消费经过验证且由唯一 ID 引用的断言；严格校验 Audience、Recipient、Destination、InResponseTo 与时间，拒绝重放，并全面禁用 DTD、外部实体和 XInclude。", "en": "Use a maintained SAML library with pinned trusted IdP certificates, consume only the uniquely identified validated assertion, strictly validate Audience, Recipient, Destination, InResponseTo, and time, reject replay, and disable DTDs, external entities, and XInclude." },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        { "title": { "zh": "保存合法断言基线", "en": "Preserve a valid assertion baseline" }, "description": { "zh": "记录签名位置、引用 ID、协议约束、测试主体和 SP 最终会话，作为所有变体的对照。", "en": "Record signature location, referenced IDs, protocol constraints, test principal, and final SP session as the control for every variant." } },
+        { "title": { "zh": "隔离签名消费节点", "en": "Isolate the signed consumed node" }, "description": { "zh": "从源步骤中只选择删除签名的测试变体，预期安全结果为拒绝，不先修改 NameID。", "en": "Select only the source signature-removal variant with rejection as the secure expectation and do not first change NameID." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "分离重放、XSW 与 XXE", "en": "Separate replay, XSW, and XXE" }, "description": { "zh": "逐项验证协议状态、签名引用和解析器回调，禁止把一个边界的报错当成另一个边界的阳性。", "en": "Validate protocol state, signature references, and parser callbacks independently without treating one boundary's error as another boundary's positive." } },
+        { "title": { "zh": "撤销并回归联合策略", "en": "Revoke and regress combined policy" }, "description": { "zh": "清除断言与会话，修复后重放合法、无签名、重放和本地实体对照，确认仅合法断言被接受。", "en": "Clear assertions and sessions, then replay valid, unsigned, replayed, and local-entity controls after remediation so only the valid assertion is accepted." } }
+      ],
+      "references": [
+        "https://cheatsheetseries.owasp.org/cheatsheets/SAML_Security_Cheat_Sheet.html",
+        "https://cheatsheetseries.owasp.org/cheatsheets/XML_Security_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "原记录跨 SAML 协议状态、XML 签名引用和 XML parser 三类边界，并包含多个工具工作流与高风险实体，必须拆分。",
+        "issuesResolved": ["separated-saml-and-xml-boundaries", "defined-signature-reference-evidence", "added-replay-controls", "reclassified-tool-commands", "added-authoritative-references"],
+        "targetPayloadIds": ["auth-saml-signature-validation", "auth-saml-replay", "auth-saml-xsw", "xxe-saml-parser", "auth-saml-nameid-canonicalization"],
+        "targetToolIds": ["burpsuite", "xxe-tools", "web-authentication-bypass"],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 -> auth-saml-signature-validation plus burpsuite decoding workflow",
+          "execution 1 -> xxe-saml-parser and xxe-tools after safe canary replacement",
+          "execution 2 -> auth-saml-signature-validation and auth-saml-replay plus web-authentication-bypass submission workflow",
+          "execution 3 -> auth-saml-xsw, auth-saml-signature-validation, and auth-saml-nameid-canonicalization plus tool commands",
+          "wafBypass 0 -> auth-saml-nameid-canonicalization and web-authentication-bypass encoding workflow"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "execution 1 reads /etc/passwd and exfiltrates to attacker.com; replace with a local resolver canary and no file entity",
+          "execution 0 and 2 modify admin identities and submit to placeholder targets; replace with two synthetic low-privilege identities",
+          "execution 3 xmlsec1 signing is incomplete and does not define a valid signature template or output path",
+          "wafBypass 0 uses zlib.compress although SAML HTTP-Redirect uses raw DEFLATE and the binding context must be explicit",
+          "ellipsis-containing XML fragments are not standalone documents and must be labeled fragments"
+        ],
+        "reviewNotes": [
+          { "zh": "删除 Signature 后被接受才可能是缺陷；删除节点本身或 XML 可解析不构成绕过。", "en": "Only acceptance after Signature removal may indicate a flaw; deleting the node or parsing the XML is not a bypass." },
+          { "zh": "SAML XSW 必须证明业务层消费了未被签名覆盖的节点，不能只生成某种 XML 形状。", "en": "SAML XSW requires proof that business logic consumed a node not covered by the signature; generating an XML shape alone is insufficient." }
+        ]
+      }
+    },
+    {
+      "id": "auth-2fa",
+      "name": { "zh": "2FA 状态机与验证码验证混合集", "en": "Mixed 2FA State-Machine and Code-Validation Boundaries" },
+      "description": { "zh": "原条目混合强制浏览、OTP 输入、响应篡改、备份码与并发限流工作流，需拆成服务端状态、输入 schema、恢复码和工具测试。", "en": "The source mixes forced browsing, OTP input, response tampering, backup codes, and concurrent throttling workflows and must be split into server state, input schema, recovery codes, and tooling." },
+      "category": { "zh": "认证漏洞", "en": "Authentication Vulnerabilities" },
+      "subCategory": { "zh": "多因素认证流程拆分", "en": "Multi-Factor Authentication Flow Split" },
+      "prerequisites": [
+        { "zh": "使用启用 2FA 的合成账户、可重置 TOTP secret、一次性恢复码和无敏感字段标记资源。", "en": "Use a synthetic account with 2FA, a resettable TOTP secret, single-use recovery codes, and a nonsensitive marker resource." },
+        { "zh": "记录密码验证后、第二因子前后和恢复流程中的服务端认证级别、会话 ID、尝试计数与锁定事件。", "en": "Record server-side authentication level, session ID, attempt count, and lockout events after password validation, before and after the second factor, and during recovery." }
+      ],
+      "analysis": { "zh": "阳性强制浏览要求仅完成第一因子的会话读取同一受保护标记对象；响应篡改只有导致服务端认证级别改变才成立；输入 schema 缺陷要求空值、数组或额外标志被服务端当作有效 OTP；恢复码必须证明重复使用或未受限验证。页面跳转、修改本地 JSON、HTTP 200 或一次并发异常都不是绕过。", "en": "Forced-browsing is positive only when a first-factor-only session reads the same protected marker. Response tampering matters only if server authentication level changes. An input-schema flaw requires an empty, array, or extra flag to be accepted as a valid OTP. Recovery-code flaws require replay or unthrottled validation. Navigation, local JSON edits, HTTP 200, or one concurrency anomaly are not bypass." },
+      "opsecTips": [
+        { "zh": "仅尝试少量预先批准的无效码和一个有效测试码；出现锁定、短信发送、恢复码消费或非预期会话升级立即停止。", "en": "Try only a few approved invalid codes and one valid test code; stop on lockout, message delivery, recovery-code consumption, or unintended session elevation." },
+        { "zh": "轮换 TOTP secret 与恢复码，撤销测试会话，恢复尝试计数并删除 Burp 项目和临时响应。", "en": "Rotate the TOTP secret and recovery codes, revoke test sessions, restore attempt counters, and delete Burp projects and temporary responses." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "2FA 是服务端认证状态机，而不是一个前端页面。需要分别验证第一因子会话能否访问受保护资源、OTP 输入是否严格、失败计数是否跨端点一致，以及恢复码是否单次使用。", "en": "2FA is a server-side authentication state machine rather than a front-end page. Test first-factor access, strict OTP input, consistent failure counters across endpoints, and one-time recovery codes separately." },
+        "vulnerability": { "zh": "根因包括受保护端点只检查第一因子、客户端字段决定验证状态、不同 API 未共享认证级别、OTP/恢复码 schema 宽松、限流非原子或只按可伪造 IP。修改响应若不改变服务端状态不构成漏洞。", "en": "Root causes include protected endpoints checking only the first factor, client fields controlling verification state, APIs not sharing assurance level, loose OTP or recovery-code schemas, non-atomic throttling, or throttling only by spoofable IP. Response edits without server-state change are not vulnerabilities." },
+        "exploitation": { "zh": "先完成第一因子并记录会话认证级别，直接请求一个只读标记资源作为强制浏览对照。随后分别测试一个无效 OTP、缺失字段和已用恢复码；并发与速率只在极小预算下由工具执行，不枚举完整空间。", "en": "Complete the first factor and record assurance level, then request one read-only marker as the forced-browsing control. Separately test one invalid OTP, a missing field, and a consumed recovery code. Run concurrency and rate checks only through tools with a tiny budget, never a full code space." },
+        "mitigation": { "zh": "把认证级别绑定到服务端会话并在所有受保护端点强制检查，OTP 和恢复码采用严格 schema、常量时间比较、原子单次消费和按账户节流；恢复与停用 2FA 要求重新认证和通知。", "en": "Bind assurance level to the server session and enforce it on every protected endpoint. Apply strict schemas, constant-time comparison, atomic one-time consumption, and account-based throttling to OTPs and recovery codes, and require reauthentication and notification for recovery or 2FA removal." },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        { "title": { "zh": "记录认证级别基线", "en": "Record assurance-level baselines" }, "description": { "zh": "关联密码验证、第二因子验证和标记资源访问的会话 ID、主体与服务端认证级别。", "en": "Correlate session ID, principal, and server assurance level across password, second-factor, and marker-resource requests." } },
+        { "title": { "zh": "验证强制浏览", "en": "Validate forced browsing" }, "description": { "zh": "使用源直接访问流程请求无副作用标记资源，确认服务端是否在每个端点检查第二因子。", "en": "Use the source direct-access flow against a side-effect-free marker to verify second-factor enforcement on every endpoint." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "分离输入与恢复码", "en": "Separate input and recovery codes" }, "description": { "zh": "分别测试严格 OTP schema、失败计数、恢复码单次性和小预算并发，保存正负对照。", "en": "Test strict OTP schemas, failure counters, recovery-code one-time use, and tiny-budget concurrency independently with controls." } },
+        { "title": { "zh": "轮换并回归 2FA", "en": "Rotate and regress 2FA" }, "description": { "zh": "轮换测试因子和会话，修复后确认正常第二因子可用且第一因子会话与异常输入均被拒绝。", "en": "Rotate test factors and sessions, then confirm valid second factors work while first-factor sessions and malformed inputs are rejected." } }
+      ],
+      "references": [
+        "https://cheatsheetseries.owasp.org/cheatsheets/Multifactor_Authentication_Cheat_Sheet.html",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "原记录跨服务端认证状态、OTP schema、恢复码和工具并发测试，不能保留为一个 2FA Payload。",
+        "issuesResolved": ["centered-server-side-state", "separated-otp-and-recovery-boundaries", "added-request-budget", "reclassified-tool-workflows", "added-authoritative-references"],
+        "targetPayloadIds": ["auth-2fa-state-enforcement", "auth-2fa-input-schema", "auth-2fa-recovery-code"],
+        "targetToolIds": ["burpsuite", "web-authentication-bypass"],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 and direct-endpoint lines from wafBypass 0 -> auth-2fa-state-enforcement plus web-authentication-bypass request workflow",
+          "execution 1 -> web-authentication-bypass as a bounded OTP rate-control workflow",
+          "execution 2 and malformed-state lines from wafBypass 0 -> auth-2fa-input-schema after command correction",
+          "wafBypass 1 -> auth-2fa-recovery-code plus burpsuite concurrency workflow"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "execution 2 is prose-like text, not a valid request or payload",
+          "response editing in execution 0 and wafBypass 0 cannot prove server-side bypass and must be framed as a negative control",
+          "execution 1 suggests brute force and spoofed-header evasion; replace with a tiny fixed invalid-code set and account-based counter inspection",
+          "wafBypass 1 launches over one hundred concurrent requests and must be replaced with a low-concurrency atomicity test"
+        ],
+        "reviewNotes": [
+          { "zh": "TOTP 的短时间窗不应被描述为需要“极快速爆破”，正确审校对象是服务端尝试预算和账户状态。", "en": "A TOTP time window should not be framed as requiring very fast brute force; review server attempt budgets and account state instead." },
+          { "zh": "前端跳转或 JSON 响应修改只有在后续服务端端点信任该状态时才有影响。", "en": "A front-end redirect or JSON response edit matters only if a later server endpoint trusts that state." }
+        ]
+      }
+    },
+    {
+      "id": "auth-captcha",
+      "name": { "zh": "CAPTCHA 生命周期与参数验证混合集", "en": "Mixed CAPTCHA Lifecycle and Parameter Validation" },
+      "description": { "zh": "原条目混合验证码重放、空值/缺参、替代 API、Burp 密码流程、OCR 和响应泄露检查，需要拆成服务端 Payload 与工具工作流。", "en": "The source mixes CAPTCHA replay, empty or missing values, alternate APIs, Burp password workflows, OCR, and response-leak checks and must be split into server payloads and tool workflows." },
+      "category": { "zh": "认证漏洞", "en": "Authentication Vulnerabilities" },
+      "subCategory": { "zh": "CAPTCHA 验证边界拆分", "en": "CAPTCHA Validation Boundary Split" },
+      "prerequisites": [
+        { "zh": "使用合成账户、测试 CAPTCHA 提供方或本地固定挑战，并记录挑战 ID、会话、用途、答案哈希与消费状态。", "en": "Use a synthetic account and a test CAPTCHA provider or local fixed challenge, recording challenge ID, session, purpose, answer hash, and consumption state." },
+        { "zh": "正常登录、移动 API 和旧 API 均指向同一无敏感字段标记账户，测试不会触发真实密码猜测或第三方识别服务。", "en": "Normal, mobile, and legacy APIs target the same nonsensitive marker account, and testing does not trigger real password guessing or third-party recognition services." }
+      ],
+      "analysis": { "zh": "阳性重放要求一个已消费挑战再次通过服务端验证；schema 缺陷要求空值、null、数组或缺失字段在应强制 CAPTCHA 的同一风险状态下被接受；路由缺陷要求替代 API 绕过同一服务端策略。HTTP 200、验证码图片可 OCR、前端隐藏字段、参数被解析或密码字段变化都不是绕过证据。", "en": "Replay is positive only when a consumed challenge passes server validation again. A schema flaw requires empty, null, array, or missing input to be accepted under the same risk state. A route flaw requires an alternate API to bypass the same server policy. HTTP 200, OCR-readable images, front-end hidden fields, parsed parameters, or changed password fields are not bypass evidence." },
+      "opsecTips": [
+        { "zh": "仅重放一个本地测试挑战并使用固定错误密码；不得运行密码字典、调用真实短信/语音通道或第三方 OCR。", "en": "Replay one local test challenge with a fixed wrong password; do not run password dictionaries, real SMS or voice channels, or third-party OCR." },
+        { "zh": "销毁挑战、会话和测试账户状态，删除图片、识别输出和 Burp 项目，并确认挑战计数与风险状态恢复。", "en": "Destroy challenge, session, and test-account state, delete images, recognition output, and Burp projects, and confirm challenge counters and risk state recover." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "CAPTCHA 是服务端风险控制的一部分，必须绑定会话、操作和一次性挑战。原集合的请求片段可验证重放与输入 schema，而 Burp、OCR 和 curl 连续步骤属于工具流程，不能留作 Payload。", "en": "CAPTCHA is a server-side risk control bound to session, action, and one-time challenge. Source request fragments can test replay and schemas, while Burp, OCR, and curl sequences are tool workflows rather than payloads." },
+        "vulnerability": { "zh": "根因包括挑战未原子消费、只在前端校验、空值或错误类型走 fail-open 分支、移动/旧 API 未共享策略，或把答案/令牌直接返回客户端。可被机器识别是强度问题，不等于服务端绕过。", "en": "Root causes include non-atomic challenge consumption, client-only validation, fail-open handling of empty or wrong types, inconsistent mobile or legacy API policy, or returning answers or tokens to clients. Machine readability is a strength issue, not automatically server bypass." },
+        "exploitation": { "zh": "先完成一次本地固定挑战并记录消费状态，随后只重放同一请求一次。再分别提交空、null、缺失和数组值，并在相同风险条件下对比主、移动和旧 API；每轮只用固定错误密码并关联服务端挑战日志。", "en": "Complete one local fixed challenge and record consumption, then replay that request once. Separately submit empty, null, missing, and array values and compare primary, mobile, and legacy APIs under the same risk state, always with a fixed wrong password and correlated challenge logs." },
+        "mitigation": { "zh": "服务端验证并原子消费短期挑战，绑定会话、操作和风险事件；对缺失与错误类型统一失败，所有 API 共用策略，答案不得返回客户端，并把 CAPTCHA 与账户节流、MFA 和异常检测组合使用。", "en": "Validate and atomically consume short-lived challenges server-side, bind them to session, action, and risk event, fail closed on missing or wrong types, share policy across APIs, never return answers, and combine CAPTCHA with account throttling, MFA, and anomaly detection." },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        { "title": { "zh": "建立挑战消费基线", "en": "Establish challenge-consumption baseline" }, "description": { "zh": "记录挑战生成、验证、消费和后续认证请求的 ID、会话与服务端状态。", "en": "Record identifiers, sessions, and server state across challenge generation, validation, consumption, and the following authentication request." } },
+        { "title": { "zh": "复核单次重放", "en": "Review one replay" }, "description": { "zh": "使用源请求中的已知有效测试挑战只重放一次，并核对服务端是否拒绝已消费状态。", "en": "Replay the known-valid test challenge from the source once and verify server rejection of consumed state." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "分离 schema 与路由", "en": "Separate schema and routing" }, "description": { "zh": "逐个测试异常类型和替代 API，保持账户、密码、风险状态与挑战用途不变。", "en": "Test malformed types and alternate APIs one at a time while holding account, password, risk state, and challenge purpose constant." } },
+        { "title": { "zh": "清理并回归挑战策略", "en": "Clean up and regress challenge policy" }, "description": { "zh": "销毁挑战与会话，修复后确认正常答案可用且重放、缺参和替代路由都被一致拒绝。", "en": "Destroy challenges and sessions, then confirm valid answers work while replay, missing input, and alternate routes are consistently rejected." } }
+      ],
+      "references": [
+        "https://cheatsheetseries.owasp.org/cheatsheets/Credential_Stuffing_Prevention_Cheat_Sheet.html",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "原记录跨挑战生命周期、输入类型、API 路由和 OCR/Burp 工具流程，需拆分并迁移工具内容。",
+        "issuesResolved": ["separated-challenge-lifecycle-and-schema", "defined-server-side-evidence", "reclassified-ocr-and-burp-workflows", "added-safe-test-budget", "added-authoritative-references"],
+        "targetPayloadIds": ["auth-captcha-replay", "auth-captcha-input-schema", "auth-captcha-route-consistency"],
+        "targetToolIds": ["burpsuite", "web-authentication-bypass"],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 and replay lines from wafBypass 0 -> auth-captcha-replay plus burpsuite setup",
+          "execution 1 and empty or missing lines from wafBypass 0 -> auth-captcha-input-schema",
+          "execution 2 -> auth-captcha-route-consistency and auth-captcha-input-schema",
+          "wafBypass 1 -> web-authentication-bypass as local OCR and response-inspection workflow"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "execution 0 embeds a Burp password-brute-force workflow; replace it with one replay using a fixed wrong password",
+          "execution 1 and 2 claim any successful login proves CAPTCHA bypass without defining credentials, risk state, or server challenge evidence",
+          "wafBypass 1 references Google Speech-to-Text and Selenium without commands, privacy scope, or local-only data handling",
+          "response grep output cannot prove the CAPTCHA answer is leaked or accepted"
+        ],
+        "reviewNotes": [
+          { "zh": "OCR 成功率属于挑战强度评估，只有服务端策略在应触发挑战时被绕过才是认证缺陷。", "en": "OCR accuracy evaluates challenge strength; an authentication flaw requires bypassing server policy when a challenge should be enforced." },
+          { "zh": "主、移动和旧 API 必须在同一账户风险状态下对照，否则不能归因于路由不一致。", "en": "Primary, mobile, and legacy APIs must be compared under the same account risk state before attributing a route inconsistency." }
+        ]
+      }
+    },
+    {
+      "id": "auth-remember-me",
+      "name": { "zh": "Remember-Me 令牌与 Shiro 反序列化混合集", "en": "Mixed Remember-Me Tokens and Shiro Deserialization" },
+      "description": { "zh": "原条目把普通持久登录 Cookie 的完整性与重放、格式分析、框架识别、旧 Shiro 默认密钥和 ysoserial RCE 链混在一起，必须拆分。", "en": "The source combines persistent-login cookie integrity and replay, format analysis, framework detection, legacy Shiro keys, and ysoserial RCE chains and must be split." },
+      "category": { "zh": "认证漏洞", "en": "Authentication Vulnerabilities" },
+      "subCategory": { "zh": "持久登录与反序列化拆分", "en": "Persistent Login and Deserialization Split" },
+      "prerequisites": [
+        { "zh": "使用可撤销的合成账户和隔离浏览器，记录 Remember-Me Cookie 的名称、属性、服务端令牌记录、设备会话和撤销事件。", "en": "Use a revocable synthetic account and isolated browser, recording remember-me cookie name, attributes, server token record, device sessions, and revocation events." },
+        { "zh": "Shiro 测试仅在确认版本、cipher mode、密钥配置和可销毁 Java 容器后进行，反序列化链替换为无进程本地 canary。", "en": "Test Shiro only after confirming version, cipher mode, key configuration, and a disposable Java container, replacing deserialization chains with a process-free local canary." }
+      ],
+      "analysis": { "zh": "普通令牌缺陷要求修改或跨设备重放 Cookie 后建立错误主体，且服务端日志确认令牌未正确绑定、签名或撤销。Shiro 缺陷要求目标版本和密钥条件匹配，并由反序列化审计触发无害 canary；deleteMe 响应、Base64 可解码、序列化魔数、默认密钥在字典中或工具生成密文都不是 RCE 证据。", "en": "A normal token flaw requires a modified or replayed cookie to create the wrong principal with server logs confirming failed binding, integrity, or revocation. A Shiro flaw requires matching version and key conditions plus a harmless deserialization canary. A deleteMe response, Base64 decoding, serialization magic, a default key in a list, or tool-generated ciphertext is not RCE evidence." },
+      "opsecTips": [
+        { "zh": "仅访问一个只读标记对象；不得生成命令执行 gadget、外连回调、真实管理员 Cookie 或跨用户持久会话。", "en": "Access only one read-only marker object; do not generate command-execution gadgets, callbacks, real administrator cookies, or persistent cross-user sessions." },
+        { "zh": "注销所有设备、撤销持久令牌并轮换测试密钥，删除 Cookie、序列化文件和工具输出，销毁 Java 容器。", "en": "Log out all devices, revoke persistent tokens and rotate test keys, delete cookies, serialized files, and tool output, and destroy the Java container." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "Remember-Me 可以是服务端随机选择器，也可能是框架加密对象。前者关注完整性、过期、轮换和撤销；旧 Shiro 场景关注特定版本、密钥和反序列化边界。编码可读不等于可伪造，更不等于 RCE。", "en": "Remember-me may be a server-side random selector or a framework-encrypted object. The former concerns integrity, expiry, rotation, and revocation; legacy Shiro concerns specific versions, keys, and deserialization. Readable encoding does not imply forgery or RCE." },
+        "vulnerability": { "zh": "根因包括在 Cookie 中信任可修改身份字段、仅编码不做完整性保护、令牌长期不轮换或不撤销，以及旧框架使用已知密钥解密不可信序列化对象。Cookie 名大小写变化和客户端指纹不稳定不应被当作主要安全机制。", "en": "Root causes include trusting modifiable identity fields in cookies, encoding without integrity, failing to rotate or revoke long-lived tokens, and legacy frameworks decrypting untrusted serialized objects with known keys. Cookie-name case changes and unstable client fingerprints should not be primary controls." },
+        "exploitation": { "zh": "先用合成账户记录正常 Cookie、服务端令牌记录和注销行为，再一次只测试字段修改、跨设备重放或已撤销令牌。Shiro 分支先确认版本与 deleteMe 行为，再在无网络容器中用无进程 canary 检查解密/反序列化，禁止生成外连命令。", "en": "Record the normal cookie, server token record, and logout behavior for a synthetic account, then test field modification, cross-device replay, or a revoked token one at a time. For Shiro, confirm version and deleteMe behavior, then use a process-free canary in a networkless container to test decryption and deserialization without callback commands." },
+        "mitigation": { "zh": "持久登录使用高熵随机 selector/token，服务端存储 token 哈希并支持轮换、过期和全设备撤销；Cookie 设置 Secure、HttpOnly、SameSite 与最小作用域。升级 Shiro、使用唯一随机密钥并禁止反序列化不可信对象。", "en": "Use high-entropy random selector and token pairs with server-side token hashes, rotation, expiry, and all-device revocation. Apply Secure, HttpOnly, SameSite, and minimal scope. Upgrade Shiro, use unique random keys, and do not deserialize untrusted objects." },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        { "title": { "zh": "记录持久令牌基线", "en": "Record persistent-token baselines" }, "description": { "zh": "关联 Cookie、服务端令牌哈希、设备会话、过期和注销事件，确认正常恢复路径。", "en": "Correlate cookie, server token hash, device session, expiry, and logout events to establish normal restoration." } },
+        { "title": { "zh": "隔离 Cookie 完整性", "en": "Isolate cookie integrity" }, "description": { "zh": "从源伪造样例中只改变一个合成身份字段，预期安全结果是拒绝且不建立主体。", "en": "Change one synthetic identity field from the source forgery sample, with rejection and no principal as the secure outcome." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "分离重放与 Shiro", "en": "Separate replay and Shiro" }, "description": { "zh": "独立验证撤销后的重放和版本限定的 Shiro canary，不把 Base64、deleteMe 或密钥命中当作执行。", "en": "Independently validate post-revocation replay and a version-scoped Shiro canary without treating Base64, deleteMe, or key matches as execution." } },
+        { "title": { "zh": "撤销、轮换并回归", "en": "Revoke, rotate, and regress" }, "description": { "zh": "撤销所有持久会话并轮换测试密钥，修复后确认合法恢复可用且篡改、旧令牌与反序列化均被阻止。", "en": "Revoke all persistent sessions and rotate the test key, then confirm valid restoration works while tampering, stale tokens, and deserialization are blocked." } }
+      ],
+      "references": [
+        "https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html",
+        "https://shiro.apache.org/security-reports.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "原记录把普通持久登录令牌与版本限定的 Shiro 反序列化 RCE 混合，并包含大量工具操作，必须拆分。",
+        "issuesResolved": ["separated-token-and-deserialization-boundaries", "added-version-and-key-preconditions", "defined-revocation-evidence", "reclassified-tool-workflows", "added-primary-framework-reference"],
+        "targetPayloadIds": ["auth-remember-token-integrity", "auth-remember-token-replay", "auth-shiro-rememberme-deserialization"],
+        "targetToolIds": ["web-authentication-bypass", "ysoserial"],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 -> auth-remember-token-integrity plus web-authentication-bypass submission workflow",
+          "execution 1-2 -> web-authentication-bypass as decoding and format-analysis workflows",
+          "execution 3 -> auth-shiro-rememberme-deserialization plus ysoserial after safe canary replacement",
+          "wafBypass 0 -> auth-shiro-rememberme-deserialization and web-authentication-bypass key/version workflow"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "execution 3 invokes ysoserial with a remote curl command and must be replaced by a process-free local deserialization canary",
+          "hard-coded Shiro key lists are version and deployment dependent and must be labeled historical test inputs rather than universal defaults",
+          "the handwritten AES-CBC routine omits complete framework serialization and version semantics and cannot be presented as a valid current Shiro exploit",
+          "wafBypass 0 treats cookie-name case changes as bypass candidates even though cookie names are case-sensitive",
+          "the original mitigation recommends IP and User-Agent fingerprint binding, which is unreliable and privacy-sensitive; server-side rotation and revocation are preferred"
+        ],
+        "reviewNotes": [
+          { "zh": "rememberMe=deleteMe 只能帮助识别可能的 Shiro 行为，不能证明默认密钥或反序列化 RCE。", "en": "rememberMe=deleteMe may help identify Shiro-like behavior but does not prove a default key or deserialization RCE." },
+          { "zh": "Base64 解码只是格式观察，必须另行证明完整性校验可被绕过。", "en": "Base64 decoding is only format observation; bypass of integrity validation requires separate proof." }
+        ]
+      }
+    },
+    {
+      "id": "auth-jwt",
+      "name": { "zh": "JWT 验证边界与工具工作流混合集", "en": "Mixed JWT Validation Boundaries and Tool Workflows" },
+      "description": { "zh": "原条目混合 JWT 解码、弱 HMAC 密钥审计、none、算法混淆、kid、jwk/jku 与 claim 校验，还重复工具命令，需要拆成独立 Payload 和工具卡。", "en": "The source mixes JWT decoding, weak-HMAC-secret auditing, none, algorithm confusion, kid, jwk and jku, and claim validation with duplicate tool commands and must be split into payloads and tool cards." },
+      "category": { "zh": "认证漏洞", "en": "Authentication Vulnerabilities" },
+      "subCategory": { "zh": "JWT 验证边界拆分", "en": "JWT Validation Boundary Split" },
+      "prerequisites": [
+        { "zh": "使用自有 issuer、测试签名密钥、两个合成主体和只读标记 API，记录库版本、允许算法、kid resolver 与 JWKS 配置。", "en": "Use an owned issuer, test signing keys, two synthetic principals, and a read-only marker API, recording library version, allowed algorithms, kid resolver, and JWKS configuration." },
+        { "zh": "每个测试令牌具有唯一 jti、短期 exp、固定 iss/aud，弱密钥检查仅对自有离线样本执行。", "en": "Every test token has a unique jti, short exp, and fixed iss and aud; weak-secret checks run only against owned offline samples." }
+      ],
+      "analysis": { "zh": "阳性要求服务端接受未签名、错误算法、攻击者控制密钥来源或错误 issuer/audience 的测试令牌，并以错误主体读取同一标记资源。解码 payload、生成令牌、hashcat 找到自建弱密钥、JWKS 可访问、kid 字符串被解析、库抛错或令牌仅被网关回显都不是验证绕过。", "en": "Positive evidence requires the server to accept an unsigned token, wrong algorithm, attacker-controlled key source, or wrong issuer or audience and read the same marker as the wrong principal. Decoding a payload, generating a token, finding an intentionally weak local secret, reaching JWKS, parsing a kid string, library errors, or gateway reflection are not validation bypass." },
+      "opsecTips": [
+        { "zh": "仅使用测试密钥和低权限 claim；不得破解真实令牌密钥、读取管理员 API、托管恶意公网 JWKS 或复用生产证书。", "en": "Use only test keys and low-privilege claims; do not crack real token secrets, access administrator APIs, host malicious public JWKS, or reuse production certificates." },
+        { "zh": "撤销所有测试 jti 和密钥，删除令牌、字典、JWKS 与工具输出，清理 issuer/resource-server 缓存。", "en": "Revoke all test jtis and keys, delete tokens, wordlists, JWKS, and tool output, and clear issuer and resource-server caches." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "JWT 只是令牌格式，安全性取决于验证方固定算法和密钥来源，并校验 issuer、audience、时间与用途。解码和离线密钥审计是工具流程；none、算法混淆、kid 与 jku/jwk 是不同信任边界。", "en": "JWT is a token format whose security depends on verifier-fixed algorithms and key sources plus issuer, audience, time, and purpose checks. Decoding and offline secret audits are tools; none, algorithm confusion, kid, and jku or jwk are different trust boundaries." },
+        "vulnerability": { "zh": "根因包括从令牌 alg 动态选择未允许算法、混用 HMAC 与非对称密钥、弱 HMAC secret、把 kid 拼进 SQL/路径、信任任意 jku/jwk，以及未校验 iss、aud、exp、nbf 或 token type。每类都需单独验证。", "en": "Root causes include selecting unapproved algorithms from token alg, confusing HMAC and asymmetric keys, weak HMAC secrets, concatenating kid into SQL or paths, trusting arbitrary jku or jwk, and omitting iss, aud, exp, nbf, or token-type checks. Validate each separately." },
+        "exploitation": { "zh": "先用测试 issuer 签发一个短期正常令牌并访问标记 API，再一次只改变签名算法、密钥来源、kid 或一个 claim。离线工具只处理自建令牌；服务端测试以主体、验证库日志、选中 key ID 和资源授权日志共同确认。", "en": "Issue one short-lived valid token from the test issuer and access the marker API, then change only algorithm, key source, kid, or one claim. Offline tools process only self-created tokens; server tests correlate principal, verifier logs, selected key ID, and resource authorization logs." },
+        "mitigation": { "zh": "在服务器配置中固定允许算法和每种 token type 的验证规则，隔离 HMAC 与非对称密钥，使用高熵 secret；kid 仅作允许列表键，远程 JWKS 固定 issuer、HTTPS 主机和 key 属性，并严格校验 iss、aud、时间与用途。", "en": "Fix allowed algorithms and validation rules per token type in server configuration, separate HMAC and asymmetric keys, use high-entropy secrets, treat kid only as an allowlisted lookup key, pin remote JWKS to issuer, HTTPS host, and key properties, and strictly validate iss, aud, time, and purpose." },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        { "title": { "zh": "记录有效令牌基线", "en": "Record a valid-token baseline" }, "description": { "zh": "保存测试 issuer、算法、kid、jti、claim、选中密钥和标记 API 主体的关联记录。", "en": "Preserve correlated issuer, algorithm, kid, jti, claims, selected key, and marker-API principal for a valid token." } },
+        { "title": { "zh": "分离解码工具", "en": "Separate decoding tools" }, "description": { "zh": "先把源解码命令迁入工具区，只观察结构，不把可解码误判为可伪造或可接受。", "en": "Move the source decoding command to Tools and observe structure without treating decodability as forgery or acceptance." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "逐边界验证拒绝", "en": "Validate rejection per boundary" }, "description": { "zh": "分别提交 none、算法混淆、kid、jku/jwk 和错误 claim 对照，并关联验证器与资源日志。", "en": "Submit none, algorithm-confusion, kid, jku or jwk, and wrong-claim controls independently and correlate verifier and resource logs." } },
+        { "title": { "zh": "撤销密钥并回归", "en": "Revoke keys and regress" }, "description": { "zh": "撤销测试密钥与 jti，修复后确认正常令牌可用且所有错误算法、来源和 claim 均被拒绝。", "en": "Revoke test keys and jtis, then confirm valid tokens work while every wrong algorithm, source, and claim is rejected." } }
+      ],
+      "references": [
+        "https://www.rfc-editor.org/rfc/rfc7519.html",
+        "https://www.rfc-editor.org/rfc/rfc8725.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "原记录跨解码、离线密钥审计和五类服务端验证边界，并重复工具工作流，必须拆分。",
+        "issuesResolved": ["separated-jwt-validation-boundaries", "reclassified-decoding-and-cracking-tools", "added-issuer-audience-and-type-controls", "removed-universal-exploit-assumptions", "added-current-rfc-references"],
+        "targetPayloadIds": ["auth-jwt-none", "auth-jwt-alg-confusion", "auth-jwt-kid-validation", "auth-jwt-jwk-jku-trust", "auth-jwt-claim-validation"],
+        "targetToolIds": ["jwt-decode", "jwt-attacks", "jwt-tool", "hashcat", "john"],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 -> jwt-decode and jwt-tool",
+          "execution 1 -> auth-jwt-none plus jwt-attacks or jwt-tool",
+          "execution 2 -> jwt-tool, hashcat, and john as offline owned-token secret-audit workflows",
+          "execution 3 and algorithm-confusion lines from wafBypass 1 -> auth-jwt-alg-confusion plus jwt-attacks",
+          "execution 4 -> auth-jwt-kid-validation plus jwt-tool",
+          "wafBypass 0 -> auth-jwt-jwk-jku-trust plus jwt-attacks",
+          "nested-token claim lines from wafBypass 1 -> auth-jwt-claim-validation"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "manual JWT decoding uses ordinary base64 without robust base64url padding and should be replaced by a standards-correct local decoder",
+          "modern JWT libraries may reject an asymmetric PEM key as an HMAC secret; algorithm-confusion examples must be version-pinned and treated as negative controls by default",
+          "the TLS certificate public key obtained by openssl s_client is not necessarily the JWT signing key; use the issuer's owned JWKS test key",
+          "kid to SQL or /dev/null behavior depends entirely on the server resolver and must not be presented as universal",
+          "JKU examples use attacker.com and must use an owned local JWKS with pinned test issuer",
+          "an arbitrary inner_token claim does not imply recursive JWT validation and requires application-specific evidence"
+        ],
+        "reviewNotes": [
+          { "zh": "JWT Payload 按设计可被解码，机密性不能作为签名完整性的判据。", "en": "JWT payloads are normally decodable by design; confidentiality is not the signature-integrity criterion." },
+          { "zh": "服务端应按令牌用途固定算法与验证规则，而不是相信 token 自带的 alg、jku、jwk 或 kid。", "en": "The server should fix algorithms and validation rules by token purpose rather than trusting token-supplied alg, jku, jwk, or kid." }
+        ]
+      }
+    }
+  ]
+}

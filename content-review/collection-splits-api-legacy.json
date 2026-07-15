@@ -1,0 +1,1084 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "collectionSplits": [
+    {
+      "sourceId": "api-bola",
+      "targetPayloadIds": [
+        "api-object-level-authorization"
+      ],
+      "replacements": [
+        {
+          "id": "api-object-level-authorization",
+          "tags": [
+            "api-security",
+            "rest",
+            "bola",
+            "object-authorization",
+            "localhost"
+          ],
+          "execution": [
+            {
+              "title": {
+                "zh": "双主体对象读取对照",
+                "en": "Two-Principal Object-Read Control"
+              },
+              "command": "for token in owner-a-token reviewer-b-token; do curl --silent --show-error --max-time 5 -o /dev/null -w \"$token %{http_code}\\n\" \"http://127.0.0.1:18080/api/lab/documents/doc-owner-a\" -H \"Authorization: Bearer $token\" -H \"X-Request-ID: bola-boundary-001-$token\"; done",
+              "description": {
+                "zh": "以对象所有者和第二个低权限实验主体读取同一合成对象，只比较授权结果、状态与服务端请求 ID。",
+                "en": "Read the same synthetic object as its owner and a second low-privilege lab principal, comparing only authorization outcomes, status, and server request IDs."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": []
+        }
+      ],
+      "toolTargets": [
+        {
+          "targetToolId": "api-authorization-workflow",
+          "targetName": {
+            "zh": "API 对象授权回归工作流",
+            "en": "API Object-Authorization Regression Workflow"
+          },
+          "targetDescription": {
+            "zh": "使用 localhost、固定实验主体、合成对象和请求 ID 执行对象发现、有限授权矩阵、标识规范化与方法策略回归。",
+            "en": "Runs object discovery, bounded authorization matrices, identifier canonicalization, and method-policy regression with localhost fixtures, fixed lab principals, synthetic objects, and request IDs."
+          },
+          "targetCategory": {
+            "zh": "API 安全测试工具",
+            "en": "API Security Testing Tools"
+          },
+          "targetReferences": [
+            "https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/",
+            "https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html"
+          ],
+          "navRootId": "web-tools",
+          "navId": "api-authorization-workflow",
+          "navName": {
+            "zh": "API 对象授权回归",
+            "en": "API Object-Authorization Regression"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "所有者资源映射基线",
+                "en": "Owner Resource-Mapping Baseline"
+              },
+              "command": "curl --fail-with-body --silent --show-error --max-time 5 \"http://127.0.0.1:18080/api/lab/documents/doc-owner-a\" -H \"Authorization: Bearer owner-a-token\" -H \"X-Request-ID: bola-map-001\" | jq -e '.id == \"doc-owner-a\" and .owner == \"owner-a\"'",
+              "description": {
+                "zh": "读取一个已知归属的合成文档并断言对象与所有者字段，为后续双主体差异提供确定基线。",
+                "en": "Read one synthetic document with known ownership and assert its object and owner fields, producing a deterministic baseline for later two-principal comparison."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "三个对象有限矩阵",
+                "en": "Bounded Three-Object Matrix"
+              },
+              "command": "for id in doc-owner-a doc-owner-b doc-missing; do curl --silent --show-error --max-time 5 -o /dev/null -w \"$id %{http_code}\\n\" \"http://127.0.0.1:18080/api/lab/documents/$id\" -H \"Authorization: Bearer reviewer-b-token\" -H \"X-Request-ID: bola-matrix-001-$id\"; done",
+              "description": {
+                "zh": "仅请求本人、他人和不存在三个固定对象，输出对象标识与状态码，禁止扩大到字典枚举。",
+                "en": "Request only the three fixed self, peer, and missing objects and print identifiers with status codes without expanding into dictionary enumeration."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "对象路径规范化对照",
+                "en": "Object-Path Canonicalization Control"
+              },
+              "command": "for path in users/owner-a users/%6fwner-a; do curl --silent --show-error --max-time 5 -o /dev/null -w \"$path %{http_code}\\n\" \"http://127.0.0.1:18080/api/lab/$path\" -H \"Authorization: Bearer reviewer-b-token\" -H \"X-Request-ID: bola-canonical-001\"; done",
+              "description": {
+                "zh": "比较规范路径与一个百分号编码等价路径，确认规范化前后使用相同主体和对象授权策略。",
+                "en": "Compare a canonical path with one percent-encoded equivalent and verify identical principal and object authorization after normalization."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "对象方法策略检查",
+                "en": "Object Method-Policy Check"
+              },
+              "command": "curl --silent --show-error --max-time 5 -X OPTIONS \"http://127.0.0.1:18080/api/lab/documents/doc-owner-a\" -H \"Authorization: Bearer reviewer-b-token\" -H \"Origin: http://127.0.0.1:18080\" -H \"X-Request-ID: bola-method-001\" -D - -o /dev/null",
+              "description": {
+                "zh": "对合成对象发送只读 OPTIONS 请求，保存 Allow 与跨域响应头并核对方法策略，不执行写入。",
+                "en": "Send a read-only OPTIONS request for the synthetic object, preserve Allow and CORS headers, and review method policy without performing writes."
+              },
+              "platform": "all"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": [
+        {
+          "command": "RETIRE api-bola destructive cross-object write and delete sequence",
+          "reason": {
+            "zh": "原块包含跨对象修改、删除和成员添加等破坏写入；单一对象授权 Payload 不需要这些副作用，因此整体退休。",
+            "en": "The original block contained cross-object modification, deletion, and membership changes; these side effects are unnecessary for a focused object-authorization payload and are retired."
+          }
+        }
+      ]
+    },
+    {
+      "sourceId": "api-idor",
+      "targetPayloadIds": [
+        "api-object-level-authorization"
+      ],
+      "replacements": [],
+      "toolTargets": [
+        {
+          "targetToolId": "api-authorization-workflow",
+          "targetName": {
+            "zh": "API 对象授权回归工作流",
+            "en": "API Object-Authorization Regression Workflow"
+          },
+          "targetDescription": {
+            "zh": "使用 localhost、固定实验主体、合成对象和请求 ID 执行对象发现、有限授权矩阵、标识规范化与方法策略回归。",
+            "en": "Runs object discovery, bounded authorization matrices, identifier canonicalization, and method-policy regression with localhost fixtures, fixed lab principals, synthetic objects, and request IDs."
+          },
+          "targetCategory": {
+            "zh": "API 安全测试工具",
+            "en": "API Security Testing Tools"
+          },
+          "targetReferences": [
+            "https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/",
+            "https://cheatsheetseries.owasp.org/cheatsheets/Insecure_Direct_Object_Reference_Prevention_Cheat_Sheet.html"
+          ],
+          "navRootId": "web-tools",
+          "navId": "api-authorization-workflow",
+          "navName": {
+            "zh": "API 对象授权回归",
+            "en": "API Object-Authorization Regression"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "OpenAPI 对象路由定位",
+                "en": "OpenAPI Object-Route Lookup"
+              },
+              "command": "curl --fail --silent --show-error --max-time 5 \"http://127.0.0.1:18080/openapi.json\" | jq -e '.paths[\"/api/lab/users/{id}\"]'",
+              "description": {
+                "zh": "从本地 OpenAPI 文档精确定位用户对象路径，避免使用路径字典或无界端点枚举。",
+                "en": "Locate the user-object path precisely in the local OpenAPI document without route dictionaries or unbounded endpoint enumeration."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "有限 ID 状态矩阵",
+                "en": "Bounded Identifier Status Matrix"
+              },
+              "command": "for id in user-self user-peer user-missing; do curl --silent --show-error --max-time 5 -o /dev/null -w \"$id %{http_code}\\n\" \"http://127.0.0.1:18080/api/lab/users/$id\" -H \"Authorization: Bearer user-self-token\" -H \"X-Request-ID: idor-bounded-001-$id\"; sleep 0.2; done",
+              "description": {
+                "zh": "按本人、同租户他人和不存在对象三个固定 ID 请求并加入间隔，仅输出状态用于授权差异初筛。",
+                "en": "Request fixed self, same-tenant peer, and missing identifiers with pacing and print status only for initial authorization comparison."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "有限 ID 证据摘要",
+                "en": "Bounded Identifier Evidence Summary"
+              },
+              "command": "for id in user-self user-peer user-missing; do curl --silent --show-error --max-time 5 \"http://127.0.0.1:18080/api/lab/users/$id\" -H \"Authorization: Bearer user-self-token\" -H \"X-Request-ID: idor-evidence-001-$id\" | jq -c '{id,status:(.status // \"ok\"),canary:(.canary // null)}'; done",
+              "description": {
+                "zh": "对三个固定对象提取最小 JSON 证据字段，不保存完整对象或真实用户内容。",
+                "en": "Extract a minimal JSON evidence summary for three fixed objects without retaining complete objects or real user content."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "双主体同对象对照",
+                "en": "Two-Principal Same-Object Control"
+              },
+              "command": "for token in user-self-token user-peer-token; do curl --silent --show-error --max-time 5 -o /dev/null -w \"$token %{http_code}\\n\" \"http://127.0.0.1:18080/api/lab/users/user-peer\" -H \"Authorization: Bearer $token\" -H \"X-Request-ID: idor-actor-001-$token\"; done",
+              "description": {
+                "zh": "使用两个实验令牌读取同一 peer 对象，保持路径和参数不变以隔离身份授权差异。",
+                "en": "Read the same peer object with two lab tokens while holding path and parameters constant to isolate identity-based authorization differences."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "标识规范化有限对照",
+                "en": "Bounded Identifier Canonicalization Control"
+              },
+              "command": "for id in user-001 user-1 user-%31; do curl --silent --show-error --max-time 5 -o /dev/null -w \"$id %{http_code}\\n\" \"http://127.0.0.1:18080/api/lab/canonical-users/$id\" -H \"Authorization: Bearer user-self-token\" -H \"X-Request-ID: idor-canonical-001\"; done",
+              "description": {
+                "zh": "比较三个登记过的等价标识形式并输出状态，确认规范化与授权顺序一致。",
+                "en": "Compare three preregistered equivalent identifier forms and print status to verify consistent canonicalization and authorization order."
+              },
+              "platform": "all"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": [
+        {
+          "command": "RETIRE api-idor duplicate-parameter and unbounded batch-enumeration variants",
+          "reason": {
+            "zh": "原块依赖重复参数、重复 JSON Key 和批量 ID 枚举，解析含义不稳定且会扩大对象扫描范围，因此退休。",
+            "en": "The original block relied on duplicate parameters, duplicate JSON keys, and batched identifier enumeration with ambiguous parsing and excessive object scope, so it is retired."
+          }
+        }
+      ]
+    },
+    {
+      "sourceId": "api-injection",
+      "targetPayloadIds": [
+        "api-input-validation-boundary"
+      ],
+      "replacements": [
+        {
+          "id": "api-input-validation-boundary",
+          "tags": [
+            "api-security",
+            "input-validation",
+            "parameter-binding",
+            "canary",
+            "localhost"
+          ],
+          "execution": [
+            {
+              "title": {
+                "zh": "单值输入解释边界",
+                "en": "Single-Value Input Interpretation Boundary"
+              },
+              "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/api/lab/search/evaluate\" -H \"Authorization: Bearer lab-token\" -H \"Content-Type: application/json\" -H \"X-Request-ID: api-input-sqlshape-001\" --data '{\"query\":\"INPUT_CANARY_APOSTROPHE_A1\\u0027\"}' | jq -e '.request_id and .normalized_input'",
+              "description": {
+                "zh": "向无副作用本地评估端点提交带单个撇号的固定 Canary，断言请求 ID 与规范化输入均可观察。",
+                "en": "Submit a fixed canary with one apostrophe to a side-effect-free local evaluator and assert that request ID and normalized input are observable."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": []
+        }
+      ],
+      "toolTargets": [
+        {
+          "targetToolId": "api-input-contract-workflow",
+          "targetName": {
+            "zh": "API 输入与属性契约工作流",
+            "en": "API Input and Property Contract Workflow"
+          },
+          "targetDescription": {
+            "zh": "通过 localhost evaluate 端点、固定 Canary、OpenAPI schema 和解析日志验证字符串、结构化过滤、内容类型及服务器管理属性边界。",
+            "en": "Validates strings, structured filters, content types, and server-managed property boundaries through localhost evaluation endpoints, fixed canaries, OpenAPI schemas, and parser logs."
+          },
+          "targetCategory": {
+            "zh": "API 安全测试工具",
+            "en": "API Security Testing Tools"
+          },
+          "targetReferences": [
+            "https://cheatsheetseries.owasp.org/cheatsheets/Injection_Prevention_Cheat_Sheet.html",
+            "https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/"
+          ],
+          "navRootId": "web-tools",
+          "navId": "api-input-contract-workflow",
+          "navName": {
+            "zh": "API 输入与属性契约",
+            "en": "API Input and Property Contracts"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "结构化过滤器形状检查",
+                "en": "Structured-Filter Shape Check"
+              },
+              "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/api/lab/filter/evaluate\" -H \"Authorization: Bearer lab-token\" -H \"Content-Type: application/json\" -H \"X-Request-ID: api-input-structured-001\" --data '{\"filter\":{\"name\":{\"$eq\":\"INPUT_CANARY_STRUCT_A2\"}}}' | jq -e '.request_id and .accepted_shape'",
+              "description": {
+                "zh": "提交固定 $eq 数据对象并观察 accepted_shape，确认客户端对象不会直接成为未允许的后端操作符。",
+                "en": "Submit a fixed $eq data object and observe accepted_shape to verify that client objects do not become unapproved backend operators."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "目录过滤字符转义检查",
+                "en": "Directory-Filter Escaping Check"
+              },
+              "command": "curl --fail-with-body --silent --show-error --max-time 5 -G \"http://127.0.0.1:18080/api/lab/directory/evaluate\" -H \"Authorization: Bearer lab-token\" -H \"X-Request-ID: api-input-ldapshape-001\" --data-urlencode \"name=INPUT_CANARY_*)(_A3\" | jq -e '.request_id and .escaped_input'",
+              "description": {
+                "zh": "把固定目录过滤形状作为数据提交，断言服务端返回转义结果而不执行真实目录查询。",
+                "en": "Submit a fixed directory-filter shape as data and assert an escaped result without executing a real directory query."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "主机参数验证检查",
+                "en": "Host-Argument Validation Check"
+              },
+              "command": "curl --fail-with-body --silent --show-error --max-time 5 -G \"http://127.0.0.1:18080/api/lab/network/evaluate\" -H \"Authorization: Bearer lab-token\" -H \"X-Request-ID: api-input-commandshape-001\" --data-urlencode \"host=INPUT_CANARY_;_A4\" | jq -e '.request_id and .validated_host'",
+              "description": {
+                "zh": "提交含分号形状的固定主机 Canary，核对 validated_host，不调用任何系统命令。",
+                "en": "Submit a fixed host canary containing a semicolon shape and inspect validated_host without invoking any operating-system command."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "输入规范化三值对照",
+                "en": "Three-Value Input Normalization Control"
+              },
+              "command": "for value in INPUT_CANARY_SPACE_A5 INPUT_CANARY_%20_A5 INPUT_CANARY_%2520_A5; do curl --silent --show-error --max-time 5 -G \"http://127.0.0.1:18080/api/lab/input/normalize\" -H \"Authorization: Bearer lab-token\" -H \"X-Request-ID: api-input-normalize-001\" --data-urlencode \"value=$value\" | jq -c '{raw,normalized,rejected}'; done",
+              "description": {
+                "zh": "比较普通、编码和双编码空格形状的 raw、normalized 与 rejected 字段，定位单次规范化边界。",
+                "en": "Compare raw, normalized, and rejected fields for plain, encoded, and double-encoded space shapes to locate the single normalization boundary."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "两种内容类型解析对照",
+                "en": "Two-Content-Type Parsing Control"
+              },
+              "command": "for type in application/json application/x-www-form-urlencoded; do if [ \"$type\" = application/json ]; then body='{\"value\":\"INPUT_CANARY_TYPE_A6\"}'; else body='value=INPUT_CANARY_TYPE_A6'; fi; curl --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/api/lab/input/content-type\" -H \"Authorization: Bearer lab-token\" -H \"Content-Type: $type\" -H \"X-Request-ID: api-input-type-001\" --data \"$body\" | jq -c '{content_type,parsed_value,rejected}'; done",
+              "description": {
+                "zh": "使用同一 Canary 比较 JSON 与表单内容类型的解析结果，确认 schema 与拒绝策略一致。",
+                "en": "Compare JSON and form content-type parsing for the same canary and verify consistent schema and rejection policy."
+              },
+              "platform": "all"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": []
+    },
+    {
+      "sourceId": "api-mass-assignment",
+      "targetPayloadIds": [
+        "api-property-level-authorization"
+      ],
+      "replacements": [
+        {
+          "id": "api-property-level-authorization",
+          "tags": [
+            "api-security",
+            "property-authorization",
+            "mass-assignment",
+            "dto",
+            "localhost"
+          ],
+          "execution": [
+            {
+              "title": {
+                "zh": "单一服务器管理属性检查",
+                "en": "Single Server-Managed Property Check"
+              },
+              "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/api/lab/contracts/property/evaluate\" -H \"Authorization: Bearer lab-user-token\" -H \"Content-Type: application/json\" -H \"X-Request-ID: api-property-001\" --data '{\"display_name\":\"PROPERTY_CANARY_A1\",\"review_tier\":\"elevated\"}' | jq -e '.accepted.display_name == \"PROPERTY_CANARY_A1\" and (.rejected | index(\"review_tier\"))'",
+              "description": {
+                "zh": "向无副作用契约端点提交允许显示名与一个 review_tier，断言正常字段被接受且管理字段被拒绝。",
+                "en": "Submit an allowed display name and one review_tier to a side-effect-free contract endpoint, asserting that the normal field is accepted and the managed field rejected."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": []
+        }
+      ],
+      "toolTargets": [
+        {
+          "targetToolId": "api-input-contract-workflow",
+          "targetName": {
+            "zh": "API 输入与属性契约工作流",
+            "en": "API Input and Property Contract Workflow"
+          },
+          "targetDescription": {
+            "zh": "通过 localhost evaluate 端点、固定 Canary、OpenAPI schema 和解析日志验证字符串、结构化过滤、内容类型及服务器管理属性边界。",
+            "en": "Validates strings, structured filters, content types, and server-managed property boundaries through localhost evaluation endpoints, fixed canaries, OpenAPI schemas, and parser logs."
+          },
+          "targetCategory": {
+            "zh": "API 安全测试工具",
+            "en": "API Security Testing Tools"
+          },
+          "targetReferences": [
+            "https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/",
+            "https://cheatsheetseries.owasp.org/cheatsheets/Mass_Assignment_Cheat_Sheet.html"
+          ],
+          "navRootId": "web-tools",
+          "navId": "api-input-contract-workflow",
+          "navName": {
+            "zh": "API 输入与属性契约",
+            "en": "API Input and Property Contracts"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "OpenAPI 属性集合基线",
+                "en": "OpenAPI Property-Set Baseline"
+              },
+              "command": "curl --fail --silent --show-error --max-time 5 \"http://127.0.0.1:18080/openapi.json\" | jq -e '.components.schemas.LabProfile.properties | keys'",
+              "description": {
+                "zh": "从本地 OpenAPI 文档列出 LabProfile 属性，作为可写字段审查的 schema 基线。",
+                "en": "List LabProfile properties from the local OpenAPI document as the schema baseline for writable-field review."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "配额属性拒绝检查",
+                "en": "Quota-Property Rejection Check"
+              },
+              "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/api/lab/contracts/property/evaluate\" -H \"Authorization: Bearer lab-user-token\" -H \"Content-Type: application/json\" -H \"X-Request-ID: api-property-quota-001\" --data '{\"display_name\":\"PROPERTY_CANARY_A2\",\"quota_class\":\"internal\"}' | jq -e '(.rejected | index(\"quota_class\"))'",
+              "description": {
+                "zh": "提交一个合成 quota_class 管理属性并断言它进入拒绝列表，不修改持久化对象。",
+                "en": "Submit one synthetic quota_class managed property and assert that it enters the rejection list without modifying a persisted object."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "嵌套管理属性检查",
+                "en": "Nested Managed-Property Check"
+              },
+              "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/api/lab/contracts/property/evaluate\" -H \"Authorization: Bearer lab-user-token\" -H \"Content-Type: application/json\" -H \"X-Request-ID: api-property-nested-001\" --data '{\"display_name\":\"PROPERTY_CANARY_A3\",\"settings\":{\"theme\":\"test\",\"internal_flag\":true}}' | jq -e '(.rejected | index(\"settings.internal_flag\"))'",
+              "description": {
+                "zh": "在允许 settings 对象中加入一个 internal_flag，确认嵌套路径也执行字段允许列表。",
+                "en": "Add one internal_flag under an allowed settings object and confirm that nested paths also enforce the writable-field allowlist."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "只读属性 Schema 审查",
+                "en": "Read-Only Property Schema Review"
+              },
+              "command": "curl --fail --silent --show-error --max-time 5 \"http://127.0.0.1:18080/openapi.json\" | jq -e '[.components.schemas.LabProfile.properties | to_entries[] | select(.value.readOnly == true) | .key] | sort'",
+              "description": {
+                "zh": "从 OpenAPI 中列出 readOnly 属性，作为服务端 DTO 策略检查清单而非自动安全结论。",
+                "en": "List readOnly properties from OpenAPI as a server-side DTO policy checklist rather than an automatic security conclusion."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "管理属性类型矩阵",
+                "en": "Managed-Property Type Matrix"
+              },
+              "command": "for value in true 1; do curl --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/api/lab/contracts/property/evaluate\" -H \"Authorization: Bearer lab-user-token\" -H \"Content-Type: application/json\" -H \"X-Request-ID: api-property-type-001-$value\" --data \"{\\\"display_name\\\":\\\"PROPERTY_CANARY_A4\\\",\\\"internal_flag\\\":$value}\" | jq -c '{accepted,rejected,type_errors}'; done",
+              "description": {
+                "zh": "用布尔值与数值两种固定类型提交同一 internal_flag，比较拒绝和类型错误，不执行状态修改。",
+                "en": "Submit one internal_flag with fixed Boolean and numeric types and compare rejection and type errors without changing state."
+              },
+              "platform": "all"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": []
+    },
+    {
+      "sourceId": "api-rate-limit",
+      "targetPayloadIds": [],
+      "replacements": [],
+      "toolTargets": [
+        {
+          "targetToolId": "api-rate-baseline-testing",
+          "targetName": {
+            "zh": "API 速率与资源预算基线",
+            "en": "API Rate and Resource-Budget Baseline"
+          },
+          "targetDescription": {
+            "zh": "使用单一身份、固定五次请求、短间隔和标准响应头测量 localhost API 的速率、延迟、Header 信任与资源计数。",
+            "en": "Measures localhost API rate, latency, header trust, and resource accounting with one identity, five fixed requests, short pacing, and standard response headers."
+          },
+          "targetCategory": {
+            "zh": "API 安全测试工具",
+            "en": "API Security Testing Tools"
+          },
+          "targetReferences": [
+            "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/",
+            "https://www.rfc-editor.org/rfc/rfc6585.html#section-4"
+          ],
+          "navRootId": "web-tools",
+          "navId": "api-rate-baseline-testing",
+          "navName": {
+            "zh": "API 速率与资源预算",
+            "en": "API Rate and Resource Budgets"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "五次请求速率基线",
+                "en": "Five-Request Rate Baseline"
+              },
+              "command": "for i in 1 2 3 4 5; do curl --silent --show-error --max-time 5 -o /dev/null -w \"$i %{http_code} %{time_total}\\n\" \"http://127.0.0.1:18080/api/lab/rate/read\" -H \"Authorization: Bearer rate-lab-token\" -H \"X-Request-ID: rate-baseline-001-$i\"; sleep 0.2; done",
+              "description": {
+                "zh": "以单一实验令牌发送五次有间隔请求，输出序号、状态和总耗时并在阈值异常时停止。",
+                "en": "Send five paced requests with one lab token and print sequence, status, and total duration, stopping on threshold anomalies."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "转发地址 Header 信任对照",
+                "en": "Forwarded-Address Header Trust Control"
+              },
+              "command": "for forwarded in absent 203.0.113.10; do if [ \"$forwarded\" = absent ]; then header=(); else header=(-H \"X-Forwarded-For: $forwarded\"); fi; curl --silent --show-error --max-time 5 -o /dev/null -w \"$forwarded %{http_code}\\n\" \"http://127.0.0.1:18080/api/lab/rate/header-trust\" -H \"Authorization: Bearer rate-lab-token\" -H \"X-Request-ID: rate-header-001-$forwarded\" \"${header[@]}\"; done",
+              "description": {
+                "zh": "比较缺省与一个固定文档地址 Header，确认外部 Header 不会创建新的可信限流身份。",
+                "en": "Compare no forwarded-address header with one fixed documentation address and verify that external headers do not create a new trusted rate identity."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "User-Agent 计数不变性",
+                "en": "User-Agent Accounting Invariance"
+              },
+              "command": "for agent in LabClientA LabClientB; do curl --silent --show-error --max-time 5 -o /dev/null -w \"$agent %{http_code}\\n\" \"http://127.0.0.1:18080/api/lab/rate/user-agent\" -A \"$agent\" -H \"Authorization: Bearer rate-lab-token\" -H \"X-Request-ID: rate-agent-001-$agent\"; done",
+              "description": {
+                "zh": "用两个固定实验 User-Agent 和同一令牌各发送一次请求，确认计数不依赖客户端标签。",
+                "en": "Send one request for each of two fixed lab user agents with the same token and verify accounting does not depend on client labels."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "限流响应头节奏检查",
+                "en": "Paced Rate-Header Check"
+              },
+              "command": "for i in 1 2 3 4 5; do curl --silent --show-error --max-time 5 -D - -o /dev/null \"http://127.0.0.1:18080/api/lab/rate/read\" -H \"Authorization: Bearer rate-lab-token\" -H \"X-Request-ID: rate-paced-001-$i\" | grep -Ei '^(HTTP/|RateLimit|Retry-After)'; sleep 0.5; done",
+              "description": {
+                "zh": "发送五次半秒间隔请求并仅保留 HTTP、RateLimit 与 Retry-After 头，核对窗口行为。",
+                "en": "Send five requests at half-second intervals and retain only HTTP, RateLimit, and Retry-After headers to review window behavior."
+              },
+              "platform": "all"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": [
+        {
+          "command": "RETIRE api-rate-limit proxy and network-identity rotation workflow",
+          "reason": {
+            "zh": "原块通过代理池、Tor 和云函数轮换网络身份，目标是规避计数而非测量资源预算，因此退休。",
+            "en": "The original block rotated network identity through proxy pools, Tor, and cloud functions to evade accounting rather than measure a resource budget, so it is retired."
+          }
+        },
+        {
+          "command": "RETIRE api-rate-limit API-key and account rotation workflow",
+          "reason": {
+            "zh": "原块轮换 API Key 并注册多账户以绕过阈值，不符合单一身份和固定预算的基线要求，因此退休。",
+            "en": "The original block rotated API keys and registered multiple accounts to bypass thresholds, violating the single-identity fixed-budget baseline and is retired."
+          }
+        }
+      ]
+    },
+    {
+      "sourceId": "api-unhooking",
+      "targetPayloadIds": [],
+      "replacements": [],
+      "toolTargets": [
+        {
+          "targetToolId": "windows-api-integrity-analysis",
+          "targetName": {
+            "zh": "Windows API 模块完整性分析",
+            "en": "Windows API Module Integrity Analysis"
+          },
+          "targetDescription": {
+            "zh": "使用只读文件哈希和 Authenticode 签名状态建立同版本 Windows 系统模块基线，并关联代码完整性遥测而不修改进程内存。",
+            "en": "Builds same-version Windows system-module baselines with read-only file hashes and Authenticode status, correlating code-integrity telemetry without modifying process memory."
+          },
+          "targetCategory": {
+            "zh": "Windows 防御与取证工具",
+            "en": "Windows Defensive and Forensic Tools"
+          },
+          "targetReferences": [
+            "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/get-filehash?view=powershell-7.6",
+            "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.security/get-authenticodesignature?view=powershell-7.6"
+          ],
+          "navRootId": "blue-team-tools",
+          "navId": "windows-api-integrity-analysis",
+          "navName": {
+            "zh": "Windows API 模块完整性",
+            "en": "Windows API Module Integrity"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "ntdll SHA-256 基线",
+                "en": "ntdll SHA-256 Baseline"
+              },
+              "command": "Get-FileHash -LiteralPath 'C:\\Windows\\System32\\ntdll.dll' -Algorithm SHA256 | Select-Object Algorithm,Hash,Path",
+              "description": {
+                "zh": "只读计算系统 ntdll.dll 的 SHA-256，并保存算法、哈希与路径供同构建版本比较。",
+                "en": "Compute the system ntdll.dll SHA-256 read-only and retain algorithm, hash, and path for comparison with the same OS build."
+              },
+              "platform": "windows"
+            },
+            {
+              "name": {
+                "zh": "ntdll Authenticode 核验",
+                "en": "ntdll Authenticode Verification"
+              },
+              "command": "Get-AuthenticodeSignature -LiteralPath 'C:\\Windows\\System32\\ntdll.dll' | Select-Object Status,StatusMessage,SignerCertificate,Path",
+              "description": {
+                "zh": "读取 ntdll.dll 的 Authenticode 状态、签名者证书和路径，作为发布者与文件完整性线索。",
+                "en": "Read ntdll.dll Authenticode status, signer certificate, and path as publisher and file-integrity evidence."
+              },
+              "platform": "windows"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": [
+        {
+          "command": "RETIRE api-unhooking direct-syscall and in-memory overwrite pseudocode",
+          "reason": {
+            "zh": "原内容只是直接 syscall 和覆盖用户态 Hook 的不可执行伪代码，且会规避监控或修改内存，因此退休。",
+            "en": "The original content was non-executable pseudocode for direct syscalls and overwriting user-mode hooks, which would evade monitoring or modify memory, so it is retired."
+          }
+        }
+      ]
+    },
+    {
+      "sourceId": "graphql-batching",
+      "targetPayloadIds": [
+        "api2-alias",
+        "api2-batch-query"
+      ],
+      "replacements": [],
+      "toolTargets": [
+        {
+          "targetToolId": "graphql-query-policy-testing",
+          "targetName": {
+            "zh": "GraphQL 查询与 Schema 策略工作流",
+            "en": "GraphQL Query and Schema Policy Workflow"
+          },
+          "targetDescription": {
+            "zh": "使用 localhost、只读查询、固定两个操作上限和请求 ID 验证 Alias、HTTP Batch、变量、字段错误、内省角色及查询成本策略。",
+            "en": "Validates aliases, HTTP batching, variables, field errors, introspection roles, and query-cost policy with localhost, read-only queries, a fixed two-operation cap, and request IDs."
+          },
+          "targetCategory": {
+            "zh": "API 安全测试工具",
+            "en": "API Security Testing Tools"
+          },
+          "targetReferences": [
+            "https://graphql.org/learn/security/",
+            "https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html",
+            "https://spec.graphql.org/October2021/"
+          ],
+          "navRootId": "web-tools",
+          "navId": "graphql-query-policy-testing",
+          "navName": {
+            "zh": "GraphQL 查询与 Schema 策略",
+            "en": "GraphQL Query and Schema Policy"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "双 Alias 只读对照",
+                "en": "Two-Alias Read-Only Control"
+              },
+              "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/graphql\" -H \"Authorization: Bearer graphql-lab-token\" -H \"Content-Type: application/json\" -H \"X-Request-ID: graphql-alias-001\" --data '{\"query\":\"query BoundedAlias($first:ID!,$second:ID!){first:user(id:$first){id} second:user(id:$second){id}}\",\"variables\":{\"first\":\"user-self\",\"second\":\"user-peer\"}}' | jq -e '.data or .errors'",
+              "description": {
+                "zh": "用两个固定合成 ID 运行一个只读 Alias 文档，并核对 data、errors、resolver 数和成本。",
+                "en": "Run one read-only alias document for two fixed synthetic identifiers and inspect data, errors, resolver count, and cost."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "双项 HTTP Batch 对照",
+                "en": "Two-Item HTTP Batch Control"
+              },
+              "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/graphql\" -H \"Authorization: Bearer graphql-lab-token\" -H \"Content-Type: application/json\" -H \"X-Request-ID: graphql-http-batch-001\" --data '[{\"query\":\"query ViewerOne{viewer{id}}\"},{\"query\":\"query ViewerTwo{viewer{id}}\"}]' | jq -e 'type == \"array\" or .errors'",
+              "description": {
+                "zh": "发送两个 viewer 只读数组项并断言数组或错误结构，验证每项授权和计费。",
+                "en": "Send two read-only viewer array items and assert an array or error structure to validate per-item authorization and accounting."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "双 ID 查询成本检查",
+                "en": "Two-Identifier Query-Cost Check"
+              },
+              "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/graphql\" -H \"Authorization: Bearer graphql-lab-token\" -H \"Content-Type: application/json\" -H \"X-Request-ID: graphql-cost-001\" --data '{\"query\":\"query BoundedUsers($ids:[ID!]!){users(ids:$ids){id}}\",\"variables\":{\"ids\":[\"user-self\",\"user-peer\"]}}' | jq -e '.extensions.cost or .errors'",
+              "description": {
+                "zh": "以两个固定 ID 变量请求只读 users 字段并读取成本扩展或错误，不扩大对象数量。",
+                "en": "Request a read-only users field with two fixed identifier variables and inspect cost extensions or errors without increasing object count."
+              },
+              "platform": "all"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": [
+        {
+          "command": "RETIRE graphql-batching credential guessing and user-enumeration mutations",
+          "reason": {
+            "zh": "原块在单个 Mutation 中批量猜测密码并枚举账户，既绕过计数又涉及认证滥用，因此整体退休。",
+            "en": "The original block guessed multiple passwords and enumerated accounts in one mutation, combining accounting evasion with authentication abuse, so it is retired."
+          }
+        }
+      ]
+    },
+    {
+      "sourceId": "graphql-injection",
+      "targetPayloadIds": [
+        "api-input-validation-boundary",
+        "api2-alias",
+        "graphql-schema-exposure-boundary"
+      ],
+      "replacements": [],
+      "toolTargets": [
+        {
+          "targetToolId": "graphql-query-policy-testing",
+          "targetName": {
+            "zh": "GraphQL 查询与 Schema 策略工作流",
+            "en": "GraphQL Query and Schema Policy Workflow"
+          },
+          "targetDescription": {
+            "zh": "使用 localhost、只读查询、固定两个操作上限和请求 ID 验证 Alias、HTTP Batch、变量、字段错误、内省角色及查询成本策略。",
+            "en": "Validates aliases, HTTP batching, variables, field errors, introspection roles, and query-cost policy with localhost, read-only queries, a fixed two-operation cap, and request IDs."
+          },
+          "targetCategory": {
+            "zh": "API 安全测试工具",
+            "en": "API Security Testing Tools"
+          },
+          "targetReferences": [
+            "https://spec.graphql.org/October2021/#sec-Language.Variables",
+            "https://graphql.org/learn/security/",
+            "https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html"
+          ],
+          "navRootId": "web-tools",
+          "navId": "graphql-query-policy-testing",
+          "navName": {
+            "zh": "GraphQL 查询与 Schema 策略",
+            "en": "GraphQL Query and Schema Policy"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "GraphQL 端点类型基线",
+                "en": "GraphQL Endpoint-Type Baseline"
+              },
+              "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/graphql\" -H \"Authorization: Bearer graphql-lab-token\" -H \"Content-Type: application/json\" -H \"X-Request-ID: graphql-endpoint-001\" --data '{\"query\":\"query EndpointProbe{__typename}\"}' | jq -e '.data.__typename or .errors'",
+              "description": {
+                "zh": "向固定 localhost 端点发送 __typename 只读查询，验证 GraphQL 响应结构而不枚举路径。",
+                "en": "Send a read-only __typename query to the fixed localhost endpoint and validate GraphQL response structure without route enumeration."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "最小 Schema 查询对照",
+                "en": "Minimal Schema-Query Control"
+              },
+              "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/graphql\" -H \"Authorization: Bearer graphql-lab-token\" -H \"Content-Type: application/json\" -H \"X-Request-ID: graphql-schema-001\" --data '{\"query\":\"query SchemaBoundary{__schema{queryType{name}}}\"}' | jq -e '.data.__schema.queryType.name or .errors'",
+              "description": {
+                "zh": "只查询 queryType.name 并接受 data 或 errors，用于角色可见性基线而非完整 Schema 导出。",
+                "en": "Query only queryType.name and accept data or errors as a role-visibility baseline rather than exporting a complete schema."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "双 Alias 对象策略对照",
+                "en": "Two-Alias Object-Policy Control"
+              },
+              "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/graphql\" -H \"Authorization: Bearer graphql-lab-token\" -H \"Content-Type: application/json\" -H \"X-Request-ID: graphql-alias-input-001\" --data '{\"query\":\"query Pair($a:ID!,$b:ID!){a:user(id:$a){id} b:user(id:$b){id}}\",\"variables\":{\"a\":\"user-self\",\"b\":\"user-peer\"}}' | jq -e '.data or .errors'",
+              "description": {
+                "zh": "使用两个固定 ID 的只读 Alias 查询，比较每个 resolver 的对象授权与成本计数。",
+                "en": "Use a read-only two-alias query with fixed identifiers and compare object authorization and cost accounting for each resolver."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "GraphQL 字符串变量 Canary",
+                "en": "GraphQL String-Variable Canary"
+              },
+              "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/graphql\" -H \"Authorization: Bearer graphql-lab-token\" -H \"Content-Type: application/json\" -H \"X-Request-ID: graphql-variable-string-001\" --data '{\"query\":\"query Search($text:String!){search(text:$text){count}}\",\"variables\":{\"text\":\"INPUT_CANARY_APOSTROPHE_G1\\u0027\"}}' | jq -e '.data.search.count >= 0 or .errors'",
+              "description": {
+                "zh": "通过 String 变量提交单个撇号形状 Canary，核对强制转换、resolver 入参与参数绑定。",
+                "en": "Submit a one-apostrophe-shaped canary through a String variable and inspect coercion, resolver arguments, and parameter binding."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "GraphQL 结构化变量检查",
+                "en": "GraphQL Structured-Variable Check"
+              },
+              "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/graphql\" -H \"Authorization: Bearer graphql-lab-token\" -H \"Content-Type: application/json\" -H \"X-Request-ID: graphql-variable-shape-001\" --data '{\"query\":\"query Filter($filter:UserFilter!){users(filter:$filter){id}}\",\"variables\":{\"filter\":{\"name\":{\"$eq\":\"INPUT_CANARY_STRUCT_G2\"}}}}' | jq -e '.data or .errors'",
+              "description": {
+                "zh": "提交固定 UserFilter 对象并观察 data 或 errors，确认未允许操作符在 schema 或 resolver 层拒绝。",
+                "en": "Submit a fixed UserFilter object and inspect data or errors to verify unapproved operators are rejected by schema or resolver policy."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "公开字段授权基线",
+                "en": "Public-Field Authorization Baseline"
+              },
+              "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/graphql\" -H \"Authorization: Bearer graphql-lab-token\" -H \"Content-Type: application/json\" -H \"X-Request-ID: graphql-field-policy-001\" --data '{\"query\":\"query PublicProfile($id:ID!){user(id:$id){id displayName}}\",\"variables\":{\"id\":\"user-peer\"}}' | jq -e '.data or .errors'",
+              "description": {
+                "zh": "只选择 id 与 displayName 两个公开字段，作为同对象敏感字段授权比较的最小正常基线。",
+                "en": "Select only public id and displayName fields as the minimal normal baseline for later sensitive-field authorization comparison."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "字段建议错误策略检查",
+                "en": "Field-Suggestion Error-Policy Check"
+              },
+              "command": "curl --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/graphql\" -H \"Authorization: Bearer graphql-lab-token\" -H \"Content-Type: application/json\" -H \"X-Request-ID: graphql-suggestion-001\" --data '{\"query\":\"query InvalidField{viewer{displayNmae}}\"}' | jq -e '.errors and (.data == null or .data.viewer == null)'",
+              "description": {
+                "zh": "提交一个固定拼写错误字段并断言 errors，不使用建议结果继续枚举 Schema。",
+                "en": "Submit one fixed misspelled field and assert errors without using suggestion text to continue schema enumeration."
+              },
+              "platform": "all"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": [
+        {
+          "command": "RETIRE graphql-injection destructive mutation and invalid directive sequence",
+          "reason": {
+            "zh": "原块使用无效指令并包含 deleteUser 破坏性 Mutation，既不符合 GraphQL 规范也会修改状态，因此退休。",
+            "en": "The original block used invalid directive semantics and contained a destructive deleteUser mutation, violating the GraphQL specification and changing state, so it is retired."
+          }
+        }
+      ]
+    },
+    {
+      "sourceId": "graphql-introspection",
+      "targetPayloadIds": [
+        "graphql-schema-exposure-boundary"
+      ],
+      "replacements": [
+        {
+          "id": "graphql-schema-exposure-boundary",
+          "tags": [
+            "api-security",
+            "graphql",
+            "introspection",
+            "schema-policy",
+            "localhost"
+          ],
+          "execution": [
+            {
+              "title": {
+                "zh": "最小 Schema 可见性查询",
+                "en": "Minimal Schema-Visibility Query"
+              },
+              "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/graphql\" -H \"Authorization: Bearer graphql-lab-token\" -H \"Content-Type: application/json\" -H \"X-Request-ID: graphql-introspection-boundary-001\" --data '{\"query\":\"query SchemaExposure{__schema{queryType{name}}}\"}' | jq -e '.data.__schema.queryType.name or .errors'",
+              "description": {
+                "zh": "以固定实验角色只查询 queryType.name，并将 data 或 errors 与登记的可见性策略比较。",
+                "en": "Query only queryType.name as one fixed lab role and compare data or errors with the registered visibility policy."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": []
+        }
+      ],
+      "toolTargets": [
+        {
+          "targetToolId": "graphql-query-policy-testing",
+          "targetName": {
+            "zh": "GraphQL 查询与 Schema 策略工作流",
+            "en": "GraphQL Query and Schema Policy Workflow"
+          },
+          "targetDescription": {
+            "zh": "使用 localhost、只读查询、固定两个操作上限和请求 ID 验证 Alias、HTTP Batch、变量、字段错误、内省角色及查询成本策略。",
+            "en": "Validates aliases, HTTP batching, variables, field errors, introspection roles, and query-cost policy with localhost, read-only queries, a fixed two-operation cap, and request IDs."
+          },
+          "targetCategory": {
+            "zh": "API 安全测试工具",
+            "en": "API Security Testing Tools"
+          },
+          "targetReferences": [
+            "https://spec.graphql.org/October2021/#sec-Introspection",
+            "https://graphql.org/learn/introspection/",
+            "https://graphql.org/learn/security/"
+          ],
+          "navRootId": "web-tools",
+          "navId": "graphql-query-policy-testing",
+          "navName": {
+            "zh": "GraphQL 查询与 Schema 策略",
+            "en": "GraphQL Query and Schema Policy"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "审核者类型映射查询",
+                "en": "Reviewer Type-Map Query"
+              },
+              "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/graphql\" -H \"Authorization: Bearer graphql-reviewer-token\" -H \"Content-Type: application/json\" -H \"X-Request-ID: graphql-type-map-001\" --data '{\"query\":\"query TypeMap{__schema{types{name kind}}}\"}' | jq -e '.data.__schema.types or .errors'",
+              "description": {
+                "zh": "由固定审核者角色查询类型名与 kind，并把结果限制在本地 JSON 流中用于角色差异检查。",
+                "en": "Query type names and kinds as a fixed reviewer role and keep results in the local JSON stream for role-difference review."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "最小 Schema 本地导出",
+                "en": "Minimal Local Schema Export"
+              },
+              "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/graphql\" -H \"Authorization: Bearer graphql-reviewer-token\" -H \"Content-Type: application/json\" -H \"X-Request-ID: graphql-schema-export-001\" --data '{\"query\":\"query SchemaExport{__schema{queryType{name} mutationType{name}}}\"}' | jq -S '.' > graphql-schema-lab.json",
+              "description": {
+                "zh": "只导出 queryType 与 mutationType 名称到本地实验文件，完成策略比较后删除。",
+                "en": "Export only queryType and mutationType names to a local lab file and delete it after the policy comparison."
+              },
+              "platform": "all"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": [
+        {
+          "command": "RETIRE graphql-introspection restriction-bypass formatting variants",
+          "reason": {
+            "zh": "原块尝试通过格式、JSON 包装和 GET 请求规避内省禁用，属于策略绕过而非最小可见性验证，因此退休。",
+            "en": "The original block attempted to evade introspection restrictions through formatting, JSON wrapping, and GET requests rather than validate minimal visibility, so it is retired."
+          }
+        }
+      ]
+    },
+    {
+      "sourceId": "rest-api-security",
+      "targetPayloadIds": [
+        "api-object-level-authorization",
+        "api-input-validation-boundary",
+        "api-property-level-authorization"
+      ],
+      "replacements": [],
+      "toolTargets": [
+        {
+          "targetToolId": "api-contract-testing-workflow",
+          "targetName": {
+            "zh": "REST API 契约回归工作流",
+            "en": "REST API Contract Regression Workflow"
+          },
+          "targetDescription": {
+            "zh": "使用审查过的 Newman 集合和有限 curl 对照验证 localhost REST API 的认证、方法、重复参数、内容类型、版本和路径规范化契约。",
+            "en": "Validates authentication, methods, duplicate parameters, content types, versions, and path canonicalization for localhost REST APIs with a reviewed Newman collection and bounded curl controls."
+          },
+          "targetCategory": {
+            "zh": "API 安全测试工具",
+            "en": "API Security Testing Tools"
+          },
+          "targetReferences": [
+            "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+            "https://learning.postman.com/docs/reference/newman-cli/command-line-integration-with-newman",
+            "https://spec.openapis.org/oas/latest.html"
+          ],
+          "navRootId": "web-tools",
+          "navId": "api-contract-testing-workflow",
+          "navName": {
+            "zh": "REST API 契约回归",
+            "en": "REST API Contract Regression"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "单次 Newman 集合回归",
+                "en": "Single Newman Collection Regression"
+              },
+              "command": "newman run api-security-lab.postman_collection.json -e api-security-lab.postman_environment.json --env-var \"base_url=http://127.0.0.1:18080\" --iteration-count 1 --timeout-request 5000 --reporters cli,json --reporter-json-export api-security-lab-results.json",
+              "description": {
+                "zh": "以本地环境、单次迭代和五秒请求超时运行已审查集合，并导出 CLI 与 JSON 结果。",
+                "en": "Run the reviewed collection with a local environment, one iteration, and a five-second request timeout while exporting CLI and JSON results."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "无令牌与实验令牌对照",
+                "en": "No-Token and Lab-Token Control"
+              },
+              "command": "for token in none lab-user-token; do if [ \"$token\" = none ]; then auth=(); else auth=(-H \"Authorization: Bearer $token\"); fi; curl --silent --show-error --max-time 5 -o /dev/null -w \"$token %{http_code}\\n\" \"http://127.0.0.1:18080/api/lab/profile\" -H \"X-Request-ID: rest-auth-001-$token\" \"${auth[@]}\"; done",
+              "description": {
+                "zh": "对同一 profile 端点比较无认证和固定实验令牌状态，保持方法与路径不变。",
+                "en": "Compare unauthenticated and fixed lab-token status for the same profile endpoint while holding method and path constant."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "REST 方法契约检查",
+                "en": "REST Method-Contract Check"
+              },
+              "command": "curl --silent --show-error --max-time 5 -X OPTIONS \"http://127.0.0.1:18080/api/lab/profile\" -H \"Authorization: Bearer lab-user-token\" -H \"Origin: http://127.0.0.1:18080\" -H \"X-Request-ID: rest-method-001\" -D - -o /dev/null",
+              "description": {
+                "zh": "发送只读 OPTIONS 请求并保存响应头，用于核对允许方法和跨域策略，不执行 PUT、PATCH 或 DELETE。",
+                "en": "Send a read-only OPTIONS request and preserve headers to review allowed methods and CORS policy without PUT, PATCH, or DELETE."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "重复参数解析对照",
+                "en": "Duplicate-Parameter Parsing Control"
+              },
+              "command": "curl --fail-with-body --silent --show-error --max-time 5 \"http://127.0.0.1:18080/api/lab/parser?marker=FIRST_CANARY&marker=SECOND_CANARY\" -H \"Authorization: Bearer lab-token\" -H \"X-Request-ID: rest-duplicate-001\" | jq -e '.raw_values and .parsed_value'",
+              "description": {
+                "zh": "向本地解析器提交两个固定 Marker，要求同时返回原始值列表和最终解析值以发现层间差异。",
+                "en": "Submit two fixed markers to the local parser and require both raw-value lists and final parsed values to reveal layer disagreement."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "安全内容类型契约对照",
+                "en": "Safe Content-Type Contract Control"
+              },
+              "command": "for type in application/json application/x-www-form-urlencoded; do if [ \"$type\" = application/json ]; then body='{\"marker\":\"CONTENT_TYPE_CANARY_A1\"}'; else body='marker=CONTENT_TYPE_CANARY_A1'; fi; curl --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/api/lab/content-type/evaluate\" -H \"Authorization: Bearer lab-token\" -H \"Content-Type: $type\" -H \"X-Request-ID: rest-content-type-001\" --data \"$body\" | jq -c '{content_type,marker,rejected}'; done",
+              "description": {
+                "zh": "用同一无害 Marker 比较 JSON 与表单内容类型，只记录解析值和拒绝状态。",
+                "en": "Compare JSON and form content types with one harmless marker and retain only parsed values and rejection status."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "双版本认证契约对照",
+                "en": "Two-Version Authentication Contract Control"
+              },
+              "command": "for version in v1 v2; do curl --silent --show-error --max-time 5 -o /dev/null -w \"$version %{http_code}\\n\" \"http://127.0.0.1:18080/api/$version/lab/profile\" -H \"Authorization: Bearer lab-user-token\" -H \"X-Request-ID: rest-version-001-$version\"; done",
+              "description": {
+                "zh": "仅比较 v1 与 v2 两个登记版本的同一路径和同一令牌状态，不枚举内部或私有端点。",
+                "en": "Compare only registered v1 and v2 versions for the same path and token without enumerating internal or private endpoints."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "对象路径编码规范化对照",
+                "en": "Object-Path Encoding Canonicalization Control"
+              },
+              "command": "for path in user-1 user-%31; do curl --silent --show-error --max-time 5 -o /dev/null -w \"$path %{http_code}\\n\" \"http://127.0.0.1:18080/api/lab/canonical-users/$path\" -H \"Authorization: Bearer lab-user-token\" -H \"X-Request-ID: rest-canonical-001\"; done",
+              "description": {
+                "zh": "比较普通和一个百分号编码对象标识的状态，验证网关与应用使用相同规范路径策略。",
+                "en": "Compare plain and one percent-encoded object identifier status to verify that gateway and application use one canonical-path policy."
+              },
+              "platform": "all"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": []
+    }
+  ]
+}

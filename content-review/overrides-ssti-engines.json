@@ -1,0 +1,1407 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "sourceIds": [
+    "ssti-django",
+    "ssti-erb",
+    "ssti-freemarker",
+    "ssti-jinja2",
+    "ssti-mako",
+    "ssti-pug",
+    "ssti-smarty",
+    "ssti-thymeleaf",
+    "ssti-tornado",
+    "ssti-velocity"
+  ],
+  "entries": [
+    {
+      "id": "ssti-django",
+      "name": {
+        "zh": "Django 模板求值边界",
+        "en": "Django Template-Evaluation Boundary"
+      },
+      "description": {
+        "zh": "使用无副作用算术、字符串、变量和控制结构 marker，验证 Django Template Language 是否把非可信输入当作模板源码求值，并区分普通变量插值与模板注入。",
+        "en": "Use side-effect-free arithmetic, string, variable, and control-flow markers to test whether Django Template Language evaluates untrusted input as template source and distinguish ordinary interpolation from template injection."
+      },
+      "category": {
+        "zh": "SSTI模板注入",
+        "en": "SSTI Template Injection"
+      },
+      "subCategory": {
+        "zh": "Django 求值边界",
+        "en": "Django Evaluation Boundary"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用无网络出口的本地 Django Fixture，并记录引擎版本、模板入口和启用的扩展或安全模式。",
+          "en": "Use a no-egress local Django fixture and record engine version, template entry, and enabled extensions or security mode."
+        },
+        {
+          "zh": "为每个请求分配唯一 marker 和 request_id，响应只返回渲染结果与模板名称，不暴露 Context 对象。",
+          "en": "Assign a unique marker and request_id to every request; responses expose only rendered output and template name, not context objects."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "Django Template Language SSTI 的核心边界是非可信文本是否被编译或解析为模板源码，而不是普通数据变量是否显示在页面。旧内容混合对象枚举、配置泄露、命令执行和反弹 Shell，现改为可重复的无副作用 marker，并按 Python/Django 实际语义验证。",
+          "en": "Django Template Language SSTI is defined by untrusted text being compiled or parsed as template source rather than ordinary data appearing through interpolation. The legacy content mixed object enumeration, configuration disclosure, command execution, and reverse shells; it is replaced with reproducible side-effect-free markers grounded in Python and Django semantics."
+        },
+        "vulnerability": {
+          "zh": "根因通常是应用把请求文本传给动态模板构造、字符串模板 API 或可编辑模板存储，而没有把它限制为 Context 数据。Django 模板语言不支持任意 Python 表达式，算术验证必须使用内置 Filter 或 Tag，不能把 Jinja2 的乘法语法直接套用。 算术或字符串 marker 被稳定求值只能证明模板求值边界，不能直接证明文件读取或代码执行。",
+          "en": "The root cause is usually request text reaching dynamic template construction, string-template APIs, or editable template storage instead of remaining context data. Django Template Language does not support arbitrary Python expressions, so arithmetic validation must use built-in filters or tags instead of copying Jinja2 multiplication syntax. Stable arithmetic or string evaluation proves only the template-evaluation boundary, not file read or code execution."
+        },
+        "exploitation": {
+          "zh": "先提交普通文本建立字面输出基线，再逐项提交 Django 算术、字符串、变量、条件和集合 marker。每次只改变一个表达式并关联 request_id、模板名称和渲染结果；禁止访问环境变量、设置对象、文件、反射、进程或网络。",
+          "en": "Start with plain text as a literal-output baseline, then submit Django arithmetic, string, variable, conditional, and collection markers one at a time. Correlate request_id, template name, and rendered output without accessing environment variables, settings, files, reflection, processes, or network resources."
+        },
+        "mitigation": {
+          "zh": "使用固定、受版本控制的 Django 模板文件，把用户输入仅作为命名 Context 变量传入，并启用自动转义和引擎提供的安全配置。禁止运行时编译用户文本；审计自定义 Filter、Helper、对象包装和可编辑模板权限，并为 marker 添加回归测试。",
+          "en": "Use fixed, version-controlled Django template files and pass user input only as named context variables with autoescaping and available engine security settings. Do not compile user text at runtime; audit custom filters, helpers, object wrappers, editable-template permissions, and add marker regression tests."
+        },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "建立 Django 字面基线",
+            "en": "Establish the Django literal baseline"
+          },
+          "description": {
+            "zh": "提交普通 marker 并记录未求值的原始输出、模板名称和 request_id。",
+            "en": "Submit a plain marker and record unevaluated output, template name, and request_id."
+          }
+        },
+        {
+          "title": {
+            "zh": "提交 Django 算术 Marker",
+            "en": "Submit the Django arithmetic marker"
+          },
+          "description": {
+            "zh": "使用该引擎有效的无副作用算术语法，确认是否发生模板求值。",
+            "en": "Use valid side-effect-free arithmetic syntax for the engine to determine whether template evaluation occurs."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "使用第二种语义复核",
+            "en": "Confirm with a second semantic"
+          },
+          "description": {
+            "zh": "通过字符串、变量或条件 marker 排除硬编码数值、缓存和响应替换误报。",
+            "en": "Use a string, variable, or conditional marker to exclude hard-coded values, caching, and response substitution."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复后回归全部 Marker",
+            "en": "Regress every marker after remediation"
+          },
+          "description": {
+            "zh": "修复后要求用户表达式按字面输出或作为普通变量转义，同时正常模板功能保持。",
+            "en": "After remediation, require user expressions to render literally or as escaped data while preserving normal template behavior."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "Django 阳性需要两个不同 marker 稳定求值并能定位到动态模板源码构造点。单个 49、模板错误、引擎指纹或普通变量输出都不足以确认 SSTI；更高影响必须由独立、版本匹配且无副作用的 Gadget 证据证明。",
+        "en": "A positive Django result requires two distinct markers to evaluate consistently and map to dynamic template-source construction. One value of 49, a template error, engine fingerprint, or ordinary variable output is insufficient; higher impact needs separate, version-matched, side-effect-free gadget evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "只使用算术、字符串和控制结构 marker，不读取 Context、配置、文件、环境变量或网络资源。",
+          "en": "Use only arithmetic, string, and control-flow markers without reading context, configuration, files, environment variables, or network resources."
+        },
+        {
+          "zh": "每次只提交一个表达式并限制响应长度，出现编译器异常增长、Worker 抖动或非预期对象输出时立即停止。",
+          "en": "Submit one expression at a time with a response-size cap, stopping on compiler-error growth, worker instability, or unexpected object output."
+        }
+      ],
+      "references": [
+        "https://docs.djangoproject.com/en/stable/ref/templates/language/",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Injection_Prevention_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "payload",
+        "targetPayloadIds": [
+          "ssti-django"
+        ],
+        "targetToolIds": [],
+        "rationale": "Django Template Language 条目保留为模板表达式 Payload，但移除对象遍历、配置泄露、文件读取、进程执行、反弹 Shell 和规避链，改为引擎准确的无副作用 marker。",
+        "issuesResolved": [
+          "removed-command-execution",
+          "removed-sensitive-object-access",
+          "removed-reverse-shells",
+          "removed-prose-from-commands",
+          "added-engine-specific-semantics"
+        ],
+        "retainedCommandIndexes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "lineDisposition": [
+          "execution 0-4 -> safe Django evaluation markers",
+          "wafBypass 0-1 -> equivalent safe syntax markers"
+        ],
+        "needsCommandOverride": true
+      }
+    },
+    {
+      "id": "ssti-erb",
+      "name": {
+        "zh": "ERB 模板求值边界",
+        "en": "ERB Template-Evaluation Boundary"
+      },
+      "description": {
+        "zh": "使用无副作用算术、字符串、变量和控制结构 marker，验证 ERB 是否把非可信输入当作模板源码求值，并区分普通变量插值与模板注入。",
+        "en": "Use side-effect-free arithmetic, string, variable, and control-flow markers to test whether ERB evaluates untrusted input as template source and distinguish ordinary interpolation from template injection."
+      },
+      "category": {
+        "zh": "SSTI模板注入",
+        "en": "SSTI Template Injection"
+      },
+      "subCategory": {
+        "zh": "ERB 求值边界",
+        "en": "ERB Evaluation Boundary"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用无网络出口的本地 ERB Fixture，并记录引擎版本、模板入口和启用的扩展或安全模式。",
+          "en": "Use a no-egress local ERB fixture and record engine version, template entry, and enabled extensions or security mode."
+        },
+        {
+          "zh": "为每个请求分配唯一 marker 和 request_id，响应只返回渲染结果与模板名称，不暴露 Context 对象。",
+          "en": "Assign a unique marker and request_id to every request; responses expose only rendered output and template name, not context objects."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "ERB SSTI 的核心边界是非可信文本是否被编译或解析为模板源码，而不是普通数据变量是否显示在页面。旧内容混合对象枚举、配置泄露、命令执行和反弹 Shell，现改为可重复的无副作用 marker，并按 Ruby 实际语义验证。",
+          "en": "ERB SSTI is defined by untrusted text being compiled or parsed as template source rather than ordinary data appearing through interpolation. The legacy content mixed object enumeration, configuration disclosure, command execution, and reverse shells; it is replaced with reproducible side-effect-free markers grounded in Ruby semantics."
+        },
+        "vulnerability": {
+          "zh": "根因通常是应用把请求文本传给动态模板构造、字符串模板 API 或可编辑模板存储，而没有把它限制为 Context 数据。ERB 的 `<%=` 标签会计算 Ruby 表达式并输出结果，因此不可信文本一旦成为模板源码，影响可能高于仅支持受限表达式的模板引擎。 算术或字符串 marker 被稳定求值只能证明模板求值边界，不能直接证明文件读取或代码执行。",
+          "en": "The root cause is usually request text reaching dynamic template construction, string-template APIs, or editable template storage instead of remaining context data. ERB evaluates Ruby expressions inside `<%=` tags, so untrusted text becoming template source can have greater impact than in expression-restricted engines. Stable arithmetic or string evaluation proves only the template-evaluation boundary, not file read or code execution."
+        },
+        "exploitation": {
+          "zh": "先提交普通文本建立字面输出基线，再逐项提交 ERB 算术、字符串、变量、条件和集合 marker。每次只改变一个表达式并关联 request_id、模板名称和渲染结果；禁止访问环境变量、设置对象、文件、反射、进程或网络。",
+          "en": "Start with plain text as a literal-output baseline, then submit ERB arithmetic, string, variable, conditional, and collection markers one at a time. Correlate request_id, template name, and rendered output without accessing environment variables, settings, files, reflection, processes, or network resources."
+        },
+        "mitigation": {
+          "zh": "使用固定、受版本控制的 ERB 模板文件，把用户输入仅作为命名 Context 变量传入，并启用自动转义和引擎提供的安全配置。禁止运行时编译用户文本；审计自定义 Filter、Helper、对象包装和可编辑模板权限，并为 marker 添加回归测试。",
+          "en": "Use fixed, version-controlled ERB template files and pass user input only as named context variables with autoescaping and available engine security settings. Do not compile user text at runtime; audit custom filters, helpers, object wrappers, editable-template permissions, and add marker regression tests."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "建立 ERB 字面基线",
+            "en": "Establish the ERB literal baseline"
+          },
+          "description": {
+            "zh": "提交普通 marker 并记录未求值的原始输出、模板名称和 request_id。",
+            "en": "Submit a plain marker and record unevaluated output, template name, and request_id."
+          }
+        },
+        {
+          "title": {
+            "zh": "提交 ERB 算术 Marker",
+            "en": "Submit the ERB arithmetic marker"
+          },
+          "description": {
+            "zh": "使用该引擎有效的无副作用算术语法，确认是否发生模板求值。",
+            "en": "Use valid side-effect-free arithmetic syntax for the engine to determine whether template evaluation occurs."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "使用第二种语义复核",
+            "en": "Confirm with a second semantic"
+          },
+          "description": {
+            "zh": "通过字符串、变量或条件 marker 排除硬编码数值、缓存和响应替换误报。",
+            "en": "Use a string, variable, or conditional marker to exclude hard-coded values, caching, and response substitution."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复后回归全部 Marker",
+            "en": "Regress every marker after remediation"
+          },
+          "description": {
+            "zh": "修复后要求用户表达式按字面输出或作为普通变量转义，同时正常模板功能保持。",
+            "en": "After remediation, require user expressions to render literally or as escaped data while preserving normal template behavior."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "ERB 阳性需要两个不同 marker 稳定求值并能定位到动态模板源码构造点。单个 49、模板错误、引擎指纹或普通变量输出都不足以确认 SSTI；更高影响必须由独立、版本匹配且无副作用的 Gadget 证据证明。",
+        "en": "A positive ERB result requires two distinct markers to evaluate consistently and map to dynamic template-source construction. One value of 49, a template error, engine fingerprint, or ordinary variable output is insufficient; higher impact needs separate, version-matched, side-effect-free gadget evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "只使用算术、字符串和控制结构 marker，不读取 Context、配置、文件、环境变量或网络资源。",
+          "en": "Use only arithmetic, string, and control-flow markers without reading context, configuration, files, environment variables, or network resources."
+        },
+        {
+          "zh": "每次只提交一个表达式并限制响应长度，出现编译器异常增长、Worker 抖动或非预期对象输出时立即停止。",
+          "en": "Submit one expression at a time with a response-size cap, stopping on compiler-error growth, worker instability, or unexpected object output."
+        }
+      ],
+      "references": [
+        "https://docs.ruby-lang.org/en/master/ERB.html",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Injection_Prevention_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "payload",
+        "targetPayloadIds": [
+          "ssti-erb"
+        ],
+        "targetToolIds": [],
+        "rationale": "ERB 条目保留为模板表达式 Payload，但移除对象遍历、配置泄露、文件读取、进程执行、反弹 Shell 和规避链，改为引擎准确的无副作用 marker。",
+        "issuesResolved": [
+          "removed-command-execution",
+          "removed-sensitive-object-access",
+          "removed-reverse-shells",
+          "removed-prose-from-commands",
+          "added-engine-specific-semantics"
+        ],
+        "retainedCommandIndexes": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "lineDisposition": [
+          "execution 0-3 -> safe ERB evaluation markers",
+          "wafBypass 0-2 -> equivalent safe syntax markers"
+        ],
+        "needsCommandOverride": true
+      }
+    },
+    {
+      "id": "ssti-freemarker",
+      "name": {
+        "zh": "FreeMarker 模板求值边界",
+        "en": "FreeMarker Template-Evaluation Boundary"
+      },
+      "description": {
+        "zh": "使用无副作用算术、字符串、变量和控制结构 marker，验证 Apache FreeMarker 是否把非可信输入当作模板源码求值，并区分普通变量插值与模板注入。",
+        "en": "Use side-effect-free arithmetic, string, variable, and control-flow markers to test whether Apache FreeMarker evaluates untrusted input as template source and distinguish ordinary interpolation from template injection."
+      },
+      "category": {
+        "zh": "SSTI模板注入",
+        "en": "SSTI Template Injection"
+      },
+      "subCategory": {
+        "zh": "FreeMarker 求值边界",
+        "en": "FreeMarker Evaluation Boundary"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用无网络出口的本地 FreeMarker Fixture，并记录引擎版本、模板入口和启用的扩展或安全模式。",
+          "en": "Use a no-egress local FreeMarker fixture and record engine version, template entry, and enabled extensions or security mode."
+        },
+        {
+          "zh": "为每个请求分配唯一 marker 和 request_id，响应只返回渲染结果与模板名称，不暴露 Context 对象。",
+          "en": "Assign a unique marker and request_id to every request; responses expose only rendered output and template name, not context objects."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "Apache FreeMarker SSTI 的核心边界是非可信文本是否被编译或解析为模板源码，而不是普通数据变量是否显示在页面。旧内容混合对象枚举、配置泄露、命令执行和反弹 Shell，现改为可重复的无副作用 marker，并按 Java 实际语义验证。",
+          "en": "Apache FreeMarker SSTI is defined by untrusted text being compiled or parsed as template source rather than ordinary data appearing through interpolation. The legacy content mixed object enumeration, configuration disclosure, command execution, and reverse shells; it is replaced with reproducible side-effect-free markers grounded in Java semantics."
+        },
+        "vulnerability": {
+          "zh": "根因通常是应用把请求文本传给动态模板构造、字符串模板 API 或可编辑模板存储，而没有把它限制为 Context 数据。FreeMarker 的可访问对象与内建函数受 ObjectWrapper、TemplateClassResolver 和应用数据模型共同约束，不能仅凭历史 Gadget 名称推断当前影响。 算术或字符串 marker 被稳定求值只能证明模板求值边界，不能直接证明文件读取或代码执行。",
+          "en": "The root cause is usually request text reaching dynamic template construction, string-template APIs, or editable template storage instead of remaining context data. FreeMarker object and built-in access depends on ObjectWrapper, TemplateClassResolver, and the application data model, so historical gadget names do not establish current impact. Stable arithmetic or string evaluation proves only the template-evaluation boundary, not file read or code execution."
+        },
+        "exploitation": {
+          "zh": "先提交普通文本建立字面输出基线，再逐项提交 FreeMarker 算术、字符串、变量、条件和集合 marker。每次只改变一个表达式并关联 request_id、模板名称和渲染结果；禁止访问环境变量、设置对象、文件、反射、进程或网络。",
+          "en": "Start with plain text as a literal-output baseline, then submit FreeMarker arithmetic, string, variable, conditional, and collection markers one at a time. Correlate request_id, template name, and rendered output without accessing environment variables, settings, files, reflection, processes, or network resources."
+        },
+        "mitigation": {
+          "zh": "使用固定、受版本控制的 FreeMarker 模板文件，把用户输入仅作为命名 Context 变量传入，并启用自动转义和引擎提供的安全配置。禁止运行时编译用户文本；审计自定义 Filter、Helper、对象包装和可编辑模板权限，并为 marker 添加回归测试。",
+          "en": "Use fixed, version-controlled FreeMarker template files and pass user input only as named context variables with autoescaping and available engine security settings. Do not compile user text at runtime; audit custom filters, helpers, object wrappers, editable-template permissions, and add marker regression tests."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "建立 FreeMarker 字面基线",
+            "en": "Establish the FreeMarker literal baseline"
+          },
+          "description": {
+            "zh": "提交普通 marker 并记录未求值的原始输出、模板名称和 request_id。",
+            "en": "Submit a plain marker and record unevaluated output, template name, and request_id."
+          }
+        },
+        {
+          "title": {
+            "zh": "提交 FreeMarker 算术 Marker",
+            "en": "Submit the FreeMarker arithmetic marker"
+          },
+          "description": {
+            "zh": "使用该引擎有效的无副作用算术语法，确认是否发生模板求值。",
+            "en": "Use valid side-effect-free arithmetic syntax for the engine to determine whether template evaluation occurs."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "使用第二种语义复核",
+            "en": "Confirm with a second semantic"
+          },
+          "description": {
+            "zh": "通过字符串、变量或条件 marker 排除硬编码数值、缓存和响应替换误报。",
+            "en": "Use a string, variable, or conditional marker to exclude hard-coded values, caching, and response substitution."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复后回归全部 Marker",
+            "en": "Regress every marker after remediation"
+          },
+          "description": {
+            "zh": "修复后要求用户表达式按字面输出或作为普通变量转义，同时正常模板功能保持。",
+            "en": "After remediation, require user expressions to render literally or as escaped data while preserving normal template behavior."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "FreeMarker 阳性需要两个不同 marker 稳定求值并能定位到动态模板源码构造点。单个 49、模板错误、引擎指纹或普通变量输出都不足以确认 SSTI；更高影响必须由独立、版本匹配且无副作用的 Gadget 证据证明。",
+        "en": "A positive FreeMarker result requires two distinct markers to evaluate consistently and map to dynamic template-source construction. One value of 49, a template error, engine fingerprint, or ordinary variable output is insufficient; higher impact needs separate, version-matched, side-effect-free gadget evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "只使用算术、字符串和控制结构 marker，不读取 Context、配置、文件、环境变量或网络资源。",
+          "en": "Use only arithmetic, string, and control-flow markers without reading context, configuration, files, environment variables, or network resources."
+        },
+        {
+          "zh": "每次只提交一个表达式并限制响应长度，出现编译器异常增长、Worker 抖动或非预期对象输出时立即停止。",
+          "en": "Submit one expression at a time with a response-size cap, stopping on compiler-error growth, worker instability, or unexpected object output."
+        }
+      ],
+      "references": [
+        "https://freemarker.apache.org/docs/dgui_template_exp.html",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Injection_Prevention_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "payload",
+        "targetPayloadIds": [
+          "ssti-freemarker"
+        ],
+        "targetToolIds": [],
+        "rationale": "Apache FreeMarker 条目保留为模板表达式 Payload，但移除对象遍历、配置泄露、文件读取、进程执行、反弹 Shell 和规避链，改为引擎准确的无副作用 marker。",
+        "issuesResolved": [
+          "removed-command-execution",
+          "removed-sensitive-object-access",
+          "removed-reverse-shells",
+          "removed-prose-from-commands",
+          "added-engine-specific-semantics"
+        ],
+        "retainedCommandIndexes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "lineDisposition": [
+          "execution 0-4 -> safe FreeMarker evaluation markers",
+          "wafBypass 0-1 -> equivalent safe syntax markers"
+        ],
+        "needsCommandOverride": true
+      }
+    },
+    {
+      "id": "ssti-jinja2",
+      "name": {
+        "zh": "Jinja 模板求值边界",
+        "en": "Jinja Template-Evaluation Boundary"
+      },
+      "description": {
+        "zh": "使用无副作用算术、字符串、变量和控制结构 marker，验证 Jinja 是否把非可信输入当作模板源码求值，并区分普通变量插值与模板注入。",
+        "en": "Use side-effect-free arithmetic, string, variable, and control-flow markers to test whether Jinja evaluates untrusted input as template source and distinguish ordinary interpolation from template injection."
+      },
+      "category": {
+        "zh": "SSTI模板注入",
+        "en": "SSTI Template Injection"
+      },
+      "subCategory": {
+        "zh": "Jinja 求值边界",
+        "en": "Jinja Evaluation Boundary"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用无网络出口的本地 Jinja Fixture，并记录引擎版本、模板入口和启用的扩展或安全模式。",
+          "en": "Use a no-egress local Jinja fixture and record engine version, template entry, and enabled extensions or security mode."
+        },
+        {
+          "zh": "为每个请求分配唯一 marker 和 request_id，响应只返回渲染结果与模板名称，不暴露 Context 对象。",
+          "en": "Assign a unique marker and request_id to every request; responses expose only rendered output and template name, not context objects."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "Jinja SSTI 的核心边界是非可信文本是否被编译或解析为模板源码，而不是普通数据变量是否显示在页面。旧内容混合对象枚举、配置泄露、命令执行和反弹 Shell，现改为可重复的无副作用 marker，并按 Python/Jinja 实际语义验证。",
+          "en": "Jinja SSTI is defined by untrusted text being compiled or parsed as template source rather than ordinary data appearing through interpolation. The legacy content mixed object enumeration, configuration disclosure, command execution, and reverse shells; it is replaced with reproducible side-effect-free markers grounded in Python and Jinja semantics."
+        },
+        "vulnerability": {
+          "zh": "根因通常是应用把请求文本传给动态模板构造、字符串模板 API 或可编辑模板存储，而没有把它限制为 Context 数据。Jinja 表达式求值范围取决于普通 Environment、SandboxedEnvironment、已注册 Filter 和传入 Context；对象遍历能力必须由当前配置证明。 算术或字符串 marker 被稳定求值只能证明模板求值边界，不能直接证明文件读取或代码执行。",
+          "en": "The root cause is usually request text reaching dynamic template construction, string-template APIs, or editable template storage instead of remaining context data. Jinja evaluation depends on Environment versus SandboxedEnvironment, registered filters, and supplied context, so object traversal must be proven for the current configuration. Stable arithmetic or string evaluation proves only the template-evaluation boundary, not file read or code execution."
+        },
+        "exploitation": {
+          "zh": "先提交普通文本建立字面输出基线，再逐项提交 Jinja 算术、字符串、变量、条件和集合 marker。每次只改变一个表达式并关联 request_id、模板名称和渲染结果；禁止访问环境变量、设置对象、文件、反射、进程或网络。",
+          "en": "Start with plain text as a literal-output baseline, then submit Jinja arithmetic, string, variable, conditional, and collection markers one at a time. Correlate request_id, template name, and rendered output without accessing environment variables, settings, files, reflection, processes, or network resources."
+        },
+        "mitigation": {
+          "zh": "使用固定、受版本控制的 Jinja 模板文件，把用户输入仅作为命名 Context 变量传入，并启用自动转义和引擎提供的安全配置。禁止运行时编译用户文本；审计自定义 Filter、Helper、对象包装和可编辑模板权限，并为 marker 添加回归测试。",
+          "en": "Use fixed, version-controlled Jinja template files and pass user input only as named context variables with autoescaping and available engine security settings. Do not compile user text at runtime; audit custom filters, helpers, object wrappers, editable-template permissions, and add marker regression tests."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "建立 Jinja 字面基线",
+            "en": "Establish the Jinja literal baseline"
+          },
+          "description": {
+            "zh": "提交普通 marker 并记录未求值的原始输出、模板名称和 request_id。",
+            "en": "Submit a plain marker and record unevaluated output, template name, and request_id."
+          }
+        },
+        {
+          "title": {
+            "zh": "提交 Jinja 算术 Marker",
+            "en": "Submit the Jinja arithmetic marker"
+          },
+          "description": {
+            "zh": "使用该引擎有效的无副作用算术语法，确认是否发生模板求值。",
+            "en": "Use valid side-effect-free arithmetic syntax for the engine to determine whether template evaluation occurs."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "使用第二种语义复核",
+            "en": "Confirm with a second semantic"
+          },
+          "description": {
+            "zh": "通过字符串、变量或条件 marker 排除硬编码数值、缓存和响应替换误报。",
+            "en": "Use a string, variable, or conditional marker to exclude hard-coded values, caching, and response substitution."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复后回归全部 Marker",
+            "en": "Regress every marker after remediation"
+          },
+          "description": {
+            "zh": "修复后要求用户表达式按字面输出或作为普通变量转义，同时正常模板功能保持。",
+            "en": "After remediation, require user expressions to render literally or as escaped data while preserving normal template behavior."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "Jinja 阳性需要两个不同 marker 稳定求值并能定位到动态模板源码构造点。单个 49、模板错误、引擎指纹或普通变量输出都不足以确认 SSTI；更高影响必须由独立、版本匹配且无副作用的 Gadget 证据证明。",
+        "en": "A positive Jinja result requires two distinct markers to evaluate consistently and map to dynamic template-source construction. One value of 49, a template error, engine fingerprint, or ordinary variable output is insufficient; higher impact needs separate, version-matched, side-effect-free gadget evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "只使用算术、字符串和控制结构 marker，不读取 Context、配置、文件、环境变量或网络资源。",
+          "en": "Use only arithmetic, string, and control-flow markers without reading context, configuration, files, environment variables, or network resources."
+        },
+        {
+          "zh": "每次只提交一个表达式并限制响应长度，出现编译器异常增长、Worker 抖动或非预期对象输出时立即停止。",
+          "en": "Submit one expression at a time with a response-size cap, stopping on compiler-error growth, worker instability, or unexpected object output."
+        }
+      ],
+      "references": [
+        "https://jinja.palletsprojects.com/en/stable/templates/",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Injection_Prevention_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "payload",
+        "targetPayloadIds": [
+          "ssti-jinja2"
+        ],
+        "targetToolIds": [],
+        "rationale": "Jinja 条目保留为模板表达式 Payload，但移除对象遍历、配置泄露、文件读取、进程执行、反弹 Shell 和规避链，改为引擎准确的无副作用 marker。",
+        "issuesResolved": [
+          "removed-command-execution",
+          "removed-sensitive-object-access",
+          "removed-reverse-shells",
+          "removed-prose-from-commands",
+          "added-engine-specific-semantics"
+        ],
+        "retainedCommandIndexes": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "lineDisposition": [
+          "execution 0-3 -> safe Jinja evaluation markers",
+          "wafBypass 0-1 -> equivalent safe syntax markers"
+        ],
+        "needsCommandOverride": true
+      }
+    },
+    {
+      "id": "ssti-mako",
+      "name": {
+        "zh": "Mako 模板求值边界",
+        "en": "Mako Template-Evaluation Boundary"
+      },
+      "description": {
+        "zh": "使用无副作用算术、字符串、变量和控制结构 marker，验证 Mako 是否把非可信输入当作模板源码求值，并区分普通变量插值与模板注入。",
+        "en": "Use side-effect-free arithmetic, string, variable, and control-flow markers to test whether Mako evaluates untrusted input as template source and distinguish ordinary interpolation from template injection."
+      },
+      "category": {
+        "zh": "SSTI模板注入",
+        "en": "SSTI Template Injection"
+      },
+      "subCategory": {
+        "zh": "Mako 求值边界",
+        "en": "Mako Evaluation Boundary"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用无网络出口的本地 Mako Fixture，并记录引擎版本、模板入口和启用的扩展或安全模式。",
+          "en": "Use a no-egress local Mako fixture and record engine version, template entry, and enabled extensions or security mode."
+        },
+        {
+          "zh": "为每个请求分配唯一 marker 和 request_id，响应只返回渲染结果与模板名称，不暴露 Context 对象。",
+          "en": "Assign a unique marker and request_id to every request; responses expose only rendered output and template name, not context objects."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "Mako SSTI 的核心边界是非可信文本是否被编译或解析为模板源码，而不是普通数据变量是否显示在页面。旧内容混合对象枚举、配置泄露、命令执行和反弹 Shell，现改为可重复的无副作用 marker，并按 Python/Mako 实际语义验证。",
+          "en": "Mako SSTI is defined by untrusted text being compiled or parsed as template source rather than ordinary data appearing through interpolation. The legacy content mixed object enumeration, configuration disclosure, command execution, and reverse shells; it is replaced with reproducible side-effect-free markers grounded in Python and Mako semantics."
+        },
+        "vulnerability": {
+          "zh": "根因通常是应用把请求文本传给动态模板构造、字符串模板 API 或可编辑模板存储，而没有把它限制为 Context 数据。Mako 模板可包含 Python 表达式和代码块，因此必须严格区分用户数据进入 Context 与用户文本被编译为模板源码。 算术或字符串 marker 被稳定求值只能证明模板求值边界，不能直接证明文件读取或代码执行。",
+          "en": "The root cause is usually request text reaching dynamic template construction, string-template APIs, or editable template storage instead of remaining context data. Mako templates may contain Python expressions and code blocks, making it critical to distinguish user data passed in context from user text compiled as template source. Stable arithmetic or string evaluation proves only the template-evaluation boundary, not file read or code execution."
+        },
+        "exploitation": {
+          "zh": "先提交普通文本建立字面输出基线，再逐项提交 Mako 算术、字符串、变量、条件和集合 marker。每次只改变一个表达式并关联 request_id、模板名称和渲染结果；禁止访问环境变量、设置对象、文件、反射、进程或网络。",
+          "en": "Start with plain text as a literal-output baseline, then submit Mako arithmetic, string, variable, conditional, and collection markers one at a time. Correlate request_id, template name, and rendered output without accessing environment variables, settings, files, reflection, processes, or network resources."
+        },
+        "mitigation": {
+          "zh": "使用固定、受版本控制的 Mako 模板文件，把用户输入仅作为命名 Context 变量传入，并启用自动转义和引擎提供的安全配置。禁止运行时编译用户文本；审计自定义 Filter、Helper、对象包装和可编辑模板权限，并为 marker 添加回归测试。",
+          "en": "Use fixed, version-controlled Mako template files and pass user input only as named context variables with autoescaping and available engine security settings. Do not compile user text at runtime; audit custom filters, helpers, object wrappers, editable-template permissions, and add marker regression tests."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "建立 Mako 字面基线",
+            "en": "Establish the Mako literal baseline"
+          },
+          "description": {
+            "zh": "提交普通 marker 并记录未求值的原始输出、模板名称和 request_id。",
+            "en": "Submit a plain marker and record unevaluated output, template name, and request_id."
+          }
+        },
+        {
+          "title": {
+            "zh": "提交 Mako 算术 Marker",
+            "en": "Submit the Mako arithmetic marker"
+          },
+          "description": {
+            "zh": "使用该引擎有效的无副作用算术语法，确认是否发生模板求值。",
+            "en": "Use valid side-effect-free arithmetic syntax for the engine to determine whether template evaluation occurs."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "使用第二种语义复核",
+            "en": "Confirm with a second semantic"
+          },
+          "description": {
+            "zh": "通过字符串、变量或条件 marker 排除硬编码数值、缓存和响应替换误报。",
+            "en": "Use a string, variable, or conditional marker to exclude hard-coded values, caching, and response substitution."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复后回归全部 Marker",
+            "en": "Regress every marker after remediation"
+          },
+          "description": {
+            "zh": "修复后要求用户表达式按字面输出或作为普通变量转义，同时正常模板功能保持。",
+            "en": "After remediation, require user expressions to render literally or as escaped data while preserving normal template behavior."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "Mako 阳性需要两个不同 marker 稳定求值并能定位到动态模板源码构造点。单个 49、模板错误、引擎指纹或普通变量输出都不足以确认 SSTI；更高影响必须由独立、版本匹配且无副作用的 Gadget 证据证明。",
+        "en": "A positive Mako result requires two distinct markers to evaluate consistently and map to dynamic template-source construction. One value of 49, a template error, engine fingerprint, or ordinary variable output is insufficient; higher impact needs separate, version-matched, side-effect-free gadget evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "只使用算术、字符串和控制结构 marker，不读取 Context、配置、文件、环境变量或网络资源。",
+          "en": "Use only arithmetic, string, and control-flow markers without reading context, configuration, files, environment variables, or network resources."
+        },
+        {
+          "zh": "每次只提交一个表达式并限制响应长度，出现编译器异常增长、Worker 抖动或非预期对象输出时立即停止。",
+          "en": "Submit one expression at a time with a response-size cap, stopping on compiler-error growth, worker instability, or unexpected object output."
+        }
+      ],
+      "references": [
+        "https://docs.makotemplates.org/en/latest/syntax.html",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Injection_Prevention_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "payload",
+        "targetPayloadIds": [
+          "ssti-mako"
+        ],
+        "targetToolIds": [],
+        "rationale": "Mako 条目保留为模板表达式 Payload，但移除对象遍历、配置泄露、文件读取、进程执行、反弹 Shell 和规避链，改为引擎准确的无副作用 marker。",
+        "issuesResolved": [
+          "removed-command-execution",
+          "removed-sensitive-object-access",
+          "removed-reverse-shells",
+          "removed-prose-from-commands",
+          "added-engine-specific-semantics"
+        ],
+        "retainedCommandIndexes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "lineDisposition": [
+          "execution 0-4 -> safe Mako evaluation markers",
+          "wafBypass 0-2 -> equivalent safe syntax markers"
+        ],
+        "needsCommandOverride": true
+      }
+    },
+    {
+      "id": "ssti-pug",
+      "name": {
+        "zh": "Pug 模板求值边界",
+        "en": "Pug Template-Evaluation Boundary"
+      },
+      "description": {
+        "zh": "使用无副作用算术、字符串、变量和控制结构 marker，验证 Pug 是否把非可信输入当作模板源码求值，并区分普通变量插值与模板注入。",
+        "en": "Use side-effect-free arithmetic, string, variable, and control-flow markers to test whether Pug evaluates untrusted input as template source and distinguish ordinary interpolation from template injection."
+      },
+      "category": {
+        "zh": "SSTI模板注入",
+        "en": "SSTI Template Injection"
+      },
+      "subCategory": {
+        "zh": "Pug 求值边界",
+        "en": "Pug Evaluation Boundary"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用无网络出口的本地 Pug Fixture，并记录引擎版本、模板入口和启用的扩展或安全模式。",
+          "en": "Use a no-egress local Pug fixture and record engine version, template entry, and enabled extensions or security mode."
+        },
+        {
+          "zh": "为每个请求分配唯一 marker 和 request_id，响应只返回渲染结果与模板名称，不暴露 Context 对象。",
+          "en": "Assign a unique marker and request_id to every request; responses expose only rendered output and template name, not context objects."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "Pug SSTI 的核心边界是非可信文本是否被编译或解析为模板源码，而不是普通数据变量是否显示在页面。旧内容混合对象枚举、配置泄露、命令执行和反弹 Shell，现改为可重复的无副作用 marker，并按 Node.js/Pug 实际语义验证。",
+          "en": "Pug SSTI is defined by untrusted text being compiled or parsed as template source rather than ordinary data appearing through interpolation. The legacy content mixed object enumeration, configuration disclosure, command execution, and reverse shells; it is replaced with reproducible side-effect-free markers grounded in Node.js and Pug semantics."
+        },
+        "vulnerability": {
+          "zh": "根因通常是应用把请求文本传给动态模板构造、字符串模板 API 或可编辑模板存储，而没有把它限制为 Context 数据。Pug 编译阶段允许 JavaScript 表达式和控制结构，风险取决于非可信文本是否成为模板源码，而不是变量是否正常插值。 算术或字符串 marker 被稳定求值只能证明模板求值边界，不能直接证明文件读取或代码执行。",
+          "en": "The root cause is usually request text reaching dynamic template construction, string-template APIs, or editable template storage instead of remaining context data. Pug compilation permits JavaScript expressions and control structures, so risk depends on untrusted text becoming template source rather than ordinary variable interpolation. Stable arithmetic or string evaluation proves only the template-evaluation boundary, not file read or code execution."
+        },
+        "exploitation": {
+          "zh": "先提交普通文本建立字面输出基线，再逐项提交 Pug 算术、字符串、变量、条件和集合 marker。每次只改变一个表达式并关联 request_id、模板名称和渲染结果；禁止访问环境变量、设置对象、文件、反射、进程或网络。",
+          "en": "Start with plain text as a literal-output baseline, then submit Pug arithmetic, string, variable, conditional, and collection markers one at a time. Correlate request_id, template name, and rendered output without accessing environment variables, settings, files, reflection, processes, or network resources."
+        },
+        "mitigation": {
+          "zh": "使用固定、受版本控制的 Pug 模板文件，把用户输入仅作为命名 Context 变量传入，并启用自动转义和引擎提供的安全配置。禁止运行时编译用户文本；审计自定义 Filter、Helper、对象包装和可编辑模板权限，并为 marker 添加回归测试。",
+          "en": "Use fixed, version-controlled Pug template files and pass user input only as named context variables with autoescaping and available engine security settings. Do not compile user text at runtime; audit custom filters, helpers, object wrappers, editable-template permissions, and add marker regression tests."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "建立 Pug 字面基线",
+            "en": "Establish the Pug literal baseline"
+          },
+          "description": {
+            "zh": "提交普通 marker 并记录未求值的原始输出、模板名称和 request_id。",
+            "en": "Submit a plain marker and record unevaluated output, template name, and request_id."
+          }
+        },
+        {
+          "title": {
+            "zh": "提交 Pug 算术 Marker",
+            "en": "Submit the Pug arithmetic marker"
+          },
+          "description": {
+            "zh": "使用该引擎有效的无副作用算术语法，确认是否发生模板求值。",
+            "en": "Use valid side-effect-free arithmetic syntax for the engine to determine whether template evaluation occurs."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "使用第二种语义复核",
+            "en": "Confirm with a second semantic"
+          },
+          "description": {
+            "zh": "通过字符串、变量或条件 marker 排除硬编码数值、缓存和响应替换误报。",
+            "en": "Use a string, variable, or conditional marker to exclude hard-coded values, caching, and response substitution."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复后回归全部 Marker",
+            "en": "Regress every marker after remediation"
+          },
+          "description": {
+            "zh": "修复后要求用户表达式按字面输出或作为普通变量转义，同时正常模板功能保持。",
+            "en": "After remediation, require user expressions to render literally or as escaped data while preserving normal template behavior."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "Pug 阳性需要两个不同 marker 稳定求值并能定位到动态模板源码构造点。单个 49、模板错误、引擎指纹或普通变量输出都不足以确认 SSTI；更高影响必须由独立、版本匹配且无副作用的 Gadget 证据证明。",
+        "en": "A positive Pug result requires two distinct markers to evaluate consistently and map to dynamic template-source construction. One value of 49, a template error, engine fingerprint, or ordinary variable output is insufficient; higher impact needs separate, version-matched, side-effect-free gadget evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "只使用算术、字符串和控制结构 marker，不读取 Context、配置、文件、环境变量或网络资源。",
+          "en": "Use only arithmetic, string, and control-flow markers without reading context, configuration, files, environment variables, or network resources."
+        },
+        {
+          "zh": "每次只提交一个表达式并限制响应长度，出现编译器异常增长、Worker 抖动或非预期对象输出时立即停止。",
+          "en": "Submit one expression at a time with a response-size cap, stopping on compiler-error growth, worker instability, or unexpected object output."
+        }
+      ],
+      "references": [
+        "https://pugjs.org/language/interpolation.html",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Injection_Prevention_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "payload",
+        "targetPayloadIds": [
+          "ssti-pug"
+        ],
+        "targetToolIds": [],
+        "rationale": "Pug 条目保留为模板表达式 Payload，但移除对象遍历、配置泄露、文件读取、进程执行、反弹 Shell 和规避链，改为引擎准确的无副作用 marker。",
+        "issuesResolved": [
+          "removed-command-execution",
+          "removed-sensitive-object-access",
+          "removed-reverse-shells",
+          "removed-prose-from-commands",
+          "added-engine-specific-semantics"
+        ],
+        "retainedCommandIndexes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "lineDisposition": [
+          "execution 0-4 -> safe Pug evaluation markers",
+          "wafBypass 0-2 -> equivalent safe syntax markers"
+        ],
+        "needsCommandOverride": true
+      }
+    },
+    {
+      "id": "ssti-smarty",
+      "name": {
+        "zh": "Smarty 模板求值边界",
+        "en": "Smarty Template-Evaluation Boundary"
+      },
+      "description": {
+        "zh": "使用无副作用算术、字符串、变量和控制结构 marker，验证 Smarty 是否把非可信输入当作模板源码求值，并区分普通变量插值与模板注入。",
+        "en": "Use side-effect-free arithmetic, string, variable, and control-flow markers to test whether Smarty evaluates untrusted input as template source and distinguish ordinary interpolation from template injection."
+      },
+      "category": {
+        "zh": "SSTI模板注入",
+        "en": "SSTI Template Injection"
+      },
+      "subCategory": {
+        "zh": "Smarty 求值边界",
+        "en": "Smarty Evaluation Boundary"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用无网络出口的本地 Smarty Fixture，并记录引擎版本、模板入口和启用的扩展或安全模式。",
+          "en": "Use a no-egress local Smarty fixture and record engine version, template entry, and enabled extensions or security mode."
+        },
+        {
+          "zh": "为每个请求分配唯一 marker 和 request_id，响应只返回渲染结果与模板名称，不暴露 Context 对象。",
+          "en": "Assign a unique marker and request_id to every request; responses expose only rendered output and template name, not context objects."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "Smarty SSTI 的核心边界是非可信文本是否被编译或解析为模板源码，而不是普通数据变量是否显示在页面。旧内容混合对象枚举、配置泄露、命令执行和反弹 Shell，现改为可重复的无副作用 marker，并按 PHP/Smarty 实际语义验证。",
+          "en": "Smarty SSTI is defined by untrusted text being compiled or parsed as template source rather than ordinary data appearing through interpolation. The legacy content mixed object enumeration, configuration disclosure, command execution, and reverse shells; it is replaced with reproducible side-effect-free markers grounded in PHP and Smarty semantics."
+        },
+        "vulnerability": {
+          "zh": "根因通常是应用把请求文本传给动态模板构造、字符串模板 API 或可编辑模板存储，而没有把它限制为 Context 数据。Smarty 的函数、Modifier 和 PHP 访问能力随版本、安全策略和插件配置变化，历史 `{system()}` 语法不能直接代表当前实例可执行。 算术或字符串 marker 被稳定求值只能证明模板求值边界，不能直接证明文件读取或代码执行。",
+          "en": "The root cause is usually request text reaching dynamic template construction, string-template APIs, or editable template storage instead of remaining context data. Smarty function, modifier, and PHP access varies by version, security policy, and plugins, so historical `{system()}` syntax does not prove current execution capability. Stable arithmetic or string evaluation proves only the template-evaluation boundary, not file read or code execution."
+        },
+        "exploitation": {
+          "zh": "先提交普通文本建立字面输出基线，再逐项提交 Smarty 算术、字符串、变量、条件和集合 marker。每次只改变一个表达式并关联 request_id、模板名称和渲染结果；禁止访问环境变量、设置对象、文件、反射、进程或网络。",
+          "en": "Start with plain text as a literal-output baseline, then submit Smarty arithmetic, string, variable, conditional, and collection markers one at a time. Correlate request_id, template name, and rendered output without accessing environment variables, settings, files, reflection, processes, or network resources."
+        },
+        "mitigation": {
+          "zh": "使用固定、受版本控制的 Smarty 模板文件，把用户输入仅作为命名 Context 变量传入，并启用自动转义和引擎提供的安全配置。禁止运行时编译用户文本；审计自定义 Filter、Helper、对象包装和可编辑模板权限，并为 marker 添加回归测试。",
+          "en": "Use fixed, version-controlled Smarty template files and pass user input only as named context variables with autoescaping and available engine security settings. Do not compile user text at runtime; audit custom filters, helpers, object wrappers, editable-template permissions, and add marker regression tests."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "建立 Smarty 字面基线",
+            "en": "Establish the Smarty literal baseline"
+          },
+          "description": {
+            "zh": "提交普通 marker 并记录未求值的原始输出、模板名称和 request_id。",
+            "en": "Submit a plain marker and record unevaluated output, template name, and request_id."
+          }
+        },
+        {
+          "title": {
+            "zh": "提交 Smarty 算术 Marker",
+            "en": "Submit the Smarty arithmetic marker"
+          },
+          "description": {
+            "zh": "使用该引擎有效的无副作用算术语法，确认是否发生模板求值。",
+            "en": "Use valid side-effect-free arithmetic syntax for the engine to determine whether template evaluation occurs."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "使用第二种语义复核",
+            "en": "Confirm with a second semantic"
+          },
+          "description": {
+            "zh": "通过字符串、变量或条件 marker 排除硬编码数值、缓存和响应替换误报。",
+            "en": "Use a string, variable, or conditional marker to exclude hard-coded values, caching, and response substitution."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复后回归全部 Marker",
+            "en": "Regress every marker after remediation"
+          },
+          "description": {
+            "zh": "修复后要求用户表达式按字面输出或作为普通变量转义，同时正常模板功能保持。",
+            "en": "After remediation, require user expressions to render literally or as escaped data while preserving normal template behavior."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "Smarty 阳性需要两个不同 marker 稳定求值并能定位到动态模板源码构造点。单个 49、模板错误、引擎指纹或普通变量输出都不足以确认 SSTI；更高影响必须由独立、版本匹配且无副作用的 Gadget 证据证明。",
+        "en": "A positive Smarty result requires two distinct markers to evaluate consistently and map to dynamic template-source construction. One value of 49, a template error, engine fingerprint, or ordinary variable output is insufficient; higher impact needs separate, version-matched, side-effect-free gadget evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "只使用算术、字符串和控制结构 marker，不读取 Context、配置、文件、环境变量或网络资源。",
+          "en": "Use only arithmetic, string, and control-flow markers without reading context, configuration, files, environment variables, or network resources."
+        },
+        {
+          "zh": "每次只提交一个表达式并限制响应长度，出现编译器异常增长、Worker 抖动或非预期对象输出时立即停止。",
+          "en": "Submit one expression at a time with a response-size cap, stopping on compiler-error growth, worker instability, or unexpected object output."
+        }
+      ],
+      "references": [
+        "https://www.smarty.net/docs/en/language.basic.syntax.tpl",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Injection_Prevention_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "payload",
+        "targetPayloadIds": [
+          "ssti-smarty"
+        ],
+        "targetToolIds": [],
+        "rationale": "Smarty 条目保留为模板表达式 Payload，但移除对象遍历、配置泄露、文件读取、进程执行、反弹 Shell 和规避链，改为引擎准确的无副作用 marker。",
+        "issuesResolved": [
+          "removed-command-execution",
+          "removed-sensitive-object-access",
+          "removed-reverse-shells",
+          "removed-prose-from-commands",
+          "added-engine-specific-semantics"
+        ],
+        "retainedCommandIndexes": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "lineDisposition": [
+          "execution 0-5 -> safe Smarty evaluation markers",
+          "wafBypass 0-2 -> equivalent safe syntax markers"
+        ],
+        "needsCommandOverride": true
+      }
+    },
+    {
+      "id": "ssti-thymeleaf",
+      "name": {
+        "zh": "Thymeleaf 模板求值边界",
+        "en": "Thymeleaf Template-Evaluation Boundary"
+      },
+      "description": {
+        "zh": "使用无副作用算术、字符串、变量和控制结构 marker，验证 Thymeleaf 是否把非可信输入当作模板源码求值，并区分普通变量插值与模板注入。",
+        "en": "Use side-effect-free arithmetic, string, variable, and control-flow markers to test whether Thymeleaf evaluates untrusted input as template source and distinguish ordinary interpolation from template injection."
+      },
+      "category": {
+        "zh": "SSTI模板注入",
+        "en": "SSTI Template Injection"
+      },
+      "subCategory": {
+        "zh": "Thymeleaf 求值边界",
+        "en": "Thymeleaf Evaluation Boundary"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用无网络出口的本地 Thymeleaf Fixture，并记录引擎版本、模板入口和启用的扩展或安全模式。",
+          "en": "Use a no-egress local Thymeleaf fixture and record engine version, template entry, and enabled extensions or security mode."
+        },
+        {
+          "zh": "为每个请求分配唯一 marker 和 request_id，响应只返回渲染结果与模板名称，不暴露 Context 对象。",
+          "en": "Assign a unique marker and request_id to every request; responses expose only rendered output and template name, not context objects."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "Thymeleaf SSTI 的核心边界是非可信文本是否被编译或解析为模板源码，而不是普通数据变量是否显示在页面。旧内容混合对象枚举、配置泄露、命令执行和反弹 Shell，现改为可重复的无副作用 marker，并按 Java/Thymeleaf 实际语义验证。",
+          "en": "Thymeleaf SSTI is defined by untrusted text being compiled or parsed as template source rather than ordinary data appearing through interpolation. The legacy content mixed object enumeration, configuration disclosure, command execution, and reverse shells; it is replaced with reproducible side-effect-free markers grounded in Java and Thymeleaf semantics."
+        },
+        "vulnerability": {
+          "zh": "根因通常是应用把请求文本传给动态模板构造、字符串模板 API 或可编辑模板存储，而没有把它限制为 Context 数据。Thymeleaf 标准表达式、SpringEL 集成和模板模式具有不同能力，必须记录实际 Dialect、解析入口和表达式 Context。 算术或字符串 marker 被稳定求值只能证明模板求值边界，不能直接证明文件读取或代码执行。",
+          "en": "The root cause is usually request text reaching dynamic template construction, string-template APIs, or editable template storage instead of remaining context data. Thymeleaf standard expressions, SpringEL integration, and template modes have different capabilities, requiring the actual dialect, parsing entry, and expression context to be recorded. Stable arithmetic or string evaluation proves only the template-evaluation boundary, not file read or code execution."
+        },
+        "exploitation": {
+          "zh": "先提交普通文本建立字面输出基线，再逐项提交 Thymeleaf 算术、字符串、变量、条件和集合 marker。每次只改变一个表达式并关联 request_id、模板名称和渲染结果；禁止访问环境变量、设置对象、文件、反射、进程或网络。",
+          "en": "Start with plain text as a literal-output baseline, then submit Thymeleaf arithmetic, string, variable, conditional, and collection markers one at a time. Correlate request_id, template name, and rendered output without accessing environment variables, settings, files, reflection, processes, or network resources."
+        },
+        "mitigation": {
+          "zh": "使用固定、受版本控制的 Thymeleaf 模板文件，把用户输入仅作为命名 Context 变量传入，并启用自动转义和引擎提供的安全配置。禁止运行时编译用户文本；审计自定义 Filter、Helper、对象包装和可编辑模板权限，并为 marker 添加回归测试。",
+          "en": "Use fixed, version-controlled Thymeleaf template files and pass user input only as named context variables with autoescaping and available engine security settings. Do not compile user text at runtime; audit custom filters, helpers, object wrappers, editable-template permissions, and add marker regression tests."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "建立 Thymeleaf 字面基线",
+            "en": "Establish the Thymeleaf literal baseline"
+          },
+          "description": {
+            "zh": "提交普通 marker 并记录未求值的原始输出、模板名称和 request_id。",
+            "en": "Submit a plain marker and record unevaluated output, template name, and request_id."
+          }
+        },
+        {
+          "title": {
+            "zh": "提交 Thymeleaf 算术 Marker",
+            "en": "Submit the Thymeleaf arithmetic marker"
+          },
+          "description": {
+            "zh": "使用该引擎有效的无副作用算术语法，确认是否发生模板求值。",
+            "en": "Use valid side-effect-free arithmetic syntax for the engine to determine whether template evaluation occurs."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "使用第二种语义复核",
+            "en": "Confirm with a second semantic"
+          },
+          "description": {
+            "zh": "通过字符串、变量或条件 marker 排除硬编码数值、缓存和响应替换误报。",
+            "en": "Use a string, variable, or conditional marker to exclude hard-coded values, caching, and response substitution."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复后回归全部 Marker",
+            "en": "Regress every marker after remediation"
+          },
+          "description": {
+            "zh": "修复后要求用户表达式按字面输出或作为普通变量转义，同时正常模板功能保持。",
+            "en": "After remediation, require user expressions to render literally or as escaped data while preserving normal template behavior."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "Thymeleaf 阳性需要两个不同 marker 稳定求值并能定位到动态模板源码构造点。单个 49、模板错误、引擎指纹或普通变量输出都不足以确认 SSTI；更高影响必须由独立、版本匹配且无副作用的 Gadget 证据证明。",
+        "en": "A positive Thymeleaf result requires two distinct markers to evaluate consistently and map to dynamic template-source construction. One value of 49, a template error, engine fingerprint, or ordinary variable output is insufficient; higher impact needs separate, version-matched, side-effect-free gadget evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "只使用算术、字符串和控制结构 marker，不读取 Context、配置、文件、环境变量或网络资源。",
+          "en": "Use only arithmetic, string, and control-flow markers without reading context, configuration, files, environment variables, or network resources."
+        },
+        {
+          "zh": "每次只提交一个表达式并限制响应长度，出现编译器异常增长、Worker 抖动或非预期对象输出时立即停止。",
+          "en": "Submit one expression at a time with a response-size cap, stopping on compiler-error growth, worker instability, or unexpected object output."
+        }
+      ],
+      "references": [
+        "https://www.thymeleaf.org/doc/tutorials/3.1/usingthymeleaf.html",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Injection_Prevention_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "payload",
+        "targetPayloadIds": [
+          "ssti-thymeleaf"
+        ],
+        "targetToolIds": [],
+        "rationale": "Thymeleaf 条目保留为模板表达式 Payload，但移除对象遍历、配置泄露、文件读取、进程执行、反弹 Shell 和规避链，改为引擎准确的无副作用 marker。",
+        "issuesResolved": [
+          "removed-command-execution",
+          "removed-sensitive-object-access",
+          "removed-reverse-shells",
+          "removed-prose-from-commands",
+          "added-engine-specific-semantics"
+        ],
+        "retainedCommandIndexes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "lineDisposition": [
+          "execution 0-4 -> safe Thymeleaf evaluation markers",
+          "wafBypass 0-2 -> equivalent safe syntax markers"
+        ],
+        "needsCommandOverride": true
+      }
+    },
+    {
+      "id": "ssti-tornado",
+      "name": {
+        "zh": "Tornado 模板求值边界",
+        "en": "Tornado Template-Evaluation Boundary"
+      },
+      "description": {
+        "zh": "使用无副作用算术、字符串、变量和控制结构 marker，验证 Tornado Templates 是否把非可信输入当作模板源码求值，并区分普通变量插值与模板注入。",
+        "en": "Use side-effect-free arithmetic, string, variable, and control-flow markers to test whether Tornado Templates evaluates untrusted input as template source and distinguish ordinary interpolation from template injection."
+      },
+      "category": {
+        "zh": "SSTI模板注入",
+        "en": "SSTI Template Injection"
+      },
+      "subCategory": {
+        "zh": "Tornado 求值边界",
+        "en": "Tornado Evaluation Boundary"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用无网络出口的本地 Tornado Fixture，并记录引擎版本、模板入口和启用的扩展或安全模式。",
+          "en": "Use a no-egress local Tornado fixture and record engine version, template entry, and enabled extensions or security mode."
+        },
+        {
+          "zh": "为每个请求分配唯一 marker 和 request_id，响应只返回渲染结果与模板名称，不暴露 Context 对象。",
+          "en": "Assign a unique marker and request_id to every request; responses expose only rendered output and template name, not context objects."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "Tornado Templates SSTI 的核心边界是非可信文本是否被编译或解析为模板源码，而不是普通数据变量是否显示在页面。旧内容混合对象枚举、配置泄露、命令执行和反弹 Shell，现改为可重复的无副作用 marker，并按 Python/Tornado 实际语义验证。",
+          "en": "Tornado Templates SSTI is defined by untrusted text being compiled or parsed as template source rather than ordinary data appearing through interpolation. The legacy content mixed object enumeration, configuration disclosure, command execution, and reverse shells; it is replaced with reproducible side-effect-free markers grounded in Python and Tornado semantics."
+        },
+        "vulnerability": {
+          "zh": "根因通常是应用把请求文本传给动态模板构造、字符串模板 API 或可编辑模板存储，而没有把它限制为 Context 数据。Tornado 模板会把表达式编译为 Python，应用必须只把非可信值作为 Context 数据传入，不能动态拼接模板源码。 算术或字符串 marker 被稳定求值只能证明模板求值边界，不能直接证明文件读取或代码执行。",
+          "en": "The root cause is usually request text reaching dynamic template construction, string-template APIs, or editable template storage instead of remaining context data. Tornado compiles template expressions into Python, so applications must pass untrusted values as context data rather than concatenate them into template source. Stable arithmetic or string evaluation proves only the template-evaluation boundary, not file read or code execution."
+        },
+        "exploitation": {
+          "zh": "先提交普通文本建立字面输出基线，再逐项提交 Tornado 算术、字符串、变量、条件和集合 marker。每次只改变一个表达式并关联 request_id、模板名称和渲染结果；禁止访问环境变量、设置对象、文件、反射、进程或网络。",
+          "en": "Start with plain text as a literal-output baseline, then submit Tornado arithmetic, string, variable, conditional, and collection markers one at a time. Correlate request_id, template name, and rendered output without accessing environment variables, settings, files, reflection, processes, or network resources."
+        },
+        "mitigation": {
+          "zh": "使用固定、受版本控制的 Tornado 模板文件，把用户输入仅作为命名 Context 变量传入，并启用自动转义和引擎提供的安全配置。禁止运行时编译用户文本；审计自定义 Filter、Helper、对象包装和可编辑模板权限，并为 marker 添加回归测试。",
+          "en": "Use fixed, version-controlled Tornado template files and pass user input only as named context variables with autoescaping and available engine security settings. Do not compile user text at runtime; audit custom filters, helpers, object wrappers, editable-template permissions, and add marker regression tests."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "建立 Tornado 字面基线",
+            "en": "Establish the Tornado literal baseline"
+          },
+          "description": {
+            "zh": "提交普通 marker 并记录未求值的原始输出、模板名称和 request_id。",
+            "en": "Submit a plain marker and record unevaluated output, template name, and request_id."
+          }
+        },
+        {
+          "title": {
+            "zh": "提交 Tornado 算术 Marker",
+            "en": "Submit the Tornado arithmetic marker"
+          },
+          "description": {
+            "zh": "使用该引擎有效的无副作用算术语法，确认是否发生模板求值。",
+            "en": "Use valid side-effect-free arithmetic syntax for the engine to determine whether template evaluation occurs."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "使用第二种语义复核",
+            "en": "Confirm with a second semantic"
+          },
+          "description": {
+            "zh": "通过字符串、变量或条件 marker 排除硬编码数值、缓存和响应替换误报。",
+            "en": "Use a string, variable, or conditional marker to exclude hard-coded values, caching, and response substitution."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复后回归全部 Marker",
+            "en": "Regress every marker after remediation"
+          },
+          "description": {
+            "zh": "修复后要求用户表达式按字面输出或作为普通变量转义，同时正常模板功能保持。",
+            "en": "After remediation, require user expressions to render literally or as escaped data while preserving normal template behavior."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "Tornado 阳性需要两个不同 marker 稳定求值并能定位到动态模板源码构造点。单个 49、模板错误、引擎指纹或普通变量输出都不足以确认 SSTI；更高影响必须由独立、版本匹配且无副作用的 Gadget 证据证明。",
+        "en": "A positive Tornado result requires two distinct markers to evaluate consistently and map to dynamic template-source construction. One value of 49, a template error, engine fingerprint, or ordinary variable output is insufficient; higher impact needs separate, version-matched, side-effect-free gadget evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "只使用算术、字符串和控制结构 marker，不读取 Context、配置、文件、环境变量或网络资源。",
+          "en": "Use only arithmetic, string, and control-flow markers without reading context, configuration, files, environment variables, or network resources."
+        },
+        {
+          "zh": "每次只提交一个表达式并限制响应长度，出现编译器异常增长、Worker 抖动或非预期对象输出时立即停止。",
+          "en": "Submit one expression at a time with a response-size cap, stopping on compiler-error growth, worker instability, or unexpected object output."
+        }
+      ],
+      "references": [
+        "https://www.tornadoweb.org/en/stable/template.html",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Injection_Prevention_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "payload",
+        "targetPayloadIds": [
+          "ssti-tornado"
+        ],
+        "targetToolIds": [],
+        "rationale": "Tornado Templates 条目保留为模板表达式 Payload，但移除对象遍历、配置泄露、文件读取、进程执行、反弹 Shell 和规避链，改为引擎准确的无副作用 marker。",
+        "issuesResolved": [
+          "removed-command-execution",
+          "removed-sensitive-object-access",
+          "removed-reverse-shells",
+          "removed-prose-from-commands",
+          "added-engine-specific-semantics"
+        ],
+        "retainedCommandIndexes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "lineDisposition": [
+          "execution 0-4 -> safe Tornado evaluation markers",
+          "wafBypass 0-2 -> equivalent safe syntax markers"
+        ],
+        "needsCommandOverride": true
+      }
+    },
+    {
+      "id": "ssti-velocity",
+      "name": {
+        "zh": "Velocity 模板求值边界",
+        "en": "Velocity Template-Evaluation Boundary"
+      },
+      "description": {
+        "zh": "使用无副作用算术、字符串、变量和控制结构 marker，验证 Apache Velocity 是否把非可信输入当作模板源码求值，并区分普通变量插值与模板注入。",
+        "en": "Use side-effect-free arithmetic, string, variable, and control-flow markers to test whether Apache Velocity evaluates untrusted input as template source and distinguish ordinary interpolation from template injection."
+      },
+      "category": {
+        "zh": "SSTI模板注入",
+        "en": "SSTI Template Injection"
+      },
+      "subCategory": {
+        "zh": "Velocity 求值边界",
+        "en": "Velocity Evaluation Boundary"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用无网络出口的本地 Velocity Fixture，并记录引擎版本、模板入口和启用的扩展或安全模式。",
+          "en": "Use a no-egress local Velocity fixture and record engine version, template entry, and enabled extensions or security mode."
+        },
+        {
+          "zh": "为每个请求分配唯一 marker 和 request_id，响应只返回渲染结果与模板名称，不暴露 Context 对象。",
+          "en": "Assign a unique marker and request_id to every request; responses expose only rendered output and template name, not context objects."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "Apache Velocity SSTI 的核心边界是非可信文本是否被编译或解析为模板源码，而不是普通数据变量是否显示在页面。旧内容混合对象枚举、配置泄露、命令执行和反弹 Shell，现改为可重复的无副作用 marker，并按 Java/Velocity 实际语义验证。",
+          "en": "Apache Velocity SSTI is defined by untrusted text being compiled or parsed as template source rather than ordinary data appearing through interpolation. The legacy content mixed object enumeration, configuration disclosure, command execution, and reverse shells; it is replaced with reproducible side-effect-free markers grounded in Java and Velocity semantics."
+        },
+        "vulnerability": {
+          "zh": "根因通常是应用把请求文本传给动态模板构造、字符串模板 API 或可编辑模板存储，而没有把它限制为 Context 数据。Velocity 可访问的对象和方法由 Context、Uberspector 与安全配置决定，ClassTool 或反射对象必须实际被应用暴露才能构成更高影响。 算术或字符串 marker 被稳定求值只能证明模板求值边界，不能直接证明文件读取或代码执行。",
+          "en": "The root cause is usually request text reaching dynamic template construction, string-template APIs, or editable template storage instead of remaining context data. Velocity object and method access depends on context, Uberspector, and security configuration, and higher impact requires actual exposure of ClassTool or reflective objects. Stable arithmetic or string evaluation proves only the template-evaluation boundary, not file read or code execution."
+        },
+        "exploitation": {
+          "zh": "先提交普通文本建立字面输出基线，再逐项提交 Velocity 算术、字符串、变量、条件和集合 marker。每次只改变一个表达式并关联 request_id、模板名称和渲染结果；禁止访问环境变量、设置对象、文件、反射、进程或网络。",
+          "en": "Start with plain text as a literal-output baseline, then submit Velocity arithmetic, string, variable, conditional, and collection markers one at a time. Correlate request_id, template name, and rendered output without accessing environment variables, settings, files, reflection, processes, or network resources."
+        },
+        "mitigation": {
+          "zh": "使用固定、受版本控制的 Velocity 模板文件，把用户输入仅作为命名 Context 变量传入，并启用自动转义和引擎提供的安全配置。禁止运行时编译用户文本；审计自定义 Filter、Helper、对象包装和可编辑模板权限，并为 marker 添加回归测试。",
+          "en": "Use fixed, version-controlled Velocity template files and pass user input only as named context variables with autoescaping and available engine security settings. Do not compile user text at runtime; audit custom filters, helpers, object wrappers, editable-template permissions, and add marker regression tests."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "建立 Velocity 字面基线",
+            "en": "Establish the Velocity literal baseline"
+          },
+          "description": {
+            "zh": "提交普通 marker 并记录未求值的原始输出、模板名称和 request_id。",
+            "en": "Submit a plain marker and record unevaluated output, template name, and request_id."
+          }
+        },
+        {
+          "title": {
+            "zh": "提交 Velocity 算术 Marker",
+            "en": "Submit the Velocity arithmetic marker"
+          },
+          "description": {
+            "zh": "使用该引擎有效的无副作用算术语法，确认是否发生模板求值。",
+            "en": "Use valid side-effect-free arithmetic syntax for the engine to determine whether template evaluation occurs."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "使用第二种语义复核",
+            "en": "Confirm with a second semantic"
+          },
+          "description": {
+            "zh": "通过字符串、变量或条件 marker 排除硬编码数值、缓存和响应替换误报。",
+            "en": "Use a string, variable, or conditional marker to exclude hard-coded values, caching, and response substitution."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复后回归全部 Marker",
+            "en": "Regress every marker after remediation"
+          },
+          "description": {
+            "zh": "修复后要求用户表达式按字面输出或作为普通变量转义，同时正常模板功能保持。",
+            "en": "After remediation, require user expressions to render literally or as escaped data while preserving normal template behavior."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "Velocity 阳性需要两个不同 marker 稳定求值并能定位到动态模板源码构造点。单个 49、模板错误、引擎指纹或普通变量输出都不足以确认 SSTI；更高影响必须由独立、版本匹配且无副作用的 Gadget 证据证明。",
+        "en": "A positive Velocity result requires two distinct markers to evaluate consistently and map to dynamic template-source construction. One value of 49, a template error, engine fingerprint, or ordinary variable output is insufficient; higher impact needs separate, version-matched, side-effect-free gadget evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "只使用算术、字符串和控制结构 marker，不读取 Context、配置、文件、环境变量或网络资源。",
+          "en": "Use only arithmetic, string, and control-flow markers without reading context, configuration, files, environment variables, or network resources."
+        },
+        {
+          "zh": "每次只提交一个表达式并限制响应长度，出现编译器异常增长、Worker 抖动或非预期对象输出时立即停止。",
+          "en": "Submit one expression at a time with a response-size cap, stopping on compiler-error growth, worker instability, or unexpected object output."
+        }
+      ],
+      "references": [
+        "https://velocity.apache.org/engine/2.4/vtl-reference.html",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Injection_Prevention_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "payload",
+        "targetPayloadIds": [
+          "ssti-velocity"
+        ],
+        "targetToolIds": [],
+        "rationale": "Apache Velocity 条目保留为模板表达式 Payload，但移除对象遍历、配置泄露、文件读取、进程执行、反弹 Shell 和规避链，改为引擎准确的无副作用 marker。",
+        "issuesResolved": [
+          "removed-command-execution",
+          "removed-sensitive-object-access",
+          "removed-reverse-shells",
+          "removed-prose-from-commands",
+          "added-engine-specific-semantics"
+        ],
+        "retainedCommandIndexes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "lineDisposition": [
+          "execution 0-4 -> safe Velocity evaluation markers",
+          "wafBypass 0-1 -> equivalent safe syntax markers"
+        ],
+        "needsCommandOverride": true
+      }
+    }
+  ]
+}

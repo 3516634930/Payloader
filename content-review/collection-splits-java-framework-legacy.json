@@ -1,0 +1,1359 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "payloadBranches": [
+    {
+      "rootId": "web",
+      "id": "java-framework-security",
+      "name": {
+        "zh": "Java框架安全",
+        "en": "Java Framework Security"
+      }
+    }
+  ],
+  "collectionSplits": [
+    {
+      "sourceId": "fastjson-rce",
+      "targetPayloadIds": [
+        "fastjson-autotype-policy-boundary"
+      ],
+      "replacements": [
+        {
+          "id": "fastjson-autotype-policy-boundary",
+          "tags": [
+            "java",
+            "fastjson",
+            "autotype",
+            "deserialization-policy",
+            "localhost"
+          ],
+          "execution": [
+            {
+              "title": {
+                "zh": "无害 AutoType 策略检查",
+                "en": "Harmless AutoType Policy Check"
+              },
+              "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/api/lab/fastjson/parse\" -H \"Content-Type: application/json\" -H \"X-Request-ID: fastjson-policy-001\" --data '{\"@type\":\"java.util.HashMap\",\"marker\":\"FASTJSON_POLICY_CANARY_A1\"}' | jq -e '.marker == \"FASTJSON_POLICY_CANARY_A1\" and .external_lookup == false'",
+              "description": {
+                "zh": "向无网络出口的本地解析器提交 HashMap 类型标记，并断言合成 marker 保留且 external_lookup=false。",
+                "en": "Submit a HashMap type marker to the no-egress local parser and assert that the synthetic marker remains while external_lookup is false."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": []
+        }
+      ],
+      "toolTargets": [
+        {
+          "targetToolId": "java-framework-version-audit",
+          "targetName": {
+            "zh": "Java 框架依赖版本审计",
+            "en": "Java Framework Dependency Version Audit"
+          },
+          "targetDescription": {
+            "zh": "从本地实验 JAR Manifest 读取 Fastjson、Log4j 等 Java 框架的实际标题和版本，并与供应商安全公告映射。",
+            "en": "Reads actual titles and versions for Fastjson, Log4j, and related Java framework JARs from local lab manifests and maps them to vendor security advisories."
+          },
+          "targetCategory": {
+            "zh": "Java 安全测试工具",
+            "en": "Java Security Testing Tools"
+          },
+          "targetReferences": [
+            "https://raw.githubusercontent.com/wiki/alibaba/fastjson/security_update_20220523.md",
+            "https://logging.apache.org/security.html"
+          ],
+          "navRootId": "web-tools",
+          "navId": "java-framework-version-audit",
+          "navName": {
+            "zh": "Java 框架依赖版本审计",
+            "en": "Java Framework Version Audit"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "Fastjson Manifest 版本",
+                "en": "Fastjson Manifest Version"
+              },
+              "command": "unzip -p fixtures/fastjson.jar META-INF/MANIFEST.MF | grep -Ei '^(Implementation|Specification)-(Title|Version):'",
+              "description": {
+                "zh": "只读取 fixtures 中 Fastjson JAR 的 Manifest 标题与版本，避免加载类或运行反序列化。",
+                "en": "Read only title and version fields from the Fastjson JAR manifest in fixtures without loading classes or running deserialization."
+              },
+              "platform": "all"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": [
+        {
+          "command": "RETIRE fastjson-rce JdbcRowSet JNDI gadget payload",
+          "reason": {
+            "zh": "原块实例化 JdbcRowSet 并指向外部 LDAP，属于 JNDI gadget 与远程查找链，不能保留。",
+            "en": "The original block instantiated JdbcRowSet and pointed it to external LDAP, forming a JNDI gadget and remote-lookup chain, so it is retired."
+          }
+        },
+        {
+          "command": "RETIRE fastjson-rce AutoType class-loading bypass chain",
+          "reason": {
+            "zh": "原块利用类对象与 JdbcRowSet 绕过 AutoType 并触发远程引用，不属于无害策略验证。",
+            "en": "The original block combined class objects with JdbcRowSet to bypass AutoType and trigger a remote reference, outside harmless policy validation."
+          }
+        },
+        {
+          "command": "RETIRE fastjson-rce encoded and nested JNDI gadget variants",
+          "reason": {
+            "zh": "原块用编码与嵌套形式隐藏同一 JNDI gadget，目标是规避过滤并产生外连，因此退休。",
+            "en": "The original block hid the same JNDI gadget through encoding and nesting to evade filters and cause egress, so it is retired."
+          }
+        },
+        {
+          "command": "RETIRE fastjson-rce BCEL and version-specific gadget chains",
+          "reason": {
+            "zh": "原块列出 BCEL、AutoType 和 expectClass 历史 gadget 链，含不完整字节码与远程引用，整体退休。",
+            "en": "The original block listed BCEL, AutoType, and expectClass gadget chains with incomplete bytecode and remote references, so it is retired."
+          }
+        }
+      ]
+    },
+    {
+      "sourceId": "jboss-vuln",
+      "targetPayloadIds": [
+        "jboss-management-exposure-boundary"
+      ],
+      "replacements": [
+        {
+          "id": "jboss-management-exposure-boundary",
+          "tags": [
+            "java",
+            "jboss",
+            "wildfly",
+            "management-interface",
+            "localhost"
+          ],
+          "execution": [
+            {
+              "title": {
+                "zh": "JMX Console 匿名访问检查",
+                "en": "JMX Console Anonymous-Access Check"
+              },
+              "command": "code=$(curl --silent --show-error --max-time 5 -o /dev/null -w '%{http_code}' \"http://127.0.0.1:18080/jmx-console/\" -H \"X-Request-ID: jboss-console-001\"); printf '%s\\n' \"$code\"; test \"$code\" = 401 -o \"$code\" = 403 -o \"$code\" = 404",
+              "description": {
+                "zh": "无凭据请求 localhost JMX Console，并只接受 401、403 或 404 作为安全访问基线。",
+                "en": "Request the localhost JMX Console without credentials and accept only 401, 403, or 404 as the secure access baseline."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": []
+        }
+      ],
+      "toolTargets": [
+        {
+          "targetToolId": "jboss-management-diagnostics",
+          "targetName": {
+            "zh": "JBoss 与 WildFly 管理面诊断",
+            "en": "JBoss and WildFly Management Diagnostics"
+          },
+          "targetDescription": {
+            "zh": "使用 localhost OPTIONS、固定端点状态矩阵和容器内只读 CLI 检查 JBoss 或 WildFly 管理应用、Invoker 与版本配置。",
+            "en": "Uses localhost OPTIONS, a fixed endpoint-status matrix, and read-only in-container CLI commands to inspect JBoss or WildFly management applications, Invokers, and version configuration."
+          },
+          "targetCategory": {
+            "zh": "Java 安全测试工具",
+            "en": "Java Security Testing Tools"
+          },
+          "targetReferences": [
+            "https://docs.wildfly.org/40/Admin_Guide.html#Default_HTTP_Interface_Security",
+            "https://access.redhat.com/security/security-updates/"
+          ],
+          "navRootId": "web-tools",
+          "navId": "jboss-management-diagnostics",
+          "navName": {
+            "zh": "JBoss 管理面诊断",
+            "en": "JBoss Management Diagnostics"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "Invoker 方法策略检查",
+                "en": "Invoker Method-Policy Check"
+              },
+              "command": "curl --silent --show-error --max-time 5 -X OPTIONS \"http://127.0.0.1:18080/invoker/JMXInvokerServlet\" -H \"X-Request-ID: jboss-invoker-001\" -D - -o /dev/null | grep -Ei '^(HTTP/|Allow:|WWW-Authenticate:)'",
+              "description": {
+                "zh": "向本地 JMXInvokerServlet 发送只读 OPTIONS，保存状态、Allow 与认证 Header，不提交序列化数据。",
+                "en": "Send read-only OPTIONS to the local JMXInvokerServlet and preserve status, Allow, and authentication headers without serialized data."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "WildFly 只读管理资源",
+                "en": "WildFly Read-Only Management Resources"
+              },
+              "command": "docker exec jboss-lab /opt/jboss/wildfly/bin/jboss-cli.sh --connect --commands='version,/core-service=management:read-resource(recursive=false)'",
+              "description": {
+                "zh": "在 jboss-lab 容器内通过 CLI 读取版本和 management 核心资源，不执行部署或写操作。",
+                "en": "Read version and management core resources through CLI inside jboss-lab without deployment or write operations."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "固定旧管理端点矩阵",
+                "en": "Fixed Legacy Management-Endpoint Matrix"
+              },
+              "command": "for path in invoker/JMXInvokerServlet invoker/EJBInvokerServlet jmx-console web-console; do curl --silent --show-error --max-time 5 -o /dev/null -w \"$path %{http_code}\\n\" \"http://127.0.0.1:18080/$path\" -H \"X-Request-ID: jboss-surface-001\"; done",
+              "description": {
+                "zh": "仅检查四个登记过的旧管理路径状态，定位暴露面而不扩展路径枚举。",
+                "en": "Check status for four preregistered legacy management paths to identify exposure without expanding route enumeration."
+              },
+              "platform": "all"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": [
+        {
+          "command": "RETIRE jboss-vuln BeanShell process-execution deployment script",
+          "reason": {
+            "zh": "原块通过 BSHDeployer 执行 BeanShell 和系统命令并复制输出，具有直接进程副作用，因此退休。",
+            "en": "The original block used BSHDeployer to run BeanShell and operating-system commands and copy output, creating direct process side effects, so it is retired."
+          }
+        }
+      ]
+    },
+    {
+      "sourceId": "log4j-rce",
+      "targetPayloadIds": [
+        "log4j-message-lookup-policy-boundary"
+      ],
+      "replacements": [
+        {
+          "id": "log4j-message-lookup-policy-boundary",
+          "tags": [
+            "java",
+            "log4j",
+            "message-lookup",
+            "no-egress",
+            "localhost"
+          ],
+          "execution": [
+            {
+              "title": {
+                "zh": "本地消息 Lookup 策略检查",
+                "en": "Local Message-Lookup Policy Check"
+              },
+              "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/api/lab/log4j/log\" -H \"Content-Type: application/json\" -H \"X-Request-ID: log4j-lookup-001\" --data '{\"message\":\"LOOKUP_CANARY_${java:version}\"}' | jq -e '.request_id and .network_lookup == false and .logged_value'",
+              "description": {
+                "zh": "记录不含 JNDI 的 Java 版本 Lookup 形状，并断言本地 Fixture 没有产生网络查找。",
+                "en": "Log a Java-version lookup shape without JNDI and assert that the local fixture produced no network lookup."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": []
+        }
+      ],
+      "toolTargets": [
+        {
+          "targetToolId": "java-framework-version-audit",
+          "targetName": {
+            "zh": "Java 框架依赖版本审计",
+            "en": "Java Framework Dependency Version Audit"
+          },
+          "targetDescription": {
+            "zh": "从本地实验 JAR Manifest 读取 Fastjson、Log4j 等 Java 框架的实际标题和版本，并与供应商安全公告映射。",
+            "en": "Reads actual titles and versions for Fastjson, Log4j, and related Java framework JARs from local lab manifests and maps them to vendor security advisories."
+          },
+          "targetCategory": {
+            "zh": "Java 安全测试工具",
+            "en": "Java Security Testing Tools"
+          },
+          "targetReferences": [
+            "https://logging.apache.org/security.html",
+            "https://logging.apache.org/log4j/2.x/manual/lookups.html"
+          ],
+          "navRootId": "web-tools",
+          "navId": "java-framework-version-audit",
+          "navName": {
+            "zh": "Java 框架依赖版本审计",
+            "en": "Java Framework Version Audit"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "Log4j Core Manifest 版本",
+                "en": "Log4j Core Manifest Version"
+              },
+              "command": "unzip -p fixtures/log4j-core.jar META-INF/MANIFEST.MF | grep -Ei '^(Implementation|Specification)-(Title|Version):|^Bundle-Version:'",
+              "description": {
+                "zh": "读取本地 log4j-core JAR 的 Manifest 与 Bundle 版本，和 Apache 安全公告比对。",
+                "en": "Read manifest and bundle versions from the local log4j-core JAR and compare them with Apache security advisories."
+              },
+              "platform": "all"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": [
+        {
+          "command": "RETIRE log4j-rce environment and system-property DNS exfiltration lookups",
+          "reason": {
+            "zh": "原块把环境变量和系统属性拼入 DNS 名称外带，涉及真实信息泄露和外连，因此退休。",
+            "en": "The original block embedded environment and system properties in DNS names for exfiltration, causing real disclosure and egress, so it is retired."
+          }
+        },
+        {
+          "command": "RETIRE log4j-rce reverse-shell JNDI lookup",
+          "reason": {
+            "zh": "原块的 JNDI 地址编码反向 Shell，形成可直接部署的命令执行链，因此退休。",
+            "en": "The original block encoded a reverse shell in a JNDI address, forming a directly deployable command-execution chain, so it is retired."
+          }
+        },
+        {
+          "command": "RETIRE log4j-rce lower-upper and character-fragment filter-evasion lookups",
+          "reason": {
+            "zh": "原块通过大小写和字符片段重组 jndi 名称规避关键字过滤，目标是绕过检测，因此退休。",
+            "en": "The original block reconstructed the jndi name through case conversion and character fragments to evade keyword filters, so it is retired."
+          }
+        },
+        {
+          "command": "RETIRE log4j-rce protocol and nested-lookup filter-evasion variants",
+          "reason": {
+            "zh": "原块通过嵌套协议与 DNS 变体规避字符过滤并产生外连，不符合无网络边界。",
+            "en": "The original block used nested protocol and DNS variants to evade character filters and create egress, violating the no-network boundary."
+          }
+        }
+      ]
+    },
+    {
+      "sourceId": "shiro-deserialize",
+      "targetPayloadIds": [
+        "auth-shiro-rememberme-deserialization"
+      ],
+      "replacements": [],
+      "toolTargets": [
+        {
+          "targetToolId": "shiro-security-diagnostics",
+          "targetName": {
+            "zh": "Apache Shiro rememberMe 安全诊断",
+            "en": "Apache Shiro rememberMe Security Diagnostics"
+          },
+          "targetDescription": {
+            "zh": "使用 localhost 无效 Cookie 响应和受控运行配置文件检查 Shiro 版本、密码模式、密钥来源与序列化过滤，而不生成 gadget。",
+            "en": "Uses localhost invalid-cookie responses and controlled runtime configuration to inspect Shiro version, cipher mode, key source, and serialization filtering without generating gadgets."
+          },
+          "targetCategory": {
+            "zh": "Java 安全测试工具",
+            "en": "Java Security Testing Tools"
+          },
+          "targetReferences": [
+            "https://shiro.apache.org/security-reports.html",
+            "https://shiro.apache.org/web.html#remember_me_services"
+          ],
+          "navRootId": "web-tools",
+          "navId": "shiro-security-diagnostics",
+          "navName": {
+            "zh": "Shiro rememberMe 安全诊断",
+            "en": "Shiro rememberMe Diagnostics"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "无效 rememberMe Cookie 对照",
+                "en": "Invalid rememberMe Cookie Control"
+              },
+              "command": "curl --silent --show-error --max-time 5 -D - -o /dev/null \"http://127.0.0.1:18080/shiro-lab/\" -H \"Cookie: rememberMe=SHIRO_INVALID_CANARY\" -H \"X-Request-ID: shiro-cookie-001\" | grep -Ei '^(HTTP/|Set-Cookie:.*rememberMe)'",
+              "description": {
+                "zh": "发送一个固定不可解密 Cookie 并只记录状态和 Set-Cookie，用于识别拒绝路径而非默认密钥。",
+                "en": "Send one fixed undecryptable cookie and retain status plus Set-Cookie to identify the rejection path rather than a default key."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "rememberMe 运行策略读取",
+                "en": "rememberMe Runtime-Policy Read"
+              },
+              "command": "grep -E '^(shiro.version|rememberMe.cipherMode|rememberMe.keySource|serializationFilter)=' fixtures/shiro-test-runtime.properties",
+              "description": {
+                "zh": "从受控属性文件读取版本、密码模式、密钥来源和序列化过滤器，不输出密钥值。",
+                "en": "Read version, cipher mode, key source, and serialization filter from a controlled property file without outputting key values."
+              },
+              "platform": "all"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": [
+        {
+          "command": "RETIRE shiro-deserialize ysoserial gadget encryption and default-key workflow",
+          "reason": {
+            "zh": "原块生成 ysoserial gadget、使用公开默认密钥并执行命令，属于完整反序列化利用链，因此退休。",
+            "en": "The original block generated a ysoserial gadget, used a public default key, and executed commands, forming a complete deserialization exploit chain, so it is retired."
+          }
+        },
+        {
+          "command": "RETIRE shiro-deserialize exploit-tool and encoded-gadget delivery workflow",
+          "reason": {
+            "zh": "原块调用多个 Shiro 利用器发送加密 gadget 与命令，不符合无副作用诊断边界。",
+            "en": "The original block invoked multiple Shiro exploit tools to send encrypted gadgets and commands, outside side-effect-free diagnostics."
+          }
+        },
+        {
+          "command": "RETIRE shiro-deserialize gadget-chain selection list",
+          "reason": {
+            "zh": "原块列出 CommonsCollections、Beanutils、Jdk7u21 与 JRMPClient gadget 选择，整体退休。",
+            "en": "The original block listed CommonsCollections, Beanutils, Jdk7u21, and JRMPClient gadget choices, so it is retired."
+          }
+        },
+        {
+          "command": "RETIRE shiro-deserialize rememberMe key brute-force workflow",
+          "reason": {
+            "zh": "原块通过 keys.txt 和扫描工具爆破 rememberMe 密钥，属于凭据猜测与自动化利用，因此退休。",
+            "en": "The original block brute-forced rememberMe keys through keys.txt and scanners, combining credential guessing with automated exploitation, so it is retired."
+          }
+        }
+      ]
+    },
+    {
+      "sourceId": "spring-actuator",
+      "targetPayloadIds": [
+        "inject2-spring-boot-actuator-exposure"
+      ],
+      "replacements": [],
+      "toolTargets": [
+        {
+          "targetToolId": "spring-management-diagnostics",
+          "targetName": {
+            "zh": "Spring 管理端点与版本诊断",
+            "en": "Spring Management Endpoint and Version Diagnostics"
+          },
+          "targetDescription": {
+            "zh": "对 localhost Spring Boot 与 Spring Cloud Fixture 执行固定 Actuator 状态矩阵、授权链接读取和本地 JAR 版本检查。",
+            "en": "Runs a fixed Actuator status matrix, authorized root-link inspection, and local JAR version checks for localhost Spring Boot and Spring Cloud fixtures."
+          },
+          "targetCategory": {
+            "zh": "Java 安全测试工具",
+            "en": "Java Security Testing Tools"
+          },
+          "targetReferences": [
+            "https://docs.spring.io/spring-boot/reference/actuator/endpoints.html#actuator.endpoints.exposing",
+            "https://spring.io/security/"
+          ],
+          "navRootId": "web-tools",
+          "navId": "spring-management-diagnostics",
+          "navName": {
+            "zh": "Spring 管理端点与版本诊断",
+            "en": "Spring Management Diagnostics"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "四端点状态矩阵",
+                "en": "Four-Endpoint Status Matrix"
+              },
+              "command": "for path in actuator actuator/health actuator/env actuator/mappings; do curl --silent --show-error --max-time 5 -o /dev/null -w \"$path %{http_code}\\n\" \"http://127.0.0.1:18080/$path\" -H \"X-Request-ID: actuator-surface-001\"; done",
+              "description": {
+                "zh": "仅检查 actuator、health、env 与 mappings 四个登记路径的状态，不读取敏感正文。",
+                "en": "Check status only for the four registered actuator, health, env, and mappings paths without reading sensitive bodies."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "审核者 Actuator 链接清单",
+                "en": "Reviewer Actuator Link Inventory"
+              },
+              "command": "curl --fail-with-body --silent --show-error --max-time 5 \"http://127.0.0.1:18080/actuator\" -H \"Authorization: Bearer actuator-reviewer-token\" -H \"X-Request-ID: actuator-links-001\" | jq -e '._links | keys'",
+              "description": {
+                "zh": "由固定审核者读取 Actuator 根链接键名，确认暴露配置而不读取端点数据值。",
+                "en": "Have a fixed reviewer read Actuator root link keys to verify exposure configuration without endpoint data values."
+              },
+              "platform": "all"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": [
+        {
+          "command": "RETIRE spring-actuator heap-dump download and secret-search workflow",
+          "reason": {
+            "zh": "原块下载 heapdump 并搜索密码和秘密，涉及敏感内存数据收集，因此退休。",
+            "en": "The original block downloaded a heap dump and searched for passwords and secrets, collecting sensitive memory data, so it is retired."
+          }
+        },
+        {
+          "command": "RETIRE spring-actuator environment mutation and restart command-execution chain",
+          "reason": {
+            "zh": "原块通过 env 写入数据库测试查询并 restart 触发命令执行，具有配置修改与进程副作用。",
+            "en": "The original block wrote a database test query through env and triggered restart for command execution, causing configuration and process side effects."
+          }
+        },
+        {
+          "command": "RETIRE spring-actuator traversal semicolon and multi-encoding endpoint bypasses",
+          "reason": {
+            "zh": "原块使用分号、遍历和多重编码规避端点访问控制，还包含 heapdump 路径，因此退休。",
+            "en": "The original block used semicolons, traversal, and multiple encodings to evade endpoint access controls and included heapdump paths, so it is retired."
+          }
+        },
+        {
+          "command": "RETIRE spring-actuator method-override external-bootstrap and case-bypass variants",
+          "reason": {
+            "zh": "原块使用方法覆盖、外部 bootstrap 配置和大小写变体绕过策略，涉及外连与配置注入。",
+            "en": "The original block used method override, external bootstrap configuration, and case variants to bypass policy, including egress and configuration injection."
+          }
+        }
+      ]
+    },
+    {
+      "sourceId": "spring-cloud",
+      "targetPayloadIds": [
+        "spring-cloud-gateway-management-boundary"
+      ],
+      "replacements": [
+        {
+          "id": "spring-cloud-gateway-management-boundary",
+          "tags": [
+            "java",
+            "spring-cloud",
+            "gateway",
+            "management-endpoint",
+            "localhost"
+          ],
+          "execution": [
+            {
+              "title": {
+                "zh": "Gateway routes 低权限访问检查",
+                "en": "Gateway Routes Low-Privilege Access Check"
+              },
+              "command": "code=$(curl --silent --show-error --max-time 5 -o /dev/null -w '%{http_code}' \"http://127.0.0.1:18080/actuator/gateway/routes\" -H \"Authorization: Bearer spring-user-token\" -H \"X-Request-ID: spring-cloud-gateway-001\"); printf '%s\\n' \"$code\"; test \"$code\" = 401 -o \"$code\" = 403 -o \"$code\" = 404",
+              "description": {
+                "zh": "以低权限实验令牌只读请求 routes 管理端点，并断言返回 401、403 或 404。",
+                "en": "Request the routes management endpoint read-only with a low-privilege lab token and assert 401, 403, or 404."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": []
+        }
+      ],
+      "toolTargets": [
+        {
+          "targetToolId": "spring-management-diagnostics",
+          "targetName": {
+            "zh": "Spring 管理端点与版本诊断",
+            "en": "Spring Management Endpoint and Version Diagnostics"
+          },
+          "targetDescription": {
+            "zh": "对 localhost Spring Boot 与 Spring Cloud Fixture 执行固定 Actuator 状态矩阵、授权链接读取和本地 JAR 版本检查。",
+            "en": "Runs a fixed Actuator status matrix, authorized root-link inspection, and local JAR version checks for localhost Spring Boot and Spring Cloud fixtures."
+          },
+          "targetCategory": {
+            "zh": "Java 安全测试工具",
+            "en": "Java Security Testing Tools"
+          },
+          "targetReferences": [
+            "https://spring.io/security/",
+            "https://github.com/spring-cloud/spring-cloud-gateway/security/advisories"
+          ],
+          "navRootId": "web-tools",
+          "navId": "spring-management-diagnostics",
+          "navName": {
+            "zh": "Spring 管理端点与版本诊断",
+            "en": "Spring Management Diagnostics"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "Spring Cloud Gateway JAR 版本",
+                "en": "Spring Cloud Gateway JAR Version"
+              },
+              "command": "unzip -p fixtures/spring-cloud-gateway-server.jar META-INF/MANIFEST.MF | grep -Ei '^(Implementation|Specification)-(Title|Version):|^Spring-Boot-Version:'",
+              "description": {
+                "zh": "从本地 Gateway JAR Manifest 读取标题、版本和 Spring Boot 版本，不启动应用。",
+                "en": "Read title, version, and Spring Boot version from the local Gateway JAR manifest without starting the application."
+              },
+              "platform": "all"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": [
+        {
+          "command": "RETIRE spring-cloud directory-traversal and Eureka SSRF workflow",
+          "reason": {
+            "zh": "原块混合多重编码文件读取与 Eureka 内网 SSRF，涉及真实文件和网络边界突破，因此退休。",
+            "en": "The original block mixed multi-encoded file reading with Eureka internal SSRF, crossing real file and network boundaries, so it is retired."
+          }
+        },
+        {
+          "command": "RETIRE spring-cloud single and double URL-encoding traversal bypasses",
+          "reason": {
+            "zh": "原块只描述单次与双重 URL 编码遍历规避，没有安全检测边界，因此退休。",
+            "en": "The original block described single- and double-encoded traversal evasion without a safe detection boundary, so it is retired."
+          }
+        }
+      ]
+    },
+    {
+      "sourceId": "spring-spel",
+      "targetPayloadIds": [
+        "spring-spel-evaluation-boundary"
+      ],
+      "replacements": [
+        {
+          "id": "spring-spel-evaluation-boundary",
+          "tags": [
+            "java",
+            "spring",
+            "spel",
+            "simple-evaluation-context",
+            "localhost"
+          ],
+          "execution": [
+            {
+              "title": {
+                "zh": "SpEL 简单算术上下文",
+                "en": "SpEL Simple Arithmetic Context"
+              },
+              "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/api/lab/spel/evaluate\" -H \"Content-Type: application/json\" -H \"X-Request-ID: spel-simple-001\" --data '{\"expression\":\"7 * 7\",\"mode\":\"simple\"}' | jq -e '.result == 49 and .type_access == false and .method_invocation == false'",
+              "description": {
+                "zh": "在本地 simple 模式计算固定算术，并断言类型访问与方法调用能力均关闭。",
+                "en": "Evaluate fixed arithmetic in local simple mode and assert that type access and method invocation capabilities are both disabled."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": []
+        }
+      ],
+      "toolTargets": [
+        {
+          "targetToolId": "spring-framework-security-diagnostics",
+          "targetName": {
+            "zh": "Spring Framework 表达式安全诊断",
+            "en": "Spring Framework Expression Security Diagnostics"
+          },
+          "targetDescription": {
+            "zh": "从本地策略文件核对 Spring 表达式上下文、类型访问、方法调用、Bean 解析和自动增长能力，配合安全算术回归。",
+            "en": "Reviews local Spring expression policy for context type, type access, method invocation, bean resolution, and auto-grow capabilities alongside safe arithmetic regression."
+          },
+          "targetCategory": {
+            "zh": "Java 安全测试工具",
+            "en": "Java Security Testing Tools"
+          },
+          "targetReferences": [
+            "https://docs.spring.io/spring-framework/reference/core/expressions/evaluation.html",
+            "https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/expression/spel/support/SimpleEvaluationContext.html"
+          ],
+          "navRootId": "web-tools",
+          "navId": "spring-framework-security-diagnostics",
+          "navName": {
+            "zh": "Spring 表达式安全诊断",
+            "en": "Spring Expression Diagnostics"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "SpEL 上下文能力读取",
+                "en": "SpEL Context-Capability Read"
+              },
+              "command": "grep -E '^(context|typeAccess|methodInvocation|beanResolution|autoGrow)=' fixtures/spring-expression-policy.properties",
+              "description": {
+                "zh": "读取本地表达式策略中的上下文、类型、方法、Bean 和 autoGrow 设置，不执行表达式。",
+                "en": "Read context, type, method, bean, and autoGrow settings from the local expression policy without evaluating an expression."
+              },
+              "platform": "all"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": [
+        {
+          "command": "RETIRE spring-spel Runtime ProcessBuilder and reverse-shell expressions",
+          "reason": {
+            "zh": "原块包含 Runtime、ProcessBuilder、Windows 命令和反向 Shell，均会启动真实进程，因此退休。",
+            "en": "The original block contained Runtime, ProcessBuilder, Windows commands, and a reverse shell, all starting real processes, so it is retired."
+          }
+        },
+        {
+          "command": "RETIRE spring-spel process-based and direct file-read expressions",
+          "reason": {
+            "zh": "原块通过进程和 Files API 读取 /etc/passwd，涉及真实文件内容，因此退休。",
+            "en": "The original block read /etc/passwd through processes and the Files API, accessing real file content, so it is retired."
+          }
+        },
+        {
+          "command": "RETIRE spring-spel DNS lookup and file-content exfiltration expressions",
+          "reason": {
+            "zh": "原块触发 DNS 并把文件字节拼入域名外带，违反无外连和无真实数据要求。",
+            "en": "The original block triggered DNS and embedded file bytes in a domain for exfiltration, violating no-egress and synthetic-data requirements."
+          }
+        },
+        {
+          "command": "RETIRE spring-spel reflection and ScriptEngine filter-evasion expressions",
+          "reason": {
+            "zh": "原块通过反射和 ScriptEngine 规避过滤并执行命令，属于能力绕过链，因此退休。",
+            "en": "The original block used reflection and ScriptEngine to evade filtering and execute commands, forming a capability-bypass chain, so it is retired."
+          }
+        }
+      ]
+    },
+    {
+      "sourceId": "struts2-ognl",
+      "targetPayloadIds": [
+        "struts2-ognl-evaluation-boundary"
+      ],
+      "replacements": [
+        {
+          "id": "struts2-ognl-evaluation-boundary",
+          "tags": [
+            "java",
+            "struts2",
+            "ognl",
+            "member-access",
+            "localhost"
+          ],
+          "execution": [
+            {
+              "title": {
+                "zh": "OGNL 算术与能力检查",
+                "en": "OGNL Arithmetic and Capability Check"
+              },
+              "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/struts-lab/evaluate\" -H \"X-Request-ID: struts-ognl-simple-001\" --data-urlencode 'value=%{7*7}' | jq -e '.result == 49 and .static_method_access == false and .process_start == false'",
+              "description": {
+                "zh": "向本地受限求值器提交固定算术，断言结果为 49 且静态方法和进程启动能力关闭。",
+                "en": "Submit fixed arithmetic to the restricted local evaluator and assert result 49 with static-method and process-start capabilities disabled."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": []
+        }
+      ],
+      "toolTargets": [
+        {
+          "targetToolId": "struts2-security-diagnostics",
+          "targetName": {
+            "zh": "Apache Struts2 版本与表达式诊断",
+            "en": "Apache Struts2 Version and Expression Diagnostics"
+          },
+          "targetDescription": {
+            "zh": "读取本地 Struts2 版本与 OGNL 成员策略，并用无害上传 Header 和规范 Action 路径检查历史表达式入口。",
+            "en": "Reads local Struts2 version and OGNL member policy and checks historical expression entry points with a harmless upload header and canonical Action path."
+          },
+          "targetCategory": {
+            "zh": "Java 安全测试工具",
+            "en": "Java Security Testing Tools"
+          },
+          "targetReferences": [
+            "https://struts.apache.org/security/",
+            "https://struts.apache.org/tag-developers/ognl"
+          ],
+          "navRootId": "web-tools",
+          "navId": "struts2-security-diagnostics",
+          "navName": {
+            "zh": "Struts2 版本与表达式诊断",
+            "en": "Struts2 Security Diagnostics"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "OGNL 成员策略读取",
+                "en": "OGNL Member-Policy Read"
+              },
+              "command": "grep -E '^(struts.version|struts.ognl.allowStaticMethodAccess|struts.excludedClasses|struts.excludedPackageNames)=' fixtures/struts2-security.properties",
+              "description": {
+                "zh": "读取本地版本、静态方法开关、排除类和排除包设置，不求值任何危险表达式。",
+                "en": "Read local version, static-method switch, excluded classes, and excluded packages without evaluating dangerous expressions."
+              },
+              "platform": "all"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": [
+        {
+          "command": "RETIRE struts2-ognl Runtime ProcessBuilder and response-copy command chain",
+          "reason": {
+            "zh": "原块使用 Runtime、ProcessBuilder 和响应流复制执行并回显系统命令，因此退休。",
+            "en": "The original block used Runtime, ProcessBuilder, and response-stream copying to execute and return operating-system commands, so it is retired."
+          }
+        },
+        {
+          "command": "RETIRE struts2-ognl file-read webshell-write and directory-list expressions",
+          "reason": {
+            "zh": "原块读取 /etc/passwd、写入 JSP WebShell 并列出根目录，具有文件系统破坏与泄露。",
+            "en": "The original block read /etc/passwd, wrote a JSP webshell, and listed the root directory, causing filesystem disclosure and modification."
+          }
+        },
+        {
+          "command": "RETIRE struts2-ognl Unicode hexadecimal and concatenation evasion variants",
+          "reason": {
+            "zh": "原块以 Unicode、十六进制和字符串拼接规避关键字检测，没有安全求值目的。",
+            "en": "The original block used Unicode, hexadecimal, and concatenation to evade keyword detection without a safe evaluation purpose."
+          }
+        },
+        {
+          "command": "RETIRE struts2-ognl reflective Runtime invocation chain",
+          "reason": {
+            "zh": "原块通过反射获取 Runtime 并调用 exec，构成直接命令执行链，因此退休。",
+            "en": "The original block obtained Runtime through reflection and invoked exec, forming a direct command-execution chain, so it is retired."
+          }
+        }
+      ]
+    },
+    {
+      "sourceId": "struts2-rce",
+      "targetPayloadIds": [
+        "struts2-ognl-evaluation-boundary"
+      ],
+      "replacements": [],
+      "toolTargets": [
+        {
+          "targetToolId": "struts2-security-diagnostics",
+          "targetName": {
+            "zh": "Apache Struts2 版本与表达式诊断",
+            "en": "Apache Struts2 Version and Expression Diagnostics"
+          },
+          "targetDescription": {
+            "zh": "读取本地 Struts2 版本与 OGNL 成员策略，并用无害上传 Header 和规范 Action 路径检查历史表达式入口。",
+            "en": "Reads local Struts2 version and OGNL member policy and checks historical expression entry points with a harmless upload header and canonical Action path."
+          },
+          "targetCategory": {
+            "zh": "Java 安全测试工具",
+            "en": "Java Security Testing Tools"
+          },
+          "targetReferences": [
+            "https://struts.apache.org/security/",
+            "https://cwiki.apache.org/confluence/display/WW/Security+Bulletins"
+          ],
+          "navRootId": "web-tools",
+          "navId": "struts2-security-diagnostics",
+          "navName": {
+            "zh": "Struts2 版本与表达式诊断",
+            "en": "Struts2 Security Diagnostics"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "Struts2 Core Manifest 版本",
+                "en": "Struts2 Core Manifest Version"
+              },
+              "command": "unzip -p fixtures/struts2-core.jar META-INF/MANIFEST.MF | grep -Ei '^(Implementation|Specification)-(Title|Version):|^Bundle-Version:'",
+              "description": {
+                "zh": "读取本地 struts2-core JAR 的 Manifest 与 Bundle 版本并映射 Apache 公告。",
+                "en": "Read manifest and bundle versions from the local struts2-core JAR and map them to Apache advisories."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "无害上传 Header 检查",
+                "en": "Harmless Upload-Header Check"
+              },
+              "command": "curl --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/struts-lab/upload\" -H 'Content-Disposition: form-data; name=\"upload\"; filename=\"%{7*7}\"' -H \"X-Request-ID: struts-upload-header-001\" -o /dev/null -w '%{http_code}\\n'",
+              "description": {
+                "zh": "发送只含算术文件名的 Content-Disposition Header 并记录状态，不上传文件或调用方法。",
+                "en": "Send a Content-Disposition header containing an arithmetic filename and record status without uploading a file or invoking methods."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "规范 Action 路径基线",
+                "en": "Canonical Action-Path Baseline"
+              },
+              "command": "curl --silent --show-error --max-time 5 -o /dev/null -w '%{http_code}\\n' \"http://127.0.0.1:18080/struts-lab/test.action\" -H \"X-Request-ID: struts-namespace-001\"",
+              "description": {
+                "zh": "请求一个普通 localhost test.action，建立路由状态基线而不在 Namespace 中放表达式。",
+                "en": "Request one ordinary localhost test.action to establish routing status without placing an expression in the namespace."
+              },
+              "platform": "all"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": [
+        {
+          "command": "RETIRE struts2-rce encoded form-body Runtime execution expression",
+          "reason": {
+            "zh": "原块提交编码 OGNL 并调用 Runtime.exec，属于直接表单命令执行，因此退休。",
+            "en": "The original block submitted encoded OGNL and invoked Runtime.exec, forming direct form-based command execution, so it is retired."
+          }
+        },
+        {
+          "command": "RETIRE struts2-rce URL Unicode and double-encoding filter-evasion forms",
+          "reason": {
+            "zh": "原块列出 URL、Unicode 和双重编码以规避表达式过滤，目标是绕过检测。",
+            "en": "The original block listed URL, Unicode, and double encodings to evade expression filtering, so it is retired."
+          }
+        },
+        {
+          "command": "RETIRE struts2-rce expression-syntax and static-method execution variants",
+          "reason": {
+            "zh": "原块列出多种表达式语法、Runtime 和 ProcessBuilder 静态能力，属于执行变体。",
+            "en": "The original block listed multiple expression syntaxes plus Runtime and ProcessBuilder capabilities, forming execution variants."
+          }
+        }
+      ]
+    },
+    {
+      "sourceId": "tomcat-vuln",
+      "targetPayloadIds": [
+        "tomcat-manager-access-boundary"
+      ],
+      "replacements": [
+        {
+          "id": "tomcat-manager-access-boundary",
+          "tags": [
+            "java",
+            "tomcat",
+            "manager",
+            "access-control",
+            "localhost"
+          ],
+          "execution": [
+            {
+              "title": {
+                "zh": "Tomcat Manager 匿名访问检查",
+                "en": "Tomcat Manager Anonymous-Access Check"
+              },
+              "command": "code=$(curl --silent --show-error --max-time 5 -o /dev/null -w '%{http_code}' \"http://127.0.0.1:18080/manager/html\" -H \"X-Request-ID: tomcat-manager-001\"); printf '%s\\n' \"$code\"; test \"$code\" = 401 -o \"$code\" = 403 -o \"$code\" = 404",
+              "description": {
+                "zh": "无凭据请求本地 Manager 根页面，并断言 401、403 或 404，不尝试任何账户。",
+                "en": "Request the local Manager root without credentials and assert 401, 403, or 404 without trying any account."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": []
+        }
+      ],
+      "toolTargets": [
+        {
+          "targetToolId": "tomcat-security-diagnostics",
+          "targetName": {
+            "zh": "Apache Tomcat 连接器与方法诊断",
+            "en": "Apache Tomcat Connector and Method Diagnostics"
+          },
+          "targetDescription": {
+            "zh": "在 tomcat-lab 容器内只读检查 AJP 监听、secretRequired 与 secret 配置，并通过 localhost OPTIONS 核对静态资源方法策略。",
+            "en": "Reads AJP listener, secretRequired, and secret configuration inside tomcat-lab and checks static-resource method policy through localhost OPTIONS."
+          },
+          "targetCategory": {
+            "zh": "Java 安全测试工具",
+            "en": "Java Security Testing Tools"
+          },
+          "targetReferences": [
+            "https://tomcat.apache.org/tomcat-11.0-doc/security-howto.html",
+            "https://tomcat.apache.org/tomcat-11.0-doc/manager-howto.html"
+          ],
+          "navRootId": "web-tools",
+          "navId": "tomcat-security-diagnostics",
+          "navName": {
+            "zh": "Tomcat 连接器与方法诊断",
+            "en": "Tomcat Security Diagnostics"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "AJP 连接器配置读取",
+                "en": "AJP Connector Configuration Read"
+              },
+              "command": "docker exec tomcat-lab sh -lc \"grep -E 'protocol=\\\"AJP|address=|secretRequired=|secret=' /usr/local/tomcat/conf/server.xml\"",
+              "description": {
+                "zh": "在容器内只读 server.xml 的 AJP 协议、地址和 secret 设置，不连接 AJP 或读取应用文件。",
+                "en": "Read AJP protocol, address, and secret settings from server.xml inside the container without connecting to AJP or reading application files."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "静态资源方法策略",
+                "en": "Static-Resource Method Policy"
+              },
+              "command": "curl --silent --show-error --max-time 5 -X OPTIONS \"http://127.0.0.1:18080/lab-static/\" -H \"X-Request-ID: tomcat-method-001\" -D - -o /dev/null | grep -Ei '^(HTTP/|Allow:)'",
+              "description": {
+                "zh": "向合成静态目录发送 OPTIONS 并保存状态与 Allow，确认写方法未暴露。",
+                "en": "Send OPTIONS to a synthetic static directory and retain status plus Allow to confirm write methods are not exposed."
+              },
+              "platform": "all"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": [
+        {
+          "command": "RETIRE tomcat-vuln WAR webshell packaging deployment and command access",
+          "reason": {
+            "zh": "原块构造 JSP WebShell、打包 WAR、使用弱凭据部署并执行命令，属于完整持久化链。",
+            "en": "The original block created a JSP webshell, packaged a WAR, deployed with weak credentials, and executed commands, forming a persistent exploit chain."
+          }
+        },
+        {
+          "command": "RETIRE tomcat-vuln JSP filename stream suffix null-byte and case bypasses",
+          "reason": {
+            "zh": "原块列出 JSP 空格、ADS、斜杠、空字节和大小写文件名规避，目标是绕过写入限制。",
+            "en": "The original block listed JSP space, ADS, slash, null-byte, and case filename evasions to bypass write restrictions, so it is retired."
+          }
+        }
+      ]
+    },
+    {
+      "sourceId": "weblogic-iiop",
+      "targetPayloadIds": [],
+      "replacements": [],
+      "toolTargets": [
+        {
+          "targetToolId": "weblogic-protocol-diagnostics",
+          "targetName": {
+            "zh": "WebLogic T3 与 IIOP 协议诊断",
+            "en": "WebLogic T3 and IIOP Protocol Diagnostics"
+          },
+          "targetDescription": {
+            "zh": "使用 localhost 单端口轻量识别、最小 T3 握手和容器内配置读取验证 WebLogic 协议监听面，不发送序列化对象。",
+            "en": "Validates WebLogic protocol listeners through localhost single-port identification, a minimal T3 handshake, and in-container configuration reads without serialized objects."
+          },
+          "targetCategory": {
+            "zh": "Java 安全测试工具",
+            "en": "Java Security Testing Tools"
+          },
+          "targetReferences": [
+            "https://docs.oracle.com/en/middleware/standalone/weblogic-server/15.1.1/secmg/ssl_rmi_over_iiop.html",
+            "https://www.oracle.com/security-alerts/"
+          ],
+          "navRootId": "web-tools",
+          "navId": "weblogic-protocol-diagnostics",
+          "navName": {
+            "zh": "WebLogic 协议诊断",
+            "en": "WebLogic Protocol Diagnostics"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "IIOP 单端口轻量识别",
+                "en": "IIOP Single-Port Light Identification"
+              },
+              "command": "nmap -sV -Pn -p 17001 127.0.0.1 --version-light",
+              "description": {
+                "zh": "仅对 127.0.0.1:17001 运行 version-light 服务识别，记录监听面而不发送对象载荷。",
+                "en": "Run version-light service identification only against 127.0.0.1:17001 and record listener surface without object payloads."
+              },
+              "platform": "all"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": [
+        {
+          "command": "RETIRE weblogic-iiop CVE exploit repository JRMP listener and reverse-shell gadget",
+          "reason": {
+            "zh": "原块克隆 CVE 利用器、编译执行并启动带反向 Shell gadget 的 JRMP Listener，整体退休。",
+            "en": "The original block cloned and ran a CVE exploit and started a JRMP listener with a reverse-shell gadget, so it is retired."
+          }
+        },
+        {
+          "command": "RETIRE weblogic-iiop JNDI reference construction and exploit-service workflow",
+          "reason": {
+            "zh": "原块构造外部 IIOP JNDI 引用并启动 JNDIExploit，包含远程对象与外连。",
+            "en": "The original block constructed an external IIOP JNDI reference and launched JNDIExploit, involving remote objects and egress."
+          }
+        },
+        {
+          "command": "RETIRE weblogic-iiop T3-IIOP protocol switching to evade inspection",
+          "reason": {
+            "zh": "原块建议在 T3 与 IIOP 间切换以规避检测，明确属于协议层绕过。",
+            "en": "The original block recommended switching between T3 and IIOP to evade detection, an explicit protocol-layer bypass."
+          }
+        }
+      ]
+    },
+    {
+      "sourceId": "weblogic-rce",
+      "targetPayloadIds": [
+        "weblogic-workcontext-rejection-boundary"
+      ],
+      "replacements": [],
+      "toolTargets": [
+        {
+          "targetToolId": "weblogic-management-diagnostics",
+          "targetName": {
+            "zh": "WebLogic 管理与 WorkContext 诊断",
+            "en": "WebLogic Management and WorkContext Diagnostics"
+          },
+          "targetDescription": {
+            "zh": "使用规范 Console HEAD、固定管理端点状态和只读 OPTIONS 验证 localhost WebLogic 管理面与 WSAT 暴露策略。",
+            "en": "Uses canonical Console HEAD, fixed management-endpoint status, and read-only OPTIONS to validate localhost WebLogic management and WSAT exposure policy."
+          },
+          "targetCategory": {
+            "zh": "Java 安全测试工具",
+            "en": "Java Security Testing Tools"
+          },
+          "targetReferences": [
+            "https://www.oracle.com/security-alerts/",
+            "https://docs.oracle.com/en/middleware/standalone/weblogic-server/15.1.1/secmg/using-secured-production-mode.html"
+          ],
+          "navRootId": "web-tools",
+          "navId": "weblogic-management-diagnostics",
+          "navName": {
+            "zh": "WebLogic 管理与 WSAT 诊断",
+            "en": "WebLogic Management Diagnostics"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "规范 Console 登录 HEAD",
+                "en": "Canonical Console Login HEAD"
+              },
+              "command": "curl --silent --show-error --max-time 5 -I \"http://127.0.0.1:18080/console/login/LoginForm.jsp\" -H \"X-Request-ID: weblogic-console-001\" | grep -Ei '^(HTTP/|Location:|WWW-Authenticate:)'",
+              "description": {
+                "zh": "只请求规范 Console 登录 URL 并保留状态、Location 与认证 Header，不使用编码路径。",
+                "en": "Request only the canonical Console login URL and retain status, Location, and authentication headers without encoded paths."
+              },
+              "platform": "all"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": [
+        {
+          "command": "RETIRE weblogic-rce XMLDecoder ProcessBuilder SOAP execution body",
+          "reason": {
+            "zh": "原块在 WSAT WorkContext 中使用 ProcessBuilder 执行 /bin/bash，属于直接 XMLDecoder RCE。",
+            "en": "The original block used ProcessBuilder in a WSAT WorkContext to execute /bin/bash, constituting direct XMLDecoder RCE."
+          }
+        },
+        {
+          "command": "RETIRE weblogic-rce asynchronous XMLDecoder ProcessBuilder execution body",
+          "reason": {
+            "zh": "原块在异步服务中使用 XMLDecoder 与 ProcessBuilder 执行命令，同样具有进程副作用。",
+            "en": "The original block used XMLDecoder and ProcessBuilder in an asynchronous service to execute commands, also causing process side effects."
+          }
+        },
+        {
+          "command": "RETIRE weblogic-rce encoded console traversal and login-policy bypass paths",
+          "reason": {
+            "zh": "原块列出多种编码 Console 遍历路径以绕过登录策略，明确属于访问控制规避。",
+            "en": "The original block listed encoded Console traversal paths to bypass login policy, an explicit access-control evasion."
+          }
+        },
+        {
+          "command": "RETIRE weblogic-rce XML Runtime exec and command-array variants",
+          "reason": {
+            "zh": "原块用 XML Runtime、exec 和命令数组变体执行系统命令，因此退休。",
+            "en": "The original block used XML Runtime, exec, and command-array variants to execute operating-system commands, so it is retired."
+          }
+        }
+      ]
+    },
+    {
+      "sourceId": "weblogic-t3",
+      "targetPayloadIds": [],
+      "replacements": [],
+      "toolTargets": [
+        {
+          "targetToolId": "weblogic-protocol-diagnostics",
+          "targetName": {
+            "zh": "WebLogic T3 与 IIOP 协议诊断",
+            "en": "WebLogic T3 and IIOP Protocol Diagnostics"
+          },
+          "targetDescription": {
+            "zh": "使用 localhost 单端口轻量识别、最小 T3 握手和容器内配置读取验证 WebLogic 协议监听面，不发送序列化对象。",
+            "en": "Validates WebLogic protocol listeners through localhost single-port identification, a minimal T3 handshake, and in-container configuration reads without serialized objects."
+          },
+          "targetCategory": {
+            "zh": "Java 安全测试工具",
+            "en": "Java Security Testing Tools"
+          },
+          "targetReferences": [
+            "https://docs.oracle.com/en/middleware/standalone/weblogic-server/15.1.1/cnfgd/network.html#GUID-1899425A-7326-4479-AD9D-9669888F1B06",
+            "https://www.oracle.com/security-alerts/"
+          ],
+          "navRootId": "web-tools",
+          "navId": "weblogic-protocol-diagnostics",
+          "navName": {
+            "zh": "WebLogic 协议诊断",
+            "en": "WebLogic Protocol Diagnostics"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "最小 T3 握手",
+                "en": "Minimal T3 Handshake"
+              },
+              "command": "printf 't3 12.2.1\\nAS:255\\nHL:19\\n\\n' | nc -w 2 127.0.0.1 17001 | head -n 1",
+              "description": {
+                "zh": "向 localhost 单端口发送公开握手头并只读取首行，不追加序列化对象。",
+                "en": "Send the public handshake header to one localhost port and read the first line only without serialized objects."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "WebLogic 协议配置读取",
+                "en": "WebLogic Protocol Configuration Read"
+              },
+              "command": "docker exec weblogic-lab sh -lc \"grep -E 'ListenPort|ListenAddress|DefaultProtocol|IIOPEnabled' /u01/oracle/user_projects/domains/base_domain/config/config.xml\"",
+              "description": {
+                "zh": "在 weblogic-lab 容器内只读监听端口、地址、默认协议和 IIOPEnabled 设置。",
+                "en": "Read listen port, address, default protocol, and IIOPEnabled settings inside weblogic-lab without changing the domain."
+              },
+              "platform": "all"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": [
+        {
+          "command": "RETIRE weblogic-t3 exploit scanners command execution and JRMP gadget workflow",
+          "reason": {
+            "zh": "原块调用 WebLogic 利用器、命令执行工具和 ysoserial JRMP gadget，形成完整利用工作流。",
+            "en": "The original block invoked WebLogic exploit tools, command execution, and ysoserial JRMP gadgets, forming a complete exploit workflow."
+          }
+        },
+        {
+          "command": "RETIRE weblogic-t3 gadget-chain selection list",
+          "reason": {
+            "zh": "原块列出七种反序列化 gadget 链并要求按目标选择，属于可利用链选择指南。",
+            "en": "The original block listed seven deserialization gadget chains and advised target-specific selection, making it an exploit-chain guide."
+          }
+        }
+      ]
+    },
+    {
+      "sourceId": "weblogic-xmldecoder",
+      "targetPayloadIds": [
+        "weblogic-workcontext-rejection-boundary"
+      ],
+      "replacements": [
+        {
+          "id": "weblogic-workcontext-rejection-boundary",
+          "tags": [
+            "java",
+            "weblogic",
+            "workcontext",
+            "xml-policy",
+            "localhost"
+          ],
+          "execution": [
+            {
+              "title": {
+                "zh": "无害 WorkContext marker 请求",
+                "en": "Harmless WorkContext Marker Request"
+              },
+              "command": "curl --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/wls-wsat/CoordinatorPortType\" -H \"Content-Type: text/xml\" -H \"X-Request-ID: weblogic-workcontext-001\" --data '<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:work=\"http://bea.com/2004/06/soap/workarea/\" xmlns:lab=\"urn:payloader:lab\"><soapenv:Header><work:WorkContext><lab:marker>WEBLOGIC_XML_CANARY_A1</lab:marker></work:WorkContext></soapenv:Header><soapenv:Body/></soapenv:Envelope>' -o /dev/null -w '%{http_code}\\n'",
+              "description": {
+                "zh": "向本地 WSAT 端点发送只含自定义 marker 的 SOAP，并记录拒绝状态，不包含 Java 对象标签。",
+                "en": "Send SOAP containing only a custom marker to the local WSAT endpoint and record rejection status without Java-object tags."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": []
+        }
+      ],
+      "toolTargets": [
+        {
+          "targetToolId": "weblogic-management-diagnostics",
+          "targetName": {
+            "zh": "WebLogic 管理与 WorkContext 诊断",
+            "en": "WebLogic Management and WorkContext Diagnostics"
+          },
+          "targetDescription": {
+            "zh": "使用规范 Console HEAD、固定管理端点状态和只读 OPTIONS 验证 localhost WebLogic 管理面与 WSAT 暴露策略。",
+            "en": "Uses canonical Console HEAD, fixed management-endpoint status, and read-only OPTIONS to validate localhost WebLogic management and WSAT exposure policy."
+          },
+          "targetCategory": {
+            "zh": "Java 安全测试工具",
+            "en": "Java Security Testing Tools"
+          },
+          "targetReferences": [
+            "https://www.oracle.com/security-alerts/",
+            "https://www.oracle.com/java/technologies/javase/seccodeguide.html"
+          ],
+          "navRootId": "web-tools",
+          "navId": "weblogic-management-diagnostics",
+          "navName": {
+            "zh": "WebLogic 管理与 WSAT 诊断",
+            "en": "WebLogic Management Diagnostics"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "固定管理端点状态矩阵",
+                "en": "Fixed Management-Endpoint Status Matrix"
+              },
+              "command": "for path in console/ wls-wsat/CoordinatorPortType _async/AsyncResponseService; do curl --silent --show-error --max-time 5 -o /dev/null -w \"$path %{http_code}\\n\" \"http://127.0.0.1:18080/$path\" -H \"X-Request-ID: weblogic-surface-001\"; done",
+              "description": {
+                "zh": "只检查 Console、CoordinatorPortType 与 AsyncResponseService 三个本地路径状态。",
+                "en": "Check status only for the three local Console, CoordinatorPortType, and AsyncResponseService paths."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "固定 WSAT OPTIONS 矩阵",
+                "en": "Fixed WSAT OPTIONS Matrix"
+              },
+              "command": "for path in wls-wsat/CoordinatorPortType wls-wsat/CoordinatorPortType11 wls-wsat/ParticipantPortType; do curl --silent --show-error --max-time 5 -X OPTIONS \"http://127.0.0.1:18080/$path\" -H \"X-Request-ID: weblogic-endpoint-001\" -o /dev/null -w \"$path %{http_code}\\n\"; done",
+              "description": {
+                "zh": "对三个登记 WSAT 路径发送只读 OPTIONS，记录状态而不提交 XML 文件。",
+                "en": "Send read-only OPTIONS to three registered WSAT paths and record status without submitting an XML file."
+              },
+              "platform": "all"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": [
+        {
+          "command": "RETIRE weblogic-xmldecoder asynchronous ProcessBuilder callback body",
+          "reason": {
+            "zh": "原块通过 AsyncResponseService 的 ProcessBuilder 执行 curl 外部回连，涉及命令和外带。",
+            "en": "The original block used ProcessBuilder through AsyncResponseService to execute an external curl callback, involving commands and egress."
+          }
+        },
+        {
+          "command": "RETIRE weblogic-xmldecoder persistent JSP webshell write and invocation workflow",
+          "reason": {
+            "zh": "原块用 XMLDecoder 写入持久 JSP WebShell 并执行请求参数命令，具有文件写入和持久化。",
+            "en": "The original block used XMLDecoder to write a persistent JSP webshell and execute request parameters, causing file writes and persistence."
+          }
+        },
+        {
+          "command": "RETIRE weblogic-xmldecoder T3-IIOP exploit and serialized gadget delivery workflow",
+          "reason": {
+            "zh": "原块通过 T3、IIOP 和 ysoserial 规避 HTTP 层并发送命令 gadget，属于协议绕过。",
+            "en": "The original block used T3, IIOP, and ysoserial to evade the HTTP layer and send command gadgets, constituting protocol bypass."
+          }
+        },
+        {
+          "command": "RETIRE weblogic-xmldecoder UTF-16 CDATA and ProcessBuilder XML evasion body",
+          "reason": {
+            "zh": "原块用 UTF-16、CDATA 和 ProcessBuilder 混淆 XML 命令体，目标是规避检测并执行 id。",
+            "en": "The original block obfuscated an XML command body with UTF-16, CDATA, and ProcessBuilder to evade detection and execute id."
+          }
+        }
+      ]
+    }
+  ]
+}

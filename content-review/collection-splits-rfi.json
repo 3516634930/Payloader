@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "collectionSplits": [
+    {
+      "sourceId": "rfi-basic",
+      "replacements": [
+        {
+          "id": "rfi-http-marker-include-boundary",
+          "name": {"zh": "RFI 回环 HTTP Marker 包含边界", "en": "RFI Loopback HTTP Marker Inclusion Boundary"},
+          "description": {"zh": "使用只返回纯文本 marker 的回环 HTTP 服务验证远程资源是否进入服务端 include/template Sink，不提供任何脚本内容。", "en": "Uses a loopback HTTP service returning plain-text markers only to test whether a remote resource reaches a server include or template sink without serving script content."},
+          "subCategory": {"zh": "HTTP 远程包含", "en": "HTTP Remote Inclusion"},
+          "tags": ["rfi", "http", "loopback", "marker", "include-boundary"],
+          "execution": [
+            {
+              "title": {"zh": "回环 HTTP Marker URL", "en": "Loopback HTTP Marker URL"},
+              "command": "?file=http://127.0.0.1:18080/PAYLOADER_MARKER.txt",
+              "description": {"zh": "在已启动的回环 marker 服务上只请求该短文本资源，并把服务端首包与应用 include 调用栈关联。", "en": "Request only this short text resource from the loopback marker service and correlate the first packet with the application's include call stack."},
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": [],
+          "attackChain": [
+            {"title": {"zh": "确认 RFI Sink", "en": "Confirm the RFI sink"}, "description": {"zh": "记录运行时远程包含配置、Sink 和纯文本负对照。", "en": "Record runtime remote-inclusion settings, the sink, and a plain-text negative control."}},
+            {"title": {"zh": "提交单一回环 URL", "en": "Submit one loopback URL"}, "description": {"zh": "只提交本执行区 URL 并触发一次处理。", "en": "Submit only this execution URL and trigger one processing run."}, "payloadRef": {"area": "execution", "index": 0}},
+            {"title": {"zh": "关联请求与包含证据", "en": "Correlate request and inclusion evidence"}, "description": {"zh": "绑定 marker 首包、请求 ID、调用栈和渲染输出。", "en": "Bind the marker first packet, request ID, call stack, and render output."}},
+            {"title": {"zh": "关闭远程资源并回归", "en": "Disable remote resources and regress"}, "description": {"zh": "修复后本地模板保持可用，远程 URL 在访问前被拒绝。", "en": "After remediation local templates remain functional and the remote URL is rejected before access."}}
+          ],
+          "analysis": {"zh": "阳性要求应用进程获取该 token 且 include/template Sink 消费响应；普通 HTTP 客户端请求、URL 回显或连接错误不算。", "en": "A positive requires the application process to fetch this token and the include or template sink to consume the response; an ordinary HTTP client request, URL reflection, or connection error does not count."}
+        },
+        {
+          "id": "rfi-http-scheme-case-boundary",
+          "name": {"zh": "RFI HTTP Scheme 大小写规范化边界", "en": "RFI HTTP Scheme-Case Normalization Boundary"},
+          "description": {"zh": "逐条比较混合大小写与大写 HTTP scheme 在校验器、URL parser 和远程包含 Sink 中是否被一致规范化。", "en": "Compares mixed-case and uppercase HTTP schemes one at a time to determine whether validators, URL parsers, and remote-inclusion sinks normalize them consistently."},
+          "subCategory": {"zh": "HTTP Scheme 规范化", "en": "HTTP Scheme Normalization"},
+          "tags": ["rfi", "http", "scheme", "normalization", "case-folding"],
+          "execution": [
+            {
+              "title": {"zh": "HTTP Scheme 大小写对照", "en": "HTTP Scheme-Case Controls"},
+              "command": "?file=HtTp://127.0.0.1:18080/PAYLOADER_MARKER.txt\n?file=HTTP://127.0.0.1:18080/PAYLOADER_MARKER.txt",
+              "description": {"zh": "每次只提交一行并记录校验值、parser 规范化结果和 marker 首包，避免把两次请求混为一个证据。", "en": "Submit one line per run and record the validated value, parser normalization result, and marker first packet without combining two requests into one finding."},
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": [],
+          "attackChain": [
+            {"title": {"zh": "记录规范化基线", "en": "Record the normalization baseline"}, "description": {"zh": "记录小写 HTTP 在各层的规范化与远程包含结果。", "en": "Record lower-case HTTP normalization and remote-inclusion results across layers."}},
+            {"title": {"zh": "逐条提交大小写变体", "en": "Submit case variants one by one"}, "description": {"zh": "每轮只选择本执行区的一行。", "en": "Select only one line from this execution entry per run."}, "payloadRef": {"area": "execution", "index": 0}},
+            {"title": {"zh": "比较校验与解释值", "en": "Compare validated and interpreted values"}, "description": {"zh": "关联边界校验、URL parser、首包和 include 日志。", "en": "Correlate edge validation, URL parser output, first packets, and include logs."}},
+            {"title": {"zh": "统一规范化并回归", "en": "Unify normalization and regress"}, "description": {"zh": "修复后所有 scheme 先规范化再授权，远程 URL 一致拒绝。", "en": "After remediation every scheme is normalized before authorization and remote URLs are rejected consistently."}}
+          ],
+          "analysis": {"zh": "大小写 scheme 只有在校验层拒绝而 include 层规范化并访问同一 marker 时才证明差异；两个层都接受或都拒绝不是绕过。", "en": "A scheme-case difference is proven only when validation rejects while the include layer normalizes and fetches the same marker; both layers accepting or rejecting is not a bypass."}
+        }
+      ],
+      "toolTargets": [
+        {
+          "targetToolId": "lfi-rfi-tools",
+          "commands": [
+            {
+              "title": {"zh": "启动一次性回环 Marker 服务", "en": "Start a Disposable Loopback Marker Service"},
+              "command": "work_dir=$(mktemp -d)\nprintf '%s\\n' 'PAYLOADER_MARKER' > \"$work_dir/PAYLOADER_MARKER.txt\"\npython3 -m http.server 18080 --bind 127.0.0.1 --directory \"$work_dir\" > \"$work_dir/server.log\" 2>&1 &\nserver_pid=$!\ntrap 'kill \"$server_pid\" 2>/dev/null; rm -rf \"$work_dir\"' EXIT\ncurl --fail --silent --show-error --max-time 3 http://127.0.0.1:18080/PAYLOADER_MARKER.txt",
+              "description": {"zh": "创建只含固定文本的临时目录，在 127.0.0.1:18080 启动短生命周期 HTTP 服务并用一次 curl 证明夹具可用。", "en": "Create a temporary directory containing fixed text only, start a short-lived HTTP service on 127.0.0.1:18080, and verify the fixture with one curl request."},
+              "syntaxBreakdown": [],
+              "platform": "linux",
+              "requiresAdmin": false
+            },
+            {
+              "title": {"zh": "data Wrapper 纯文本夹具", "en": "Plain-Text data Wrapper Fixtures"},
+              "command": "?file=data://text/plain,PAYLOADER_MARKER\n?file=data://text/plain;base64,UEFZTE9BREVSX01BUktFUg==",
+              "description": {"zh": "保留纯文本与 Base64 marker 作为本地 data wrapper 兼容性夹具，不包含 PHP 标签、命令参数或脚本。", "en": "Retain plain-text and Base64 markers as local data-wrapper compatibility fixtures without PHP tags, command parameters, or scripts."},
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ]
+        }
+      ],
+      "retiredCommands": [
+        {"command": "printf '%s\\n' 'retired=rfi-command-execution reason=side-effecting-content-removed'", "reason": {"zh": "原区块托管脚本并建立反向 Shell，具有直接命令执行和外连副作用，已替换为可审计退休标记。", "en": "The original block hosted script code and created a reverse shell with direct command-execution and egress effects, so it is replaced by an auditable retirement marker."}},
+        {"command": "printf '%s\\n' 'retired=rfi-double-write reason=invalid-url-construction'", "reason": {"zh": "原“双写”字符串不能形成有效 HTTP URL，既不可复现也不能证明规范化差异。", "en": "The original double-write strings do not form valid HTTP URLs and cannot reproducibly demonstrate a normalization difference."}},
+        {"command": "printf '%s\\n' 'retired=rfi-mixed-protocols reason=separate-protocol-preconditions-required'", "reason": {"zh": "原区块混合 FTP 与远程 php filter，两者前提和解析链不同，不能作为同一 RFI 绕过步骤。", "en": "The original block mixes FTP and a remote PHP filter with different prerequisites and resolver chains and cannot serve as one RFI bypass step."}}
+      ]
+    }
+  ]
+}

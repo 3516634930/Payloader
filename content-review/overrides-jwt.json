@@ -1,0 +1,1105 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "sourcePrefix": "jwt",
+  "entries": [
+    {
+      "id": "jwt-security",
+      "name": {
+        "zh": "JWT 验证边界混合集",
+        "en": "Mixed JWT Validation Boundaries"
+      },
+      "description": {
+        "zh": "原条目混合结构解码、未签名令牌、弱 HMAC key、RSA/HMAC 算法混淆、claim 修改、内嵌 JWK 与 x5c 信任，必须按验证机制拆分。",
+        "en": "The source mixes structure decoding, unsigned tokens, weak HMAC keys, RSA/HMAC confusion, claim changes, embedded JWK trust, and x5c trust and must be split by validation mechanism."
+      },
+      "category": {
+        "zh": "API 安全",
+        "en": "API Security"
+      },
+      "subCategory": {
+        "zh": "JWT 验证机制拆分",
+        "en": "JWT Validation Mechanism Split"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用仅监听 127.0.0.1 的 JWT 验证器、合成主体、只读标记接口和专用测试 issuer，记录允许算法、key resolver、issuer、audience 与 token type 配置。",
+          "en": "Use a JWT verifier bound only to 127.0.0.1, synthetic principals, a read-only marker endpoint, and a dedicated test issuer; record allowed algorithms, key resolver, issuer, audience, and token-type configuration."
+        },
+        {
+          "zh": "仅使用本地生成令牌、固定测试 HMAC key 或临时 RSA/X.509 fixture；不得读取生产 token/key、访问远程 jku/x5u 或使用通用密码字典。",
+          "en": "Use only locally generated tokens, a fixed test HMAC key, or temporary RSA/X.509 fixtures; do not read production tokens or keys, access remote jku/x5u locations, or use general password dictionaries."
+        }
+      ],
+      "analysis": {
+        "zh": "该审校聚焦JWT 验证边界混合集。阳性必须表现为 localhost 验证器在错误算法、错误 key 来源或错误 claim 条件下仍建立了错误主体并读取同一只读标记，同时由验证器日志确认具体分支。解码成功、令牌可生成、key 文件存在、工具退出码、HTTP 200 错误页或客户端显示 claim 都不是绕过证据。",
+        "en": "This review focuses on Mixed JWT Validation Boundaries. A positive result requires the localhost verifier to establish the wrong principal and read the same read-only marker under a wrong algorithm, key source, or claim condition, with verifier logs identifying the branch. Successful decoding, token generation, key-file presence, tool exit status, an HTTP 200 error page, or client-visible claims do not prove bypass."
+      },
+      "opsecTips": [
+        {
+          "zh": "每个机制最多提交一个有效基线和三个阴性对照；首次出现非 localhost 请求、真实账户、意外 key 读取、状态写入或服务抖动时立即停止。",
+          "en": "Submit at most one valid baseline and three negative controls per mechanism; stop immediately on any non-localhost request, real account, unexpected key read, state write, or service instability."
+        },
+        {
+          "zh": "删除临时 token、key、证书、JWKS 与短字典，停止本地 fixture 服务，撤销测试 jti/会话并确认验证器缓存已清空。",
+          "en": "Delete temporary tokens, keys, certificates, JWKS files, and short dictionaries; stop local fixture services, revoke test jtis and sessions, and confirm verifier caches are cleared."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "JWT 验证边界混合集必须按 token 类型、算法、key 来源和 claim profile 分别验证；JWT 可被解码是格式属性，不代表签名或授权有效。",
+          "en": "Mixed JWT Validation Boundaries must be validated separately by token type, algorithm, key source, and claim profile; JWT decodability is a format property and does not imply valid signatures or authorization."
+        },
+        "vulnerability": {
+          "zh": "根因通常是验证器相信 token 自带的 alg、jwk、jku、x5u、x5c 或 kid，混用 HMAC 与非对称 key，使用低熵 HMAC key，或遗漏 issuer、audience、时间和 token type 校验。",
+          "en": "Root causes include trusting token-supplied alg, jwk, jku, x5u, x5c, or kid values, mixing HMAC and asymmetric keys, using low-entropy HMAC keys, or omitting issuer, audience, time, and token-type validation."
+        },
+        "exploitation": {
+          "zh": "先用本地测试 issuer 生成短期有效 token 并访问只读标记，再一次只改变一个算法、key 引用或 claim。验证器必须显式固定允许算法和 key，并记录 issuer、audience、type 与时间检查结果。",
+          "en": "Generate a short-lived valid token from the local test issuer and access the read-only marker, then change exactly one algorithm, key reference, or claim. The verifier must explicitly pin algorithms and keys and log issuer, audience, type, and time checks."
+        },
+        "mitigation": {
+          "zh": "按 token 类型使用互斥验证规则，固定算法与 key 类型，使用高熵 HMAC key；只从 issuer 配置的受信来源解析 key，允许列表化 kid 与 jku/x5u，并严格校验 iss、aud、exp、nbf 和 typ。",
+          "en": "Use mutually exclusive validation rules per token type, pin algorithms and key types, and use high-entropy HMAC keys; resolve keys only from issuer-configured trusted sources, allowlist kid and jku/x5u, and strictly validate iss, aud, exp, nbf, and typ."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "固定验证 profile",
+            "en": "Fix the Validation Profile"
+          },
+          "description": {
+            "zh": "记录有效基线的算法、key ID、issuer、audience、type、时间与主体。",
+            "en": "Record the valid baseline algorithm, key ID, issuer, audience, type, time, and principal."
+          }
+        },
+        {
+          "title": {
+            "zh": "隔离第一个源命令",
+            "en": "Isolate the First Source Command"
+          },
+          "description": {
+            "zh": "先处理源条目的第一条命令并只观察对应机制，不跨边界推断。",
+            "en": "Process the first source command while observing only its mechanism and do not infer across boundaries."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "关联验证器与授权证据",
+            "en": "Correlate Verifier and Authorization Evidence"
+          },
+          "description": {
+            "zh": "把算法选择、key 来源、claim 决策、最终主体和只读标记访问日志关联。",
+            "en": "Correlate algorithm selection, key source, claim decisions, final principal, and read-only marker access logs."
+          }
+        },
+        {
+          "title": {
+            "zh": "清理并回归",
+            "en": "Clean Up and Regress"
+          },
+          "description": {
+            "zh": "撤销测试 token/key 并用有效基线及全部阴性对照确认修复边界。",
+            "en": "Revoke test tokens and keys and replay the valid baseline and all negative controls to verify the fixed boundary."
+          }
+        }
+      ],
+      "references": [
+        "https://www.rfc-editor.org/rfc/rfc7515.html",
+        "https://www.rfc-editor.org/rfc/rfc7519.html",
+        "https://www.rfc-editor.org/rfc/rfc8725.html",
+        "https://pyjwt.readthedocs.io/en/stable/api.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "原条目混合多个 JWT 验证机制或工具工作流，必须拆为单机制 Payload 并迁移工具步骤。",
+        "issuesResolved": [
+          "corrected-bilingual-naming",
+          "aligned-with-rfc7515-7519-8725",
+          "separated-validation-mechanisms",
+          "removed-remote-key-fetching",
+          "bounded-local-test-workflows"
+        ],
+        "targetPayloadIds": [
+          "jwt-claim-profile-validation",
+          "jwt-embedded-jwk-trust-validation",
+          "jwt-x5c-chain-validation"
+        ],
+        "targetToolIds": [
+          "jwt-decode",
+          "jwt-attacks",
+          "hashcat"
+        ],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 -> jwt-decode as local Base64URL structure inspection",
+          "execution 1 -> jwt-attacks as an unsigned-token construction workflow",
+          "execution 2 -> hashcat as a bounded owned-token key audit",
+          "execution 3 -> jwt-attacks as a local RSA/HMAC confusion fixture workflow",
+          "execution 4 -> jwt-claim-profile-validation",
+          "wafBypass 0 -> jwt-embedded-jwk-trust-validation",
+          "wafBypass 1 -> jwt-x5c-chain-validation"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "replace ordinary Base64 decoding with Base64URL decoding and correct padding",
+          "use locally generated tokens, fixed test keys, synthetic claims, and a localhost verifier",
+          "remove production-like identities, real targets, remote jku/x5u fetching, and generic wordlists",
+          "replace unbounded brute force and masks with a fixed three-candidate owned-token audit",
+          "treat none and RSA/HMAC confusion as historical library failure modes and negative controls by default"
+        ],
+        "reviewNotes": [
+          {
+            "zh": "RFC 8725 要求调用方固定允许算法，并确保每把 key 只用于一个算法；不能从 token 的 alg 动态选择验证方式。",
+            "en": "RFC 8725 requires callers to pin allowed algorithms and ensure each key is used with exactly one algorithm; verification must not be selected dynamically from token alg."
+          },
+          {
+            "zh": "jku 与 x5u 是不同资源类型，盲目跟随任意 URL 还会形成 SSRF；本批次只允许 localhost fixture 与显式允许列表。",
+            "en": "jku and x5u reference different resource types, and blindly following arbitrary URLs can create SSRF; this batch permits only localhost fixtures and explicit allowlists."
+          }
+        ]
+      }
+    },
+    {
+      "id": "jwt-none-alg",
+      "name": {
+        "zh": "JWT 未签名算法拒绝测试集",
+        "en": "JWT Unsigned Algorithm Rejection Test Set"
+      },
+      "description": {
+        "zh": "该条目围绕 alg=none、大小写变体、缺失 alg 与空或任意签名展开；结构解码属于工具，其余内容合并为一个未签名令牌拒绝机制。",
+        "en": "This source covers alg=none, case variants, missing alg, and empty or arbitrary signatures; structure decoding is tooling and the remainder becomes one unsigned-token rejection mechanism."
+      },
+      "category": {
+        "zh": "API 安全",
+        "en": "API Security"
+      },
+      "subCategory": {
+        "zh": "未签名 JWS 拒绝",
+        "en": "Unsigned JWS Rejection"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用仅监听 127.0.0.1 的 JWT 验证器、合成主体、只读标记接口和专用测试 issuer，记录允许算法、key resolver、issuer、audience 与 token type 配置。",
+          "en": "Use a JWT verifier bound only to 127.0.0.1, synthetic principals, a read-only marker endpoint, and a dedicated test issuer; record allowed algorithms, key resolver, issuer, audience, and token-type configuration."
+        },
+        {
+          "zh": "仅使用本地生成令牌、固定测试 HMAC key 或临时 RSA/X.509 fixture；不得读取生产 token/key、访问远程 jku/x5u 或使用通用密码字典。",
+          "en": "Use only locally generated tokens, a fixed test HMAC key, or temporary RSA/X.509 fixtures; do not read production tokens or keys, access remote jku/x5u locations, or use general password dictionaries."
+        }
+      ],
+      "analysis": {
+        "zh": "该审校聚焦JWT 未签名算法拒绝测试集。阳性必须表现为 localhost 验证器在错误算法、错误 key 来源或错误 claim 条件下仍建立了错误主体并读取同一只读标记，同时由验证器日志确认具体分支。解码成功、令牌可生成、key 文件存在、工具退出码、HTTP 200 错误页或客户端显示 claim 都不是绕过证据。",
+        "en": "This review focuses on JWT Unsigned Algorithm Rejection Test Set. A positive result requires the localhost verifier to establish the wrong principal and read the same read-only marker under a wrong algorithm, key source, or claim condition, with verifier logs identifying the branch. Successful decoding, token generation, key-file presence, tool exit status, an HTTP 200 error page, or client-visible claims do not prove bypass."
+      },
+      "opsecTips": [
+        {
+          "zh": "每个机制最多提交一个有效基线和三个阴性对照；首次出现非 localhost 请求、真实账户、意外 key 读取、状态写入或服务抖动时立即停止。",
+          "en": "Submit at most one valid baseline and three negative controls per mechanism; stop immediately on any non-localhost request, real account, unexpected key read, state write, or service instability."
+        },
+        {
+          "zh": "删除临时 token、key、证书、JWKS 与短字典，停止本地 fixture 服务，撤销测试 jti/会话并确认验证器缓存已清空。",
+          "en": "Delete temporary tokens, keys, certificates, JWKS files, and short dictionaries; stop local fixture services, revoke test jtis and sessions, and confirm verifier caches are cleared."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "JWT 未签名算法拒绝测试集必须按 token 类型、算法、key 来源和 claim profile 分别验证；JWT 可被解码是格式属性，不代表签名或授权有效。",
+          "en": "JWT Unsigned Algorithm Rejection Test Set must be validated separately by token type, algorithm, key source, and claim profile; JWT decodability is a format property and does not imply valid signatures or authorization."
+        },
+        "vulnerability": {
+          "zh": "根因通常是验证器相信 token 自带的 alg、jwk、jku、x5u、x5c 或 kid，混用 HMAC 与非对称 key，使用低熵 HMAC key，或遗漏 issuer、audience、时间和 token type 校验。",
+          "en": "Root causes include trusting token-supplied alg, jwk, jku, x5u, x5c, or kid values, mixing HMAC and asymmetric keys, using low-entropy HMAC keys, or omitting issuer, audience, time, and token-type validation."
+        },
+        "exploitation": {
+          "zh": "先用本地测试 issuer 生成短期有效 token 并访问只读标记，再一次只改变一个算法、key 引用或 claim。验证器必须显式固定允许算法和 key，并记录 issuer、audience、type 与时间检查结果。",
+          "en": "Generate a short-lived valid token from the local test issuer and access the read-only marker, then change exactly one algorithm, key reference, or claim. The verifier must explicitly pin algorithms and keys and log issuer, audience, type, and time checks."
+        },
+        "mitigation": {
+          "zh": "按 token 类型使用互斥验证规则，固定算法与 key 类型，使用高熵 HMAC key；只从 issuer 配置的受信来源解析 key，允许列表化 kid 与 jku/x5u，并严格校验 iss、aud、exp、nbf 和 typ。",
+          "en": "Use mutually exclusive validation rules per token type, pin algorithms and key types, and use high-entropy HMAC keys; resolve keys only from issuer-configured trusted sources, allowlist kid and jku/x5u, and strictly validate iss, aud, exp, nbf, and typ."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "固定验证 profile",
+            "en": "Fix the Validation Profile"
+          },
+          "description": {
+            "zh": "记录有效基线的算法、key ID、issuer、audience、type、时间与主体。",
+            "en": "Record the valid baseline algorithm, key ID, issuer, audience, type, time, and principal."
+          }
+        },
+        {
+          "title": {
+            "zh": "隔离第一个源命令",
+            "en": "Isolate the First Source Command"
+          },
+          "description": {
+            "zh": "先处理源条目的第一条命令并只观察对应机制，不跨边界推断。",
+            "en": "Process the first source command while observing only its mechanism and do not infer across boundaries."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "关联验证器与授权证据",
+            "en": "Correlate Verifier and Authorization Evidence"
+          },
+          "description": {
+            "zh": "把算法选择、key 来源、claim 决策、最终主体和只读标记访问日志关联。",
+            "en": "Correlate algorithm selection, key source, claim decisions, final principal, and read-only marker access logs."
+          }
+        },
+        {
+          "title": {
+            "zh": "清理并回归",
+            "en": "Clean Up and Regress"
+          },
+          "description": {
+            "zh": "撤销测试 token/key 并用有效基线及全部阴性对照确认修复边界。",
+            "en": "Revoke test tokens and keys and replay the valid baseline and all negative controls to verify the fixed boundary."
+          }
+        }
+      ],
+      "references": [
+        "https://www.rfc-editor.org/rfc/rfc7515.html",
+        "https://www.rfc-editor.org/rfc/rfc7519.html",
+        "https://www.rfc-editor.org/rfc/rfc8725.html",
+        "https://pyjwt.readthedocs.io/en/stable/api.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "原条目混合多个 JWT 验证机制或工具工作流，必须拆为单机制 Payload 并迁移工具步骤。",
+        "issuesResolved": [
+          "corrected-bilingual-naming",
+          "aligned-with-rfc7515-7519-8725",
+          "separated-validation-mechanisms",
+          "removed-remote-key-fetching",
+          "bounded-local-test-workflows"
+        ],
+        "targetPayloadIds": [
+          "jwt-none-algorithm-rejection"
+        ],
+        "targetToolIds": [
+          "jwt-decode"
+        ],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 -> jwt-decode as standards-correct local Base64URL decoding",
+          "execution 1-3 -> jwt-none-algorithm-rejection",
+          "wafBypass 0-1 -> jwt-none-algorithm-rejection as bounded malformed-header and signature controls"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "replace ordinary Base64 decoding with Base64URL decoding and correct padding",
+          "use locally generated tokens, fixed test keys, synthetic claims, and a localhost verifier",
+          "remove production-like identities, real targets, remote jku/x5u fetching, and generic wordlists",
+          "replace unbounded brute force and masks with a fixed three-candidate owned-token audit",
+          "treat none and RSA/HMAC confusion as historical library failure modes and negative controls by default"
+        ],
+        "reviewNotes": [
+          {
+            "zh": "RFC 8725 要求调用方固定允许算法，并确保每把 key 只用于一个算法；不能从 token 的 alg 动态选择验证方式。",
+            "en": "RFC 8725 requires callers to pin allowed algorithms and ensure each key is used with exactly one algorithm; verification must not be selected dynamically from token alg."
+          },
+          {
+            "zh": "jku 与 x5u 是不同资源类型，盲目跟随任意 URL 还会形成 SSRF；本批次只允许 localhost fixture 与显式允许列表。",
+            "en": "jku and x5u reference different resource types, and blindly following arbitrary URLs can create SSRF; this batch permits only localhost fixtures and explicit allowlists."
+          }
+        ]
+      }
+    },
+    {
+      "id": "jwt-key-confusion",
+      "name": {
+        "zh": "JWT 算法与 Key 解析边界混合集",
+        "en": "Mixed JWT Algorithm and Key Resolution Boundaries"
+      },
+      "description": {
+        "zh": "原条目同时包含 RSA/HMAC key 类型混淆、kid 查找注入和 jku/x5u 远程 key 来源，必须把算法绑定和 key 标识解析分开，远程来源流程迁入工具。",
+        "en": "The source combines RSA/HMAC key-type confusion, kid lookup injection, and remote jku/x5u key sources; algorithm binding and key identifier resolution must be separated while remote-source workflows move to tools."
+      },
+      "category": {
+        "zh": "API 安全",
+        "en": "API Security"
+      },
+      "subCategory": {
+        "zh": "算法绑定与 kid 解析拆分",
+        "en": "Algorithm Binding and Kid Resolution Split"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用仅监听 127.0.0.1 的 JWT 验证器、合成主体、只读标记接口和专用测试 issuer，记录允许算法、key resolver、issuer、audience 与 token type 配置。",
+          "en": "Use a JWT verifier bound only to 127.0.0.1, synthetic principals, a read-only marker endpoint, and a dedicated test issuer; record allowed algorithms, key resolver, issuer, audience, and token-type configuration."
+        },
+        {
+          "zh": "仅使用本地生成令牌、固定测试 HMAC key 或临时 RSA/X.509 fixture；不得读取生产 token/key、访问远程 jku/x5u 或使用通用密码字典。",
+          "en": "Use only locally generated tokens, a fixed test HMAC key, or temporary RSA/X.509 fixtures; do not read production tokens or keys, access remote jku/x5u locations, or use general password dictionaries."
+        }
+      ],
+      "analysis": {
+        "zh": "该审校聚焦JWT 算法与 Key 解析边界混合集。阳性必须表现为 localhost 验证器在错误算法、错误 key 来源或错误 claim 条件下仍建立了错误主体并读取同一只读标记，同时由验证器日志确认具体分支。解码成功、令牌可生成、key 文件存在、工具退出码、HTTP 200 错误页或客户端显示 claim 都不是绕过证据。",
+        "en": "This review focuses on Mixed JWT Algorithm and Key Resolution Boundaries. A positive result requires the localhost verifier to establish the wrong principal and read the same read-only marker under a wrong algorithm, key source, or claim condition, with verifier logs identifying the branch. Successful decoding, token generation, key-file presence, tool exit status, an HTTP 200 error page, or client-visible claims do not prove bypass."
+      },
+      "opsecTips": [
+        {
+          "zh": "每个机制最多提交一个有效基线和三个阴性对照；首次出现非 localhost 请求、真实账户、意外 key 读取、状态写入或服务抖动时立即停止。",
+          "en": "Submit at most one valid baseline and three negative controls per mechanism; stop immediately on any non-localhost request, real account, unexpected key read, state write, or service instability."
+        },
+        {
+          "zh": "删除临时 token、key、证书、JWKS 与短字典，停止本地 fixture 服务，撤销测试 jti/会话并确认验证器缓存已清空。",
+          "en": "Delete temporary tokens, keys, certificates, JWKS files, and short dictionaries; stop local fixture services, revoke test jtis and sessions, and confirm verifier caches are cleared."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "JWT 算法与 Key 解析边界混合集必须按 token 类型、算法、key 来源和 claim profile 分别验证；JWT 可被解码是格式属性，不代表签名或授权有效。",
+          "en": "Mixed JWT Algorithm and Key Resolution Boundaries must be validated separately by token type, algorithm, key source, and claim profile; JWT decodability is a format property and does not imply valid signatures or authorization."
+        },
+        "vulnerability": {
+          "zh": "根因通常是验证器相信 token 自带的 alg、jwk、jku、x5u、x5c 或 kid，混用 HMAC 与非对称 key，使用低熵 HMAC key，或遗漏 issuer、audience、时间和 token type 校验。",
+          "en": "Root causes include trusting token-supplied alg, jwk, jku, x5u, x5c, or kid values, mixing HMAC and asymmetric keys, using low-entropy HMAC keys, or omitting issuer, audience, time, and token-type validation."
+        },
+        "exploitation": {
+          "zh": "先用本地测试 issuer 生成短期有效 token 并访问只读标记，再一次只改变一个算法、key 引用或 claim。验证器必须显式固定允许算法和 key，并记录 issuer、audience、type 与时间检查结果。",
+          "en": "Generate a short-lived valid token from the local test issuer and access the read-only marker, then change exactly one algorithm, key reference, or claim. The verifier must explicitly pin algorithms and keys and log issuer, audience, type, and time checks."
+        },
+        "mitigation": {
+          "zh": "按 token 类型使用互斥验证规则，固定算法与 key 类型，使用高熵 HMAC key；只从 issuer 配置的受信来源解析 key，允许列表化 kid 与 jku/x5u，并严格校验 iss、aud、exp、nbf 和 typ。",
+          "en": "Use mutually exclusive validation rules per token type, pin algorithms and key types, and use high-entropy HMAC keys; resolve keys only from issuer-configured trusted sources, allowlist kid and jku/x5u, and strictly validate iss, aud, exp, nbf, and typ."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "固定验证 profile",
+            "en": "Fix the Validation Profile"
+          },
+          "description": {
+            "zh": "记录有效基线的算法、key ID、issuer、audience、type、时间与主体。",
+            "en": "Record the valid baseline algorithm, key ID, issuer, audience, type, time, and principal."
+          }
+        },
+        {
+          "title": {
+            "zh": "隔离第一个源命令",
+            "en": "Isolate the First Source Command"
+          },
+          "description": {
+            "zh": "先处理源条目的第一条命令并只观察对应机制，不跨边界推断。",
+            "en": "Process the first source command while observing only its mechanism and do not infer across boundaries."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "关联验证器与授权证据",
+            "en": "Correlate Verifier and Authorization Evidence"
+          },
+          "description": {
+            "zh": "把算法选择、key 来源、claim 决策、最终主体和只读标记访问日志关联。",
+            "en": "Correlate algorithm selection, key source, claim decisions, final principal, and read-only marker access logs."
+          }
+        },
+        {
+          "title": {
+            "zh": "清理并回归",
+            "en": "Clean Up and Regress"
+          },
+          "description": {
+            "zh": "撤销测试 token/key 并用有效基线及全部阴性对照确认修复边界。",
+            "en": "Revoke test tokens and keys and replay the valid baseline and all negative controls to verify the fixed boundary."
+          }
+        }
+      ],
+      "references": [
+        "https://www.rfc-editor.org/rfc/rfc7515.html",
+        "https://www.rfc-editor.org/rfc/rfc7519.html",
+        "https://www.rfc-editor.org/rfc/rfc8725.html",
+        "https://pyjwt.readthedocs.io/en/stable/api.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "原条目混合多个 JWT 验证机制或工具工作流，必须拆为单机制 Payload 并迁移工具步骤。",
+        "issuesResolved": [
+          "corrected-bilingual-naming",
+          "aligned-with-rfc7515-7519-8725",
+          "separated-validation-mechanisms",
+          "removed-remote-key-fetching",
+          "bounded-local-test-workflows"
+        ],
+        "targetPayloadIds": [
+          "jwt-algorithm-key-type-binding",
+          "jwt-kid-lookup-validation"
+        ],
+        "targetToolIds": [
+          "jwt-attacks"
+        ],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 -> jwt-attacks as local RSA fixture preparation",
+          "execution 1-2 -> jwt-algorithm-key-type-binding",
+          "wafBypass 0 -> jwt-kid-lookup-validation",
+          "wafBypass 1 -> jwt-attacks as localhost-only remote-key-header controls"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "replace ordinary Base64 decoding with Base64URL decoding and correct padding",
+          "use locally generated tokens, fixed test keys, synthetic claims, and a localhost verifier",
+          "remove production-like identities, real targets, remote jku/x5u fetching, and generic wordlists",
+          "replace unbounded brute force and masks with a fixed three-candidate owned-token audit",
+          "treat none and RSA/HMAC confusion as historical library failure modes and negative controls by default"
+        ],
+        "reviewNotes": [
+          {
+            "zh": "RFC 8725 要求调用方固定允许算法，并确保每把 key 只用于一个算法；不能从 token 的 alg 动态选择验证方式。",
+            "en": "RFC 8725 requires callers to pin allowed algorithms and ensure each key is used with exactly one algorithm; verification must not be selected dynamically from token alg."
+          },
+          {
+            "zh": "jku 与 x5u 是不同资源类型，盲目跟随任意 URL 还会形成 SSRF；本批次只允许 localhost fixture 与显式允许列表。",
+            "en": "jku and x5u reference different resource types, and blindly following arbitrary URLs can create SSRF; this batch permits only localhost fixtures and explicit allowlists."
+          }
+        ]
+      }
+    },
+    {
+      "id": "jwt-none-attack",
+      "name": {
+        "zh": "JWT 未签名令牌重复工具工作流",
+        "en": "Duplicate JWT Unsigned-Token Tool Workflow"
+      },
+      "description": {
+        "zh": "该条目与 jwt-none-alg 重复，且主要内容是解码、生成、jwt_tool 与 curl 工作流；不再保留第二张同名 Payload。",
+        "en": "This source duplicates jwt-none-alg and primarily contains decoding, generation, jwt_tool, and curl workflows; a second same-named payload is not retained."
+      },
+      "category": {
+        "zh": "API 安全",
+        "en": "API Security"
+      },
+      "subCategory": {
+        "zh": "重复主题迁移",
+        "en": "Duplicate Theme Migration"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用仅监听 127.0.0.1 的 JWT 验证器、合成主体、只读标记接口和专用测试 issuer，记录允许算法、key resolver、issuer、audience 与 token type 配置。",
+          "en": "Use a JWT verifier bound only to 127.0.0.1, synthetic principals, a read-only marker endpoint, and a dedicated test issuer; record allowed algorithms, key resolver, issuer, audience, and token-type configuration."
+        },
+        {
+          "zh": "仅使用本地生成令牌、固定测试 HMAC key 或临时 RSA/X.509 fixture；不得读取生产 token/key、访问远程 jku/x5u 或使用通用密码字典。",
+          "en": "Use only locally generated tokens, a fixed test HMAC key, or temporary RSA/X.509 fixtures; do not read production tokens or keys, access remote jku/x5u locations, or use general password dictionaries."
+        }
+      ],
+      "analysis": {
+        "zh": "该审校聚焦JWT 未签名令牌重复工具工作流。阳性必须表现为 localhost 验证器在错误算法、错误 key 来源或错误 claim 条件下仍建立了错误主体并读取同一只读标记，同时由验证器日志确认具体分支。解码成功、令牌可生成、key 文件存在、工具退出码、HTTP 200 错误页或客户端显示 claim 都不是绕过证据。",
+        "en": "This review focuses on Duplicate JWT Unsigned-Token Tool Workflow. A positive result requires the localhost verifier to establish the wrong principal and read the same read-only marker under a wrong algorithm, key source, or claim condition, with verifier logs identifying the branch. Successful decoding, token generation, key-file presence, tool exit status, an HTTP 200 error page, or client-visible claims do not prove bypass."
+      },
+      "opsecTips": [
+        {
+          "zh": "每个机制最多提交一个有效基线和三个阴性对照；首次出现非 localhost 请求、真实账户、意外 key 读取、状态写入或服务抖动时立即停止。",
+          "en": "Submit at most one valid baseline and three negative controls per mechanism; stop immediately on any non-localhost request, real account, unexpected key read, state write, or service instability."
+        },
+        {
+          "zh": "删除临时 token、key、证书、JWKS 与短字典，停止本地 fixture 服务，撤销测试 jti/会话并确认验证器缓存已清空。",
+          "en": "Delete temporary tokens, keys, certificates, JWKS files, and short dictionaries; stop local fixture services, revoke test jtis and sessions, and confirm verifier caches are cleared."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "JWT 未签名令牌重复工具工作流必须按 token 类型、算法、key 来源和 claim profile 分别验证；JWT 可被解码是格式属性，不代表签名或授权有效。",
+          "en": "Duplicate JWT Unsigned-Token Tool Workflow must be validated separately by token type, algorithm, key source, and claim profile; JWT decodability is a format property and does not imply valid signatures or authorization."
+        },
+        "vulnerability": {
+          "zh": "根因通常是验证器相信 token 自带的 alg、jwk、jku、x5u、x5c 或 kid，混用 HMAC 与非对称 key，使用低熵 HMAC key，或遗漏 issuer、audience、时间和 token type 校验。",
+          "en": "Root causes include trusting token-supplied alg, jwk, jku, x5u, x5c, or kid values, mixing HMAC and asymmetric keys, using low-entropy HMAC keys, or omitting issuer, audience, time, and token-type validation."
+        },
+        "exploitation": {
+          "zh": "先用本地测试 issuer 生成短期有效 token 并访问只读标记，再一次只改变一个算法、key 引用或 claim。验证器必须显式固定允许算法和 key，并记录 issuer、audience、type 与时间检查结果。",
+          "en": "Generate a short-lived valid token from the local test issuer and access the read-only marker, then change exactly one algorithm, key reference, or claim. The verifier must explicitly pin algorithms and keys and log issuer, audience, type, and time checks."
+        },
+        "mitigation": {
+          "zh": "按 token 类型使用互斥验证规则，固定算法与 key 类型，使用高熵 HMAC key；只从 issuer 配置的受信来源解析 key，允许列表化 kid 与 jku/x5u，并严格校验 iss、aud、exp、nbf 和 typ。",
+          "en": "Use mutually exclusive validation rules per token type, pin algorithms and key types, and use high-entropy HMAC keys; resolve keys only from issuer-configured trusted sources, allowlist kid and jku/x5u, and strictly validate iss, aud, exp, nbf, and typ."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "固定验证 profile",
+            "en": "Fix the Validation Profile"
+          },
+          "description": {
+            "zh": "记录有效基线的算法、key ID、issuer、audience、type、时间与主体。",
+            "en": "Record the valid baseline algorithm, key ID, issuer, audience, type, time, and principal."
+          }
+        },
+        {
+          "title": {
+            "zh": "隔离第一个源命令",
+            "en": "Isolate the First Source Command"
+          },
+          "description": {
+            "zh": "先处理源条目的第一条命令并只观察对应机制，不跨边界推断。",
+            "en": "Process the first source command while observing only its mechanism and do not infer across boundaries."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "关联验证器与授权证据",
+            "en": "Correlate Verifier and Authorization Evidence"
+          },
+          "description": {
+            "zh": "把算法选择、key 来源、claim 决策、最终主体和只读标记访问日志关联。",
+            "en": "Correlate algorithm selection, key source, claim decisions, final principal, and read-only marker access logs."
+          }
+        },
+        {
+          "title": {
+            "zh": "清理并回归",
+            "en": "Clean Up and Regress"
+          },
+          "description": {
+            "zh": "撤销测试 token/key 并用有效基线及全部阴性对照确认修复边界。",
+            "en": "Revoke test tokens and keys and replay the valid baseline and all negative controls to verify the fixed boundary."
+          }
+        }
+      ],
+      "references": [
+        "https://www.rfc-editor.org/rfc/rfc7515.html",
+        "https://www.rfc-editor.org/rfc/rfc7519.html",
+        "https://www.rfc-editor.org/rfc/rfc8725.html",
+        "https://pyjwt.readthedocs.io/en/stable/api.html"
+      ],
+      "review": {
+        "decision": "tool",
+        "rationale": "原条目是重复主题或纯工具工作流，不再创建重复 Payload，并按命令索引迁入现有 JWT 工具卡。",
+        "issuesResolved": [
+          "corrected-bilingual-naming",
+          "aligned-with-rfc7515-7519-8725",
+          "separated-validation-mechanisms",
+          "removed-remote-key-fetching",
+          "bounded-local-test-workflows"
+        ],
+        "targetPayloadIds": [],
+        "targetToolIds": [
+          "jwt-decode",
+          "jwt-attacks",
+          "jwt-tool"
+        ],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 -> jwt-decode",
+          "execution 1 and 3 plus wafBypass 0 -> jwt-attacks",
+          "execution 2 -> jwt-tool"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "replace ordinary Base64 decoding with Base64URL decoding and correct padding",
+          "use locally generated tokens, fixed test keys, synthetic claims, and a localhost verifier",
+          "remove production-like identities, real targets, remote jku/x5u fetching, and generic wordlists",
+          "replace unbounded brute force and masks with a fixed three-candidate owned-token audit",
+          "treat none and RSA/HMAC confusion as historical library failure modes and negative controls by default"
+        ],
+        "reviewNotes": [
+          {
+            "zh": "RFC 8725 要求调用方固定允许算法，并确保每把 key 只用于一个算法；不能从 token 的 alg 动态选择验证方式。",
+            "en": "RFC 8725 requires callers to pin allowed algorithms and ensure each key is used with exactly one algorithm; verification must not be selected dynamically from token alg."
+          },
+          {
+            "zh": "jku 与 x5u 是不同资源类型，盲目跟随任意 URL 还会形成 SSRF；本批次只允许 localhost fixture 与显式允许列表。",
+            "en": "jku and x5u reference different resource types, and blindly following arbitrary URLs can create SSRF; this batch permits only localhost fixtures and explicit allowlists."
+          }
+        ]
+      }
+    },
+    {
+      "id": "jwt-key-confusion-157",
+      "name": {
+        "zh": "JWT RSA/HMAC 混淆重复工具工作流",
+        "en": "Duplicate JWT RSA/HMAC Confusion Tool Workflow"
+      },
+      "description": {
+        "zh": "该条目与 jwt-key-confusion 的 RSA/HMAC 主题重复，并混入 JWKS 发现、工具命令和 key 格式处理；全部迁入工具而不创建重复 Payload。",
+        "en": "This source duplicates the RSA/HMAC theme in jwt-key-confusion and mixes JWKS discovery, tool commands, and key formatting; all content moves to tools without another payload."
+      },
+      "category": {
+        "zh": "API 安全",
+        "en": "API Security"
+      },
+      "subCategory": {
+        "zh": "重复主题迁移",
+        "en": "Duplicate Theme Migration"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用仅监听 127.0.0.1 的 JWT 验证器、合成主体、只读标记接口和专用测试 issuer，记录允许算法、key resolver、issuer、audience 与 token type 配置。",
+          "en": "Use a JWT verifier bound only to 127.0.0.1, synthetic principals, a read-only marker endpoint, and a dedicated test issuer; record allowed algorithms, key resolver, issuer, audience, and token-type configuration."
+        },
+        {
+          "zh": "仅使用本地生成令牌、固定测试 HMAC key 或临时 RSA/X.509 fixture；不得读取生产 token/key、访问远程 jku/x5u 或使用通用密码字典。",
+          "en": "Use only locally generated tokens, a fixed test HMAC key, or temporary RSA/X.509 fixtures; do not read production tokens or keys, access remote jku/x5u locations, or use general password dictionaries."
+        }
+      ],
+      "analysis": {
+        "zh": "该审校聚焦JWT RSA/HMAC 混淆重复工具工作流。阳性必须表现为 localhost 验证器在错误算法、错误 key 来源或错误 claim 条件下仍建立了错误主体并读取同一只读标记，同时由验证器日志确认具体分支。解码成功、令牌可生成、key 文件存在、工具退出码、HTTP 200 错误页或客户端显示 claim 都不是绕过证据。",
+        "en": "This review focuses on Duplicate JWT RSA/HMAC Confusion Tool Workflow. A positive result requires the localhost verifier to establish the wrong principal and read the same read-only marker under a wrong algorithm, key source, or claim condition, with verifier logs identifying the branch. Successful decoding, token generation, key-file presence, tool exit status, an HTTP 200 error page, or client-visible claims do not prove bypass."
+      },
+      "opsecTips": [
+        {
+          "zh": "每个机制最多提交一个有效基线和三个阴性对照；首次出现非 localhost 请求、真实账户、意外 key 读取、状态写入或服务抖动时立即停止。",
+          "en": "Submit at most one valid baseline and three negative controls per mechanism; stop immediately on any non-localhost request, real account, unexpected key read, state write, or service instability."
+        },
+        {
+          "zh": "删除临时 token、key、证书、JWKS 与短字典，停止本地 fixture 服务，撤销测试 jti/会话并确认验证器缓存已清空。",
+          "en": "Delete temporary tokens, keys, certificates, JWKS files, and short dictionaries; stop local fixture services, revoke test jtis and sessions, and confirm verifier caches are cleared."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "JWT RSA/HMAC 混淆重复工具工作流必须按 token 类型、算法、key 来源和 claim profile 分别验证；JWT 可被解码是格式属性，不代表签名或授权有效。",
+          "en": "Duplicate JWT RSA/HMAC Confusion Tool Workflow must be validated separately by token type, algorithm, key source, and claim profile; JWT decodability is a format property and does not imply valid signatures or authorization."
+        },
+        "vulnerability": {
+          "zh": "根因通常是验证器相信 token 自带的 alg、jwk、jku、x5u、x5c 或 kid，混用 HMAC 与非对称 key，使用低熵 HMAC key，或遗漏 issuer、audience、时间和 token type 校验。",
+          "en": "Root causes include trusting token-supplied alg, jwk, jku, x5u, x5c, or kid values, mixing HMAC and asymmetric keys, using low-entropy HMAC keys, or omitting issuer, audience, time, and token-type validation."
+        },
+        "exploitation": {
+          "zh": "先用本地测试 issuer 生成短期有效 token 并访问只读标记，再一次只改变一个算法、key 引用或 claim。验证器必须显式固定允许算法和 key，并记录 issuer、audience、type 与时间检查结果。",
+          "en": "Generate a short-lived valid token from the local test issuer and access the read-only marker, then change exactly one algorithm, key reference, or claim. The verifier must explicitly pin algorithms and keys and log issuer, audience, type, and time checks."
+        },
+        "mitigation": {
+          "zh": "按 token 类型使用互斥验证规则，固定算法与 key 类型，使用高熵 HMAC key；只从 issuer 配置的受信来源解析 key，允许列表化 kid 与 jku/x5u，并严格校验 iss、aud、exp、nbf 和 typ。",
+          "en": "Use mutually exclusive validation rules per token type, pin algorithms and key types, and use high-entropy HMAC keys; resolve keys only from issuer-configured trusted sources, allowlist kid and jku/x5u, and strictly validate iss, aud, exp, nbf, and typ."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "固定验证 profile",
+            "en": "Fix the Validation Profile"
+          },
+          "description": {
+            "zh": "记录有效基线的算法、key ID、issuer、audience、type、时间与主体。",
+            "en": "Record the valid baseline algorithm, key ID, issuer, audience, type, time, and principal."
+          }
+        },
+        {
+          "title": {
+            "zh": "隔离第一个源命令",
+            "en": "Isolate the First Source Command"
+          },
+          "description": {
+            "zh": "先处理源条目的第一条命令并只观察对应机制，不跨边界推断。",
+            "en": "Process the first source command while observing only its mechanism and do not infer across boundaries."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "关联验证器与授权证据",
+            "en": "Correlate Verifier and Authorization Evidence"
+          },
+          "description": {
+            "zh": "把算法选择、key 来源、claim 决策、最终主体和只读标记访问日志关联。",
+            "en": "Correlate algorithm selection, key source, claim decisions, final principal, and read-only marker access logs."
+          }
+        },
+        {
+          "title": {
+            "zh": "清理并回归",
+            "en": "Clean Up and Regress"
+          },
+          "description": {
+            "zh": "撤销测试 token/key 并用有效基线及全部阴性对照确认修复边界。",
+            "en": "Revoke test tokens and keys and replay the valid baseline and all negative controls to verify the fixed boundary."
+          }
+        }
+      ],
+      "references": [
+        "https://www.rfc-editor.org/rfc/rfc7515.html",
+        "https://www.rfc-editor.org/rfc/rfc7519.html",
+        "https://www.rfc-editor.org/rfc/rfc8725.html",
+        "https://pyjwt.readthedocs.io/en/stable/api.html"
+      ],
+      "review": {
+        "decision": "tool",
+        "rationale": "原条目是重复主题或纯工具工作流，不再创建重复 Payload，并按命令索引迁入现有 JWT 工具卡。",
+        "issuesResolved": [
+          "corrected-bilingual-naming",
+          "aligned-with-rfc7515-7519-8725",
+          "separated-validation-mechanisms",
+          "removed-remote-key-fetching",
+          "bounded-local-test-workflows"
+        ],
+        "targetPayloadIds": [],
+        "targetToolIds": [
+          "jwt-attacks",
+          "jwt-tool"
+        ],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0-1 and 3 plus wafBypass 0 -> jwt-attacks as local fixture workflows",
+          "execution 2 -> jwt-tool"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "replace ordinary Base64 decoding with Base64URL decoding and correct padding",
+          "use locally generated tokens, fixed test keys, synthetic claims, and a localhost verifier",
+          "remove production-like identities, real targets, remote jku/x5u fetching, and generic wordlists",
+          "replace unbounded brute force and masks with a fixed three-candidate owned-token audit",
+          "treat none and RSA/HMAC confusion as historical library failure modes and negative controls by default"
+        ],
+        "reviewNotes": [
+          {
+            "zh": "RFC 8725 要求调用方固定允许算法，并确保每把 key 只用于一个算法；不能从 token 的 alg 动态选择验证方式。",
+            "en": "RFC 8725 requires callers to pin allowed algorithms and ensure each key is used with exactly one algorithm; verification must not be selected dynamically from token alg."
+          },
+          {
+            "zh": "jku 与 x5u 是不同资源类型，盲目跟随任意 URL 还会形成 SSRF；本批次只允许 localhost fixture 与显式允许列表。",
+            "en": "jku and x5u reference different resource types, and blindly following arbitrary URLs can create SSRF; this batch permits only localhost fixtures and explicit allowlists."
+          }
+        ]
+      }
+    },
+    {
+      "id": "jwt-secret-bruteforce",
+      "name": {
+        "zh": "JWT HMAC Key 强度审计工具集",
+        "en": "JWT HMAC Key Strength Audit Tool Set"
+      },
+      "description": {
+        "zh": "所有命令都是算法识别、受限字典检查、jwt_tool/hashcat 或本地签名验证流程，不是可投递 Payload；无界掩码和通用弱 key 列表必须移除。",
+        "en": "Every command is algorithm identification, bounded dictionary checking, jwt_tool or hashcat use, or local signature verification rather than a deliverable payload; unbounded masks and generic weak-key lists must be removed."
+      },
+      "category": {
+        "zh": "API 安全",
+        "en": "API Security"
+      },
+      "subCategory": {
+        "zh": "离线 Key 强度检查",
+        "en": "Offline Key Strength Checks"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用仅监听 127.0.0.1 的 JWT 验证器、合成主体、只读标记接口和专用测试 issuer，记录允许算法、key resolver、issuer、audience 与 token type 配置。",
+          "en": "Use a JWT verifier bound only to 127.0.0.1, synthetic principals, a read-only marker endpoint, and a dedicated test issuer; record allowed algorithms, key resolver, issuer, audience, and token-type configuration."
+        },
+        {
+          "zh": "仅使用本地生成令牌、固定测试 HMAC key 或临时 RSA/X.509 fixture；不得读取生产 token/key、访问远程 jku/x5u 或使用通用密码字典。",
+          "en": "Use only locally generated tokens, a fixed test HMAC key, or temporary RSA/X.509 fixtures; do not read production tokens or keys, access remote jku/x5u locations, or use general password dictionaries."
+        }
+      ],
+      "analysis": {
+        "zh": "该审校聚焦JWT HMAC Key 强度审计工具集。阳性必须表现为 localhost 验证器在错误算法、错误 key 来源或错误 claim 条件下仍建立了错误主体并读取同一只读标记，同时由验证器日志确认具体分支。解码成功、令牌可生成、key 文件存在、工具退出码、HTTP 200 错误页或客户端显示 claim 都不是绕过证据。",
+        "en": "This review focuses on JWT HMAC Key Strength Audit Tool Set. A positive result requires the localhost verifier to establish the wrong principal and read the same read-only marker under a wrong algorithm, key source, or claim condition, with verifier logs identifying the branch. Successful decoding, token generation, key-file presence, tool exit status, an HTTP 200 error page, or client-visible claims do not prove bypass."
+      },
+      "opsecTips": [
+        {
+          "zh": "每个机制最多提交一个有效基线和三个阴性对照；首次出现非 localhost 请求、真实账户、意外 key 读取、状态写入或服务抖动时立即停止。",
+          "en": "Submit at most one valid baseline and three negative controls per mechanism; stop immediately on any non-localhost request, real account, unexpected key read, state write, or service instability."
+        },
+        {
+          "zh": "删除临时 token、key、证书、JWKS 与短字典，停止本地 fixture 服务，撤销测试 jti/会话并确认验证器缓存已清空。",
+          "en": "Delete temporary tokens, keys, certificates, JWKS files, and short dictionaries; stop local fixture services, revoke test jtis and sessions, and confirm verifier caches are cleared."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "JWT HMAC Key 强度审计工具集必须按 token 类型、算法、key 来源和 claim profile 分别验证；JWT 可被解码是格式属性，不代表签名或授权有效。",
+          "en": "JWT HMAC Key Strength Audit Tool Set must be validated separately by token type, algorithm, key source, and claim profile; JWT decodability is a format property and does not imply valid signatures or authorization."
+        },
+        "vulnerability": {
+          "zh": "根因通常是验证器相信 token 自带的 alg、jwk、jku、x5u、x5c 或 kid，混用 HMAC 与非对称 key，使用低熵 HMAC key，或遗漏 issuer、audience、时间和 token type 校验。",
+          "en": "Root causes include trusting token-supplied alg, jwk, jku, x5u, x5c, or kid values, mixing HMAC and asymmetric keys, using low-entropy HMAC keys, or omitting issuer, audience, time, and token-type validation."
+        },
+        "exploitation": {
+          "zh": "先用本地测试 issuer 生成短期有效 token 并访问只读标记，再一次只改变一个算法、key 引用或 claim。验证器必须显式固定允许算法和 key，并记录 issuer、audience、type 与时间检查结果。",
+          "en": "Generate a short-lived valid token from the local test issuer and access the read-only marker, then change exactly one algorithm, key reference, or claim. The verifier must explicitly pin algorithms and keys and log issuer, audience, type, and time checks."
+        },
+        "mitigation": {
+          "zh": "按 token 类型使用互斥验证规则，固定算法与 key 类型，使用高熵 HMAC key；只从 issuer 配置的受信来源解析 key，允许列表化 kid 与 jku/x5u，并严格校验 iss、aud、exp、nbf 和 typ。",
+          "en": "Use mutually exclusive validation rules per token type, pin algorithms and key types, and use high-entropy HMAC keys; resolve keys only from issuer-configured trusted sources, allowlist kid and jku/x5u, and strictly validate iss, aud, exp, nbf, and typ."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "固定验证 profile",
+            "en": "Fix the Validation Profile"
+          },
+          "description": {
+            "zh": "记录有效基线的算法、key ID、issuer、audience、type、时间与主体。",
+            "en": "Record the valid baseline algorithm, key ID, issuer, audience, type, time, and principal."
+          }
+        },
+        {
+          "title": {
+            "zh": "隔离第一个源命令",
+            "en": "Isolate the First Source Command"
+          },
+          "description": {
+            "zh": "先处理源条目的第一条命令并只观察对应机制，不跨边界推断。",
+            "en": "Process the first source command while observing only its mechanism and do not infer across boundaries."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "关联验证器与授权证据",
+            "en": "Correlate Verifier and Authorization Evidence"
+          },
+          "description": {
+            "zh": "把算法选择、key 来源、claim 决策、最终主体和只读标记访问日志关联。",
+            "en": "Correlate algorithm selection, key source, claim decisions, final principal, and read-only marker access logs."
+          }
+        },
+        {
+          "title": {
+            "zh": "清理并回归",
+            "en": "Clean Up and Regress"
+          },
+          "description": {
+            "zh": "撤销测试 token/key 并用有效基线及全部阴性对照确认修复边界。",
+            "en": "Revoke test tokens and keys and replay the valid baseline and all negative controls to verify the fixed boundary."
+          }
+        }
+      ],
+      "references": [
+        "https://www.rfc-editor.org/rfc/rfc7515.html",
+        "https://www.rfc-editor.org/rfc/rfc7519.html",
+        "https://www.rfc-editor.org/rfc/rfc8725.html",
+        "https://pyjwt.readthedocs.io/en/stable/api.html"
+      ],
+      "review": {
+        "decision": "tool",
+        "rationale": "原条目是重复主题或纯工具工作流，不再创建重复 Payload，并按命令索引迁入现有 JWT 工具卡。",
+        "issuesResolved": [
+          "corrected-bilingual-naming",
+          "aligned-with-rfc7515-7519-8725",
+          "separated-validation-mechanisms",
+          "removed-remote-key-fetching",
+          "bounded-local-test-workflows"
+        ],
+        "targetPayloadIds": [],
+        "targetToolIds": [
+          "jwt-decode",
+          "hashcat",
+          "jwt-tool",
+          "jwt-attacks"
+        ],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 -> jwt-decode",
+          "execution 1 and wafBypass 0 -> hashcat using a three-entry approved fixture dictionary",
+          "execution 2 -> jwt-tool using the same bounded dictionary",
+          "execution 3 -> jwt-attacks as localhost-only post-audit verification"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "replace ordinary Base64 decoding with Base64URL decoding and correct padding",
+          "use locally generated tokens, fixed test keys, synthetic claims, and a localhost verifier",
+          "remove production-like identities, real targets, remote jku/x5u fetching, and generic wordlists",
+          "replace unbounded brute force and masks with a fixed three-candidate owned-token audit",
+          "treat none and RSA/HMAC confusion as historical library failure modes and negative controls by default"
+        ],
+        "reviewNotes": [
+          {
+            "zh": "RFC 8725 要求调用方固定允许算法，并确保每把 key 只用于一个算法；不能从 token 的 alg 动态选择验证方式。",
+            "en": "RFC 8725 requires callers to pin allowed algorithms and ensure each key is used with exactly one algorithm; verification must not be selected dynamically from token alg."
+          },
+          {
+            "zh": "jku 与 x5u 是不同资源类型，盲目跟随任意 URL 还会形成 SSRF；本批次只允许 localhost fixture 与显式允许列表。",
+            "en": "jku and x5u reference different resource types, and blindly following arbitrary URLs can create SSRF; this batch permits only localhost fixtures and explicit allowlists."
+          }
+        ]
+      }
+    },
+    {
+      "id": "jwt-jku-x5u-injection",
+      "name": {
+        "zh": "JWT JKU 与 X5U Key 来源边界",
+        "en": "JWT JKU and X5U Key Source Boundaries"
+      },
+      "description": {
+        "zh": "jku 指向 JWK Set，x5u 指向 X.509 证书链，资源格式和信任验证不同；两者必须拆开，key/JWKS 生成和结构检查迁入工具，所有 URL 仅使用 localhost 测试端点。",
+        "en": "jku references a JWK Set while x5u references an X.509 certificate chain, with different resource and trust validation; they are split, key and JWKS generation moves to tools, and every URL is localhost-only."
+      },
+      "category": {
+        "zh": "API 安全",
+        "en": "API Security"
+      },
+      "subCategory": {
+        "zh": "远程 Key 引用拆分",
+        "en": "Remote Key Reference Split"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用仅监听 127.0.0.1 的 JWT 验证器、合成主体、只读标记接口和专用测试 issuer，记录允许算法、key resolver、issuer、audience 与 token type 配置。",
+          "en": "Use a JWT verifier bound only to 127.0.0.1, synthetic principals, a read-only marker endpoint, and a dedicated test issuer; record allowed algorithms, key resolver, issuer, audience, and token-type configuration."
+        },
+        {
+          "zh": "仅使用本地生成令牌、固定测试 HMAC key 或临时 RSA/X.509 fixture；不得读取生产 token/key、访问远程 jku/x5u 或使用通用密码字典。",
+          "en": "Use only locally generated tokens, a fixed test HMAC key, or temporary RSA/X.509 fixtures; do not read production tokens or keys, access remote jku/x5u locations, or use general password dictionaries."
+        }
+      ],
+      "analysis": {
+        "zh": "该审校聚焦JWT JKU 与 X5U Key 来源边界。阳性必须表现为 localhost 验证器在错误算法、错误 key 来源或错误 claim 条件下仍建立了错误主体并读取同一只读标记，同时由验证器日志确认具体分支。解码成功、令牌可生成、key 文件存在、工具退出码、HTTP 200 错误页或客户端显示 claim 都不是绕过证据。",
+        "en": "This review focuses on JWT JKU and X5U Key Source Boundaries. A positive result requires the localhost verifier to establish the wrong principal and read the same read-only marker under a wrong algorithm, key source, or claim condition, with verifier logs identifying the branch. Successful decoding, token generation, key-file presence, tool exit status, an HTTP 200 error page, or client-visible claims do not prove bypass."
+      },
+      "opsecTips": [
+        {
+          "zh": "每个机制最多提交一个有效基线和三个阴性对照；首次出现非 localhost 请求、真实账户、意外 key 读取、状态写入或服务抖动时立即停止。",
+          "en": "Submit at most one valid baseline and three negative controls per mechanism; stop immediately on any non-localhost request, real account, unexpected key read, state write, or service instability."
+        },
+        {
+          "zh": "删除临时 token、key、证书、JWKS 与短字典，停止本地 fixture 服务，撤销测试 jti/会话并确认验证器缓存已清空。",
+          "en": "Delete temporary tokens, keys, certificates, JWKS files, and short dictionaries; stop local fixture services, revoke test jtis and sessions, and confirm verifier caches are cleared."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "JWT JKU 与 X5U Key 来源边界必须按 token 类型、算法、key 来源和 claim profile 分别验证；JWT 可被解码是格式属性，不代表签名或授权有效。",
+          "en": "JWT JKU and X5U Key Source Boundaries must be validated separately by token type, algorithm, key source, and claim profile; JWT decodability is a format property and does not imply valid signatures or authorization."
+        },
+        "vulnerability": {
+          "zh": "根因通常是验证器相信 token 自带的 alg、jwk、jku、x5u、x5c 或 kid，混用 HMAC 与非对称 key，使用低熵 HMAC key，或遗漏 issuer、audience、时间和 token type 校验。",
+          "en": "Root causes include trusting token-supplied alg, jwk, jku, x5u, x5c, or kid values, mixing HMAC and asymmetric keys, using low-entropy HMAC keys, or omitting issuer, audience, time, and token-type validation."
+        },
+        "exploitation": {
+          "zh": "先用本地测试 issuer 生成短期有效 token 并访问只读标记，再一次只改变一个算法、key 引用或 claim。验证器必须显式固定允许算法和 key，并记录 issuer、audience、type 与时间检查结果。",
+          "en": "Generate a short-lived valid token from the local test issuer and access the read-only marker, then change exactly one algorithm, key reference, or claim. The verifier must explicitly pin algorithms and keys and log issuer, audience, type, and time checks."
+        },
+        "mitigation": {
+          "zh": "按 token 类型使用互斥验证规则，固定算法与 key 类型，使用高熵 HMAC key；只从 issuer 配置的受信来源解析 key，允许列表化 kid 与 jku/x5u，并严格校验 iss、aud、exp、nbf 和 typ。",
+          "en": "Use mutually exclusive validation rules per token type, pin algorithms and key types, and use high-entropy HMAC keys; resolve keys only from issuer-configured trusted sources, allowlist kid and jku/x5u, and strictly validate iss, aud, exp, nbf, and typ."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "固定验证 profile",
+            "en": "Fix the Validation Profile"
+          },
+          "description": {
+            "zh": "记录有效基线的算法、key ID、issuer、audience、type、时间与主体。",
+            "en": "Record the valid baseline algorithm, key ID, issuer, audience, type, time, and principal."
+          }
+        },
+        {
+          "title": {
+            "zh": "隔离第一个源命令",
+            "en": "Isolate the First Source Command"
+          },
+          "description": {
+            "zh": "先处理源条目的第一条命令并只观察对应机制，不跨边界推断。",
+            "en": "Process the first source command while observing only its mechanism and do not infer across boundaries."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "关联验证器与授权证据",
+            "en": "Correlate Verifier and Authorization Evidence"
+          },
+          "description": {
+            "zh": "把算法选择、key 来源、claim 决策、最终主体和只读标记访问日志关联。",
+            "en": "Correlate algorithm selection, key source, claim decisions, final principal, and read-only marker access logs."
+          }
+        },
+        {
+          "title": {
+            "zh": "清理并回归",
+            "en": "Clean Up and Regress"
+          },
+          "description": {
+            "zh": "撤销测试 token/key 并用有效基线及全部阴性对照确认修复边界。",
+            "en": "Revoke test tokens and keys and replay the valid baseline and all negative controls to verify the fixed boundary."
+          }
+        }
+      ],
+      "references": [
+        "https://www.rfc-editor.org/rfc/rfc7515.html",
+        "https://www.rfc-editor.org/rfc/rfc7519.html",
+        "https://www.rfc-editor.org/rfc/rfc8725.html",
+        "https://pyjwt.readthedocs.io/en/stable/api.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "原条目混合多个 JWT 验证机制或工具工作流，必须拆为单机制 Payload 并迁移工具步骤。",
+        "issuesResolved": [
+          "corrected-bilingual-naming",
+          "aligned-with-rfc7515-7519-8725",
+          "separated-validation-mechanisms",
+          "removed-remote-key-fetching",
+          "bounded-local-test-workflows"
+        ],
+        "targetPayloadIds": [
+          "jwt-jku-key-source-validation",
+          "jwt-x5u-certificate-source-validation"
+        ],
+        "targetToolIds": [
+          "jwt-decode",
+          "jwt-attacks"
+        ],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 -> jwt-decode",
+          "execution 1-2 -> jwt-attacks as local key, JWKS, and fixture-server preparation",
+          "execution 3 -> jwt-jku-key-source-validation",
+          "wafBypass 0 -> jwt-x5u-certificate-source-validation"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "replace ordinary Base64 decoding with Base64URL decoding and correct padding",
+          "use locally generated tokens, fixed test keys, synthetic claims, and a localhost verifier",
+          "remove production-like identities, real targets, remote jku/x5u fetching, and generic wordlists",
+          "replace unbounded brute force and masks with a fixed three-candidate owned-token audit",
+          "treat none and RSA/HMAC confusion as historical library failure modes and negative controls by default"
+        ],
+        "reviewNotes": [
+          {
+            "zh": "RFC 8725 要求调用方固定允许算法，并确保每把 key 只用于一个算法；不能从 token 的 alg 动态选择验证方式。",
+            "en": "RFC 8725 requires callers to pin allowed algorithms and ensure each key is used with exactly one algorithm; verification must not be selected dynamically from token alg."
+          },
+          {
+            "zh": "jku 与 x5u 是不同资源类型，盲目跟随任意 URL 还会形成 SSRF；本批次只允许 localhost fixture 与显式允许列表。",
+            "en": "jku and x5u reference different resource types, and blindly following arbitrary URLs can create SSRF; this batch permits only localhost fixtures and explicit allowlists."
+          }
+        ]
+      }
+    }
+  ]
+}

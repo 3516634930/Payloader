@@ -1,0 +1,377 @@
+name: Client Shells
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing v* tag to build and publish
+        required: true
+        type: string
+      publish_unsigned_windows:
+        description: Publish unsigned Windows clients for this manual release
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: client-shells-${{ inputs.release_tag }}
+  cancel-in-progress: false
+
+jobs:
+  release-context:
+    name: Validate release tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      package_version: ${{ steps.release.outputs.package_version }}
+      commit_sha: ${{ steps.release.outputs.commit_sha }}
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag }}
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate immutable release context
+        id: release
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: node scripts/validate-client-release-context.mjs "$RELEASE_TAG"
+      - name: Validate signed release configuration
+        if: ${{ !inputs.publish_unsigned_windows }}
+        shell: pwsh
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          SIGNPATH_ORGANIZATION_ID: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          SIGNPATH_PROJECT_SLUG: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          SIGNPATH_SIGNING_POLICY_SLUG: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          SIGNPATH_APP_ARTIFACT_CONFIGURATION_SLUG: ${{ vars.SIGNPATH_APP_ARTIFACT_CONFIGURATION_SLUG }}
+          SIGNPATH_INSTALLER_ARTIFACT_CONFIGURATION_SLUG: ${{ vars.SIGNPATH_INSTALLER_ARTIFACT_CONFIGURATION_SLUG }}
+        run: |
+          $required = [ordered]@{
+            SIGNPATH_API_TOKEN = $env:SIGNPATH_API_TOKEN
+            SIGNPATH_ORGANIZATION_ID = $env:SIGNPATH_ORGANIZATION_ID
+            SIGNPATH_PROJECT_SLUG = $env:SIGNPATH_PROJECT_SLUG
+            SIGNPATH_SIGNING_POLICY_SLUG = $env:SIGNPATH_SIGNING_POLICY_SLUG
+            SIGNPATH_APP_ARTIFACT_CONFIGURATION_SLUG = $env:SIGNPATH_APP_ARTIFACT_CONFIGURATION_SLUG
+            SIGNPATH_INSTALLER_ARTIFACT_CONFIGURATION_SLUG = $env:SIGNPATH_INSTALLER_ARTIFACT_CONFIGURATION_SLUG
+          }
+          $missing = @(
+            $required.GetEnumerator() |
+              Where-Object { [string]::IsNullOrWhiteSpace([string]$_.Value) } |
+              ForEach-Object { $_.Key }
+          )
+          if ($missing.Count -gt 0) {
+            throw "Signed release configuration is incomplete: $($missing -join ', ')"
+          }
+
+  build:
+    name: Build ${{ matrix.platform }} clients
+    needs: release-context
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows
+            os: windows-latest
+            targets: win-x64-nsis,win-arm64-nsis,win-ia32-nsis
+          - platform: linux
+            os: ubuntu-latest
+            targets: linux-x64-appimage,linux-arm64-appimage,linux-armv7l-appimage
+          - platform: macos
+            os: macos-latest
+            targets: mac-x64-dmg,mac-arm64-dmg,mac-universal-dmg
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-context.outputs.release_tag }}
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build verified frontend
+        run: npm run build
+      - name: Build native Linux and macOS clients
+        if: matrix.platform != 'windows'
+        env:
+          PAYLOADER_CLIENT_SHELL_TARGETS: ${{ matrix.targets }}
+          PAYLOADER_CLIENT_SHELL_OUTPUT_DIR: ${{ github.workspace }}/artifacts/client-shells
+          PAYLOADER_SHELL_MACOS_CSC_LINK: ${{ matrix.platform == 'macos' && secrets.MACOS_CSC_LINK || '' }}
+          PAYLOADER_SHELL_MACOS_CSC_KEY_PASSWORD: ${{ matrix.platform == 'macos' && secrets.MACOS_CSC_KEY_PASSWORD || '' }}
+          PAYLOADER_SHELL_MACOS_APPLE_ID: ${{ matrix.platform == 'macos' && secrets.APPLE_ID || '' }}
+          PAYLOADER_SHELL_MACOS_APP_PASSWORD: ${{ matrix.platform == 'macos' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+          PAYLOADER_SHELL_MACOS_TEAM_ID: ${{ matrix.platform == 'macos' && secrets.APPLE_TEAM_ID || '' }}
+        run: npm run build:client-shells
+      - name: Build unsigned Windows clients
+        if: ${{ matrix.platform == 'windows' && inputs.publish_unsigned_windows }}
+        env:
+          PAYLOADER_CLIENT_SHELL_TARGETS: ${{ matrix.targets }}
+          PAYLOADER_CLIENT_SHELL_OUTPUT_DIR: ${{ github.workspace }}/artifacts/client-shells
+        run: npm run build:client-shells
+      - name: Prepare Windows applications for signing
+        if: ${{ matrix.platform == 'windows' && !inputs.publish_unsigned_windows }}
+        env:
+          PAYLOADER_CLIENT_SHELL_TARGETS: ${{ matrix.targets }}
+          PAYLOADER_WINDOWS_PREPARED_OUTPUT_DIR: ${{ github.workspace }}/artifacts/windows-prepared
+        run: npm run build:windows-signing:prepare
+      - name: Upload Windows prepared applications
+        if: ${{ matrix.platform == 'windows' && !inputs.publish_unsigned_windows }}
+        id: upload-windows-prepared
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-prepared-apps
+          path: artifacts/windows-prepared/**
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - name: Sign Windows prepared applications
+        if: ${{ matrix.platform == 'windows' && !inputs.publish_unsigned_windows }}
+        uses: SignPath/github-action-submit-signing-request@b9d91eadd323de506c0c81cf0c7fe7438f3360fd
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_APP_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.upload-windows-prepared.outputs.artifact-id }}
+          github-token: ${{ github.token }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: '7200'
+          output-artifact-directory: ${{ github.workspace }}/artifacts/windows-signed-apps
+          parameters: |
+            version: "${{ needs.release-context.outputs.package_version }}"
+      - name: Preserve Windows signing metadata
+        if: ${{ matrix.platform == 'windows' && !inputs.publish_unsigned_windows }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path '${{ github.workspace }}/artifacts/windows-signed-apps' | Out-Null
+          Copy-Item -LiteralPath '${{ github.workspace }}/artifacts/windows-prepared/windows-signing-input.json' -Destination '${{ github.workspace }}/artifacts/windows-signed-apps/windows-signing-input.json' -Force
+      - name: Verify Windows prepared application Authenticode trust
+        if: ${{ matrix.platform == 'windows' && !inputs.publish_unsigned_windows }}
+        shell: pwsh
+        run: ./scripts/verify-windows-authenticode.ps1 -PreparedApplicationDirectory '${{ github.workspace }}/artifacts/windows-signed-apps'
+      - name: Build Windows installers from signed applications
+        if: ${{ matrix.platform == 'windows' && !inputs.publish_unsigned_windows }}
+        env:
+          PAYLOADER_CLIENT_SHELL_TARGETS: ${{ matrix.targets }}
+          PAYLOADER_WINDOWS_SIGNED_APP_DIR: ${{ github.workspace }}/artifacts/windows-signed-apps
+          PAYLOADER_CLIENT_SHELL_OUTPUT_DIR: ${{ github.workspace }}/artifacts/client-shells
+        run: npm run build:windows-signing:finalize
+      - name: Upload Windows installers for signing
+        if: ${{ matrix.platform == 'windows' && !inputs.publish_unsigned_windows }}
+        id: upload-windows-installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installers-unsigned
+          path: artifacts/client-shells/Payloader-Client-Setup-*.exe
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - name: Sign Windows installers
+        if: ${{ matrix.platform == 'windows' && !inputs.publish_unsigned_windows }}
+        uses: SignPath/github-action-submit-signing-request@b9d91eadd323de506c0c81cf0c7fe7438f3360fd
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_INSTALLER_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.upload-windows-installers.outputs.artifact-id }}
+          github-token: ${{ github.token }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: '7200'
+          output-artifact-directory: ${{ github.workspace }}/artifacts/windows-signed-installers
+          parameters: |
+            version: "${{ needs.release-context.outputs.package_version }}"
+      - name: Apply signed Windows installers
+        if: ${{ matrix.platform == 'windows' && !inputs.publish_unsigned_windows }}
+        env:
+          PAYLOADER_WINDOWS_SIGNED_INSTALLER_DIR: ${{ github.workspace }}/artifacts/windows-signed-installers
+          PAYLOADER_CLIENT_SHELL_OUTPUT_DIR: ${{ github.workspace }}/artifacts/client-shells
+        run: npm run apply:windows-signing
+      - name: Verify Windows Authenticode trust
+        if: ${{ matrix.platform == 'windows' && !inputs.publish_unsigned_windows }}
+        shell: pwsh
+        run: ./scripts/verify-windows-authenticode.ps1 -ArtifactDirectory '${{ github.workspace }}/artifacts/client-shells'
+      - name: Smoke native client shell
+        if: matrix.platform != 'linux'
+        env:
+          PAYLOADER_CLIENT_SHELL_OUTPUT_DIR: ${{ github.workspace }}/artifacts/client-shells
+          PAYLOADER_CLIENT_PERF_PROFILE: shared-runner
+        run: npm run verify:client-shell
+      - name: Smoke native Linux client shell
+        if: matrix.platform == 'linux'
+        env:
+          PAYLOADER_CLIENT_SHELL_OUTPUT_DIR: ${{ github.workspace }}/artifacts/client-shells
+          PAYLOADER_CLIENT_PERF_PROFILE: shared-runner
+        run: xvfb-run --auto-servernum npm run verify:client-shell
+      - name: Upload shell partials
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-shells-${{ matrix.platform }}
+          path: artifacts/client-shells/*
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+  merge:
+    name: Merge and verify release assets
+    needs: [release-context, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-context.outputs.release_tag }}
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Download native shell artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: client-shells-*
+          path: artifacts/client-shells
+          merge-multiple: true
+      - name: Merge and validate shell manifest
+        env:
+          PAYLOADER_CLIENT_SHELL_INPUT_DIR: ${{ github.workspace }}/artifacts/client-shells
+          PAYLOADER_CLIENT_SHELL_OUTPUT_DIR: ${{ github.workspace }}/artifacts/client-shells
+        run: npm run merge:client-shells
+      - name: Upload complete shell release
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-shells-release
+          path: |
+            artifacts/client-shells/Payloader-Client-Setup-*.exe
+            artifacts/client-shells/Payloader-Client-*.AppImage
+            artifacts/client-shells/Payloader-Client-*.dmg
+            artifacts/client-shells/payloader-shell-*.tar.gz
+            artifacts/client-shells/payloader-client-shells.json
+            artifacts/client-shells/SHA256SUMS.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+  release:
+    name: Publish client Release
+    needs: [release-context, merge]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - name: Download complete shell release
+        uses: actions/download-artifact@v4
+        with:
+          name: client-shells-release
+          path: artifacts/client-shells
+      - name: Verify and publish exact Release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.release-context.outputs.release_tag }}
+          RELEASE_VERSION: ${{ needs.release-context.outputs.package_version }}
+          UNSIGNED_WINDOWS: ${{ inputs.publish_unsigned_windows }}
+        run: |
+          set -euo pipefail
+          cd artifacts/client-shells
+          sha256sum -c SHA256SUMS.txt
+          awk '{print $2}' SHA256SUMS.txt | sort -u > /tmp/release-assets.expected
+          printf '%s\n' SHA256SUMS.txt >> /tmp/release-assets.expected
+          sort -u -o /tmp/release-assets.expected /tmp/release-assets.expected
+          if [[ "$(wc -l < /tmp/release-assets.expected)" -ne 20 ]]; then
+            echo "Expected exactly 20 release assets." >&2
+            exit 1
+          fi
+          find . -maxdepth 1 -type f -printf '%f\n' | sort -u > /tmp/release-assets.local
+          if ! diff -u /tmp/release-assets.expected /tmp/release-assets.local; then
+            echo "Release asset set mismatch before upload." >&2
+            exit 1
+          fi
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            IS_DRAFT=$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft')
+            if [[ "$IS_DRAFT" != "true" ]]; then
+              echo "Refusing to overwrite a published Release: $RELEASE_TAG" >&2
+              exit 1
+            fi
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "Payloader $RELEASE_VERSION" --notes "Release assets are being validated."
+          fi
+          gh release upload "$RELEASE_TAG" ./* --clobber
+          gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | sort -u > /tmp/release-assets.remote
+          while IFS= read -r asset; do
+            if ! grep -Fqx "$asset" /tmp/release-assets.expected; then
+              gh release delete-asset "$RELEASE_TAG" "$asset" --yes
+            fi
+          done < /tmp/release-assets.remote
+          gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | sort -u > /tmp/release-assets.remote
+          if ! diff -u /tmp/release-assets.expected /tmp/release-assets.remote; then
+            echo "Release asset set mismatch after upload." >&2
+            exit 1
+          fi
+
+          if [[ "$UNSIGNED_WINDOWS" == "true" ]]; then
+            WINDOWS_NOTE='Windows installers in this release are unsigned and may trigger Microsoft Defender SmartScreen. Verify SHA-256 before running.'
+          else
+            WINDOWS_NOTE='Windows installers are Authenticode-signed and verified before publishing. Free code signing provided by SignPath.io, certificate by SignPath Foundation.'
+          fi
+          RELEASE_NOTES_CONTENT=$(cat <<'RELEASE_NOTES'
+          ## __RELEASE_VERSION__ 相比 1.0.0
+
+          对比基线：[1.0.0 首次发布介绍](https://mp.weixin.qq.com/s/iRGZFihwerukDJcJF_2DBw)。
+
+          - 新增带独立鉴权边界的系统后台，统一维护内容、导航、站点、备份、账号、版本和客户端制品。
+          - 默认内容由 300+ Payload、114 条工具命令扩充到 790 个 Payload、379 个工具条目和 4,845 条工具命令。
+          - 编解码由 6 种基础格式扩展到 7 类 144 项操作，并加入智能多层识别。
+          - 790 个初始 Payload 全部完成编辑审查，并通过自动内容质量门禁。
+          - 新增版本固定的官方壳、后台多平台客户端生成、直接原生客户端和 Release/源码版本检查。
+
+          ## Direct client downloads
+
+          | System | Download |
+          | --- | --- |
+          | Windows x64 | [EXE](https://github.com/__GH_REPO__/releases/download/__RELEASE_TAG__/Payloader-Client-Setup-__RELEASE_VERSION__-x64.exe) |
+          | Windows ARM64 | [EXE](https://github.com/__GH_REPO__/releases/download/__RELEASE_TAG__/Payloader-Client-Setup-__RELEASE_VERSION__-arm64.exe) |
+          | Windows ia32 | [EXE](https://github.com/__GH_REPO__/releases/download/__RELEASE_TAG__/Payloader-Client-Setup-__RELEASE_VERSION__-ia32.exe) |
+          | Linux x64 | [AppImage](https://github.com/__GH_REPO__/releases/download/__RELEASE_TAG__/Payloader-Client-__RELEASE_VERSION__-x64.AppImage) |
+          | Linux ARM64 | [AppImage](https://github.com/__GH_REPO__/releases/download/__RELEASE_TAG__/Payloader-Client-__RELEASE_VERSION__-arm64.AppImage) |
+          | Linux ARMv7 | [AppImage](https://github.com/__GH_REPO__/releases/download/__RELEASE_TAG__/Payloader-Client-__RELEASE_VERSION__-armv7l.AppImage) |
+          | macOS Intel | [DMG](https://github.com/__GH_REPO__/releases/download/__RELEASE_TAG__/Payloader-Client-__RELEASE_VERSION__-x64.dmg) |
+          | macOS Apple Silicon | [DMG](https://github.com/__GH_REPO__/releases/download/__RELEASE_TAG__/Payloader-Client-__RELEASE_VERSION__-arm64.dmg) |
+          | macOS Universal | [DMG](https://github.com/__GH_REPO__/releases/download/__RELEASE_TAG__/Payloader-Client-__RELEASE_VERSION__-universal.dmg) |
+
+          __WINDOWS_NOTE__
+
+          Windows 三个架构的安装器均使用向导模式并允许自定义安装目录。Linux AppImage 是便携客户端，授予执行权限后可从用户选择的任意目录运行。macOS DMG 可将应用复制到 Applications 或其他用户选择的可写目录。未配置 Apple 签名凭据时，macOS 包不会经过公证。所有直接客户端和后台官方壳都由 SHA256SUMS.txt 覆盖。
+
+          [Code signing policy](https://github.com/__GH_REPO__/blob/main/CODE_SIGNING_POLICY.md) | [Privacy policy](https://github.com/__GH_REPO__/blob/main/PRIVACY.md) | [Full changelog](https://github.com/__GH_REPO__/commits/__RELEASE_TAG__)
+          RELEASE_NOTES
+          )
+          RELEASE_NOTES_CONTENT=${RELEASE_NOTES_CONTENT//__GH_REPO__/$GH_REPO}
+          RELEASE_NOTES_CONTENT=${RELEASE_NOTES_CONTENT//__RELEASE_TAG__/$RELEASE_TAG}
+          RELEASE_NOTES_CONTENT=${RELEASE_NOTES_CONTENT//__RELEASE_VERSION__/$RELEASE_VERSION}
+          RELEASE_NOTES_CONTENT=${RELEASE_NOTES_CONTENT//__WINDOWS_NOTE__/$WINDOWS_NOTE}
+          printf '%s\n' "$RELEASE_NOTES_CONTENT" > release-notes.md
+          gh release edit "$RELEASE_TAG" --notes-file release-notes.md --draft=false

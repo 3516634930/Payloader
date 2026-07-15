@@ -1,0 +1,288 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "sourceIds": [
+    "proto-client-xss",
+    "proto-nosql-injection"
+  ],
+  "entries": [
+    {
+      "id": "proto-client-xss",
+      "name": {
+        "zh": "客户端原型链污染到 DOM Sink 边界",
+        "en": "Client-Side Prototype Pollution to DOM-Sink Boundary"
+      },
+      "description": {
+        "zh": "使用本地 URL marker 区分查询解析器污染、配置继承和 DOM Sink 实际解释，并通过真实 Chromium 回归确认是否形成脚本执行边界。",
+        "en": "Use local URL markers to distinguish query-parser pollution, inherited configuration, and actual DOM-sink interpretation, then confirm any script-execution boundary with real Chromium regression."
+      },
+      "category": {
+        "zh": "原型链污染",
+        "en": "Prototype Pollution"
+      },
+      "subCategory": {
+        "zh": "客户端污染源与 DOM Sink",
+        "en": "Client Pollution Sources and DOM Sinks"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用 127.0.0.1 浏览器 Fixture，并在每个用例后重新加载独立页面和清理 Object.prototype marker。",
+          "en": "Use the 127.0.0.1 browser fixture, reloading an isolated page and clearing Object.prototype markers after every case."
+        },
+        {
+          "zh": "页面通过 textContent、属性快照和 CSP 报告记录证据，不访问 Cookie、存储、网络凭据或真实业务 DOM。",
+          "en": "Record evidence through textContent, attribute snapshots, and CSP reports without accessing cookies, storage, network credentials, or real business DOM."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "客户端原型链污染需要先证明 URL 或消息解析器把危险键写入共享原型，再证明某个 DOM 或库 Gadget 读取继承属性并进入可解释的 Sink。污染 marker、配置变化和 XSS 是三个不同结论。本条目保留无脚本 marker Payload，并把自动化浏览器诊断迁入工具区。",
+          "en": "Client-side prototype pollution first requires proof that a URL or message parser writes dangerous keys to a shared prototype, followed by proof that a DOM or library gadget reads an inherited property into an interpretable sink. A pollution marker, configuration change, and XSS are three separate conclusions. This entry retains script-free marker payloads and moves automated browser diagnostics into tools."
+        },
+        "vulnerability": {
+          "zh": "仅看到 ({}).marker 或 URL 中存在 __proto__ 不能证明 XSS。确认污染源需要全新对象继承 marker；确认 DOM 影响需要 marker 到达特定 Sink；确认 XSS 还需要浏览器实际解释脚本或事件属性。响应回显、直接对象属性、库版本猜测和控制台字符串都属于不足证据。",
+          "en": "Seeing ({}).marker or __proto__ in a URL does not prove XSS. Confirm a pollution source only when a fresh object inherits the marker, confirm DOM impact when the marker reaches a specific sink, and confirm XSS only when the browser interprets script or event attributes. Reflection, direct object properties, library-version guesses, and console strings are insufficient."
+        },
+        "exploitation": {
+          "zh": "先加载无参数页面建立 Object.prototype 与 DOM 快照，再依次提交基础、innerHTML 配置、允许属性配置和三种编码路径 marker。每次使用独立页面上下文，保存新对象属性、实际 DOM 节点和 CSP violation；样例只包含 span 与 data-lab-marker，不包含事件处理器、javascript URL 或数据外带。",
+          "en": "Load a parameter-free page to establish Object.prototype and DOM snapshots, then submit basic, innerHTML-configuration, allowed-attribute, and three encoded-path markers one at a time. Use a fresh page context for every case and preserve fresh-object properties, actual DOM nodes, and CSP violations. Samples contain only span and data-lab-marker, with no event handlers, javascript URLs, or exfiltration."
+        },
+        "mitigation": {
+          "zh": "查询和消息解析器应拒绝 __proto__、prototype 与 constructor，任意键值使用 Map 或 Object.create(null)。升级受影响库，DOM 写入使用 textContent 或严格 Sanitizer，并通过 CSP 限制脚本来源。回归测试应同时断言新对象原型无 marker 且 DOM Sink 不读取继承配置。",
+          "en": "Query and message parsers should reject __proto__, prototype, and constructor, using Map or Object.create(null) for arbitrary keys. Upgrade affected libraries, write to DOM through textContent or a strict sanitizer, and constrain scripts with CSP. Regression tests should assert both clean fresh-object prototypes and DOM sinks that ignore inherited configuration."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "建立干净原型基线",
+            "en": "Establish a clean-prototype baseline"
+          },
+          "description": {
+            "zh": "在全新浏览器上下文中记录普通对象、查询解析结果和 DOM 的无 marker 状态。",
+            "en": "Record marker-free ordinary objects, parsed query output, and DOM state in a fresh browser context."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "证明污染源",
+            "en": "Prove the pollution source"
+          },
+          "description": {
+            "zh": "提交单一危险键路径，并要求后续全新对象继承唯一 marker，而不是只观察请求回显。",
+            "en": "Submit one dangerous-key path and require a later fresh object to inherit the unique marker rather than relying on request reflection."
+          }
+        },
+        {
+          "title": {
+            "zh": "定位 DOM Sink",
+            "en": "Locate the DOM sink"
+          },
+          "description": {
+            "zh": "跟踪继承属性是否进入 innerHTML 或 Sanitizer 配置，并记录最终 DOM 而非假设 Gadget。",
+            "en": "Trace whether inherited properties enter innerHTML or sanitizer configuration and record the final DOM instead of assuming a gadget."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复后运行 Chromium 回归",
+            "en": "Run Chromium regression after remediation"
+          },
+          "description": {
+            "zh": "修复后重放全部路径，要求原型保持干净、marker 不进入 Sink 且无 CSP violation。",
+            "en": "Replay every path after remediation and require a clean prototype, no marker reaching the sink, and no CSP violation."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "结论应分为污染源、可观察 DOM 影响和脚本执行三级。只有浏览器实际解释了可执行上下文才能写为 XSS；marker 被继承或以文本形式出现在 DOM 中不应升级漏洞影响。",
+        "en": "Classify conclusions as pollution source, observable DOM impact, and script execution. Label XSS only when the browser actually interprets an executable context; an inherited marker or text appearing in DOM must not inflate impact."
+      },
+      "opsecTips": [
+        {
+          "zh": "Payload 只使用 span 与 data-lab-marker，不包含 onerror、script、javascript URL、Cookie 或网络请求。",
+          "en": "Payloads use only span and data-lab-marker, with no onerror, script, javascript URLs, cookies, or network requests."
+        },
+        {
+          "zh": "每个用例关闭浏览器上下文并删除 Object.prototype marker，避免污染状态泄漏到其他测试。",
+          "en": "Close the browser context and delete Object.prototype markers after each case so polluted state cannot leak into other tests."
+        }
+      ],
+      "references": [
+        "https://developer.mozilla.org/en-US/docs/Web/Security/Attacks/Prototype_pollution",
+        "https://developer.mozilla.org/en-US/docs/Web/API/URLSearchParams",
+        "https://cheatsheetseries.owasp.org/cheatsheets/DOM_based_XSS_Prevention_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "split",
+        "targetPayloadIds": [
+          "client-prototype-dom-boundary"
+        ],
+        "targetToolIds": [
+          "client-prototype-browser-audit"
+        ],
+        "rationale": "旧条目把 URL marker、jQuery、DOMPurify、Lodash 和 Puppeteer 混成直接 XSS，并含可执行事件属性；改为无脚本 DOM marker，自动化回归迁入工具区。",
+        "issuesResolved": [
+          "removed-executable-xss-markers",
+          "separated-pollution-from-xss",
+          "removed-prose-from-commands",
+          "migrated-browser-automation"
+        ],
+        "retainedCommandIndexes": [
+          0,
+          1,
+          2
+        ],
+        "lineDisposition": [
+          "execution 0-2 and wafBypass 0 -> client-prototype-dom-boundary",
+          "execution 3 -> client-prototype-browser-audit"
+        ],
+        "needsCommandOverride": true
+      }
+    },
+    {
+      "id": "proto-nosql-injection",
+      "name": {
+        "zh": "原型链污染与 NoSQL 查询构造边界",
+        "en": "Prototype Pollution and NoSQL Query-Construction Boundary"
+      },
+      "description": {
+        "zh": "使用合成用户和 operator marker 验证 JSON 或表单输入是否被当作 MongoDB 查询对象，以及原型属性是否进入查询构造。",
+        "en": "Use a synthetic user and operator markers to validate whether JSON or form input becomes a MongoDB query object and whether inherited properties enter query construction."
+      },
+      "category": {
+        "zh": "原型链污染",
+        "en": "Prototype Pollution"
+      },
+      "subCategory": {
+        "zh": "NoSQL 查询对象边界",
+        "en": "NoSQL Query-Object Boundary"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用 127.0.0.1 NoSQL Fixture，数据库只含一个合成 lab-user 文档且不签发 Token。",
+          "en": "Use the 127.0.0.1 NoSQL fixture, whose database contains one synthetic lab-user document and never issues tokens."
+        },
+        {
+          "zh": "服务端日志能够记录解析后的值类型、拒绝原因、最终查询 AST、matched_count 与 request_id。",
+          "en": "Server logs record parsed value types, rejection reason, final query AST, matched_count, and request_id."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "NoSQL 注入的关键是非可信输入从标量变成操作符对象，原型链污染则可能让未显式提供的继承属性进入查询构造。两者需要分别证明再判断是否形成组合链。本条目使用合成记录和 matched_count，不进行认证绕过、密码提取或数据导出。",
+          "en": "NoSQL injection occurs when untrusted input changes from a scalar into an operator object, while prototype pollution may introduce inherited properties that were never explicitly supplied into query construction. Prove each primitive separately before claiming a combined chain. This entry uses synthetic records and matched_count without authentication bypass, password extraction, or data export."
+        },
+        "vulnerability": {
+          "zh": "如果 API 接受任意 JSON 对象并直接传给 find、findOne 或 aggregate，$ne、$regex 等操作符可能改变查询语义；如果构造器遍历继承键，原型 marker 也可能进入查询。确认问题需要保存最终查询 AST 和结果差分，不能仅凭请求包含美元键、状态码 200 或响应时间变化下结论。",
+          "en": "If an API accepts arbitrary JSON objects and passes them directly to find, findOne, or aggregate, operators such as $ne or $regex may alter query semantics. If a builder enumerates inherited keys, prototype markers may also enter the query. Confirmation requires the final query AST and a result differential; a dollar-prefixed key, HTTP 200, or timing change alone is insufficient."
+        },
+        "exploitation": {
+          "zh": "先提交 username 字符串建立 matched_count=1 的基线，再分别提交 JSON operator 对象、__proto__ marker 和表单括号语法。每次使用唯一 request_id，要求操作符被拒绝、原型 marker 为空且异常样例 matched_count=0。工具区的三项差分仅对合成记录运行，不迭代字符也不导出字段。",
+          "en": "Submit a username string first to establish matched_count=1, then test a JSON operator object, a __proto__ marker, and form bracket syntax separately. Use a unique request_id and require operator rejection, a null prototype marker, and matched_count=0 for abnormal cases. The three-case differential tool runs only against synthetic records and never iterates characters or exports fields."
+        },
+        "mitigation": {
+          "zh": "通过 Schema 将用户名等字段强制为标量并拒绝未知或美元前缀键，不把请求对象直接传给数据库驱动。使用显式字段构造查询、关闭服务端 JavaScript、拒绝危险原型键，并对对象只遍历 own properties。回归测试应覆盖 JSON 与表单解析器。",
+          "en": "Use schemas to coerce fields such as username to scalars and reject unknown or dollar-prefixed keys; never pass request objects directly to a database driver. Construct queries from explicit fields, disable server-side JavaScript, reject dangerous prototype keys, and enumerate own properties only. Regression tests should cover both JSON and form parsers."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "建立标量查询基线",
+            "en": "Establish a scalar-query baseline"
+          },
+          "description": {
+            "zh": "用合成 lab-user 字符串记录解析类型、查询 AST 和 matched_count=1 的正常结果。",
+            "en": "Use the synthetic lab-user string to record parsed type, query AST, and normal matched_count=1."
+          }
+        },
+        {
+          "title": {
+            "zh": "提交单一操作符对象",
+            "en": "Submit one operator object"
+          },
+          "description": {
+            "zh": "把一个字段从字符串改为 $ne 对象，要求 Schema 在数据库调用前拒绝。",
+            "en": "Change one field from a string to a $ne object and require schema rejection before any database call."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "单独验证原型路径",
+            "en": "Validate the prototype path separately"
+          },
+          "description": {
+            "zh": "提交 __proto__ marker 并检查最终查询 AST 与新对象，确认继承键没有进入查询。",
+            "en": "Submit a __proto__ marker and inspect the final query AST plus a fresh object to ensure inherited keys never enter the query."
+          }
+        },
+        {
+          "title": {
+            "zh": "覆盖第二解析器并回归",
+            "en": "Cover the second parser and regress"
+          },
+          "description": {
+            "zh": "用表单括号语法重复操作符测试，修复后要求 JSON 和表单路径结果一致。",
+            "en": "Repeat the operator test with form bracket syntax and require consistent JSON and form behavior after remediation."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "阳性需要异常输入改变最终查询 AST 或 matched_count，并能排除直接回显和测试数据差异。操作符被拒绝、原型 marker 为空或 matched_count=0 都是有效阻断，不能被描述为认证绕过。",
+        "en": "A positive requires abnormal input to change the final query AST or matched_count while excluding reflection and fixture-data differences. Operator rejection, a null prototype marker, or matched_count=0 are effective blocking outcomes and must not be described as authentication bypass."
+      },
+      "opsecTips": [
+        {
+          "zh": "只查询合成 lab-user，不使用 admin、密码、Token、邮箱、真实集合或逐字符循环。",
+          "en": "Query only the synthetic lab-user, with no admin identity, passwords, tokens, emails, real collections, or character-by-character loops."
+        },
+        {
+          "zh": "每个请求限制五秒并保存 request_id；出现数据库错误激增、查询队列积压或非合成字段时立即停止。",
+          "en": "Limit each request to five seconds and preserve request_id; stop on elevated database errors, query backlog, or any non-synthetic field."
+        }
+      ],
+      "references": [
+        "https://cheatsheetseries.owasp.org/cheatsheets/NoSQL_Security_Cheat_Sheet.html",
+        "https://developer.mozilla.org/en-US/docs/Web/Security/Attacks/Prototype_pollution",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Input_Validation_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "split",
+        "targetPayloadIds": [
+          "prototype-nosql-query-boundary"
+        ],
+        "targetToolIds": [
+          "nosql-query-construction-audit"
+        ],
+        "rationale": "旧条目包含管理员认证绕过、$where、密码盲提取和数据导出；改为合成查询 marker，并将有界差分与静态查询构造审计迁入工具区。",
+        "issuesResolved": [
+          "removed-credential-extraction",
+          "removed-authentication-bypass",
+          "removed-data-export",
+          "separated-operator-and-prototype-primitives",
+          "migrated-query-audit-tools"
+        ],
+        "retainedCommandIndexes": [
+          0,
+          1
+        ],
+        "lineDisposition": [
+          "execution 0,1 and wafBypass 0 -> prototype-nosql-query-boundary",
+          "execution 2,3 -> nosql-query-construction-audit"
+        ],
+        "needsCommandOverride": true
+      }
+    }
+  ]
+}

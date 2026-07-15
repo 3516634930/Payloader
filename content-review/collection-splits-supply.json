@@ -1,0 +1,159 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "collectionSplits": [
+    {
+      "sourceId": "supply-ci-poison",
+      "replacements": [],
+      "toolTargets": [
+        {
+          "targetToolId": "ci-pipeline-security-audit",
+          "targetName": { "zh": "CI/CD 工作流安全审计", "en": "CI/CD Workflow Security Audit" },
+          "targetDescription": { "zh": "面向自有本地仓库的 CI/CD 静态审计工具卡，覆盖触发器、非可信表达式、令牌权限、Action 固定版本与构建摘要。", "en": "A static CI/CD audit card for owned local repositories covering triggers, untrusted expressions, token permissions, immutable action references, and build digests." },
+          "targetCategory": { "zh": "供应链安全", "en": "Supply Chain Security" },
+          "targetReferences": [
+            "https://docs.github.com/en/actions/reference/security/secure-use",
+            "https://github.com/rhysd/actionlint",
+            "https://securityscorecards.dev/"
+          ],
+          "navRootId": "misc-pentest-tools",
+          "commands": [
+            {
+              "name": { "zh": "列出本地工作流文件", "en": "Inventory Local Workflow Files" },
+              "command": "workflow_dir=.github/workflows\nif [ -d \"$workflow_dir\" ]; then\n  find \"$workflow_dir\" -type f \\( -name '*.yml' -o -name '*.yaml' \\) -print\nfi",
+              "description": { "zh": "仅在当前仓库列出 GitHub Actions YAML 文件，为后续触发器、权限和依赖审计建立固定输入清单。", "en": "List GitHub Actions YAML files only in the current repository to establish a fixed input inventory for trigger, permission, and dependency review." },
+              "platform": "linux"
+            },
+            {
+              "name": { "zh": "检查高权限触发器与 Checkout", "en": "Review Privileged Triggers and Checkout" },
+              "command": "git grep -nE 'pull_request_target|github\\.event\\.pull_request\\.head\\.(sha|ref)' -- .github/workflows || true\ngit grep -nE 'persist-credentials:[[:space:]]*true|permissions:[[:space:]]*write-all' -- .github/workflows || true",
+              "description": { "zh": "定位 pull_request_target、Fork Head Checkout、凭据持久化和 write-all 权限，再人工确认是否形成非可信代码进入高权限上下文的数据流。", "en": "Locate pull_request_target, fork-head checkouts, persisted credentials, and write-all permissions, then manually determine whether untrusted code reaches a privileged context." },
+              "platform": "linux"
+            },
+            {
+              "name": { "zh": "检查事件表达式进入 Shell", "en": "Check Event Expressions Entering Shells" },
+              "command": "git grep -nE 'run:.*\\$\\{\\{[^}]*github\\.event\\.' -- .github/workflows || true\nfind .github/workflows -type f \\( -name '*.yml' -o -name '*.yaml' \\) -exec actionlint {} +",
+              "description": { "zh": "先查找 run 中直接插值的 github.event 字段，再由 actionlint 解析每个工作流；命中只作为人工数据流复核入口。", "en": "Find github.event fields interpolated directly into run blocks and parse each workflow with actionlint; matches are review entry points rather than automatic findings." },
+              "platform": "linux"
+            },
+            {
+              "name": { "zh": "生成构建产物摘要", "en": "Generate Build Artifact Digests" },
+              "command": "mkdir -p artifacts\nfor dir in dist build; do\n  if [ -d \"$dir\" ]; then\n    find \"$dir\" -type f -print0 | sort -z | xargs -0 sha256sum\n  fi\ndone > artifacts/build.sha256",
+              "description": { "zh": "对当前 dist 或 build 目录按稳定顺序生成 SHA-256 清单，用于比较同一提交的重复构建，不改写任何产物。", "en": "Generate a stable SHA-256 manifest for current dist or build directories to compare repeated builds of one commit without modifying artifacts." },
+              "platform": "linux"
+            },
+            {
+              "name": { "zh": "检查 Action 固定版本与显式权限", "en": "Check Action Pinning and Explicit Permissions" },
+              "command": "git grep -nE 'uses:[[:space:]]+[^#[:space:]]+@(main|master|v[0-9]+)' -- .github/workflows || true\ngit grep -nE 'workflow_dispatch:|permissions:' -- .github/workflows || true",
+              "description": { "zh": "列出使用可变分支或主版本 Tag 的 Action，并并列显示手动触发器和 permissions 声明，供逐文件核对完整提交 SHA 与最小权限。", "en": "List actions referenced by mutable branches or major-version tags together with manual triggers and permission declarations for full-SHA and least-privilege review." },
+              "platform": "linux"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": []
+    },
+    {
+      "sourceId": "supply-dependency-confusion",
+      "replacements": [],
+      "toolTargets": [
+        {
+          "targetToolId": "dependency-resolution-audit",
+          "targetName": { "zh": "依赖解析边界审计", "en": "Dependency Resolution Boundary Audit" },
+          "targetDescription": { "zh": "使用本地 Manifest、项目 Registry 配置、回环 Registry 与锁文件证据审计 npm 依赖来源和 Scope 解析边界。", "en": "Audit npm dependency origins and scope-resolution boundaries using local manifests, project registry configuration, a loopback registry, and lockfile evidence." },
+          "targetCategory": { "zh": "供应链安全", "en": "Supply Chain Security" },
+          "targetReferences": [
+            "https://docs.npmjs.com/cli/v11/configuring-npm/npmrc/",
+            "https://docs.npmjs.com/cli/v11/configuring-npm/package-lock-json/",
+            "https://docs.npmjs.com/cli/v11/using-npm/scope/"
+          ],
+          "navRootId": "misc-pentest-tools",
+          "commands": [
+            {
+              "name": { "zh": "导出声明依赖与锁文件摘要", "en": "Export Declared Dependencies and Lockfile Summary" },
+              "command": "mkdir -p artifacts\nnode -e \"const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));console.log(JSON.stringify({dependencies:p.dependencies||{},devDependencies:p.devDependencies||{}},null,2))\" > artifacts/declared-dependencies.json\nnode -e \"const fs=require('fs');const p=JSON.parse(fs.readFileSync('package-lock.json','utf8'));console.log(JSON.stringify({lockfileVersion:p.lockfileVersion,packages:Object.keys(p.packages||{}).length},null,2))\"",
+              "description": { "zh": "从当前项目读取声明依赖并记录锁文件版本与条目数，输出到本地 artifacts，不访问远端仓库或第三方源码。", "en": "Read declared dependencies and record the lockfile version and package count from the current project into local artifacts without accessing remote repositories or third-party source." },
+              "platform": "linux"
+            },
+            {
+              "name": { "zh": "读取 npm Registry 边界配置", "en": "Read npm Registry Boundary Configuration" },
+              "command": "npm config get registry\nnpm config get @payloader-lab:registry\nnpm config get replace-registry-host",
+              "description": { "zh": "读取默认 Registry、合成 Scope 映射和锁文件 Registry 主机替换策略，不打印认证令牌或完整用户配置。", "en": "Read the default registry, synthetic-scope mapping, and lockfile registry-host replacement policy without printing authentication tokens or full user configuration." },
+              "platform": "linux"
+            },
+            {
+              "name": { "zh": "查询回环 Registry 合成包", "en": "Query a Synthetic Package on the Loopback Registry" },
+              "command": "npm view @payloader-lab/internal-utils versions --registry http://127.0.0.1:4873 --json\nnpm view @payloader-lab/internal-utils dist-tags --registry http://127.0.0.1:4873 --json",
+              "description": { "zh": "只向 127.0.0.1:4873 查询合成 Scope 包的版本与 dist-tag，用于建立无公共发布和无真实命名空间的解析夹具。", "en": "Query versions and dist-tags for a synthetic scoped package only from 127.0.0.1:4873 to establish a fixture without public publishing or real namespaces." },
+              "platform": "linux"
+            },
+            {
+              "name": { "zh": "生成无脚本解析锁文件", "en": "Generate a Script-Free Resolution Lockfile" },
+              "command": "work_dir=$(mktemp -d)\ntrap 'rm -r -- \"$work_dir\"' EXIT\ncd \"$work_dir\"\nnpm init -y >/dev/null\nnpm install @payloader-lab/internal-utils@1.0.0 --registry http://127.0.0.1:4873 --package-lock-only --ignore-scripts\nnode -e \"const p=require('./package-lock.json');const x=p.packages['node_modules/@payloader-lab/internal-utils'];console.log(JSON.stringify({version:x.version,resolved:x.resolved,integrity:x.integrity},null,2))\"",
+              "description": { "zh": "在 mktemp 创建的一次性目录中仅生成锁文件并输出合成包的版本、来源和完整性；--ignore-scripts 阻止生命周期脚本执行。", "en": "Generate only a lockfile in a mktemp directory and print the synthetic package version, origin, and integrity while --ignore-scripts prevents lifecycle execution." },
+              "platform": "linux"
+            },
+            {
+              "name": { "zh": "导出锁文件解析来源", "en": "Export Lockfile Resolution Origins" },
+              "command": "mkdir -p artifacts\nnode -e \"const p=require('./package-lock.json');for(const [k,v] of Object.entries(p.packages||{})){if(v&&v.resolved)console.log([k,v.version,v.resolved,v.integrity||''].join('\\t'))}\" > artifacts/npm-resolution.tsv",
+              "description": { "zh": "把当前锁文件中的包路径、版本、resolved 与 integrity 导出为 TSV，便于对照批准 Registry 主机和完整性策略。", "en": "Export package paths, versions, resolved URLs, and integrity values from the current lockfile as TSV for comparison with approved registry hosts and integrity policy." },
+              "platform": "linux"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": []
+    },
+    {
+      "sourceId": "supply-typosquat",
+      "replacements": [],
+      "toolTargets": [
+        {
+          "targetToolId": "package-identity-audit",
+          "targetName": { "zh": "包身份与生命周期脚本审计", "en": "Package Identity and Lifecycle-Script Audit" },
+          "targetDescription": { "zh": "对本地依赖清单、批准包名、离线 Tarball 和 npm 生命周期脚本执行静态审计，不搜索可注册名称、不发布包也不运行 Hook。", "en": "Statically audit local dependency inventories, approved package names, offline tarballs, and npm lifecycle scripts without searching available names, publishing packages, or running hooks." },
+          "targetCategory": { "zh": "供应链安全", "en": "Supply Chain Security" },
+          "targetReferences": [
+            "https://docs.npmjs.com/cli/v11/using-npm/scripts/",
+            "https://docs.npmjs.com/cli/v11/commands/npm-ci/",
+            "https://docs.npmjs.com/cli/v11/commands/npm-pack/"
+          ],
+          "navRootId": "misc-pentest-tools",
+          "commands": [
+            {
+              "name": { "zh": "导出本地 npm 依赖名", "en": "Export Local npm Dependency Names" },
+              "command": "mkdir -p artifacts\nnode -e \"const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));console.log([...Object.keys(p.dependencies||{}),...Object.keys(p.devDependencies||{})].sort().join('\\n'))\" > artifacts/npm-dependency-names.txt",
+              "description": { "zh": "从当前 package.json 导出正式与开发依赖名并排序保存，不查询远端下载量、搜索结果或可注册名称。", "en": "Export and sort runtime and development dependency names from the current package.json without querying remote download counts, search results, or available names." },
+              "platform": "linux"
+            },
+            {
+              "name": { "zh": "比较批准包名规范化结果", "en": "Compare Normalized Approved Package Names" },
+              "command": "node -e \"const fs=require('fs');const read=f=>fs.readFileSync(f,'utf8').split(/\\r?\\n/).map(x=>x.trim()).filter(Boolean);const approved=read('policy/approved-packages.txt');const observed=read('artifacts/npm-dependency-names.txt');const norm=s=>s.toLowerCase().replace(/[-_.]/g,'');for(const name of observed){for(const expected of approved){if(name!==expected&&norm(name)===norm(expected))console.log(name+'\\t'+expected)}}\"",
+              "description": { "zh": "把当前依赖与批准清单按大小写和常见分隔符规范化后比较，只输出需要人工复核的名称对，不生成仿冒候选。", "en": "Compare current dependencies with an approved inventory after normalizing case and common separators, outputting only pairs that require manual review rather than generating lookalike candidates." },
+              "platform": "linux"
+            },
+            {
+              "name": { "zh": "静态检查离线包 Tarball", "en": "Statically Inspect an Offline Package Tarball" },
+              "command": "package_file=./fixtures/package-under-review.tgz\ntar -xOf \"$package_file\" package/package.json | jq '{name,version,scripts,bin}'\ntar -tf \"$package_file\" | sort",
+              "description": { "zh": "从离线 Tarball 读取 package.json 的身份、脚本与 bin 字段并列出归档成员，不解包到工作区也不执行包代码。", "en": "Read identity, script, and bin fields from package.json and list archive members in an offline tarball without extracting it into the workspace or executing package code." },
+              "platform": "linux"
+            },
+            {
+              "name": { "zh": "无脚本安装预演与锁文件审计", "en": "Script-Free Install Dry Run and Lockfile Audit" },
+              "command": "mkdir -p artifacts\nnpm ci --ignore-scripts --dry-run\nnpm audit --package-lock-only --json > artifacts/npm-audit.json",
+              "description": { "zh": "使用锁文件执行 --ignore-scripts 预演，并把依赖审计结果写入本地 JSON；该流程不加载依赖模块或执行生命周期脚本。", "en": "Run a lockfile-based --ignore-scripts dry run and write dependency audit results to local JSON without loading modules or executing lifecycle scripts." },
+              "platform": "linux"
+            },
+            {
+              "name": { "zh": "检查生命周期脚本策略", "en": "Review Lifecycle-Script Policy" },
+              "command": "npm config get ignore-scripts\nrg -n --glob 'package.json' '\"(preinstall|install|postinstall)\"[[:space:]]*:' .",
+              "description": { "zh": "读取当前 ignore-scripts 策略并静态定位仓库内 package.json 的安装生命周期 Hook，供代码所有者逐项审批。", "en": "Read the current ignore-scripts policy and statically locate install lifecycle hooks in repository package.json files for owner review." },
+              "platform": "linux"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": []
+    }
+  ]
+}

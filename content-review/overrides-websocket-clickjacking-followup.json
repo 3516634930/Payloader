@@ -1,0 +1,419 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "sourceIds": [
+    "clickjacking-xss",
+    "ws-auth-bypass",
+    "ws-smuggling"
+  ],
+  "entries": [
+    {
+      "id": "clickjacking-xss",
+      "name": {
+        "zh": "点击劫持与交互型 XSS 边界",
+        "en": "Clickjacking and Interaction-Gated XSS Boundary"
+      },
+      "description": {
+        "zh": "验证可被 Frame 嵌入的本地页面是否需要用户交互才能让无害 DOM marker 进入可执行 Sink，并分别记录 Frame、交互和 XSS 三层证据。",
+        "en": "Validate whether a locally framed page requires user interaction for a harmless DOM marker to reach an executable sink, recording framing, interaction, and XSS as separate evidence layers."
+      },
+      "category": {
+        "zh": "点击劫持",
+        "en": "Clickjacking"
+      },
+      "subCategory": {
+        "zh": "交互型 XSS 组合边界",
+        "en": "Interaction-Gated XSS Composition Boundary"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用 127.0.0.1 浏览器 Fixture，目标操作只写入合成 DOM marker，不读取 Cookie 或存储。",
+          "en": "Use the 127.0.0.1 browser fixture, where the target action writes only a synthetic DOM marker and reads no cookies or storage."
+        },
+        {
+          "zh": "在 Chromium 中同时保存 Frame 拒绝消息、用户交互事件、最终 DOM 快照和 CSP violation。",
+          "en": "Preserve frame-refusal messages, user interaction events, final DOM snapshots, and CSP violations together in Chromium."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "点击劫持与 XSS 组合成立，需要页面可被跨站 Frame 加载、诱导交互可到达目标控件、输入进入可执行 DOM Sink 三个条件依次满足。旧内容把 Self-XSS、剪贴板写入、Frame Sandbox 和 CSP 混为绕过。本条目改用可见 Frame 与本地 DOM marker，探测与浏览器回归迁入工具区。",
+          "en": "A clickjacking-plus-XSS chain requires the page to be cross-site frameable, induced interaction to reach the intended control, and input to enter an executable DOM sink in sequence. The old content mixed self-XSS, clipboard writes, frame sandboxing, and CSP bypass claims. This entry uses visible frames plus local DOM markers and moves probing and browser regression into tools."
+        },
+        "vulnerability": {
+          "zh": "可嵌入页面不代表 XSS，页面存在 XSS 也不代表点击劫持能触发。确认组合链必须证明同一浏览器流程中 Frame 成功、交互到达、marker 被目标页面解释，并排除用户主动粘贴任意代码、同源测试页面和直接导航。只出现 alert、响应头缺失或 HTML 字符串都不是完整证据。",
+          "en": "A frameable page does not prove XSS, and XSS does not prove clickjacking can trigger it. Confirm the composed chain only when one browser flow proves successful framing, delivered interaction, and target-side marker interpretation, excluding arbitrary user-pasted code, same-origin test pages, and direct navigation. An alert, missing header, or HTML string alone is incomplete evidence."
+        },
+        "exploitation": {
+          "zh": "先用低透明度多步页面确认控件位置与交互事件，再加载本地 xss-preview 并提交只设置 body.dataset.lab 的事件 marker。随后分别测试 srcdoc、Sandbox 与拖拽文本路径，每个上下文只运行一次并保存 DOM 快照。不写剪贴板、不读取 Cookie、不外带响应。",
+          "en": "First use a low-opacity multi-step page to confirm control positions and interaction events, then load the local xss-preview with an event marker that only sets body.dataset.lab. Test srcdoc, sandbox, and plain-text drag paths separately, once per context, and preserve DOM snapshots. Do not write the clipboard, read cookies, or exfiltrate responses."
+        },
+        "mitigation": {
+          "zh": "使用 CSP frame-ancestors 和必要的 X-Frame-Options 阻止非批准嵌入；对状态变更要求 CSRF 防护和确认。DOM 写入使用 textContent 或严格 Sanitizer，避免把 URL、剪贴板和拖拽 HTML 直接交给 innerHTML，并部署不允许 inline script 的 CSP。",
+          "en": "Use CSP frame-ancestors and X-Frame-Options where needed to prevent unapproved framing, and require CSRF protection plus confirmation for state changes. Write DOM with textContent or a strict sanitizer, avoid passing URL, clipboard, or dragged HTML directly to innerHTML, and deploy CSP without inline scripts."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "分别建立 Frame 与 Sink 基线",
+            "en": "Establish separate frame and sink baselines"
+          },
+          "description": {
+            "zh": "先记录页面直接访问、Frame 访问和普通文本输入的 DOM 与响应头基线。",
+            "en": "Record direct navigation, framed navigation, and plain-text DOM plus response-header baselines first."
+          }
+        },
+        {
+          "title": {
+            "zh": "执行可见多步交互",
+            "en": "Run a visible multi-step interaction"
+          },
+          "description": {
+            "zh": "保持 Frame 可见并使用唯一 marker，确认用户事件确实到达目标页面控件。",
+            "en": "Keep the frame visible and use a unique marker to confirm that user events reach the target control."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 1
+          }
+        },
+        {
+          "title": {
+            "zh": "验证无害 DOM 解释",
+            "en": "Verify harmless DOM interpretation"
+          },
+          "description": {
+            "zh": "检查 body.dataset.lab 和 CSP violation，区分文本渲染、HTML 解析与可执行事件。",
+            "en": "Inspect body.dataset.lab and CSP violations to distinguish text rendering, HTML parsing, and executable events."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复后重放组合流程",
+            "en": "Replay the composed flow after remediation"
+          },
+          "description": {
+            "zh": "修复后要求 Frame 被拒绝或 marker 仅按文本处理，且服务端没有组合链请求。",
+            "en": "After remediation, require framing rejection or text-only marker handling with no composed-chain request at the server."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "报告必须分别给出 Frame、交互和 Sink 三层结论；缺一层时只能报告独立问题。只有 marker 在目标页面可执行上下文被浏览器解释，且由点击劫持流程触发，才能确认组合影响。",
+        "en": "Report framing, interaction, and sink conclusions separately; when one layer is missing, report only the independent issue. Confirm composed impact only when the target page interprets the marker in an executable browser context triggered by the clickjacking flow."
+      },
+      "opsecTips": [
+        {
+          "zh": "Payload 不读取 Cookie、LocalStorage、表单值或响应数据，也不写剪贴板或向外部地址发送请求。",
+          "en": "Payloads do not read cookies, local storage, form values, or responses, and do not write the clipboard or send external requests."
+        },
+        {
+          "zh": "Frame 保持可见且只使用本地测试账号；每个用例后关闭上下文并清理 DOM marker 与实验 Cookie。",
+          "en": "Keep frames visible and use only a local test identity; close each context and clear DOM markers plus fixture cookies afterward."
+        }
+      ],
+      "references": [
+        "https://cheatsheetseries.owasp.org/cheatsheets/Clickjacking_Defense_Cheat_Sheet.html",
+        "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/frame-ancestors",
+        "https://cheatsheetseries.owasp.org/cheatsheets/DOM_based_XSS_Prevention_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "split",
+        "targetPayloadIds": [
+          "clickjacking-xss-interaction-boundary"
+        ],
+        "targetToolIds": [
+          "clickjacking-xss-browser-audit"
+        ],
+        "rationale": "旧条目包含剪贴板诱导、Cookie 外带、CSP 错误断言和跨域拖拽；改为本地无害 DOM marker，并把 Header 与 Chromium 回归迁入工具区。",
+        "issuesResolved": [
+          "removed-cookie-exfiltration",
+          "removed-clipboard-injection",
+          "corrected-csp-and-sandbox-claims",
+          "separated-composed-evidence-layers"
+        ],
+        "retainedCommandIndexes": [
+          1,
+          2
+        ],
+        "lineDisposition": [
+          "execution 0 -> clickjacking-xss-browser-audit",
+          "execution 1,2 and wafBypass 0-2 -> clickjacking-xss-interaction-boundary"
+        ],
+        "needsCommandOverride": true
+      }
+    },
+    {
+      "id": "ws-auth-bypass",
+      "name": {
+        "zh": "WebSocket 会话生命周期与频道授权",
+        "en": "WebSocket Session Lifecycle and Channel Authorization"
+      },
+      "description": {
+        "zh": "使用合成 Token 与频道验证连接建立、Token 过期、注销失效、对象级订阅授权、传输降级及消息大小限制。",
+        "en": "Use synthetic tokens and channels to validate connection establishment, token expiry, logout invalidation, object-level subscription authorization, transport downgrade, and message-size limits."
+      },
+      "category": {
+        "zh": "WebSocket 安全",
+        "en": "WebSocket Security"
+      },
+      "subCategory": {
+        "zh": "会话生命周期与对象授权",
+        "en": "Session Lifecycle and Object Authorization"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用本地 WebSocket Fixture 和 LAB_ACTIVE、LAB_EXPIRED、LAB_REVOKED 三个无真实权限的合成 Token。",
+          "en": "Use the local WebSocket fixture and synthetic LAB_ACTIVE, LAB_EXPIRED, and LAB_REVOKED tokens with no real privileges."
+        },
+        {
+          "zh": "准备 self 与 other 两个合成频道，服务端只返回 allow/deny、marker 和关闭码。",
+          "en": "Prepare synthetic self and other channels, with the server returning only allow/deny, markers, and close codes."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "WebSocket 鉴权不是握手一次通过就结束；Token 过期、用户注销、连接重连和每条消息的对象授权都必须保持一致。本条目只把两个固定频道的订阅差分保留为 Payload，其余生命周期、速率和传输检查迁入工具区。",
+          "en": "WebSocket authorization does not end after one successful handshake. Token expiry, logout, reconnection, and object authorization for every message must remain consistent. This entry retains only a two-channel subscription differential as payload and moves lifecycle, rate, and transport checks into tools."
+        },
+        "vulnerability": {
+          "zh": "连接成功不代表授权绕过，订阅消息被接受也不代表收到受保护数据。阳性需要过期或撤销身份仍能执行受保护消息，或低权限身份能订阅另一个对象的频道，并由服务端身份、频道所有者和 allow 结果关联。匿名公共频道和正确 deny 都是正常行为。",
+          "en": "Connection success does not prove authorization bypass, and an accepted subscribe message does not prove access to protected data. A positive requires an expired or revoked identity to perform a protected message, or a low-privilege identity to subscribe to another object channel, correlated with server identity, channel owner, and allow result. Anonymous public channels and correct denials are normal."
+        },
+        "exploitation": {
+          "zh": "先用 ACTIVE Token 建立 self 频道基线，再分别验证 EXPIRED 与 REVOKED 握手和注销后的既有连接。Payload 仅发送 self 与 other 两条订阅消息并比较 allow/deny；工具测试最多五条 ping 和一个 64 KiB marker，不发送一千条消息、不枚举频道也不保存 Token。",
+          "en": "Establish a self-channel baseline with the ACTIVE token, then test EXPIRED and REVOKED handshakes plus an existing connection after logout. The payload sends only self and other subscription messages and compares allow/deny. Tool tests use at most five pings and one 64 KiB marker, with no thousand-message burst, channel enumeration, or token storage."
+        },
+        "mitigation": {
+          "zh": "在握手和每条消息上验证短期身份，注销或撤销时主动关闭相关连接。频道订阅执行对象级授权，不信任客户端频道名；Schema 限制动作、大小与速率。wss 为生产默认，Socket.IO 或 SockJS 降级路径必须复用相同认证、Origin 与授权策略。",
+          "en": "Validate short-lived identity at handshake and on every message, actively closing related connections on logout or revocation. Enforce object-level authorization for subscriptions without trusting client channel names, and apply schema, size, and rate limits. Use wss in production, with Socket.IO or SockJS fallbacks sharing the same authentication, Origin, and authorization policy."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "建立活动会话基线",
+            "en": "Establish the active-session baseline"
+          },
+          "description": {
+            "zh": "使用 ACTIVE Token 记录握手身份、子协议、self 频道 allow 和正常关闭码。",
+            "en": "Use the ACTIVE token to record handshake identity, subprotocol, self-channel allow, and normal close code."
+          }
+        },
+        {
+          "title": {
+            "zh": "比较 self 与 other 频道",
+            "en": "Compare self and other channels"
+          },
+          "description": {
+            "zh": "在同一连接只发送两条订阅 marker，要求 self allow、other deny。",
+            "en": "Send only two subscription markers on one connection and require self allow plus other deny."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 2
+          }
+        },
+        {
+          "title": {
+            "zh": "验证过期与撤销",
+            "en": "Verify expiry and revocation"
+          },
+          "description": {
+            "zh": "分别检查过期握手、撤销握手和注销后既有连接，保存关闭码与拒绝原因。",
+            "en": "Check expired handshake, revoked handshake, and an existing connection after logout, preserving close codes and denial reasons."
+          }
+        },
+        {
+          "title": {
+            "zh": "覆盖降级与限制回归",
+            "en": "Regress fallback and limits"
+          },
+          "description": {
+            "zh": "在降级传输和有界大小用例上复用相同策略，修复后要求结果一致。",
+            "en": "Reuse the same policy on fallback transport and bounded-size cases and require consistent results after remediation."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "阳性必须绑定服务端已识别身份、资源所有者、消息动作和授权结果。客户端打印 connected、握手 101、连接未立即断开或公开 echo 返回都不是授权绕过证据。",
+        "en": "A positive must bind server-recognized identity, resource owner, message action, and authorization result. A client printing connected, HTTP 101, a connection remaining open briefly, or a public echo response is not authorization-bypass evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "只使用两个合成频道和三个 LAB Token，不记录真实 Authorization、Cookie、消息内容或用户标识。",
+          "en": "Use only two synthetic channels and three LAB tokens, recording no real authorization header, cookie, message content, or user identifier."
+        },
+        {
+          "zh": "速率测试限制五条消息和 64 KiB，出现队列积压、异常关闭或服务抖动时立即停止。",
+          "en": "Limit rate testing to five messages and 64 KiB, stopping on queue buildup, abnormal closure, or service instability."
+        }
+      ],
+      "references": [
+        "https://cheatsheetseries.owasp.org/cheatsheets/WebSocket_Security_Cheat_Sheet.html",
+        "https://datatracker.ietf.org/doc/html/rfc6455",
+        "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Origin"
+      ],
+      "review": {
+        "decision": "split",
+        "targetPayloadIds": [
+          "websocket-channel-authorization-boundary"
+        ],
+        "targetToolIds": [
+          "websocket-auth-lifecycle-audit"
+        ],
+        "rationale": "旧条目混合 Token 重放、他人 Session、100 个频道枚举、1000 消息 DoS 与协议降级；保留两条合成频道差分，其他检查迁入有界工具。",
+        "issuesResolved": [
+          "removed-session-theft",
+          "removed-channel-enumeration",
+          "bounded-rate-testing",
+          "separated-message-authorization-from-handshake"
+        ],
+        "retainedCommandIndexes": [
+          2
+        ],
+        "lineDisposition": [
+          "execution 2 -> websocket-channel-authorization-boundary",
+          "execution 0,1,3 and wafBypass 0 -> websocket-auth-lifecycle-audit"
+        ],
+        "needsCommandOverride": true
+      }
+    },
+    {
+      "id": "ws-smuggling",
+      "name": {
+        "zh": "WebSocket 与 H2C 代理升级边界审计",
+        "en": "WebSocket and H2C Proxy Upgrade-Boundary Audit"
+      },
+      "description": {
+        "zh": "把 WebSocket/H2C 走私合集重分类为本地代理诊断工具，比较升级响应、连接状态机、代理配置与大小写规范化。",
+        "en": "Reclassify the WebSocket/H2C smuggling collection as local proxy diagnostics that compare upgrade responses, connection state machines, proxy configuration, and case normalization."
+      },
+      "category": {
+        "zh": "WebSocket 安全",
+        "en": "WebSocket Security"
+      },
+      "subCategory": {
+        "zh": "代理升级状态机审计",
+        "en": "Proxy Upgrade State-Machine Audit"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用由 127.0.0.1:18080 承载的专用反向代理 Fixture，并登记唯一 /lab/internal/canary 路径。",
+          "en": "Use the dedicated reverse-proxy fixture on 127.0.0.1:18080 with one registered /lab/internal/canary path."
+        },
+        {
+          "zh": "能够读取前端与后端请求日志、连接 ID、协议版本和升级状态，且测试连接最多发送两个请求。",
+          "en": "Be able to read frontend and backend request logs, connection IDs, protocol versions, and upgrade states, with at most two requests per test connection."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "WebSocket 或 H2C 走私依赖前端代理与后端对 Upgrade、连接复用和后续字节边界理解不一致，因此需要原始连接驱动、代理配置和双侧日志，属于工具工作流而不是单一 Payload。本条目整体迁入工具区，并限制为本地固定 canary。",
+          "en": "WebSocket or H2C smuggling depends on disagreement between frontend and backend over Upgrade, connection reuse, and subsequent byte boundaries, requiring a raw connection driver, proxy configuration, and logs on both sides. It is a tool workflow rather than a single payload, so the entire entry moves to tools and is limited to a fixed local canary."
+        },
+        "vulnerability": {
+          "zh": "返回 101、支持 WebSocket 或存在 h2c 配置不能单独证明走私。阳性需要同一连接 ID 中，前端认为升级或隧道已建立而后端把后续字节解析为新的未授权 HTTP 请求，并由内部 canary 日志确认。状态码差异、大小写接受和代理品牌都只是线索。",
+          "en": "HTTP 101, WebSocket support, or h2c configuration alone does not prove smuggling. A positive requires one connection ID where the frontend considers an upgrade or tunnel established while the backend parses later bytes as a new unauthorized HTTP request, confirmed by internal-canary logs. Status differences, case acceptance, and proxy brand are only leads."
+        },
+        "exploitation": {
+          "zh": "先采集正常 Upgrade 基线，再用一个本地 raw socket 连接发送握手和固定 canary 请求，最多读取 4096 字节。分别运行 HTTP/2 prior-knowledge、代理配置检索和三种 Upgrade 大小写矩阵；保存前后端日志并按连接 ID 关联，不扫描端口、不访问管理接口。",
+          "en": "Capture a normal Upgrade baseline, then use one local raw-socket connection to send a handshake and fixed canary request, reading at most 4096 bytes. Run HTTP/2 prior knowledge, proxy-configuration search, and a three-value Upgrade casing matrix separately. Preserve and correlate frontend and backend logs by connection ID without scanning ports or accessing management interfaces."
+        },
+        "mitigation": {
+          "zh": "仅在明确路径允许 Upgrade，前后端统一 HTTP 版本和连接复用语义；拒绝意外 h2c，清除逐跳 Header 并在升级后禁止把任意字节重新解释为普通 HTTP。更新代理版本，隔离内部路由，并添加包含双侧日志断言的回归测试。",
+          "en": "Allow Upgrade only on explicit paths and align frontend/backend HTTP-version plus connection-reuse semantics. Reject unexpected h2c, strip hop-by-hop headers, and prevent arbitrary post-upgrade bytes from being reinterpreted as ordinary HTTP. Update proxies, isolate internal routes, and add regression tests with assertions on both-side logs."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "建立正常 Upgrade 基线",
+            "en": "Establish a normal Upgrade baseline"
+          },
+          "description": {
+            "zh": "记录本地固定路径的状态、Upgrade Header、连接 ID 和后端路由。",
+            "en": "Record status, Upgrade headers, connection ID, and backend route for the fixed local path."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "发送双请求本地连接",
+            "en": "Send a local two-request connection"
+          },
+          "description": {
+            "zh": "在单连接发送握手与固定 canary 请求，限制读取长度并保存原始响应。",
+            "en": "Send a handshake plus fixed canary request on one connection, limiting read length and preserving the raw response."
+          }
+        },
+        {
+          "title": {
+            "zh": "关联前后端状态机",
+            "en": "Correlate frontend and backend state machines"
+          },
+          "description": {
+            "zh": "按连接 ID 比较前端升级状态与后端请求解析，确认是否出现边界分歧。",
+            "en": "Compare frontend upgrade state with backend request parsing by connection ID to identify boundary disagreement."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复后重放协议矩阵",
+            "en": "Replay the protocol matrix after remediation"
+          },
+          "description": {
+            "zh": "对 HTTP/1.1、H2C 与大小写矩阵回归，要求内部 canary 不收到未授权请求。",
+            "en": "Regress HTTP/1.1, H2C, and casing matrices and require no unauthorized request at the internal canary."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "只有后端内部 canary 收到前端策略未授权的第二个请求，且由同一连接 ID 证明解析差异时才确认走私。101、Upgrade 大小写接受、Header 差异或配置命中都不能单独构成漏洞。",
+        "en": "Confirm smuggling only when the backend internal canary receives a second request not authorized by frontend policy and the same connection ID proves a parsing discrepancy. HTTP 101, accepted Upgrade casing, header differences, or configuration matches are insufficient alone."
+      },
+      "opsecTips": [
+        {
+          "zh": "只连接 127.0.0.1:18080 并使用固定 canary；每条连接最多两个请求和 4096 字节响应。",
+          "en": "Connect only to 127.0.0.1:18080 and use the fixed canary, with at most two requests and 4096 response bytes per connection."
+        },
+        {
+          "zh": "测试后关闭 Socket、清理连接日志并确认没有内部路由、端口扫描或长连接残留。",
+          "en": "Close sockets, clear connection logs, and confirm no internal-route access, port scanning, or long-lived connections remain after testing."
+        }
+      ],
+      "references": [
+        "https://datatracker.ietf.org/doc/html/rfc9110",
+        "https://datatracker.ietf.org/doc/html/rfc9113",
+        "https://datatracker.ietf.org/doc/html/rfc6455"
+      ],
+      "review": {
+        "decision": "split",
+        "targetPayloadIds": [],
+        "targetToolIds": [
+          "proxy-upgrade-boundary-audit"
+        ],
+        "rationale": "五个旧区块都是 curl、raw socket、h2cSmuggler、代理配置和 WAF 规避工作流，没有可脱离驱动器的单一 Payload；整体迁入本地有界工具。",
+        "issuesResolved": [
+          "reclassified-as-tool",
+          "removed-internal-scanning",
+          "removed-admin-access",
+          "bounded-raw-connection",
+          "added-two-sided-log-evidence"
+        ],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0-3 and wafBypass 0 -> proxy-upgrade-boundary-audit"
+        ],
+        "needsCommandOverride": true
+      }
+    }
+  ]
+}

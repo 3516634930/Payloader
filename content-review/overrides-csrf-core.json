@@ -1,0 +1,426 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "sourceIds": [
+    "csrf-basic",
+    "csrf-referer-bypass",
+    "csrf-token-bypass"
+  ],
+  "entries": [
+    {
+      "id": "csrf-basic",
+      "name": {
+        "zh": "CSRF 请求形状基础验证",
+        "en": "Basic CSRF Request-Shape Validation"
+      },
+      "description": {
+        "zh": "使用本地表单、GET 子资源、text/plain Fetch 和顶级导航 marker，验证浏览器是否自动携带会话并到达状态变更处理器。",
+        "en": "Use local form, GET subresource, text/plain Fetch, and top-level navigation markers to validate whether browsers carry ambient sessions to state-changing handlers."
+      },
+      "category": {
+        "zh": "CSRF跨站请求伪造",
+        "en": "CSRF Cross-Site Request Forgery"
+      },
+      "subCategory": {
+        "zh": "基础请求形状",
+        "en": "Basic Request Shapes"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用 127.0.0.1 CSRF Fixture 和只允许修改合成 email marker 的测试账号。",
+          "en": "Use the 127.0.0.1 CSRF fixture and a test identity that may change only a synthetic email marker."
+        },
+        {
+          "zh": "记录 Cookie SameSite、Origin、Referer、Sec-Fetch-Site、Token 判定和服务端 request_id。",
+          "en": "Record cookie SameSite, Origin, Referer, Sec-Fetch-Site, token decision, and server request_id."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "CSRF 利用浏览器自动附带的环境凭据，让跨站页面发起应用接受的状态变更请求。验证时应按 HTML Form、GET 子资源、简单 text/plain 请求和顶级导航拆分请求形状，并明确哪些 Header 或 Cookie 实际出现，而不是假设所有 Fetch 都能绕过预检。",
+          "en": "CSRF abuses ambient browser credentials so a cross-site page can send a state-changing request accepted by the application. Validation should separate HTML forms, GET subresources, simple text/plain requests, and top-level navigation while recording actual headers and cookies instead of assuming every Fetch bypasses preflight."
+        },
+        "vulnerability": {
+          "zh": "成立条件包括状态变更端点依赖 Cookie 或其他环境凭据、请求能由跨站页面生成、服务端没有有效 Token 或来源校验，并且测试操作实际改变合成状态。仅能发送请求、返回 2xx、缺少 Token 字段或页面可被访问都不足以确认 CSRF。",
+          "en": "Required conditions are a state-changing endpoint that relies on cookies or other ambient credentials, a request shape that a cross-site page can generate, missing effective token or source validation, and a demonstrated synthetic state change. Request delivery, HTTP 2xx, a missing token field, or endpoint reachability alone is insufficient."
+        },
+        "exploitation": {
+          "zh": "先用同源请求建立正常基线，再从独立本地 Origin 逐个运行 Form、GET、text/plain 和导航 marker。每次使用唯一 request_id，比较浏览器网络面板与服务端日志，并查询合成状态是否变化。Referer 与 Token 对照单独运行，不执行密码、支付、删除或权限修改。",
+          "en": "Establish a same-origin baseline, then run form, GET, text/plain, and navigation markers one at a time from a separate local origin. Use a unique request_id, compare browser network data with server logs, and query the synthetic state. Run Referer and token controls separately without password, payment, deletion, or privilege changes."
+        },
+        "mitigation": {
+          "zh": "对所有状态变更使用服务端验证并绑定会话的 CSRF Token，优先校验 Origin 并把 Referer 作为补充；Cookie 设置合适的 SameSite、Secure 与 HttpOnly。拒绝 GET 状态变更，结合 Sec-Fetch-Site、重新认证和业务确认形成纵深防御。",
+          "en": "Use server-validated, session-bound CSRF tokens for every state change, validate Origin first with Referer as a fallback, and set suitable SameSite, Secure, and HttpOnly cookie attributes. Reject state changes over GET and add Sec-Fetch-Site checks, reauthentication, and business confirmation as defense in depth."
+        },
+        "difficulty": "beginner"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "建立同源状态基线",
+            "en": "Establish the same-origin state baseline"
+          },
+          "description": {
+            "zh": "用测试账号执行正常请求并记录 Cookie、来源 Header、Token 和合成状态。",
+            "en": "Use the test identity for a normal request and record cookies, source headers, token, and synthetic state."
+          }
+        },
+        {
+          "title": {
+            "zh": "提交跨站表单 Marker",
+            "en": "Submit a cross-site form marker"
+          },
+          "description": {
+            "zh": "从独立本地 Origin 自动提交 Form，只改变合成 email 与唯一 marker。",
+            "en": "Auto-submit a form from a separate local origin, changing only the synthetic email and unique marker."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "比较其他请求形状",
+            "en": "Compare additional request shapes"
+          },
+          "description": {
+            "zh": "分别测试 GET 子资源、text/plain Fetch 和顶级导航，记录凭据是否附带。",
+            "en": "Test GET subresource, text/plain Fetch, and top-level navigation separately and record credential inclusion."
+          }
+        },
+        {
+          "title": {
+            "zh": "验证状态与修复回归",
+            "en": "Verify state and remediation regression"
+          },
+          "description": {
+            "zh": "确认只有服务端状态变化才算阳性，修复后要求全部跨站 marker 被拒绝。",
+            "en": "Treat only a server-side state change as positive and require every cross-site marker to be rejected after remediation."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "阳性必须把跨站浏览器请求、环境凭据、服务端处理日志和合成状态变化关联到同一 request_id。请求到达但无凭据、Token 拒绝、状态未变或只返回错误页面都属于有效阻断。",
+        "en": "A positive must correlate the cross-site browser request, ambient credentials, server processing logs, and synthetic state change under one request_id. Delivery without credentials, token rejection, unchanged state, or an error page is effective blocking evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "只修改可回滚的合成 email marker，禁止触发真实账号、支付、权限或删除操作。",
+          "en": "Change only a reversible synthetic email marker and never trigger real account, payment, privilege, or deletion actions."
+        },
+        {
+          "zh": "每个用例使用独立浏览器上下文，完成后清理 Cookie、marker 和服务端实验日志。",
+          "en": "Use a separate browser context for each case and clear cookies, markers, and fixture logs afterward."
+        }
+      ],
+      "references": [
+        "https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html",
+        "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Origin",
+        "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Sec-Fetch-Site"
+      ],
+      "review": {
+        "decision": "payload",
+        "targetPayloadIds": [
+          "csrf-basic"
+        ],
+        "targetToolIds": [],
+        "rationale": "旧条目混入中文操作说明、真实敏感动作和错误的 JSON 泛化；改为四种本地请求形状及两个防护对照。",
+        "issuesResolved": [
+          "removed-sensitive-actions",
+          "removed-prose-from-commands",
+          "corrected-simple-request-boundary",
+          "added-server-state-evidence"
+        ],
+        "retainedCommandIndexes": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "lineDisposition": [
+          "execution 0-3 -> four browser request shapes",
+          "wafBypass 0-1 -> Referer and token controls"
+        ],
+        "needsCommandOverride": true
+      }
+    },
+    {
+      "id": "csrf-referer-bypass",
+      "name": {
+        "zh": "CSRF Referer 校验边界",
+        "en": "CSRF Referer-Validation Boundary"
+      },
+      "description": {
+        "zh": "验证服务端对绝对 Referer、缺失 Referer、受信子域和 Referrer-Policy 缩减值的解析与允许列表行为。",
+        "en": "Validate server parsing and allowlist behavior for absolute Referer values, missing Referer, trusted subdomains, and values reduced by Referrer-Policy."
+      },
+      "category": {
+        "zh": "CSRF跨站请求伪造",
+        "en": "CSRF Cross-Site Request Forgery"
+      },
+      "subCategory": {
+        "zh": "Referer 来源校验",
+        "en": "Referer Source Validation"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用固定允许源 allowed.invalid 和本地 Referer 策略 Fixture，不连接外部站点。",
+          "en": "Use the fixed allowed origin allowed.invalid and a local Referer-policy fixture without external connections."
+        },
+        {
+          "zh": "服务端日志输出原始 Referer、标准 URL 解析结果、允许原因和 request_id。",
+          "en": "Server logs expose raw Referer, standard URL parsing output, allow or deny reason, and request_id."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "Referer 是 CSRF 来源校验的补充信号，可能因 Referrer-Policy、浏览器隐私策略和安全降级而缺失或被缩减。安全实现必须使用标准 URL 解析器比较完整 Origin，而不是对子串、前缀或后缀做正则判断，并为缺失 Header 定义明确策略。",
+          "en": "Referer is a supplemental CSRF source signal that may be omitted or reduced by Referrer-Policy, browser privacy behavior, or secure-to-insecure transitions. Secure implementations parse the URL and compare the complete origin instead of regex substrings, prefixes, or suffixes, with an explicit policy for missing headers."
+        },
+        "vulnerability": {
+          "zh": "如果服务端接受 allowed.invalid.attacker.invalid、路径中包含允许域、缺失 Referer 或未批准子域，来源校验可能失效。只有跨站请求携带环境凭据、通过 Referer 判定并造成合成状态变化时才构成 CSRF；Header 本身被接受只是校验缺陷证据。",
+          "en": "If the server accepts allowed.invalid.attacker.invalid, an allowed domain embedded in the path, missing Referer, or an unapproved subdomain, source validation may fail. CSRF still requires a cross-site request with ambient credentials that passes validation and changes synthetic state; acceptance of the header alone proves only a validation flaw."
+        },
+        "exploitation": {
+          "zh": "依次提交三种恶意绝对 URL、no-referrer Form、登记子域、origin-only 策略、Sandbox Frame 和完全缺失 Header。每次记录标准解析后的 scheme、host、port 与允许原因，并查询合成 marker。旧 Flash/SWF 样例已删除，因为现代浏览器不再支持该验证路径。",
+          "en": "Submit three malicious absolute URLs, a no-referrer form, a registered subdomain, origin-only policy, a sandboxed frame, and a completely missing header one at a time. Record parsed scheme, host, port, allow reason, and synthetic marker state. The obsolete Flash/SWF path is removed because modern browsers no longer support it."
+        },
+        "mitigation": {
+          "zh": "优先验证 Origin；仅在 Origin 缺失时使用 Referer，并通过标准 URL 解析器对 scheme、host 与 port 做精确允许列表比较。缺失来源 Header 应按业务场景拒绝或进入额外确认，同时保留 CSRF Token、SameSite 和 Fetch Metadata 防护。",
+          "en": "Validate Origin first and use Referer only when Origin is absent, comparing parsed scheme, host, and port against an exact allowlist. Reject missing source headers or require extra confirmation according to the workflow, while retaining CSRF tokens, SameSite, and Fetch Metadata defenses."
+        },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "固定允许 Origin",
+            "en": "Fix the allowed origin"
+          },
+          "description": {
+            "zh": "登记允许的 scheme、host 与 port，并用同源请求建立接受基线。",
+            "en": "Register the allowed scheme, host, and port and establish an accepted same-origin baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "提交解析混淆值",
+            "en": "Submit parsing-confusion values"
+          },
+          "description": {
+            "zh": "逐个提交路径包含、后缀域和拼接域 Referer，比较标准 URL 解析结果。",
+            "en": "Submit path-containing, suffix-domain, and concatenated-domain Referer values separately and compare standard URL parsing."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "覆盖缺失与缩减值",
+            "en": "Cover missing and reduced values"
+          },
+          "description": {
+            "zh": "测试 no-referrer、origin-only、Sandbox Frame 与完全缺失 Header 的策略。",
+            "en": "Test no-referrer, origin-only, sandboxed-frame, and fully missing-header policies."
+          }
+        },
+        {
+          "title": {
+            "zh": "关联状态并回归",
+            "en": "Correlate state and regress"
+          },
+          "description": {
+            "zh": "只有合成状态变化才升级为 CSRF，修复后要求非批准 Origin 全部拒绝。",
+            "en": "Escalate to CSRF only on synthetic state change and require rejection of every unapproved origin after remediation."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "Referer 校验问题与完整 CSRF 影响必须分开报告。标准解析后错误接受外域证明来源校验缺陷；还需环境凭据和状态变化证据才能证明可利用 CSRF。",
+        "en": "Report a Referer-validation flaw separately from full CSRF impact. Incorrect acceptance of an external origin after standard parsing proves the source-validation flaw, while ambient credentials and state-change evidence are still required for exploitable CSRF."
+      },
+      "opsecTips": [
+        {
+          "zh": "所有外部样例使用 `.invalid` 域，子域样例只指向回环 Fixture。",
+          "en": "Use .invalid domains for every external sample and point subdomain cases only to the loopback fixture."
+        },
+        {
+          "zh": "不伪造浏览器不能设置的 Referer 作为浏览器利用证据；curl 结果仅用于服务端策略诊断。",
+          "en": "Do not treat a Referer forged by curl as browser exploit evidence; command-line results diagnose server policy only."
+        }
+      ],
+      "references": [
+        "https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html",
+        "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Origin",
+        "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Sec-Fetch-Site",
+        "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Referer"
+      ],
+      "review": {
+        "decision": "payload",
+        "targetPayloadIds": [
+          "csrf-referer-bypass"
+        ],
+        "targetToolIds": [],
+        "rationale": "删除 Flash/SWF 和中文叙述，改为可复现的 URL 解析、缺失 Header、Referrer-Policy 与子域来源样例。",
+        "issuesResolved": [
+          "removed-obsolete-flash",
+          "removed-prose-from-commands",
+          "added-standard-url-parsing",
+          "separated-cli-policy-from-browser-proof"
+        ],
+        "retainedCommandIndexes": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "lineDisposition": [
+          "execution 0-3 -> Referer parsing variants",
+          "wafBypass 0-1 -> frame and missing-header controls"
+        ],
+        "needsCommandOverride": true
+      }
+    },
+    {
+      "id": "csrf-token-bypass",
+      "name": {
+        "zh": "CSRF Token 绑定与解析边界",
+        "en": "CSRF Token Binding and Parsing Boundary"
+      },
+      "description": {
+        "zh": "验证 Token 的会话绑定、必填行为、一次性重放、方法覆盖和 JSON/Form 解析一致性，并把统计与代码审计迁入工具区。",
+        "en": "Validate token session binding, required-token behavior, one-time replay, method overrides, and JSON/form parser consistency, moving statistics and code inspection into tools."
+      },
+      "category": {
+        "zh": "CSRF跨站请求伪造",
+        "en": "CSRF Cross-Site Request Forgery"
+      },
+      "subCategory": {
+        "zh": "Token 绑定与解析",
+        "en": "Token Binding and Parsing"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用两套合成 Session 和独立 Token Fixture，服务端只修改一次性 marker。",
+          "en": "Use two synthetic sessions with independent token fixtures, and let the server modify only one-time markers."
+        },
+        {
+          "zh": "能够记录 Token 来源、Session ID 摘要、消费次数、解析器和拒绝原因。",
+          "en": "Record token source, session-ID digest, consumption count, parser, and denial reason."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "CSRF Token 的安全性不仅取决于随机性，还取决于服务端必填、与当前 Session 绑定、在所有状态变更方法和内容类型上统一验证，以及合理的生命周期。条目把跨 Session、缺失/空值、方法覆盖和 JSON 解析保留为 Payload，把样本统计、泄露检索和重放编排迁入工具。",
+          "en": "CSRF token security depends not only on randomness but also on server-side required validation, binding to the current session, consistent enforcement across state-changing methods and content types, and suitable lifecycle. Cross-session, missing or empty, method-override, and JSON-parser request shapes remain payloads, while sample statistics, leakage searches, and replay orchestration move to tools."
+        },
+        "vulnerability": {
+          "zh": "如果攻击者 Session 的 Token 可用于受害者 Session、缺失或空 Token 被接受、方法覆盖绕过中间件，或 JSON 路径不执行同一校验，防护边界失效。Token 可重用本身不一定是漏洞，必须结合业务风险和会话绑定判断；XSS 获取 Token 属于独立问题。",
+          "en": "The boundary fails if a token from the attacker session works in the victim session, missing or empty tokens are accepted, method overrides bypass middleware, or JSON paths skip the same validation. Token reuse alone is not always a vulnerability and must be judged with business risk plus session binding; token theft through XSS is a separate issue."
+        },
+        "exploitation": {
+          "zh": "先建立正确 Session/Token 基线，再提交跨 Session Token、缺失与空值、方法覆盖和 JSON 请求。每次只改变一个变量并保存拒绝原因。工具命令对合成 Token 统计长度与唯一性，静态检索 URL/日志泄露，并仅重放同一 marker 两次，不爆破 Token。",
+          "en": "Establish a valid session/token baseline, then submit cross-session, missing and empty, method-override, and JSON requests one variable at a time while preserving denial reasons. Tool commands measure length and uniqueness of synthetic tokens, search statically for URL or log exposure, and replay one marker only twice without brute forcing tokens."
+        },
+        "mitigation": {
+          "zh": "使用密码学安全随机 Token 并绑定当前 Session 或用户上下文，在服务端对所有状态变更方法、解析器和路由统一要求 Token。Token 不放 URL 或日志；方法覆盖在 CSRF 校验前规范化。高风险操作可使用一次性 Token 和重新认证，但普通 Token 不必强制单次使用。",
+          "en": "Use cryptographically secure tokens bound to the current session or user context and require them server-side across every state-changing method, parser, and route. Keep tokens out of URLs and logs, and normalize method overrides before CSRF validation. High-risk actions may use one-time tokens and reauthentication, while ordinary tokens need not be single-use."
+        },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "建立正确绑定基线",
+            "en": "Establish the valid binding baseline"
+          },
+          "description": {
+            "zh": "用同一合成 Session 与 Token 执行 marker 请求，记录接受与消费状态。",
+            "en": "Execute a marker request with a matching synthetic session and token and record acceptance plus consumption state."
+          }
+        },
+        {
+          "title": {
+            "zh": "提交跨 Session Token",
+            "en": "Submit a cross-session token"
+          },
+          "description": {
+            "zh": "把攻击者 Fixture Token 与受害者 Session 组合，要求明确返回绑定不匹配。",
+            "en": "Combine the attacker fixture token with the victim session and require an explicit binding-mismatch denial."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 1
+          }
+        },
+        {
+          "title": {
+            "zh": "覆盖缺失与解析差异",
+            "en": "Cover missing and parser differences"
+          },
+          "description": {
+            "zh": "分别测试缺失、空值、方法覆盖和 JSON Content-Type，保持 marker 不变。",
+            "en": "Test missing, empty, method-override, and JSON content types separately while holding the marker constant."
+          }
+        },
+        {
+          "title": {
+            "zh": "审计生命周期并回归",
+            "en": "Audit lifecycle and regress"
+          },
+          "description": {
+            "zh": "使用工具统计、泄露检索和两次重放定位缺陷，修复后重放全部矩阵。",
+            "en": "Use statistics, leakage search, and two-request replay tools to locate flaws, then replay the full matrix after remediation."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "阳性需要服务端在错误 Session、缺失 Token 或绕过解析路径下接受请求并改变合成状态。随机性看起来较弱、Token 重复出现或日志检索命中都只是需要进一步验证的线索。",
+        "en": "A positive requires the server to accept a request and change synthetic state under the wrong session, missing token, or bypass parser path. Weak-looking randomness, repeated tokens, or a static-search hit is only a lead requiring further validation."
+      },
+      "opsecTips": [
+        {
+          "zh": "只使用合成 Token 和 Session 摘要，禁止读取、打印或重放真实用户 Token。",
+          "en": "Use only synthetic tokens and session digests and never read, print, or replay real user tokens."
+        },
+        {
+          "zh": "重放工具固定两次请求，不执行预测、字典、并发或无界 Token 采样。",
+          "en": "The replay tool is fixed to two requests and performs no prediction, dictionary use, concurrency, or unbounded token sampling."
+        }
+      ],
+      "references": [
+        "https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html",
+        "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Origin",
+        "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Sec-Fetch-Site"
+      ],
+      "review": {
+        "decision": "split",
+        "targetPayloadIds": [
+          "csrf-token-validation-boundary"
+        ],
+        "targetToolIds": [
+          "csrf-token-binding-audit"
+        ],
+        "rationale": "旧条目混合 Token 预测、泄露、重放编排和可投递请求；删除爆破叙述，拆分请求 Payload 与统计/代码审计工具。",
+        "issuesResolved": [
+          "removed-token-bruteforce",
+          "removed-prose-from-commands",
+          "separated-payloads-from-audit-tools",
+          "corrected-one-time-token-claim"
+        ],
+        "retainedCommandIndexes": [
+          1,
+          4
+        ],
+        "lineDisposition": [
+          "execution 1,4 and wafBypass 0-1 -> csrf-token-validation-boundary",
+          "execution 0,2,3 -> csrf-token-binding-audit"
+        ],
+        "needsCommandOverride": true
+      }
+    }
+  ]
+}

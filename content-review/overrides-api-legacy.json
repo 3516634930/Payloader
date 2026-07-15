@@ -1,0 +1,419 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "sourceIds": [
+    "api-bola",
+    "api-idor",
+    "api-injection",
+    "api-mass-assignment",
+    "api-rate-limit",
+    "api-unhooking",
+    "graphql-batching",
+    "graphql-injection",
+    "graphql-introspection",
+    "rest-api-security"
+  ],
+  "entries": [
+    {
+      "id": "api-bola",
+      "name": { "zh": "REST 对象级授权边界验证", "en": "REST Object-Level Authorization Boundary Validation" },
+      "description": { "zh": "使用两个固定实验主体和三个合成对象验证 REST 资源读取是否在每次请求中校验主体、租户、对象与操作关系。", "en": "Validate whether REST resource reads enforce principal, tenant, object, and action relationships on every request using two fixed lab identities and three synthetic objects." },
+      "category": { "zh": "API安全", "en": "API Security" },
+      "subCategory": { "zh": "对象级授权", "en": "Object-Level Authorization" },
+      "prerequisites": [
+        { "zh": "准备两个权限明确的实验账户，并分别创建一个带固定 Canary 的测试对象。", "en": "Prepare two lab accounts with explicit privileges and create one fixed-canary test object for each account." },
+        { "zh": "记录所有者读取、他人读取和不存在对象三种响应及对应服务端授权日志。", "en": "Record owner, non-owner, and missing-object responses together with the matching server authorization logs." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "对象级授权验证关注调用者是否有权操作请求中选定的具体对象。测试以所有者请求建立正常基线，再由第二个低权限主体只替换身份或对象标识，保持方法、路径结构和其他参数不变，并关联响应与授权日志。", "en": "Object-level authorization validation asks whether the caller may act on the specific object selected by the request. Establish an owner baseline, then change only the identity or object identifier for a second low-privilege principal while correlating responses with authorization logs." },
+        "vulnerability": { "zh": "问题通常源于服务端只完成身份认证，随后直接按客户端对象 ID 查询资源，却没有验证对象所有权、租户归属和当前操作权限。可预测 ID 只是发现条件，不是根因；随机 UUID 也不能替代逐对象授权。", "en": "The issue usually occurs when a server authenticates the caller and then loads a client-selected object without checking ownership, tenant membership, or action permission. Predictable identifiers aid discovery but are not the root cause, and random UUIDs do not replace per-object authorization." },
+        "exploitation": { "zh": "在 localhost Fixture 中依次请求本人对象、另一实验主体对象和不存在对象，每次只改一个变量并保留唯一请求 ID。确认标准是低权限主体获得本应拒绝的对象字段，同时服务端日志显示缺失或错误的授权判定；单独的 200、响应长度差异或公开元数据不构成确认。", "en": "Request a self-owned object, another lab principal's object, and a missing object from the localhost fixture, changing one variable per request and preserving a unique request ID. Confirmation requires unauthorized fields plus server evidence of a missing or incorrect authorization decision; status 200 or response-size differences alone are insufficient." },
+        "mitigation": { "zh": "在业务服务层按主体、租户、对象和操作执行默认拒绝策略，从已验证会话派生主体而不是接收客户端覆盖，并对所有读取和写入入口复用同一策略。为所有者、非所有者、跨租户和不存在对象建立回归矩阵。", "en": "Enforce default-deny principal, tenant, object, and action policy in the business-service layer, derive identity from the verified session, and reuse the policy across every read and write entry point. Maintain owner, non-owner, cross-tenant, and missing-object regression cases." },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        { "title": { "zh": "建立所有者读取基线", "en": "Establish the owner-read baseline" }, "description": { "zh": "由对象所有者读取固定测试对象，记录允许字段、响应状态和授权决策日志。", "en": "Have the owner read the fixed test object and record allowed fields, response status, and authorization-decision logs." } },
+        { "title": { "zh": "比较第二实验主体", "en": "Compare a second lab principal" }, "description": { "zh": "重放受控双主体请求，只改变令牌并保持对象、方法与其他参数完全一致。", "en": "Replay the bounded two-principal request, changing only the token while keeping object, method, and all other parameters identical." }, "payloadRef": { "area": "execution", "index": 1 } },
+        { "title": { "zh": "关联对象与授权证据", "en": "Correlate object and authorization evidence" }, "description": { "zh": "比较本人、他人和不存在对象结果，并用请求 ID 关联服务端授权与数据访问日志。", "en": "Compare self, peer, and missing-object results and correlate server authorization and data-access logs by request ID." } },
+        { "title": { "zh": "统一策略并执行回归", "en": "Unify policy and run regression" }, "description": { "zh": "修复后重放四维授权矩阵，确认正常访问保留且所有越权读取稳定拒绝。", "en": "After remediation, replay the authorization matrix to preserve legitimate access and consistently reject unauthorized reads." } }
+      ],
+      "analysis": { "zh": "确认结果必须同时具备低权限主体、非其所有的对象、受保护字段真实返回和服务端授权证据。对象存在性差异、公开字段、缓存响应或统一错误页均不能单独证明 BOLA。", "en": "Confirmation requires a low-privilege principal, an object it does not own, actual protected fields, and server authorization evidence. Existence differences, public fields, cached responses, or generic error pages do not independently prove BOLA." },
+      "opsecTips": [
+        { "zh": "只使用专用测试租户、合成对象和固定 Canary，不访问任何真实用户对象。", "en": "Use only a dedicated test tenant, synthetic objects, and fixed canaries; never access real user objects." },
+        { "zh": "限制为三个已知对象和两个主体，发现越权字段后立即停止并清理测试数据。", "en": "Limit the matrix to three known objects and two principals, stopping on protected-field disclosure and removing test data afterward." }
+      ],
+      "references": [
+        "https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "split",
+        "targetPayloadIds": ["api-object-level-authorization"],
+        "targetToolIds": ["api-authorization-workflow"],
+        "rationale": "保留单一 REST 对象授权边界，将对象发现、固定矩阵和规范化编排迁入工具卡，并退休破坏性跨对象写入。",
+        "issuesResolved": ["bounded-localhost-fixture", "single-authorization-boundary", "removed-destructive-writes", "migrated-orchestration", "added-authoritative-references"]
+      }
+    },
+    {
+      "id": "api-idor",
+      "name": { "zh": "REST 对象标识授权验证归并", "en": "REST Object-Identifier Authorization Validation Merge" },
+      "description": { "zh": "把旧 IDOR 枚举条目归并到对象级授权边界，并保留有限对象矩阵、身份对照和标识规范化工作流。", "en": "Merge the legacy IDOR enumeration entry into object-level authorization while retaining bounded object matrices, identity controls, and identifier-normalization workflows." },
+      "category": { "zh": "API安全", "en": "API Security" },
+      "subCategory": { "zh": "对象标识与授权", "en": "Object Identifiers and Authorization" },
+      "prerequisites": [
+        { "zh": "只使用本人对象、同租户测试对象和不存在对象三个固定标识。", "en": "Use only three fixed identifiers: a self-owned object, a same-tenant lab object, and a missing object." },
+        { "zh": "为每个请求绑定唯一请求 ID，并启用对象加载与授权决策日志。", "en": "Bind a unique request ID to every request and enable object-loading and authorization-decision logs." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "IDOR 是对象级授权缺陷的历史称呼，核心不是大量遍历数字，而是验证服务端是否把对象引用与当前主体权限绑定。该归并条目以三个已知合成 ID 做差异对照，不使用字典、随机 UUID 列表或无界批量枚举。", "en": "IDOR is a historical label for an object-level authorization failure. The core question is whether the server binds an object reference to the current principal, not whether many numbers can be enumerated. This merge uses three known synthetic IDs without dictionaries or unbounded enumeration." },
+        "vulnerability": { "zh": "如果路由或查询参数中的 ID 直接进入数据访问层，而授权仅在列表页、客户端或某个入口执行，攻击者可能通过另一路径读取同租户或跨租户对象。编码形式和 ID 类型变化只用于检查规范化一致性，不能替代授权证据。", "en": "If a route or query identifier reaches the data layer while authorization exists only in a list page, client, or one entry point, another path may expose same-tenant or cross-tenant objects. Encoding and identifier-type variants test normalization consistency but do not replace authorization evidence." },
+        "exploitation": { "zh": "先读取本人对象建立字段基线，再用同一令牌请求一个明确归属第二测试账户的对象和一个不存在对象。每个请求之间加入短间隔，比较状态、字段、缓存标记和服务端日志；不要把对象存在性侧信道直接等同于数据越权。", "en": "Read the caller's own object first, then use the same token for one object owned by a second lab account and one missing object. Pace requests and compare status, fields, cache markers, and server logs; do not equate an existence side channel with unauthorized data access." },
+        "mitigation": { "zh": "在所有按 ID 加载对象的服务方法中应用统一授权策略，查询时带入主体和租户条件，并对路径、查询、批量和替代表示入口执行同样检查。对 ID 做一次标准规范化后再授权，拒绝重复参数和歧义解析。", "en": "Apply one authorization policy in every service method that loads by identifier, include principal and tenant constraints in the query, and enforce the same checks for path, query, batch, and alternate representations. Canonicalize once before authorization and reject duplicate or ambiguous parameters." },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        { "title": { "zh": "固定三个对象标识", "en": "Fix three object identifiers" }, "description": { "zh": "记录本人、同租户他人和不存在对象的标识及预期授权结果。", "en": "Record self, same-tenant peer, and missing identifiers with expected authorization outcomes." } },
+        { "title": { "zh": "执行有限对象矩阵", "en": "Run the bounded object matrix" }, "description": { "zh": "以单一低权限令牌按固定顺序请求三个对象，并在请求之间加入短间隔。", "en": "Request the three fixed objects in order with one low-privilege token and short pacing between requests." }, "payloadRef": { "area": "execution", "index": 1 } },
+        { "title": { "zh": "核对字段与服务端日志", "en": "Check fields and server logs" }, "description": { "zh": "将响应字段、缓存结果、对象加载记录和授权决策按请求 ID 关联。", "en": "Correlate response fields, cache behavior, object loading, and authorization decisions by request ID." } },
+        { "title": { "zh": "归并到对象授权回归", "en": "Merge into authorization regression" }, "description": { "zh": "把确认过的阴性与阳性样例纳入统一对象级授权回归套件。", "en": "Add the confirmed positive and negative cases to the unified object-level authorization regression suite." } }
+      ],
+      "analysis": { "zh": "该旧条目不再保留独立 Payload，因为 IDOR 与 BOLA 指向同一对象级授权根因。只有非所有者真实获得受保护对象数据才是确认；大量 404、不同长度或可预测 ID 都只是线索。", "en": "This legacy entry no longer remains as a separate payload because IDOR and BOLA share the same object-level authorization root cause. Only actual protected data returned to a non-owner confirms the issue; predictable IDs, 404 patterns, and response-size differences are leads." },
+      "opsecTips": [
+        { "zh": "禁止生成或导入 ID 字典，只请求事先登记的三个合成对象。", "en": "Do not generate or import identifier dictionaries; request only the three preregistered synthetic objects." },
+        { "zh": "响应证据只保存字段名和 Canary，删除任何意外出现的真实内容。", "en": "Retain only field names and canaries in evidence, deleting any unexpectedly returned real content." }
+      ],
+      "references": [
+        "https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Insecure_Direct_Object_Reference_Prevention_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "split",
+        "targetPayloadIds": ["api-object-level-authorization"],
+        "targetToolIds": ["api-authorization-workflow"],
+        "rationale": "IDOR 与 BOLA 合并为同一对象级授权 Payload；有限 ID 矩阵和规范化验证进入工具卡，无界枚举与重复参数批量入口退休。",
+        "issuesResolved": ["merged-duplicate-concept", "removed-unbounded-enumeration", "bounded-object-matrix", "migrated-workflow", "clarified-evidence"]
+      }
+    },
+    {
+      "id": "api-injection",
+      "name": { "zh": "API 输入解释边界验证", "en": "API Input Interpretation Boundary Validation" },
+      "description": { "zh": "使用固定无害 Canary 验证 API 输入是否保持数据语义，并把 SQL、结构化过滤、目录过滤和主机参数的解析编排迁入工具卡。", "en": "Use fixed harmless canaries to validate that API inputs remain data while moving SQL-shaped, structured-filter, directory-filter, and host-parameter orchestration into a tool card." },
+      "category": { "zh": "API安全", "en": "API Security" },
+      "subCategory": { "zh": "输入验证与解释器边界", "en": "Input Validation and Interpreter Boundaries" },
+      "prerequisites": [
+        { "zh": "使用仅返回规范化结果和请求 ID 的 localhost 评估端点，不连接真实数据库或系统命令解释器。", "en": "Use localhost evaluation endpoints that return normalized input and request IDs without connecting to a real database or command interpreter." },
+        { "zh": "准备普通字符串对照与固定 INPUT_CANARY，并启用最终查询或参数绑定日志。", "en": "Prepare a plain-string control and fixed INPUT_CANARY values with final-query or parameter-binding logs enabled." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "本条只验证一个输入值跨越 API、解析器和后端绑定层时是否仍作为数据处理。使用带单个撇号形状的固定 Canary，与普通字符串基线比较规范化值、绑定参数和响应；其他解释器类型属于工具工作流，不混入同一 Payload。", "en": "This card validates one input value as it crosses the API, parser, and backend binding layers while remaining data. Compare a fixed apostrophe-shaped canary with a plain control using normalized values, bound parameters, and responses; other interpreter types remain in the tool workflow." },
+        "vulnerability": { "zh": "漏洞根因是应用把不可信输入拼接到查询、过滤器、目录表达式或系统参数，或允许客户端对象直接变成后端操作符。仅出现错误、拒绝或字符被转义并不证明注入；需要看到输入改变最终解释结构或后端行为。", "en": "The root cause is concatenating untrusted input into queries, filters, directory expressions, or system arguments, or converting client objects directly into backend operators. Errors, rejection, or escaping alone do not prove injection; the input must alter the final interpreted structure or backend behavior." },
+        "exploitation": { "zh": "向本地评估端点分别提交普通值和固定 Canary，保持身份、内容类型与请求体结构不变。比较解析前字节、规范化结果、绑定参数和后端审计事件；禁止查询真实表、读取文件、执行命令或扩大到数据提取。", "en": "Submit a plain value and fixed canary to the local evaluator while keeping identity, content type, and body shape constant. Compare raw bytes, normalization, bound parameters, and backend audit events without querying real tables, reading files, executing commands, or extracting data." },
+        "mitigation": { "zh": "为每个后端使用参数化查询或类型安全 API，按 schema 允许字段和操作符，并把系统调用拆分为固定可执行文件与参数数组。统一内容类型解析和规范化顺序，记录拒绝原因，并为普通值、边界字符和结构化对象建立回归。", "en": "Use parameterized queries or type-safe APIs for every backend, allowlist schema fields and operators, and separate fixed executables from argument arrays. Unify content-type parsing and normalization order, log rejection reasons, and regress plain values, boundary characters, and structured objects." },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        { "title": { "zh": "记录普通字符串基线", "en": "Record a plain-string baseline" }, "description": { "zh": "提交普通 Canary 并保存原始输入、规范化值、绑定参数与请求 ID。", "en": "Submit a plain canary and save raw input, normalized value, bound parameters, and request ID." } },
+        { "title": { "zh": "提交单一边界字符", "en": "Submit one boundary character" }, "description": { "zh": "重放同一请求，仅在固定 Canary 末尾加入一个撇号形状并观察解释差异。", "en": "Replay the same request with one apostrophe-shaped boundary added to the fixed canary and observe interpretation differences." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "关联最终绑定结构", "en": "Correlate the final bound structure" }, "description": { "zh": "核对输入是否仍位于单一绑定参数中，并排除错误页、回显和编码差异。", "en": "Verify that the input remains one bound parameter and exclude error pages, reflection, and encoding differences." } },
+        { "title": { "zh": "参数化修复后复测", "en": "Retest after parameterization" }, "description": { "zh": "应用类型约束和参数绑定后重放普通值与 Canary，确认语义一致且业务输入可用。", "en": "After type constraints and parameter binding, replay the control and canary to confirm stable semantics and valid business input." } }
+      ],
+      "analysis": { "zh": "阳性必须证明输入改变了最终解释结构或后端操作，而不是仅触发错误、转义、拒绝或 WAF 命中。固定 Canary 不包含数据提取、文件路径或系统命令，因此证据聚焦输入边界本身。", "en": "A positive requires proof that the input changed the final interpreted structure or backend operation, not merely an error, escape, rejection, or WAF event. The fixed canary contains no extraction query, file path, or system command, keeping evidence focused on the input boundary." },
+      "opsecTips": [
+        { "zh": "只对无真实后端副作用的 evaluate 端点发送 Canary，并设置五秒超时。", "en": "Send canaries only to side-effect-free evaluation endpoints and enforce a five-second timeout." },
+        { "zh": "每次只改变一个字符或输入形状，禁止附加数据提取和命令执行内容。", "en": "Change one character or input shape per request and never append data-extraction or command-execution content." }
+      ],
+      "references": [
+        "https://owasp.org/API-Security/editions/2023/en/0xa8-security-misconfiguration/",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Injection_Prevention_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "split",
+        "targetPayloadIds": ["api-input-validation-boundary"],
+        "targetToolIds": ["api-input-contract-workflow"],
+        "rationale": "Payload 仅保留无害单值输入解释边界；多后端类型、编码与 Content-Type 编排迁入工具卡。",
+        "issuesResolved": ["single-input-boundary", "removed-data-extraction", "removed-command-execution", "fixed-canary", "migrated-interpreter-matrix"]
+      }
+    },
+    {
+      "id": "api-mass-assignment",
+      "name": { "zh": "API 属性级授权边界验证", "en": "API Property-Level Authorization Boundary Validation" },
+      "description": { "zh": "验证低权限主体提交允许属性与一个服务器管理属性时，API 是否明确拒绝或忽略不可写字段且不发生持久化变化。", "en": "Validate that an API explicitly rejects or ignores one server-managed property submitted alongside an allowed property without persisting unauthorized state." },
+      "category": { "zh": "API安全", "en": "API Security" },
+      "subCategory": { "zh": "对象属性级授权", "en": "Object Property-Level Authorization" },
+      "prerequisites": [
+        { "zh": "使用无持久化副作用的属性契约评估端点，并准备一个允许字段和一个服务器管理字段。", "en": "Use a side-effect-free property-contract evaluator with one writable field and one server-managed field." },
+        { "zh": "从 OpenAPI schema 和服务实现确认字段的 readOnly、writeOnly 与角色策略。", "en": "Confirm readOnly, writeOnly, and role policy from the OpenAPI schema and service implementation." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "属性级授权关注调用者能否读写对象中的具体字段，而不是能否访问整个对象。测试请求包含一个正常的 display_name 和一个实验用服务器管理 review_tier，服务只返回接受与拒绝字段列表，不修改真实账户。", "en": "Property-level authorization concerns which fields a caller may read or write, not merely access to the whole object. The test combines an allowed display_name with a lab-only server-managed review_tier and returns accepted and rejected fields without modifying a real account." },
+        "vulnerability": { "zh": "当框架把请求对象自动绑定到持久化模型，或不同更新入口使用不一致的字段允许列表时，客户端可能覆盖角色、配额、租户或内部标志。隐藏字段、前端未展示字段和随机字段名都不是安全控制。", "en": "Automatic binding of request objects to persistence models, or inconsistent writable-field allowlists across update paths, can let clients overwrite roles, quotas, tenants, or internal flags. Hidden fields and omitted UI controls are not security boundaries." },
+        "exploitation": { "zh": "先提交仅含允许字段的请求，再加入一个服务器管理属性并保持其他值不变。比较 accepted、rejected、type_errors 与服务端映射日志；只有未授权字段真实进入领域对象或持久化层才算确认，返回回显或反序列化错误不算。", "en": "Submit an allowed field first, then add one server-managed property while keeping all other values constant. Compare accepted, rejected, type_errors, and mapping logs. Confirmation requires the unauthorized property to reach the domain or persistence layer; reflection and deserialization errors are not enough." },
+        "mitigation": { "zh": "为每个操作定义专用输入 DTO 和显式可写字段允许列表，在业务层执行主体与属性策略，禁止请求模型直接绑定数据库实体。用 OpenAPI readOnly/writeOnly 标记辅助文档，但以服务端策略为准，并覆盖嵌套属性和类型混淆回归。", "en": "Define operation-specific input DTOs and explicit writable-field allowlists, enforce principal and property policy in the service layer, and never bind request models directly to persistence entities. Treat OpenAPI flags as documentation backed by server policy and regress nested and type-confusion cases." },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        { "title": { "zh": "确认字段写入契约", "en": "Confirm the writable-field contract" }, "description": { "zh": "从 schema 与实现记录允许字段、服务器管理字段和预期拒绝行为。", "en": "Record writable fields, server-managed fields, and expected rejection behavior from schema and implementation." } },
+        { "title": { "zh": "提交单一管理属性", "en": "Submit one managed property" }, "description": { "zh": "在允许的显示名旁加入 review_tier，并请求无副作用契约评估结果。", "en": "Add review_tier beside an allowed display name and request the side-effect-free contract evaluation result." }, "payloadRef": { "area": "execution", "index": 1 } },
+        { "title": { "zh": "核对映射与持久化边界", "en": "Check mapping and persistence boundaries" }, "description": { "zh": "确认管理字段进入拒绝列表，并核对领域对象和持久化日志没有状态变化。", "en": "Confirm the managed field appears in the rejection list and no domain or persistence state changed." } },
+        { "title": { "zh": "应用 DTO 允许列表回归", "en": "Regress the DTO allowlist" }, "description": { "zh": "使用专用 DTO 修复后重放平面、嵌套和类型变化样例，保持正常字段可写。", "en": "After dedicated DTO remediation, replay flat, nested, and type variants while preserving valid writable fields." } }
+      ],
+      "analysis": { "zh": "阳性必须证明低权限主体提交的服务器管理属性进入领域或持久化状态。响应回显、schema 中存在字段、未知字段被静默丢弃或类型错误都不能单独证明批量赋值缺陷。", "en": "A positive requires a server-managed property submitted by a low-privilege principal to reach domain or persisted state. Reflection, schema visibility, silent dropping, and type errors do not independently prove a mass-assignment flaw." },
+      "opsecTips": [
+        { "zh": "使用 evaluate 端点和合成属性，不修改真实角色、密码、余额、配额或租户。", "en": "Use an evaluation endpoint and synthetic properties; never modify real roles, passwords, balances, quotas, or tenants." },
+        { "zh": "一次只增加一个服务器管理字段，并保留请求前后状态摘要用于确认无副作用。", "en": "Add one server-managed property at a time and retain before-and-after state summaries to prove no side effects." }
+      ],
+      "references": [
+        "https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Mass_Assignment_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "split",
+        "targetPayloadIds": ["api-property-level-authorization"],
+        "targetToolIds": ["api-input-contract-workflow"],
+        "rationale": "保留单一属性授权 Payload；schema 检查、嵌套字段和类型矩阵迁入输入契约工具卡。",
+        "issuesResolved": ["single-property-boundary", "removed-real-account-changes", "side-effect-free-evaluator", "migrated-schema-workflow", "added-negative-controls"]
+      }
+    },
+    {
+      "id": "api-rate-limit",
+      "name": { "zh": "API 资源消耗与速率基线工作流", "en": "API Resource-Consumption and Rate Baseline Workflow" },
+      "description": { "zh": "把旧限流绕过内容改为固定五次请求、单一身份和短间隔的可重复基线，只测量状态、延迟与标准限流头。", "en": "Replace legacy rate-limit bypass material with a reproducible five-request baseline using one identity, short pacing, and measurements of status, latency, and standard rate headers." },
+      "category": { "zh": "API安全", "en": "API Security" },
+      "subCategory": { "zh": "资源消耗与限流验证", "en": "Resource Consumption and Rate-Limit Validation" },
+      "prerequisites": [
+        { "zh": "获得本地 Fixture 的批准请求上限、窗口长度和停止阈值。", "en": "Obtain the approved request ceiling, window duration, and stop threshold for the local fixture." },
+        { "zh": "使用单一固定实验令牌，并启用网关和应用层计数器日志。", "en": "Use one fixed lab token with gateway and application counter logs enabled." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "速率验证是测量型工具工作流，不应作为绕过 Payload。先以五次固定请求建立响应与延迟基线，再检查相同身份在短窗口内的计数、429、Retry-After 和 RateLimit 字段，整个过程不更换代理、账户、密钥或网络身份。", "en": "Rate validation is a measurement workflow rather than a bypass payload. Establish status and latency with five fixed requests, then inspect counters, 429 responses, Retry-After, and RateLimit fields for the same identity without rotating proxies, accounts, keys, or network identities." },
+        "vulnerability": { "zh": "风险来自成本高的端点缺少按身份和操作的预算，或网关计数与后端实际工作量不一致。不同客户端 Header、连接或请求格式不应创建新的可信身份；服务端应在认证主体、租户和敏感操作维度统一计费。", "en": "Risk arises when expensive endpoints lack identity- and operation-aware budgets or gateway counts diverge from backend work. Client headers, connections, and formats must not create new trusted identities; accounting should combine authenticated principal, tenant, and sensitive operation." },
+        "exploitation": { "zh": "只发送预先批准的五次请求并加入固定间隔，记录每次状态、耗时、计数头和后端工作单元。可做一个固定 Header 或 User-Agent 不变性对照，但不得轮换来源、令牌或密钥；达到 429、错误率或延迟阈值立即停止。", "en": "Send only five approved paced requests and record status, duration, rate headers, and backend work units. One fixed header or user-agent invariance control is acceptable, but source, token, and key rotation are not. Stop at the first 429, error-rate, or latency threshold." },
+        "mitigation": { "zh": "按主体、租户、操作和成本设置令牌桶或滑动窗口，在可信代理边界重建客户端地址，并为 GraphQL resolver、批处理项和异步任务单独计费。返回一致的 429 与 Retry-After，设置最大请求体、分页、并发和超时。", "en": "Apply token-bucket or sliding-window budgets by principal, tenant, operation, and cost; reconstruct client addresses only at trusted proxy boundaries; and meter GraphQL resolvers, batch items, and asynchronous jobs separately. Return consistent 429 and Retry-After responses with body, pagination, concurrency, and timeout caps." },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        { "title": { "zh": "登记测试预算", "en": "Register the test budget" }, "description": { "zh": "记录五次请求上限、固定令牌、窗口与达到异常时的停止条件。", "en": "Record the five-request ceiling, fixed token, window, and abnormal-condition stop criteria." } },
+        { "title": { "zh": "运行五次速率基线", "en": "Run the five-request baseline" }, "description": { "zh": "按固定二百毫秒间隔发送请求，并输出序号、状态和总耗时。", "en": "Send requests at fixed two-hundred-millisecond intervals and print sequence, status, and total duration." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "关联计数和工作单元", "en": "Correlate counters and work units" }, "description": { "zh": "把网关计数、应用计数和后端工作量与每个请求 ID 对齐。", "en": "Align gateway counts, application counts, and backend work units with each request ID." } },
+        { "title": { "zh": "设置预算并复测", "en": "Set budgets and retest" }, "description": { "zh": "应用主体与操作维度限流后重放同一五次基线，验证响应和计数一致。", "en": "After principal- and operation-level limits, replay the same five-request baseline and verify consistent responses and accounting." } }
+      ],
+      "analysis": { "zh": "确认需要在批准预算内观察到后端工作量未受控、计数维度错误或声明阈值没有执行。未返回 429、某次延迟变化或客户端可修改 Header 都不足以证明可绕过限流。", "en": "Confirmation requires uncontrolled backend work, incorrect accounting dimensions, or failure to enforce a declared threshold within the approved budget. Missing 429 responses, one latency change, or a client-editable header alone does not prove a rate-limit bypass." },
+      "opsecTips": [
+        { "zh": "严格限制五次请求、单一令牌和 localhost，不使用并发洪泛、代理池或多账户。", "en": "Strictly limit testing to five localhost requests with one token and no flooding, proxy pools, or multiple accounts." },
+        { "zh": "达到首个 429、五秒超时或异常错误率即停止，并保存计数器快照。", "en": "Stop on the first 429, five-second timeout, or abnormal error rate and preserve counter snapshots." }
+      ],
+      "references": [
+        "https://owasp.org/API-Security/editions/2023/en/0xa4-unrestricted-resource-consumption/",
+        "https://www.rfc-editor.org/rfc/rfc6585.html#section-4"
+      ],
+      "review": {
+        "decision": "split",
+        "targetPayloadIds": [],
+        "targetToolIds": ["api-rate-baseline-testing"],
+        "rationale": "速率测试属于测量与回归工具，不保留绕过 Payload；代理、身份、账户和 API Key 轮换全部退休。",
+        "issuesResolved": ["converted-to-tool", "fixed-request-budget", "single-identity", "removed-proxy-rotation", "removed-key-rotation"]
+      }
+    },
+    {
+      "id": "api-unhooking",
+      "name": { "zh": "Windows API 完整性分析归类", "en": "Windows API Integrity Analysis Reclassification" },
+      "description": { "zh": "纠正与 Web API 无关的旧条目，将磁盘映像哈希和 Authenticode 签名核验归入 Windows 完整性分析工具，并退休内存覆盖与直接 syscall 伪代码。", "en": "Reclassify a legacy entry unrelated to web APIs by moving disk-image hashes and Authenticode verification into a Windows integrity tool and retiring memory-overwrite and direct-syscall pseudocode." },
+      "category": { "zh": "系统安全", "en": "System Security" },
+      "subCategory": { "zh": "Windows 模块完整性", "en": "Windows Module Integrity" },
+      "prerequisites": [
+        { "zh": "在隔离 Windows 实验机上记录操作系统版本、ntdll 文件版本和更新状态。", "en": "Record operating-system version, ntdll file version, and update state on an isolated Windows lab host." },
+        { "zh": "仅执行只读哈希与签名查询，不写入进程内存或修改系统 DLL。", "en": "Run read-only hash and signature queries only, without writing process memory or modifying system DLLs." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "该条目中的 API 指 Windows Native API，不属于 REST 或 GraphQL。审校后只保留系统文件哈希与签名状态作为完整性线索，并将其放到工具导航；文件签名正常并不能证明进程内存未被修改，还需结合模块映射和安全遥测。", "en": "Here API means the Windows Native API, not REST or GraphQL. The reviewed workflow keeps file hashes and signature status as integrity leads in the tool navigation. A valid disk signature does not prove process memory is unchanged and must be correlated with module mappings and security telemetry." },
+        "vulnerability": { "zh": "用户态 API Hook 可能来自安全产品、调试器、兼容层或恶意篡改，因此发现字节差异本身没有归因能力。直接从磁盘覆盖进程代码段或绕过用户态监控会破坏系统状态，也不是适合知识库的一般验证步骤。", "en": "User-mode API hooks may originate from security products, debuggers, compatibility layers, or malicious tampering, so byte differences alone do not establish attribution. Overwriting process code from disk or bypassing monitoring is destructive and unsuitable as a general validation step." },
+        "exploitation": { "zh": "先对系统 ntdll.dll 做 SHA-256 和 Authenticode 查询，记录路径、版本、签名者和时间。若存在异常，只继续采集已批准的模块映射、代码完整性事件和 EDR 说明，不执行覆盖、远程映射、直接 syscall 或加载未知 DLL。", "en": "Hash and verify the Authenticode signature of the system ntdll.dll, recording path, version, signer, and time. If anomalous, collect only approved module mappings, code-integrity events, and EDR context without overwrites, remote mappings, direct syscalls, or unknown DLL loading." },
+        "mitigation": { "zh": "启用 Windows 更新、代码完整性和受保护进程策略，使用可信安全产品监控异常模块映射与内存写入，并对基线按 OS 构建版本管理。调查差异时保留证据，不通过覆盖内存来恢复或隐藏 Hook。", "en": "Use Windows Update, code-integrity, and protected-process controls, monitor anomalous module mappings and memory writes with trusted security tooling, and version baselines by OS build. Preserve evidence during investigation rather than overwriting memory to restore or hide hooks." },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        { "title": { "zh": "记录系统文件上下文", "en": "Record system-file context" }, "description": { "zh": "保存 OS 构建、文件版本、路径和最后更新时间，避免跨版本比较。", "en": "Save OS build, file version, path, and update time to prevent comparisons across versions." } },
+        { "title": { "zh": "计算只读文件哈希", "en": "Compute a read-only file hash" }, "description": { "zh": "使用系统命令计算 ntdll.dll 的 SHA-256，并保留算法、哈希与路径。", "en": "Use the system command to calculate ntdll.dll SHA-256 and retain algorithm, hash, and path." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "核对签名与版本基线", "en": "Check signature and version baseline" }, "description": { "zh": "比较 Authenticode 状态和同版本可信基线，不把单个哈希差异直接归因。", "en": "Compare Authenticode status and a trusted same-version baseline without attributing one hash difference." } },
+        { "title": { "zh": "关联完整性遥测", "en": "Correlate integrity telemetry" }, "description": { "zh": "仅在异常时关联代码完整性、模块加载和安全产品日志，保持调查只读。", "en": "Only on anomaly, correlate code-integrity, module-load, and security-product logs while keeping investigation read-only." } }
+      ],
+      "analysis": { "zh": "文件哈希和签名是基线线索，不等于进程内存完整性结论。有效发现需要同版本可信基线、可重复差异和相关遥测；安全产品的合法 Hook、系统更新和不同构建都可能产生预期差异。", "en": "File hashes and signatures are baseline leads, not conclusions about process-memory integrity. A valid finding requires a same-version trusted baseline, repeatable differences, and correlated telemetry; legitimate security hooks, updates, and different builds can explain expected changes." },
+      "opsecTips": [
+        { "zh": "只执行 Get-FileHash 与 Get-AuthenticodeSignature，不请求管理员权限修改内存。", "en": "Run only Get-FileHash and Get-AuthenticodeSignature and do not request administrative memory modification." },
+        { "zh": "不要终止安全产品、覆盖模块代码或清除日志，保留完整调查证据。", "en": "Do not terminate security products, overwrite module code, or clear logs; preserve complete investigation evidence." }
+      ],
+      "references": [
+        "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.utility/get-filehash",
+        "https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.security/get-authenticodesignature"
+      ],
+      "review": {
+        "decision": "split",
+        "targetPayloadIds": [],
+        "targetToolIds": ["windows-api-integrity-analysis"],
+        "rationale": "纠正 Web API 误分类，保留只读 Windows 完整性工具命令并退休覆盖代码段与直接 syscall 伪代码。",
+        "issuesResolved": ["corrected-domain", "converted-to-read-only-tool", "removed-memory-overwrite", "removed-direct-syscall-pseudocode", "added-microsoft-references"]
+      }
+    },
+    {
+      "id": "graphql-batching",
+      "name": { "zh": "GraphQL 批处理与查询成本归并", "en": "GraphQL Batching and Query-Cost Merge" },
+      "description": { "zh": "将旧批量攻击条目归并到现有 Alias 与 HTTP Batch 策略 Payload，并把两个只读查询、成本证据和固定请求编排迁入 GraphQL 工具卡。", "en": "Merge the legacy batching entry into existing alias and HTTP-batch policy payloads while moving two read-only queries, cost evidence, and bounded request orchestration into a GraphQL tool card." },
+      "category": { "zh": "API安全", "en": "API Security" },
+      "subCategory": { "zh": "GraphQL 查询成本与批处理", "en": "GraphQL Query Cost and Batching" },
+      "prerequisites": [
+        { "zh": "使用两个固定合成对象和只读 viewer 字段，设置最大两个操作或 Alias。", "en": "Use two fixed synthetic objects and read-only viewer fields with a maximum of two operations or aliases." },
+        { "zh": "启用 resolver 调用数、查询成本、响应扩展和限流计数日志。", "en": "Enable resolver-call counts, query cost, response extensions, and rate-accounting logs." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "GraphQL Alias 和 HTTP 数组批处理都是传输与查询能力，本身不是漏洞。风险在于一个 HTTP 请求触发的 resolver 数量或成本没有进入授权、限流和复杂度预算。旧条目不再保留独立 Payload，而是并入现有两个策略边界。", "en": "GraphQL aliases and HTTP array batching are transport and query capabilities rather than vulnerabilities by themselves. Risk appears when resolver count or cost per HTTP request is absent from authorization, rate, and complexity budgets. The legacy entry is merged into two existing policy boundaries." },
+        "vulnerability": { "zh": "如果网关只按 HTTP 请求计数，而应用执行多个字段或数组项，认证失败次数、对象查询次数和后端成本可能被低估。允许批处理的实现还需要定义最大项数、错误隔离和每项授权，不能依赖关闭内省来解决。", "en": "If a gateway counts only HTTP requests while the application executes multiple fields or array items, authentication failures, object lookups, and backend cost may be undercounted. Implementations that allow batching need item caps, error isolation, and per-item authorization; disabling introspection does not solve this." },
+        "exploitation": { "zh": "分别发送含两个 Alias 的只读文档和含两个 viewer 查询的 HTTP 数组，记录 HTTP 请求数、resolver 数、成本扩展和授权结果。禁止凭证猜测、用户枚举和破坏性 Mutation；超过两个操作、首次 429 或五秒超时即停止。", "en": "Send one read-only document with two aliases and one HTTP array with two viewer queries, then record HTTP count, resolver count, cost extensions, and authorization outcomes. Do not guess credentials, enumerate users, or run destructive mutations; stop above two operations, at the first 429, or at five seconds." },
+        "mitigation": { "zh": "在解析阶段限制 Alias、批处理项、深度和字段成本，对每个 resolver 和数组项执行授权与计费，并按认证主体共享失败计数。可使用持久化操作允许列表，同时在网关和应用层保留一致的查询指纹与审计 ID。", "en": "Limit aliases, batch items, depth, and field cost during parsing, authorize and meter every resolver and array item, and share failure counts by authenticated principal. Persisted-operation allowlists can help when gateway and application retain consistent query fingerprints and audit IDs." },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        { "title": { "zh": "记录单操作成本", "en": "Record single-operation cost" }, "description": { "zh": "发送单个只读 viewer 查询并保存 resolver、成本和限流计数基线。", "en": "Send one read-only viewer query and save resolver, cost, and rate-accounting baselines." } },
+        { "title": { "zh": "提交两个 Alias 对照", "en": "Submit a two-alias control" }, "description": { "zh": "使用两个固定对象运行只读 Alias 请求，并限制在一个 HTTP 文档内。", "en": "Run a read-only alias request for two fixed objects within one HTTP document." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "比较 HTTP Batch 计费", "en": "Compare HTTP-batch accounting" }, "description": { "zh": "发送两个 viewer 数组项，比较每项授权、错误隔离和成本计数。", "en": "Send two viewer array items and compare per-item authorization, error isolation, and cost accounting." } },
+        { "title": { "zh": "应用操作预算回归", "en": "Regress operation budgets" }, "description": { "zh": "限制 Alias 与批处理项后重放两个对照，确认每个工作单元都计费或整体拒绝。", "en": "After alias and batch caps, replay both controls and confirm each work unit is metered or the request is rejected." } }
+      ],
+      "analysis": { "zh": "支持 Alias 或数组请求不等于漏洞。必须证明一个 HTTP 请求实际执行多个受保护工作单元，而授权、失败计数或成本只执行一次。普通只读字段返回和单个网关日志都不足以确认。", "en": "Alias or array support is not a vulnerability. Confirmation requires multiple protected work units in one HTTP request while authorization, failure accounting, or cost is applied only once. Ordinary read-only results and one gateway log are insufficient." },
+      "opsecTips": [
+        { "zh": "每个请求最多两个 Alias 或数组项，只使用固定合成对象与只读字段。", "en": "Use at most two aliases or array items per request with fixed synthetic objects and read-only fields." },
+        { "zh": "禁止登录猜测、真实用户枚举、Mutation 和扩大并发。", "en": "Do not perform login guessing, real-user enumeration, mutations, or increased concurrency." }
+      ],
+      "references": [
+        "https://graphql.org/learn/security/",
+        "https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "split",
+        "targetPayloadIds": ["api2-alias", "api2-batch-query"],
+        "targetToolIds": ["graphql-query-policy-testing"],
+        "rationale": "与现有 Alias 和 HTTP Batch Payload 合并；只读批处理编排进入工具卡，凭证猜测和用户枚举 Mutation 退休。",
+        "issuesResolved": ["merged-existing-payloads", "bounded-two-operation-limit", "read-only-queries", "removed-credential-guessing", "migrated-query-cost-workflow"]
+      }
+    },
+    {
+      "id": "graphql-injection",
+      "name": { "zh": "GraphQL 查询、Schema 与输入边界归并", "en": "GraphQL Query, Schema, and Input Boundary Merge" },
+      "description": { "zh": "拆解旧 GraphQL 注入聚合条目，将变量输入、Alias 与 Schema 暴露分别归并到现有或新 Payload，完整请求与错误策略进入工具卡。", "en": "Decompose a legacy GraphQL injection aggregate by merging variable input, aliases, and schema exposure into focused payloads while moving complete requests and error-policy checks into a tool card." },
+      "category": { "zh": "API安全", "en": "API Security" },
+      "subCategory": { "zh": "GraphQL 查询与输入策略", "en": "GraphQL Query and Input Policy" },
+      "prerequisites": [
+        { "zh": "使用 localhost GraphQL Fixture、固定低权限令牌和只读查询字段。", "en": "Use a localhost GraphQL fixture, a fixed low-privilege token, and read-only query fields." },
+        { "zh": "启用解析、验证、变量强制转换、resolver 授权和查询成本日志。", "en": "Enable parse, validation, variable coercion, resolver authorization, and query-cost logs." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "旧内容混合端点探测、内省、批处理、SQL/NoSQL 形状、敏感字段和 Mutation，不具备单一边界。审校后使用 GraphQL 变量承载固定 Canary，分别观察语法验证、类型强制转换、resolver 参数绑定与字段授权，并将每个主题路由到对应卡片。", "en": "The legacy content mixed endpoint probing, introspection, batching, SQL- and NoSQL-shaped values, sensitive fields, and mutations. The reviewed workflow carries fixed canaries through GraphQL variables and observes validation, coercion, resolver binding, and field authorization while routing each concern to a focused card." },
+        "vulnerability": { "zh": "GraphQL 语法本身不会消除后端注入；解析器仍可能把字符串拼接进数据库或目录查询，也可能把结构化变量直接转换成后端操作符。Schema 可见性、字段建议和 Alias 属于独立策略问题，不能都命名为注入。", "en": "GraphQL syntax does not eliminate backend injection. Resolvers may still concatenate strings into database or directory queries or convert structured variables directly into backend operators. Schema visibility, field suggestions, and aliases are separate policy issues and should not all be labeled injection." },
+        "exploitation": { "zh": "对固定 Search 或 Filter 查询只替换一个变量值，比较 GraphQL 验证错误、强制转换结果、resolver 入参和参数绑定日志。Schema 与 Alias 使用各自只读查询；不请求密码、密钥或隐藏字段，不执行 Mutation，也不利用错误建议枚举字段。", "en": "Change one variable value in a fixed Search or Filter query and compare GraphQL validation errors, coercion, resolver arguments, and parameter-binding logs. Use separate read-only queries for schema and alias policy without requesting passwords, keys, hidden fields, mutations, or field enumeration through suggestions." },
+        "mitigation": { "zh": "定义严格输入类型和自定义标量验证，在 resolver 中使用参数化后端 API 与操作符允许列表，并对每个字段执行主体和对象授权。限制查询成本与错误详情，在生产角色上按业务需要控制内省，同时保留受控诊断通道。", "en": "Define strict input types and custom-scalar validation, use parameterized backend APIs and operator allowlists in resolvers, and authorize every field by principal and object. Limit query cost and error detail, control introspection by production role and business need, and retain a controlled diagnostic channel." },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        { "title": { "zh": "固定查询与变量类型", "en": "Fix the query and variable type" }, "description": { "zh": "记录只读 Search 查询、String 变量和普通 Canary 的解析与绑定基线。", "en": "Record parsing and binding for a read-only Search query, String variable, and plain canary." } },
+        { "title": { "zh": "提交单一变量 Canary", "en": "Submit one variable canary" }, "description": { "zh": "仅替换 text 变量为带单个边界字符的固定值，保持查询文档完全不变。", "en": "Replace only the text variable with a fixed one-character-boundary canary while leaving the query document unchanged." }, "payloadRef": { "area": "execution", "index": 3 } },
+        { "title": { "zh": "关联 resolver 与后端绑定", "en": "Correlate resolver and backend binding" }, "description": { "zh": "按请求 ID 比较强制转换值、resolver 入参、最终绑定参数和响应。", "en": "Compare coerced value, resolver arguments, final bound parameters, and response by request ID." } },
+        { "title": { "zh": "分主题执行策略回归", "en": "Regress each policy concern" }, "description": { "zh": "分别对输入、Schema、Alias 和字段授权卡片重放阴性与正常对照。", "en": "Replay negative and normal controls separately for input, schema, alias, and field-authorization cards." } }
+      ],
+      "analysis": { "zh": "确认后端注入需要输入改变最终查询或操作结构；Schema 名称、字段建议、验证错误和宽字段选择都不是注入证据。旧条目被拆分后，每个结果必须按输入、授权、成本或信息暴露的正确边界判定。", "en": "Backend injection requires the input to alter the final query or operation structure. Schema names, field suggestions, validation errors, and broad selection sets are not injection evidence. After decomposition, every result must be judged under the correct input, authorization, cost, or disclosure boundary." },
+      "opsecTips": [
+        { "zh": "只使用只读查询、合成用户和固定 Canary，禁止 Mutation 与真实敏感字段。", "en": "Use read-only queries, synthetic users, and fixed canaries only, with no mutations or real sensitive fields." },
+        { "zh": "每次请求只改变一个变量或一个选择字段，并设置五秒超时。", "en": "Change one variable or one selected field per request and enforce a five-second timeout." }
+      ],
+      "references": [
+        "https://spec.graphql.org/October2021/#sec-Language.Variables",
+        "https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "split",
+        "targetPayloadIds": ["api-input-validation-boundary", "api2-alias", "graphql-schema-exposure-boundary"],
+        "targetToolIds": ["graphql-query-policy-testing"],
+        "rationale": "按输入、Alias 与 Schema 三个边界拆分归并；完整 GraphQL 请求和错误策略进入工具卡，破坏 Mutation 退休。",
+        "issuesResolved": ["decomposed-mixed-concepts", "variables-not-string-concatenation", "removed-sensitive-field-enumeration", "removed-destructive-mutation", "migrated-query-workflow"]
+      }
+    },
+    {
+      "id": "graphql-introspection",
+      "name": { "zh": "GraphQL Schema 暴露边界验证", "en": "GraphQL Schema Exposure Boundary Validation" },
+      "description": { "zh": "使用最小只读内省查询验证指定角色是否能够看到 Query 类型名称，并把类型映射、Schema 导出和角色矩阵迁入工具卡。", "en": "Use a minimal read-only introspection query to validate whether a designated role may view the Query type name, moving type maps, schema export, and role matrices into a tool card." },
+      "category": { "zh": "API安全", "en": "API Security" },
+      "subCategory": { "zh": "GraphQL Schema 暴露", "en": "GraphQL Schema Exposure" },
+      "prerequisites": [
+        { "zh": "定义匿名、普通用户和审核者角色的 Schema 可见性策略。", "en": "Define schema-visibility policy for anonymous, ordinary-user, and reviewer roles." },
+        { "zh": "使用 localhost GraphQL Fixture，并确保查询只选择 queryType.name。", "en": "Use a localhost GraphQL fixture and ensure the query selects only queryType.name." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "GraphQL 内省是规范定义的 Schema 查询能力，不应自动称为攻击。该 Payload 只验证一个角色对最小 Schema 元数据的可见性是否符合策略；完整类型图、导出文件和多角色比较属于工具工作流。", "en": "GraphQL introspection is a specification-defined schema capability and is not automatically an attack. This payload checks whether one role's access to minimal schema metadata matches policy, while complete type maps, exports, and role comparisons remain a tool workflow." },
+        "vulnerability": { "zh": "如果生产策略要求匿名或普通用户不可见内部 Schema，而服务仍返回类型、弃用说明或管理 Mutation，可能增加攻击面信息。内省开启本身通常只是配置选择，只有违反明确策略并暴露有安全价值的非预期元数据才构成发现。", "en": "If production policy hides internal schema metadata from anonymous or ordinary users but the service still returns types, deprecation notes, or administrative mutations, the exposure may aid attack-surface discovery. Introspection enabled by itself is usually a configuration choice; a finding requires policy violation and security-relevant unexpected metadata." },
+        "exploitation": { "zh": "分别以一个受测角色发送最小 queryType.name 查询，并记录 HTTP 状态、GraphQL errors、data 和请求 ID。若需进一步确认，只由审核者工具导出受控 Schema 进行差异比较；不尝试格式变体绕过、GET 编码绕过或敏感 Mutation。", "en": "Send the minimal queryType.name request as one tested role and record HTTP status, GraphQL errors, data, and request ID. If further confirmation is needed, use the reviewer tool for a controlled schema diff without formatting bypasses, GET-encoding bypasses, or sensitive mutations." },
+        "mitigation": { "zh": "根据业务需要和角色策略控制内省，在边缘和应用层使用一致的解析结果而不是字符串匹配，并限制错误建议与 Schema 变更日志。即使关闭内省，也必须继续执行 resolver 授权、字段级策略和查询成本限制。", "en": "Control introspection according to business need and role policy using parsed operations rather than string matching at the edge and application. Limit error suggestions and schema-change logs, while continuing resolver authorization, field policy, and query-cost controls even when introspection is disabled." },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        { "title": { "zh": "登记角色可见性策略", "en": "Register role-visibility policy" }, "description": { "zh": "记录受测角色应允许或拒绝的最小 Schema 元数据及预期错误。", "en": "Record minimal schema metadata and expected errors allowed or denied for the tested role." } },
+        { "title": { "zh": "发送最小内省查询", "en": "Send minimal introspection" }, "description": { "zh": "只查询 queryType.name，并保留角色、请求 ID、data 与 errors。", "en": "Query only queryType.name and retain role, request ID, data, and errors." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "比较策略与实际结果", "en": "Compare policy and observed result" }, "description": { "zh": "判断返回元数据是否超出角色策略，不把内省成功自动记录为漏洞。", "en": "Determine whether returned metadata exceeds role policy rather than treating successful introspection as a vulnerability." } },
+        { "title": { "zh": "修复角色策略并回归", "en": "Remediate role policy and regress" }, "description": { "zh": "统一解析级策略后重放匿名、普通用户和审核者矩阵，确认预期可见性。", "en": "After unified parsed-operation policy, replay anonymous, ordinary-user, and reviewer roles to confirm expected visibility." } }
+      ],
+      "analysis": { "zh": "有效发现需要明确的角色可见性策略、非预期 Schema 元数据和可解释的安全价值。最小内省成功、公开类型名、统一错误或审核者按设计导出 Schema 都不是漏洞。", "en": "A valid finding requires an explicit role-visibility policy, unexpected schema metadata, and explainable security relevance. Minimal introspection success, public type names, generic errors, or reviewer schema export by design are not vulnerabilities." },
+      "opsecTips": [
+        { "zh": "Payload 只请求 queryType.name，不下载完整 Schema 或字段说明。", "en": "The payload requests queryType.name only and does not download a complete schema or field descriptions." },
+        { "zh": "Schema 导出仅由审核者工具保存到本地实验文件，并在比较后删除。", "en": "Only the reviewer tool may save a schema to a local lab file, which is deleted after comparison." }
+      ],
+      "references": [
+        "https://spec.graphql.org/October2021/#sec-Introspection",
+        "https://graphql.org/learn/introspection/"
+      ],
+      "review": {
+        "decision": "split",
+        "targetPayloadIds": ["graphql-schema-exposure-boundary"],
+        "targetToolIds": ["graphql-query-policy-testing"],
+        "rationale": "保留最小 Schema 可见性边界；完整类型图和导出迁工具，字符串与 GET 格式绕过内容退休。",
+        "issuesResolved": ["corrected-not-automatic-vulnerability", "minimal-read-only-query", "role-policy-boundary", "migrated-schema-export", "removed-bypass-variants"]
+      }
+    },
+    {
+      "id": "rest-api-security",
+      "name": { "zh": "REST API 契约与回归工作流", "en": "REST API Contract and Regression Workflow" },
+      "description": { "zh": "把旧 REST 综合攻击清单改为 Newman 集合回放、认证矩阵、OPTIONS、重复参数、内容类型、版本与规范化的有限工具工作流。", "en": "Convert a legacy REST attack checklist into a bounded tool workflow for Newman replay, authentication matrices, OPTIONS, duplicate parameters, content types, versions, and canonicalization." },
+      "category": { "zh": "API安全", "en": "API Security" },
+      "subCategory": { "zh": "REST 契约测试", "en": "REST Contract Testing" },
+      "prerequisites": [
+        { "zh": "使用经过审查的 Postman 集合和只包含 localhost、实验令牌与固定对象 ID 的环境文件。", "en": "Use a reviewed Postman collection and an environment containing only localhost, lab tokens, and fixed object identifiers." },
+        { "zh": "固定单次迭代、五秒请求超时和结构化 Newman 报告路径。", "en": "Fix one iteration, a five-second request timeout, and a structured Newman report path." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "REST 安全不是一个可执行 Payload，而是一组契约和业务边界。该旧条目被归入工具工作流：先从已审查集合建立正常请求基线，再按认证、方法、参数解析、内容类型、版本和路径规范化逐项比较，每次只改变一个变量。", "en": "REST security is not one executable payload but a set of contract and business boundaries. This legacy entry becomes a tool workflow: establish normal requests from a reviewed collection, then compare authentication, methods, parameter parsing, content types, versions, and path canonicalization one variable at a time." },
+        "vulnerability": { "zh": "问题可能来自端点遗漏认证、方法策略不一致、重复参数在代理与应用间解析不同、宽松内容类型绑定、遗留版本缺少控制或路径规范化顺序错误。综合清单只能发现线索，最终必须归入对象授权、属性授权、输入解释或具体配置边界。", "en": "Issues may arise from missing endpoint authentication, inconsistent method policy, proxy/application disagreement on duplicate parameters, permissive content-type binding, uncontrolled legacy versions, or incorrect canonicalization order. Checklist signals must be resolved into object, property, input, or concrete configuration boundaries." },
+        "exploitation": { "zh": "运行一次 Newman 集合并导出 JSON，随后对单一 localhost 端点执行无令牌与实验令牌、OPTIONS、两个重复 Canary、两种安全内容类型、v1/v2 和规范路径对照。禁止 PUT/DELETE 破坏请求、内部路径枚举、XXE、SQL 内容和无界 ffuf。", "en": "Run the Newman collection once and export JSON, then compare no-token and lab-token requests, OPTIONS, two duplicate canaries, two safe content types, v1/v2, and canonical paths for one localhost endpoint. Do not use destructive PUT/DELETE, internal-path enumeration, XXE, SQL content, or unbounded fuzzing." },
+        "mitigation": { "zh": "以 OpenAPI 和服务实现共同定义认证、方法、媒体类型、参数基数和字段契约，在网关与应用间统一规范化和重复参数策略。下线旧版本或复用同一安全中间件，并把 Newman 集合纳入 CI 的阴性与正常回归。", "en": "Define authentication, methods, media types, parameter cardinality, and fields through OpenAPI plus service implementation, with consistent canonicalization and duplicate-parameter policy across gateway and application. Retire old versions or reuse the same middleware and run positive and negative Newman regressions in CI." },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        { "title": { "zh": "审查集合与环境", "en": "Review collection and environment" }, "description": { "zh": "确认集合只指向 localhost，环境仅含实验令牌、合成 ID 和固定请求预算。", "en": "Confirm the collection targets localhost only and the environment contains lab tokens, synthetic IDs, and fixed budgets." } },
+        { "title": { "zh": "运行单次 Newman 回归", "en": "Run one Newman regression" }, "description": { "zh": "执行单次迭代和五秒超时，并导出 CLI 与 JSON 结果用于差异分析。", "en": "Run one iteration with a five-second request timeout and export CLI and JSON results for comparison." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "逐项比较契约边界", "en": "Compare contract boundaries individually" }, "description": { "zh": "一次只改变认证、方法、参数、媒体类型、版本或规范化形式中的一项。", "en": "Change exactly one of authentication, method, parameter, media type, version, or canonical form at a time." } },
+        { "title": { "zh": "归入具体 Payload 回归", "en": "Route into focused payload regression" }, "description": { "zh": "把确认差异归入对象授权、属性授权或输入验证卡片，并加入集合阴性测试。", "en": "Route confirmed differences into object authorization, property authorization, or input validation cards and add negative collection tests." } }
+      ],
+      "analysis": { "zh": "工具差异只是线索。有效发现必须对应明确契约、可重复的越界行为和服务端证据；OPTIONS 返回、版本存在、不同 Content-Type 错误或编码路径状态变化均不能单独证明安全问题。", "en": "Tool differences are leads. A valid finding requires an explicit contract, repeatable boundary violation, and server evidence. OPTIONS responses, version presence, content-type errors, or encoded-path status changes do not independently prove a security issue." },
+      "opsecTips": [
+        { "zh": "集合只运行一次且仅指向 127.0.0.1，报告文件不得包含真实令牌或对象。", "en": "Run the collection once against 127.0.0.1 only and keep real tokens and objects out of report files." },
+        { "zh": "禁止破坏方法、真实内部路径、外部实体、注入语句和无界路径枚举。", "en": "Do not use destructive methods, real internal paths, external entities, injection statements, or unbounded route enumeration." }
+      ],
+      "references": [
+        "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+        "https://learning.postman.com/docs/reference/newman-cli/command-line-integration-with-newman",
+        "https://spec.openapis.org/oas/latest.html"
+      ],
+      "review": {
+        "decision": "split",
+        "targetPayloadIds": ["api-object-level-authorization", "api-input-validation-boundary", "api-property-level-authorization"],
+        "targetToolIds": ["api-contract-testing-workflow"],
+        "rationale": "综合 REST 清单不保留 Payload；Newman 和 curl 契约编排进入工具卡，结果归入三个单一边界 Payload。",
+        "issuesResolved": ["converted-checklist-to-tool", "newman-bounded-replay", "removed-destructive-methods", "removed-xxe-and-injection", "routed-focused-boundaries"]
+      }
+    }
+  ]
+}

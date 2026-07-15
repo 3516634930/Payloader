@@ -1,0 +1,150 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "sourceIds": [
+    "rce-file-upload"
+  ],
+  "entries": [
+    {
+      "id": "rce-file-upload",
+      "name": {
+        "zh": "文件上传存储与处理器边界验证",
+        "en": "File-Upload Storage and Handler Boundary Validation"
+      },
+      "description": {
+        "zh": "使用无害 marker 验证 multipart 文件名、声明 MIME、检测 MIME、内容结构、最终存储名与 Web 处理器映射是否保持一致。",
+        "en": "Use harmless markers to verify consistency across multipart filenames, declared MIME, detected MIME, content structure, final storage names, and web-handler mappings."
+      },
+      "category": {
+        "zh": "文件漏洞",
+        "en": "File Vulnerabilities"
+      },
+      "subCategory": {
+        "zh": "上传验证与不可执行存储",
+        "en": "Upload Validation and Non-Executable Storage"
+      },
+      "prerequisites": [
+        {
+          "zh": "只使用 127.0.0.1 上传 Fixture，上传目录位于 Web 根之外并明确禁用脚本处理器。",
+          "en": "Use only the 127.0.0.1 upload fixture, with storage outside the web root and script handlers explicitly disabled."
+        },
+        {
+          "zh": "准备纯文本、仅含 GIF89a marker 的二进制样例和只含注释的 .htaccess 样例，测试后可全部删除。",
+          "en": "Prepare a plain-text marker, a GIF89a marker binary, and a comment-only .htaccess sample, all removable after testing."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "安全的文件上传链路必须把用户提供的文件名和 MIME 视为不可信提示，再通过服务端生成存储名、完整内容解析、大小限制和不可执行存储建立边界。本条目按正常文本、双扩展、替代扩展、声明与检测 MIME 不一致、内容结构不完整和配置文件名六类变量逐项验证。",
+          "en": "A secure upload pipeline treats user filenames and MIME as untrusted hints, then enforces server-generated storage names, complete content parsing, size limits, and non-executable storage. This entry tests normal text, double extensions, alternative extensions, declared-versus-detected MIME mismatches, incomplete content structures, and configuration filenames as separate variables."
+        },
+        "vulnerability": {
+          "zh": "上传返回成功或保留危险扩展名不等于远程代码执行。确认问题至少要证明对象落入 Web 可达且启用脚本处理器的位置，并由无副作用服务器端 marker 证明处理器解释；静态下载、强制 attachment、随机重命名、解码失败或处理器禁用都是阻断证据。",
+          "en": "An accepted upload or retained dangerous extension does not equal remote code execution. Confirmation requires the object to reach a web-accessible location with a script handler and a side-effect-free server marker to prove interpretation. Static download, forced attachment, random renaming, decode failure, or disabled handlers are blocking evidence."
+        },
+        "exploitation": {
+          "zh": "先上传纯文本 marker 建立正常存储基线，再逐个提交双扩展、替代扩展、伪造声明 MIME、魔数与扩展冲突以及 .htaccess 文件名。每次使用唯一 request_id，记录原始名、最终名、声明与检测类型、内容解码结果、存储路径类别和 executable 布尔值；不上传任何脚本代码。",
+          "en": "First upload a plain-text marker to establish normal storage behavior, then submit double extensions, alternative extensions, a forged declared MIME, magic-versus-extension mismatches, and a .htaccess filename one at a time. Use a unique request_id and record raw and stored names, declared and detected types, decode result, storage class, and executable boolean without uploading script code."
+        },
+        "mitigation": {
+          "zh": "在服务端对允许的业务文件类型执行严格允许列表和完整解码，使用随机对象名并把对象存储在 Web 根之外；下载时设置安全 Content-Type 与 Content-Disposition。禁用上传目录脚本处理器和 .htaccess 覆盖，限制大小与数量，并对恶意软件和压缩包执行独立扫描。",
+          "en": "Apply a strict server-side allowlist and complete decoding for permitted business formats, use random object names, and store objects outside the web root. Set safe Content-Type and Content-Disposition on download, disable script handlers and .htaccess overrides in upload locations, limit size and count, and scan malware and archives separately."
+        },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "建立正常上传基线",
+            "en": "Establish a normal upload baseline"
+          },
+          "description": {
+            "zh": "上传纯文本 marker，记录原始文件名、服务端存储名、检测类型和不可执行状态。",
+            "en": "Upload a plain-text marker and record the raw name, server-generated storage name, detected type, and non-executable state."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "逐项改变元数据",
+            "en": "Change upload metadata one field at a time"
+          },
+          "description": {
+            "zh": "分别改变文件名扩展、大小写和声明 MIME，保持文件内容、身份与端点不变。",
+            "en": "Change filename extension, casing, and declared MIME separately while holding content, identity, and endpoint constant."
+          }
+        },
+        {
+          "title": {
+            "zh": "比较内容解析与处理器",
+            "en": "Compare content parsing and handler selection"
+          },
+          "description": {
+            "zh": "对照检测 MIME、完整解码结果、最终存储位置和处理器映射，排除只看扩展名的误报。",
+            "en": "Compare detected MIME, complete decode result, final storage location, and handler mapping to exclude extension-only false positives."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复后回归全部矩阵",
+            "en": "Regress the full matrix after remediation"
+          },
+          "description": {
+            "zh": "修复后重放七个 marker，要求合法文本保留、异常样例拒绝或静态隔离且没有脚本处理。",
+            "en": "Replay all seven markers after remediation, preserving valid text while rejecting or statically isolating abnormal samples with no script handling."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "阳性必须由同一 request_id 关联上传响应、最终对象路径、Web 处理器日志和无副作用 marker 解释结果。文件存在、HTTP 200、Content-Type 可控、扩展名异常或静态响应都不足以证明执行边界被突破。",
+        "en": "A positive requires one request_id correlating the upload response, final object path, web-handler logs, and interpretation of a side-effect-free marker. File existence, HTTP 200, controllable Content-Type, an unusual extension, or a static response is insufficient to prove an execution-boundary failure."
+      },
+      "opsecTips": [
+        {
+          "zh": "所有 Fixture 只包含固定文本 marker，不放置 PHP、JSP、ASPX、CGI、模板或系统命令。",
+          "en": "Every fixture contains fixed text markers only, with no PHP, JSP, ASPX, CGI, templates, or operating-system commands."
+        },
+        {
+          "zh": "每轮结束删除上传对象并核对存储目录，出现解码器崩溃、服务抖动或非预期处理器调用时立即停止。",
+          "en": "Delete uploaded objects and inspect storage after each run; stop on decoder crashes, service instability, or unexpected handler invocation."
+        }
+      ],
+      "references": [
+        "https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html",
+        "https://datatracker.ietf.org/doc/html/rfc7578",
+        "https://httpd.apache.org/docs/current/howto/htaccess.html"
+      ],
+      "review": {
+        "decision": "payload",
+        "targetPayloadIds": [
+          "rce-file-upload"
+        ],
+        "targetToolIds": [],
+        "rationale": "旧条目把文件名、MIME、魔数和服务器配置边界错误地直接等同于 RCE，并包含脚本文件与图片马；重写为无副作用上传 marker，归入文件漏洞分支。",
+        "issuesResolved": [
+          "corrected-category-tree",
+          "removed-webshell-content",
+          "removed-polyglot-execution",
+          "added-handler-evidence-boundary",
+          "removed-prose-from-commands"
+        ],
+        "retainedCommandIndexes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "lineDisposition": [
+          "execution 0 -> normal upload baseline",
+          "execution 1-4 -> filename, content, and handler boundary samples",
+          "wafBypass 0-1 -> declared and detected MIME mismatch samples"
+        ],
+        "needsCommandOverride": true
+      }
+    }
+  ]
+}

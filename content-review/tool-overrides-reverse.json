@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "decompilers",
+      "patches": [
+        { "path": "description.zh", "value": "Android、.NET 与 ELF 样本的静态反编译和资源检查工具参考，默认处理只读副本并把输出写入独立目录。" },
+        { "path": "description.en", "value": "Static decompilation and resource-inspection reference for Android, .NET, and ELF samples using read-only copies and dedicated output directories by default." },
+        { "path": "references", "value": ["https://github.com/skylot/jadx", "https://apktool.org/docs/cli-parameters", "https://github.com/icsharpcode/ILSpy", "https://sourceware.org/binutils/docs/"] },
+        { "path": "commands", "value": [
+          { "name": { "zh": "JADX 反编译 APK 副本", "en": "Decompile an APK Copy with JADX" }, "command": "sha256sum app.apk\njadx --output-dir ./jadx-output app.apk\nrg -n --glob '*.java' 'PAYLOADER_MARKER|https?://' ./jadx-output", "description": { "zh": "先记录 APK 哈希，再把 Java 反编译结果写入独立目录，并只搜索固定 marker 与 URL 线索。", "en": "Record the APK hash, write Java decompilation output to a dedicated directory, and search only for a fixed marker and URL evidence." }, "platform": "linux" },
+          { "name": { "zh": "Apktool 只读资源解码", "en": "Decode APK Resources Read-Only" }, "command": "apktool decode --force --output ./apktool-output app.apk\nfind ./apktool-output -maxdepth 3 -type f | sort | head -100", "description": { "zh": "只解码清单、资源和 Smali 到新目录，不在分析阶段重打包、签名或覆盖原始 APK。", "en": "Decode the manifest, resources, and Smali into a new directory without rebuilding, signing, or overwriting the original APK during analysis." }, "platform": "linux" },
+          { "name": { "zh": "ILSpy 导出 .NET 项目", "en": "Export a .NET Project with ILSpy" }, "command": "ilspycmd --project --outputdir ./ilspy-output assembly.dll\nfind ./ilspy-output -maxdepth 3 -type f | sort | head -100", "description": { "zh": "把程序集反编译为独立 C# 项目目录，并保留原始 DLL 哈希、目标框架和依赖信息用于复核。", "en": "Decompile an assembly into a separate C# project directory and retain the original DLL hash, target framework, and dependency information for review." }, "platform": "linux" },
+          { "name": { "zh": "ELF 头、符号与反汇编", "en": "Inspect ELF Headers, Symbols, and Disassembly" }, "command": "readelf --file-header --program-headers --section-headers ./sample.bin > ./analysis/readelf.txt\nobjdump --dynamic-syms ./sample.bin > ./analysis/dynamic-symbols.txt\nobjdump --disassemble ./sample.bin > ./analysis/disassembly.txt", "description": { "zh": "将 ELF 头、程序段、节、动态符号和反汇编分别保存为文本工件，不执行样本。", "en": "Save ELF headers, program segments, sections, dynamic symbols, and disassembly as separate text artifacts without executing the sample." }, "platform": "linux" },
+          { "name": { "zh": "提取可打印字符串", "en": "Extract Printable Strings" }, "command": "strings --all --bytes=6 ./sample.bin > ./analysis/strings.txt\nrg -n -i 'PAYLOADER_MARKER|https?://|error|usage' ./analysis/strings.txt", "description": { "zh": "提取长度至少六字节的可打印字符串，再用固定检索词定位线索；字符串本身不能证明控制流或敏感行为。", "en": "Extract printable strings of at least six bytes and search fixed evidence terms, treating strings as leads rather than proof of control flow or sensitive behavior." }, "platform": "linux" }
+        ] }
+      ]
+    },
+    {
+      "id": "reverse-engineering-tricks",
+      "patches": [
+        { "path": "name.zh", "value": "逆向分析验证技巧" },
+        { "path": "name.en", "value": "Reverse-Engineering Validation Techniques" },
+        { "path": "description.zh", "value": "二进制反调试观察、可逆脱壳、Ghidra 无头分析和 Frida 实验 Hook 的验证流程，强调样本副本与证据工件。" },
+        { "path": "description.en", "value": "Validation workflows for observing anti-debug behavior, reversible unpacking, Ghidra headless analysis, and Frida lab hooks with sample copies and evidence artifacts." },
+        { "path": "references", "value": ["https://sourceware.org/gdb/current/onlinedocs/gdb.html", "https://upx.github.io/", "https://github.com/NationalSecurityAgency/ghidra/blob/master/Ghidra/RuntimeScripts/Common/support/analyzeHeadlessREADME.html", "https://frida.re/docs/javascript-api/"] },
+        { "path": "commands", "value": [
+          { "name": { "zh": "观察 ptrace 反调试调用", "en": "Observe ptrace Anti-Debug Calls" }, "command": "gdb -q -batch -ex 'set pagination off' -ex 'catch syscall ptrace' -ex run -ex 'info registers' -ex bt --args ./sample.bin", "description": { "zh": "在样本副本上捕获 ptrace 系统调用并保存寄存器与栈，不篡改返回值；是否属于反调试还需结合后续分支确认。", "en": "Catch ptrace calls on a sample copy and preserve registers and the stack without changing return values, confirming anti-debug behavior only from subsequent control flow." }, "platform": "linux" },
+          { "name": { "zh": "验证并解压 UPX 样本副本", "en": "Validate and Unpack a UPX Sample Copy" }, "command": "sha256sum ./packed.bin\nupx --test ./packed.bin\nupx --decompress --output=./unpacked.bin ./packed.bin\nsha256sum ./unpacked.bin", "description": { "zh": "先验证 UPX 格式，再把解压结果写入新文件并记录前后哈希，不修改原始样本。", "en": "Validate the UPX format before writing decompressed output to a new file and recording both hashes without modifying the original sample." }, "platform": "linux" },
+          { "name": { "zh": "Ghidra 无头分析单一样本", "en": "Run Ghidra Headless Analysis on One Sample" }, "command": "./support/analyzeHeadless ./ghidra-projects SampleProject -import ./sample.bin -analysisTimeoutPerFile 300 -deleteProject", "description": { "zh": "对单一样本运行有时间上限的无头分析并删除临时项目；需要保留结果时去掉 `-deleteProject` 并归档项目目录。", "en": "Run time-bounded headless analysis for one sample and remove the temporary project, omitting -deleteProject only when the project directory must be archived." }, "platform": "linux" },
+          { "name": { "zh": "Frida Android 生命周期日志 Hook", "en": "Log an Android Lifecycle Call with Frida" }, "command": "cat > hook.js <<'JS'\nJava.perform(function () {\n  const Activity = Java.use('android.app.Activity');\n  const onResume = Activity.onResume.overload();\n  onResume.implementation = function () {\n    console.log('Activity.onResume: ' + this.getClass().getName());\n    return onResume.call(this);\n  };\n});\nJS\nfrida -U -f com.example.payloaderlab -l hook.js", "description": { "zh": "在自有实验应用启动时记录 Activity.onResume 调用并显式调用原实现，不修改返回数据、认证状态或应用持久化内容。", "en": "Log Activity.onResume calls while launching an owned lab application and explicitly invoke the original implementation without changing returned data, authentication state, or persistent content." }, "platform": "linux" }
+        ] }
+      ]
+    },
+    {
+      "id": "ghidra",
+      "patches": [
+        { "path": "description.zh", "value": "Ghidra 图形界面与无头模式的静态分析参考，覆盖项目导入、限时分析、脚本输出和可复核的字符串/函数导航。" },
+        { "path": "description.en", "value": "Ghidra static-analysis reference for GUI and headless workflows covering project import, time-bounded analysis, scripted output, and reviewable string and function navigation." },
+        { "path": "references", "value": ["https://ghidra-sre.org/", "https://github.com/NationalSecurityAgency/ghidra", "https://github.com/NationalSecurityAgency/ghidra/blob/master/Ghidra/RuntimeScripts/Common/support/analyzeHeadlessREADME.html"] },
+        { "path": "commands", "value": [
+          { "name": { "zh": "启动 Ghidra GUI", "en": "Launch the Ghidra GUI" }, "command": "./ghidraRun", "description": { "zh": "启动本地 Ghidra 项目管理器，导入前记录样本哈希并为每个案件使用独立项目目录。", "en": "Launch the local Ghidra project manager, record the sample hash before import, and use a separate project directory for each case." }, "platform": "linux" },
+          { "name": { "zh": "无头导入与限时分析", "en": "Headless Import with an Analysis Timeout" }, "command": "./support/analyzeHeadless ./ghidra-projects PayloaderLab -import ./sample.bin -analysisTimeoutPerFile 300", "description": { "zh": "把单一样本导入独立项目并设置每文件分析时限，保留控制台日志和项目目录用于复核。", "en": "Import one sample into a dedicated project with a per-file analysis timeout and retain console logs and the project directory for review." }, "platform": "linux" },
+          { "name": { "zh": "运行受控 Ghidra 脚本", "en": "Run a Controlled Ghidra Script" }, "command": "./support/analyzeHeadless ./ghidra-projects PayloaderLab -process sample.bin -scriptPath ./ghidra-scripts -postScript ListFunctions.java", "description": { "zh": "仅对已导入样本运行版本控制中的 ListFunctions.java，并把函数清单作为分析工件保存。", "en": "Run the version-controlled ListFunctions.java script only against an imported sample and preserve the function inventory as an analysis artifact." }, "platform": "linux" },
+          { "name": { "zh": "GUI 导航检查点", "en": "GUI Navigation Checkpoints" }, "command": "Window -> Defined Strings\nSearch -> For Strings\nWindow -> Function Graph\nHelp -> Key Bindings", "description": { "zh": "从 Defined Strings、字符串搜索和 Function Graph 建立可复核导航点，并在 Key Bindings 中确认当前版本快捷键。", "en": "Establish reviewable navigation points through Defined Strings, string search, and Function Graph, confirming shortcuts in Key Bindings for the installed version." }, "platform": "all" }
+        ] }
+      ]
+    },
+    {
+      "id": "radare2",
+      "patches": [
+        { "path": "description.zh", "value": "radare2 静态检查、字符串与交叉引用、可逆副本补丁、调试和可视化命令参考，所有写操作限定在样本副本。" },
+        { "path": "description.en", "value": "radare2 reference for static inspection, strings and cross-references, reversible copy patching, debugging, and visual analysis with every write restricted to a sample copy." },
+        { "path": "references", "value": ["https://book.rada.re/", "https://github.com/radareorg/radare2"] },
+        { "path": "commands", "value": [
+          { "name": { "zh": "自动分析并输出函数清单", "en": "Analyze and Export a Function Inventory" }, "command": "r2 -q -A -c 'afl; q' ./sample.bin > ./analysis/r2-functions.txt", "description": { "zh": "以只读模式运行自动分析并把函数清单写入工件文件，不进入交互调试或修改样本。", "en": "Run automatic analysis in read-only mode and export the function inventory to an artifact without entering a debugger or modifying the sample." }, "platform": "linux" },
+          { "name": { "zh": "反汇编 main 函数", "en": "Disassemble the main Function" }, "command": "r2 -q -A -c 'pdf @ main; q' ./sample.bin > ./analysis/r2-main.txt", "description": { "zh": "分析后输出 main 函数反汇编；符号不存在时先查看函数清单并使用实际地址或函数名。", "en": "Export main-function disassembly after analysis, consulting the function inventory for an actual address or symbol when main is unavailable." }, "platform": "linux" },
+          { "name": { "zh": "导出字符串清单", "en": "Export the String Inventory" }, "command": "r2 -q -c 'izz; q' ./sample.bin > ./analysis/r2-strings.txt\nrg -n -i 'PAYLOADER_MARKER|https?://|error|usage' ./analysis/r2-strings.txt", "description": { "zh": "导出全部字符串并用固定词检索线索，后续通过交叉引用确认字符串是否进入可达代码路径。", "en": "Export all strings and search fixed evidence terms, then confirm through cross-references whether a string reaches executable code." }, "platform": "linux" },
+          { "name": { "zh": "查询字符串交叉引用", "en": "Query String Cross-References" }, "command": "r2 -q -A -c 'izz~PAYLOADER_MARKER; axt @ str.PAYLOADER_MARKER; q' ./sample.bin", "description": { "zh": "定位固定 marker 字符串并查询其代码交叉引用；名称未生成时使用字符串地址重新执行 axt。", "en": "Locate a fixed marker string and query code cross-references, rerunning axt with the string address when no generated symbol exists." }, "platform": "linux" },
+          { "name": { "zh": "在副本上应用单字节补丁", "en": "Apply a One-Byte Patch to a Copy" }, "command": "cp ./sample.bin ./sample.patched.bin\nr2 -q -w -c 's 0x401234; wx 90; q' ./sample.patched.bin\nsha256sum ./sample.bin ./sample.patched.bin", "description": { "zh": "先复制样本，再在明确实验偏移写入一个字节并记录前后哈希；补丁地址必须来自同一构建的分析证据。", "en": "Copy the sample before writing one byte at an explicit lab offset and record both hashes, using a patch address derived from the same build's analysis evidence." }, "platform": "linux" },
+          { "name": { "zh": "启动本地调试会话", "en": "Start a Local Debugging Session" }, "command": "r2 -d -A ./sample.bin", "description": { "zh": "只在隔离环境启动样本副本的本地调试会话，先设置断点和资源限制，再手动继续执行。", "en": "Start a local debugging session for a sample copy only in an isolated environment, setting breakpoints and resource limits before continuing execution manually." }, "platform": "linux" },
+          { "name": { "zh": "打开可视化分析模式", "en": "Open Visual Analysis Mode" }, "command": "r2 -A -c 'V' ./sample.bin", "description": { "zh": "进入只读自动分析后切换到可视化模式，并使用当前安装版本的 `?` 帮助确认图形视图按键。", "en": "Enter read-only automatic analysis, switch to visual mode, and use the installed version's question-mark help to confirm graph-view keys." }, "platform": "linux" }
+        ] }
+      ]
+    }
+  ]
+}

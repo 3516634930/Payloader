@@ -1,0 +1,151 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "collectionSplits": [
+    {
+      "sourceId": "csrf-token-bypass",
+      "targetPayloadIds": [
+        "csrf-token-validation-boundary"
+      ],
+      "replacements": [
+        {
+          "id": "csrf-token-validation-boundary",
+          "tags": [
+            "csrf",
+            "token-binding",
+            "method-override",
+            "parser-consistency",
+            "localhost"
+          ],
+          "execution": [
+            {
+              "title": {
+                "zh": "跨 Session Token 拒绝样例",
+                "en": "Cross-Session Token Rejection Sample"
+              },
+              "command": "curl --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/lab/csrf/token-binding\" -H \"X-Lab-Session: CSRF_VICTIM_B2\" -H \"X-CSRF-Token: CSRF_ATTACKER_TOKEN_B2\" --data \"marker=CSRF_BINDING_B2\" | jq -e '.accepted == false and .reason == \"token_session_mismatch\"'",
+              "description": {
+                "zh": "组合受害者 Session 与攻击者 Fixture Token，并断言服务端返回绑定不匹配。",
+                "en": "Combine a victim session with an attacker fixture token and assert an explicit binding-mismatch denial."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            },
+            {
+              "title": {
+                "zh": "缺失与空 Token 拒绝矩阵",
+                "en": "Missing and Empty Token Rejection Matrix"
+              },
+              "command": "for mode in missing empty; do if [ \"$mode\" = missing ]; then header=(); else header=(-H \"X-CSRF-Token:\"); fi; curl --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/lab/csrf/token-required\" -H \"X-Lab-Session: CSRF_SESSION_E5\" \"${header[@]}\" --data \"marker=CSRF_REQUIRED_E5\" | jq -c '{accepted,reason}'; done",
+              "description": {
+                "zh": "分别发送缺失和空 X-CSRF-Token 请求，要求两种情况都被拒绝。",
+                "en": "Send missing and empty X-CSRF-Token requests separately and require both cases to be denied."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "方法覆盖校验样例",
+                "en": "Method-Override Validation Sample"
+              },
+              "command": "curl --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/lab/csrf/method-override\" -H \"X-HTTP-Method-Override: PUT\" -H \"X-Lab-Session: CSRF_SESSION_F6\" --data \"marker=CSRF_METHOD_F6\" | jq -e '.csrf_checked == true'",
+              "description": {
+                "zh": "通过 X-HTTP-Method-Override 请求 PUT 语义，并断言 CSRF 中间件仍执行。",
+                "en": "Request PUT semantics through X-HTTP-Method-Override and assert that CSRF middleware still runs."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            },
+            {
+              "title": {
+                "zh": "JSON 解析一致性样例",
+                "en": "JSON Parser-Consistency Sample"
+              },
+              "command": "curl --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/lab/csrf/parser-consistency\" -H \"Content-Type: application/json\" -H \"X-Lab-Session: CSRF_SESSION_G7\" --data '{\"marker\":\"CSRF_JSON_G7\"}' | jq -e '.csrf_checked == true and .accepted == false'",
+              "description": {
+                "zh": "发送无 Token JSON 请求并断言与 Form 路径执行相同 CSRF 校验。",
+                "en": "Send a tokenless JSON request and assert the same CSRF validation used by the form path."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ]
+        }
+      ],
+      "toolTargets": [
+        {
+          "targetToolId": "csrf-token-binding-audit",
+          "targetName": {
+            "zh": "CSRF Token 绑定审计",
+            "en": "CSRF Token Binding Audit"
+          },
+          "targetDescription": {
+            "zh": "对合成 CSRF Token 执行长度与唯一性统计、URL/日志泄露静态检索和固定两次重放，关联 Session 摘要、消费次数和拒绝原因。",
+            "en": "Audit synthetic CSRF tokens through length and uniqueness statistics, static URL or log leakage searches, and a fixed two-request replay correlated with session digests, consumption counts, and denial reasons."
+          },
+          "targetCategory": {
+            "zh": "Web 安全测试工具",
+            "en": "Web Security Testing Tools"
+          },
+          "targetReferences": [
+            "https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html",
+            "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Origin",
+            "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Sec-Fetch-Site"
+          ],
+          "navRootId": "web-tools",
+          "navId": "csrf-token-binding-audit",
+          "navName": {
+            "zh": "CSRF Token 绑定审计",
+            "en": "CSRF Token Binding Audit"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "统计合成 Token 样本",
+                "en": "Measure Synthetic Token Samples"
+              },
+              "command": "node -e \"const fs=require('fs');const values=fs.readFileSync('fixtures/csrf-tokens.txt','utf8').trim().split(/\\r?\\n/);const unique=new Set(values);const lengths=[...new Set(values.map(v=>v.length))];console.log(JSON.stringify({samples:values.length,unique:unique.size,lengths},null,2))\"",
+              "description": {
+                "zh": "读取 Fixture Token 并输出样本数、唯一数与长度集合，用于发现明显重复或固定长度变化。",
+                "en": "Read fixture tokens and output sample count, unique count, and length set to identify obvious repetition or length changes."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "检索 Token URL 与日志泄露",
+                "en": "Search for Token Exposure in URLs and Logs"
+              },
+              "command": "rg -n --glob '*.{js,ts,tsx,html,log,conf}' '(?:csrf|xsrf)[_-]?token[^\\n]{0,80}(?:url|query|referer|logger|console)' src server fixtures",
+              "description": {
+                "zh": "静态检索源码、Fixture 和配置中 Token 与 URL、Query、Referer 或日志调用的邻近关系。",
+                "en": "Statically search source, fixtures, and configuration for token proximity to URL, query, Referer, or logging calls."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "运行固定两次 Token 重放",
+                "en": "Run a Fixed Two-Request Token Replay"
+              },
+              "command": "for attempt in 1 2; do curl --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/lab/csrf/token-replay\" -H \"X-Lab-Session: CSRF_SESSION_D4\" -H \"X-CSRF-Token: CSRF_ONE_TIME_D4\" --data \"marker=CSRF_REPLAY_D4\" | jq -c '{attempt,accepted,reason}' --argjson attempt \"$attempt\"; done",
+              "description": {
+                "zh": "对同一合成一次性 Token 只发送两次 marker 请求，并比较服务端消费状态和拒绝原因。",
+                "en": "Send exactly two marker requests with one synthetic one-time token and compare server consumption state plus denial reason."
+              },
+              "platform": "all"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": []
+    }
+  ]
+}

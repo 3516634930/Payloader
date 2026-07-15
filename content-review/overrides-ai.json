@@ -1,0 +1,289 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "sourcePrefix": "ai",
+  "entries": [
+    {
+      "id": "ai-prompt-injection",
+      "name": { "zh": "Legacy 提示注入主题与工具调用混合集", "en": "Mixed Legacy Prompt-Injection Themes and Tool Calls" },
+      "description": { "zh": "原条目把系统提示泄漏、直接/间接注入、编码与多语言变体、工具越权和自动化请求混在一起；多数主题已由 ai2 单主题条目覆盖，应按行合并并退役破坏性示例。", "en": "The source combines system-prompt leakage, direct and indirect injection, encoding and multilingual variants, excessive tool use, and automation. Most themes already have focused ai2 entries and should be merged line by line while destructive examples are retired." },
+      "category": { "zh": "AI安全", "en": "AI Security" },
+      "subCategory": { "zh": "提示注入主题去重与路由", "en": "Prompt-Injection Deduplication and Routing" },
+      "prerequisites": [
+        { "zh": "使用离线或测试租户中的固定模型版本、确定性参数和无外部权限的测试工具，记录系统目标、允许任务和拒绝基线。", "en": "Use a fixed model version, deterministic settings, and tools without external privileges in an offline or test tenant, recording system objectives, allowed tasks, and refusal baselines." },
+        { "zh": "准备随机 canary 系统标记、随机文档标记和只能读取本地测试数据的函数；禁止放置真实提示、邮件、凭证或环境变量。", "en": "Prepare random system and document canaries plus functions limited to local test data; do not place real prompts, mail, credentials, or environment variables in scope." }
+      ],
+      "analysis": { "zh": "阳性提示注入证据不是模型复述“忽略指令”、改变语气或输出一般规则，而是受保护任务目标、canary 范围或工具参数发生可重复的非授权变化，并能关联到本轮直接输入或被检索的外部内容。系统提示摘要可能来自公开文档或推断；模型拒绝变化可能来自采样；工具名称被列出不等于工具已调用。", "en": "Positive prompt-injection evidence is not repetition of ignore-instructions text, a style change, or generic policy output. It is a repeatable unauthorized change to a protected objective, canary scope, or tool argument attributable to the current direct input or retrieved content. A prompt summary may come from public documentation or inference, refusal drift may come from sampling, and listing tool names does not prove invocation." },
+      "opsecTips": [
+        { "zh": "首次出现随机 canary 或本地无副作用工具调用后停止；不得发送邮件、查询真实用户、读取系统文件、导出环境变量或执行写入 SQL。", "en": "Stop after the first random-canary disclosure or local side-effect-free tool call; do not send mail, query real users, read system files, export environment variables, or execute write SQL." },
+        { "zh": "删除测试会话、文档、canary 与工具审计数据，撤销临时函数权限，清理检索和对话缓存并重放正常任务。", "en": "Delete test sessions, documents, canaries, and tool-audit data, revoke temporary function permissions, clear retrieval and conversation caches, and replay the normal task." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "该 legacy 卡实际是提示注入目录。系统提示泄漏、DAN、结构化输出、间接文档注入、Unicode、多语言、消息拆分和工具越权分别由不同 ai2 条目表达；exiftool 与 curl 属于测试工作流，不应留在 Payload 树。", "en": "This legacy card is a prompt-injection catalog. System-prompt leakage, DAN, structured output, indirect document injection, Unicode, multilingual input, message splitting, and excessive tool use are separate ai2 topics; exiftool and curl are test workflows rather than payloads." },
+        "vulnerability": { "zh": "根因是应用把不可信输入、检索内容和工具结果当成可改变任务目标的指令，并让模型生成的工具参数绕过独立授权。单独的系统消息通道不能消除语义注入，关键词过滤、编码检测或提示保密也不能替代服务端权限与数据边界。", "en": "The root cause is an application treating untrusted input, retrieved content, or tool output as instructions that may change the objective, while model-generated tool arguments bypass independent authorization. A system-message channel alone does not remove semantic injection, and keyword filters, encoding detection, or prompt secrecy cannot replace server-side permissions and data boundaries." },
+        "exploitation": { "zh": "先用正常任务和无害冲突指令建立对照，再按源行一次测试一个单主题输入。直接注入只观察目标变化；间接注入要求文档被实际摄取和检索；工具测试只允许调用返回随机 canary 的本地函数。输出、检索 trace、工具参数和授权日志必须使用同一请求 ID。", "en": "Establish normal-task and harmless-conflict controls, then test one focused source input at a time. Direct injection measures objective changes, indirect injection requires actual ingestion and retrieval, and tool tests may call only a local random-canary function. Output, retrieval traces, tool arguments, and authorization logs must share one request identifier." },
+        "mitigation": { "zh": "把检索内容明确标记为数据，限制其对系统目标的影响；工具调用在模型之外按用户、租户、资源和动作独立授权并验证参数；对敏感输出使用数据流控制和 canary 回归集，同时记录来源、检索片段与工具审计。", "en": "Label retrieved content as data and constrain its influence on system objectives. Authorize tools outside the model by user, tenant, resource, and action, and validate arguments. Apply data-flow controls and canary regression sets to sensitive output while logging sources, retrieved chunks, and tool events." },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        { "title": { "zh": "固定目标与 canary", "en": "Fix objectives and canaries" }, "description": { "zh": "记录正常任务、拒绝任务、随机系统 canary、随机文档 canary 和无权限工具对照。", "en": "Record normal and denied tasks, random system and document canaries, and a no-tool-permission control." } },
+        { "title": { "zh": "复核直接泄漏样例", "en": "Review a direct leakage sample" }, "description": { "zh": "只提交源条目的第一条直接请求，区分真实 canary 泄漏、公开规则摘要和模型猜测。", "en": "Submit only the first direct source request and distinguish real canary leakage from public-policy summaries and model guesses." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "分离外部内容与工具", "en": "Separate external content and tools" }, "description": { "zh": "分别验证摄取、检索、目标漂移和本地工具参数，禁止把文本出现误判为调用或外带。", "en": "Validate ingestion, retrieval, objective drift, and local tool arguments separately without treating text appearance as a call or exfiltration." } },
+        { "title": { "zh": "合并主题并回归", "en": "Merge themes and regress" }, "description": { "zh": "把源行合并到对应 ai2 条目，清理测试状态后重放正常、直接、间接和无权限工具对照。", "en": "Merge source lines into their focused ai2 entries, clear test state, and replay normal, direct, indirect, and unauthorized-tool controls." } }
+      ],
+      "references": [
+        "https://genai.owasp.org/llmrisk/llm01-prompt-injection/"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "该记录是多个已由 ai2 覆盖的提示注入主题和两个工具工作流的聚合卡，且混入外带、DROP TABLE、敏感文件和环境变量示例，必须按行合并、迁移或退役。",
+        "issuesResolved": ["deduplicated-against-ai2", "separated-direct-indirect-and-tool-boundaries", "added-canary-evidence-model", "flagged-destructive-lines", "added-operational-controls"],
+        "targetPayloadIds": [
+          "ai2-1-system-prompt-leak",
+          "ai2-dan-do-anything-now",
+          "ai2-base64",
+          "ai2-2-prompt",
+          "ai2-10-structured-output",
+          "ai2-crescendo",
+          "ai2-virtual-scenario-bypass",
+          "ai2-11-sure-compliance-backdoor",
+          "ai2-9-prompt-indirect-injection",
+          "ai2-22-multimodal-injection",
+          "ai2-16-tool-function-abuse",
+          "ai2-unicode",
+          "ai2-payload",
+          "ai2-13-prompt",
+          "ai2-12-multi-language"
+        ],
+        "targetToolIds": ["ai-security-testing"],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 lines 0-1 and 6-10 -> ai2-1-system-prompt-leak",
+          "execution 0 lines 3-4 -> ai2-dan-do-anything-now",
+          "execution 0 lines 12-13 -> ai2-base64",
+          "execution 1 lines 0-2 -> ai2-2-prompt after replacing the harmful-request placeholder with a fixed refusal canary",
+          "execution 1 lines 4-5 -> ai2-10-structured-output",
+          "execution 1 lines 7-10 -> ai2-crescendo and ai2-virtual-scenario-bypass",
+          "execution 1 lines 12-14 -> ai2-11-sure-compliance-backdoor",
+          "execution 2 lines 0-6 -> ai2-9-prompt-indirect-injection after replacing external exfiltration with a random response canary",
+          "execution 2 lines 7-8 -> ai2-22-multimodal-injection after replacing data export with a random marker",
+          "execution 2 lines 10-11 -> ai-security-testing as a local metadata-fixture workflow; the concept merges into ai2-9-prompt-indirect-injection",
+          "execution 3 lines 0-6 and 14-15 -> ai2-16-tool-function-abuse after replacing mail and environment access with a local canary function",
+          "execution 3 lines 7-13 -> retire: destructive SQL and sensitive-file examples duplicate focused SQL and file-boundary content and are unsafe in this aggregate",
+          "execution 3 lines 17-20 -> ai-security-testing as a bounded local chat-API probe",
+          "wafBypass 0 lines 0-2 -> ai2-unicode after generating real Unicode code points instead of literal escape text",
+          "wafBypass 0 lines 4-6 -> ai2-payload",
+          "wafBypass 0 lines 8-11 -> ai2-13-prompt",
+          "wafBypass 0 lines 13-14 -> ai2-12-multi-language"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "execution 2 exports conversation data and user messages to evil.com; replace every sink with a local random canary and no external network",
+          "execution 3 includes send_email data export, DROP TABLE, /etc/passwd, /etc/shadow, and environment-variable disclosure; destructive and sensitive-file lines must be retired",
+          "execution 3 curl uses an unresolved TARGET placeholder and must become a localhost fixture with timeout, authentication, and request identifiers",
+          "wafBypass 0 uses literal backslash-u text rather than actual zero-width characters and cannot demonstrate Unicode smuggling as written",
+          "the ROT13 line contains an undefined harmful-request placeholder and is not a reproducible test"
+        ],
+        "reviewNotes": [
+          { "zh": "输出看似系统规则的文本不能证明系统提示泄漏，必须命中本轮随机 canary 或不可由公开资料推断的受控标记。", "en": "Text resembling system rules does not prove prompt leakage; it must contain the run-specific random canary or another controlled marker unavailable from public information." },
+          { "zh": "提示注入成功必须表现为受保护目标、数据范围或工具参数改变；模型说“Sure”或复述攻击文本只是行为信号。", "en": "Prompt injection succeeds only when a protected objective, data scope, or tool argument changes; saying Sure or repeating attack text is only a behavioral signal." },
+          { "zh": "已有 ai2 条目覆盖这些主题，legacy 内容不应再生成平行重复卡。", "en": "Existing ai2 entries already cover these themes, so legacy content should not create parallel duplicate cards." }
+        ]
+      }
+    },
+    {
+      "id": "ai-model-extraction",
+      "name": { "zh": "模型提取、成员推断与训练数据记忆混合集", "en": "Mixed Model Extraction, Membership Inference, and Training-Data Memorization" },
+      "description": { "zh": "原条目把 API 侦测、替代模型训练、成员推断、训练数据提取和速率规避混为一体；模型提取已由 ai2 覆盖，其余应拆成独立评估主题和工具工作流。", "en": "The source conflates API inspection, substitute-model training, membership inference, training-data extraction, and rate-limit evasion. Model extraction already has an ai2 topic; the remainder must become focused evaluations and tool workflows." },
+      "category": { "zh": "AI安全", "en": "AI Security" },
+      "subCategory": { "zh": "模型隐私评估拆分", "en": "Model-Privacy Evaluation Split" },
+      "prerequisites": [
+        { "zh": "仅评估自有模型或固定实验模型，准备已知 member/non-member 数据划分、独立验证集、查询预算和可复现随机种子。", "en": "Evaluate only owned or fixed laboratory models with known member and non-member splits, an independent validation set, a query budget, and reproducible random seeds." },
+        { "zh": "训练数据提取使用人工植入的随机 canary，不使用姓名、SSN、密码、API key 或真实训练语料；所有 API 均为本地测试端点。", "en": "Use synthetic random canaries for training-data extraction, never names, SSNs, passwords, API keys, or real training text; all APIs are local test endpoints." }
+      ],
+      "analysis": { "zh": "模型提取阳性需要替代模型在独立、未用于查询或训练的测试集上达到预设 fidelity，并与只用公开基线训练的模型显著区分。成员推断必须在已知 member/non-member 集合上报告 AUC、TPR@低FPR、置信区间和校准基线；单样本最大置信度超过 0.95 不能证明成员身份。训练数据提取要求精确或预定义近似匹配人工 canary，并排除提示回显、公开网页、检索内容、缓存和随机生成。", "en": "Model extraction requires a substitute to meet predefined fidelity on an independent set excluded from querying and training and to outperform a public-data-only baseline. Membership inference must report AUC, TPR at low FPR, confidence intervals, and calibration on known member and non-member sets; one sample above 0.95 confidence proves nothing. Training-data extraction requires exact or predefined approximate recovery of a synthetic canary while excluding prompt echo, public web text, retrieval, cache, and random generation." },
+      "opsecTips": [
+        { "zh": "达到预设查询预算或统计功效后停止；不得轮换账号、代理或 API key，不得探测真实 PII、密钥或生产训练样本。", "en": "Stop at the predefined query budget or statistical power; do not rotate accounts, proxies, or API keys, and do not probe real PII, secrets, or production training samples." },
+        { "zh": "删除查询日志、替代模型、member 标签、canary 和响应缓存，撤销实验密钥并记录所有衍生数据的处置。", "en": "Delete query logs, substitute models, membership labels, canaries, and response caches, revoke experiment keys, and record disposition of all derived data." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "模型提取、成员推断和训练数据记忆是三种不同风险。前者衡量功能复制，成员推断衡量训练集合归属的统计可分性，训练数据提取衡量模型是否逐字或近似恢复特定训练内容；共同使用一段脚本会造成错误结论。", "en": "Model extraction, membership inference, and training-data memorization are distinct risks. The first measures functional copying, membership inference measures statistical separability of training membership, and extraction measures recovery of specific training content. One script cannot establish all three." },
+        "vulnerability": { "zh": "风险受输出粒度、查询预算、任务复杂度、过拟合、训练重复度、解码策略和隐私训练影响。完整概率可能提高某些攻击能力，但不自动构成漏洞；低 loss 或高置信度也可能来自易分类样本、类别先验或校准偏差。", "en": "Risk depends on output granularity, query budget, task complexity, overfitting, training duplication, decoding policy, and privacy-preserving training. Full probabilities may aid some attacks but are not automatically a vulnerability, and low loss or high confidence may reflect easy samples, class priors, or calibration bias." },
+        "exploitation": { "zh": "为模型提取固定查询池、预算和独立 fidelity 集；为 MIA 使用已知 member/non-member 数据训练或校准攻击并报告统计指标；为记忆提取在实验训练集中插入随机 canary，再以预注册提示和匹配规则测试。所有流程由工具执行并保留版本与随机种子。", "en": "For extraction, fix a query pool, budget, and independent fidelity set. For membership inference, train or calibrate an attack on known member and non-member data and report statistical metrics. For memorization, insert random canaries into laboratory training data and test preregistered prompts and match rules. Tools retain versions and random seeds." },
+        "mitigation": { "zh": "按业务需要最小化分数输出和查询预算，监控自适应查询并限制模型元数据；使用正则化、早停、去重、隐私评估和适当的差分隐私训练，避免把限流当作唯一控制。对训练语料实施来源、PII 和秘密扫描。", "en": "Minimize score output and query budgets according to business needs, monitor adaptive queries, and limit model metadata. Use regularization, early stopping, deduplication, privacy evaluation, and appropriate differential-privacy training rather than relying only on rate limits. Scan training sources for PII and secrets." },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        { "title": { "zh": "固定数据与查询预算", "en": "Fix data and query budgets" }, "description": { "zh": "记录目标模型版本、member 划分、独立测试集、输出字段、查询上限和随机种子。", "en": "Record target-model version, membership split, independent test set, output fields, query cap, and random seeds." } },
+        { "title": { "zh": "复核只读 API 基线", "en": "Review a read-only API baseline" }, "description": { "zh": "只在本地 fixture 上运行源 API 请求，确认 schema 和概率字段，不枚举猜测端点。", "en": "Run the source API request only against a local fixture to confirm schema and score fields without enumerating guessed endpoints." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "独立评估三类风险", "en": "Evaluate the three risks independently" }, "description": { "zh": "分别计算 fidelity、MIA 统计指标和 canary 提取率，禁止复用错误的单阈值与数字长度启发式。", "en": "Compute fidelity, membership-inference metrics, and canary extraction rates separately without single-threshold or digit-length heuristics." } },
+        { "title": { "zh": "清理衍生数据并回归", "en": "Clean derived data and regress" }, "description": { "zh": "删除模型、标签与 canary，应用控制后在相同预算下重跑并比较效用与隐私指标。", "en": "Delete models, labels, and canaries, then rerun under the same budget after controls and compare utility and privacy metrics." } }
+      ],
+      "references": [
+        "https://www.usenix.org/conference/usenixsecurity16/technical-sessions/presentation/tramer",
+        "https://arxiv.org/abs/1610.05820",
+        "https://www.usenix.org/conference/usenixsecurity21/presentation/carlini-extracting"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "原记录把三个互不等价的隐私风险与 API 工具流程和规避检测代码合并；模型提取主题重复 ai2-21，其余需要独立证据模型。",
+        "issuesResolved": ["separated-extraction-membership-and-memorization", "corrected-mia-criterion", "added-independent-fidelity-baseline", "removed-real-pii-probes", "retired-rate-limit-evasion"],
+        "targetPayloadIds": ["ai2-21-model-extraction", "ai-membership-inference-evaluation", "ai-training-data-memorization"],
+        "targetToolIds": ["model-privacy-testing"],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 lines 0-13 -> model-privacy-testing as a localhost schema and output-granularity workflow",
+          "execution 1 lines 0-26 -> model-privacy-testing after a complete bounded rewrite; its conceptual model-extraction guidance merges into ai2-21-model-extraction",
+          "execution 2 lines 0-21 -> model-privacy-testing after replacement with a calibrated member/non-member benchmark; the focused evidence theme becomes ai-membership-inference-evaluation",
+          "execution 3 lines 0-21 -> model-privacy-testing after replacement with a synthetic-canary experiment; the focused evidence theme becomes ai-training-data-memorization",
+          "wafBypass 0 lines 0-16 -> retire: multi-account and proxy rotation is detection evasion, actual_query is undefined, and the block has no legitimate evaluation value"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "execution 0 guesses several endpoints and uses unresolved TARGET without authentication, timeout, response validation, or a local scope",
+          "execution 1 performs ten thousand remote queries, scores on undefined X_test and y_test, and reports training-like accuracy instead of independent fidelity",
+          "execution 2 uses one fixed 0.95 confidence threshold and fake PII examples; this is not a valid membership-inference attack or evaluation",
+          "execution 3 lacks imports and uses PII, password, API-key, and private-key prefixes; digit presence and output length are invalid leakage criteria",
+          "wafBypass 0 rotates accounts and proxies and references undefined actual_query; retire the complete block rather than repairing evasion behavior"
+        ],
+        "reviewNotes": [
+          { "zh": "MIA 必须在已知 member/non-member 分布上校准并报告统计性能，单个样本的高置信度或低 loss 不是成员证据。", "en": "Membership inference must be calibrated on known member and non-member distributions with statistical performance; high confidence or low loss for one sample is not membership evidence." },
+          { "zh": "生成像 SSN、API key 或私钥的文本可能是随机或公开模式匹配，只有实验训练集中唯一 canary 的受控恢复才能证明记忆。", "en": "Text resembling an SSN, API key, or private key may be random or learned from public patterns; only controlled recovery of a unique laboratory-training canary demonstrates memorization." },
+          { "zh": "替代模型必须在未参与查询和训练的独立集合上与目标比较，不能在自身训练特征上调用 clone.score。", "en": "A substitute must be compared with the target on a set excluded from querying and training, not scored on its own training features." }
+        ]
+      }
+    },
+    {
+      "id": "ai-adversarial",
+      "name": { "zh": "对抗鲁棒性代码工作流与 Unicode 主题混合集", "en": "Mixed Adversarial-Robustness Code Workflows and Unicode Theme" },
+      "description": { "zh": "原条目混合图像 FGSM、手写黑盒边界攻击、文本同形字、物理补丁和不完整 C&W/Ensemble/DIM 片段；代码应迁入经过验证的 ML 工具流程，Unicode 概念合并到 ai2。", "en": "The source combines image FGSM, a hand-written black-box boundary attack, text homoglyphs, a physical patch, and incomplete C&W, ensemble, and DIM fragments. Code belongs in a validated ML tool workflow and the Unicode concept should merge into ai2." },
+      "category": { "zh": "AI安全", "en": "AI Security" },
+      "subCategory": { "zh": "对抗鲁棒性评估拆分", "en": "Adversarial-Robustness Evaluation Split" },
+      "prerequisites": [
+        { "zh": "使用固定权重和校验和的本地模型、公开许可测试集、明确预处理、类别映射、随机种子和无网络实验环境。", "en": "Use a local model with fixed weights and checksum, a licensed public test set, explicit preprocessing and class mapping, reproducible seeds, and a networkless experiment." },
+        { "zh": "预注册威胁模型、扰动范数与上限、查询预算、攻击成功率、干净准确率和鲁棒准确率；物理测试仅在受控实验台完成。", "en": "Preregister the threat model, perturbation norm and limit, query budget, attack success rate, clean accuracy, and robust accuracy; conduct physical tests only on a controlled bench." }
+      ],
+      "analysis": { "zh": "阳性不是单张图片标签变化，而是合法输入在固定预处理下正确分类，对抗变体满足距离或物理约束，并在独立样本和重复种子上显著降低鲁棒指标。预处理缺失、模型本来分类错误、随机性、压缩、颜色空间变化、无效起始点或实现 bug 都是假阳性。文本同形字还必须证明规范化前后安全决策差异，而非仅显示字符不同。", "en": "A positive is not one image changing labels. The clean input must be correctly classified under fixed preprocessing, the adversarial variant must satisfy distance or physical constraints, and robust metrics must decline across independent samples and repeated seeds. Missing preprocessing, an initially wrong label, randomness, compression, color-space changes, invalid starting points, or implementation bugs are false positives. Homoglyph tests also require a security-decision difference before and after normalization, not merely different code points." },
+      "opsecTips": [
+        { "zh": "只攻击本地测试模型并遵守小查询预算；不得上传真实敏感图像、向外部审核 API 发送有害文本或在真实环境部署对抗补丁。", "en": "Attack only a local test model under a small query budget; do not upload sensitive images, send harmful text to external moderation APIs, or deploy adversarial patches in real environments." },
+        { "zh": "删除生成样本、模型缓存和临时权重，恢复随机种子与基线配置，并保存仅含聚合指标的实验记录。", "en": "Delete generated samples, model caches, and temporary weights, restore seeds and baseline configuration, and retain only aggregate experiment metrics." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "图像白盒、图像黑盒、文本 Unicode 和物理补丁具有不同威胁模型。可靠评估需要标准库、明确预处理和批量指标；把零散 Python 片段当作可复制 Payload 会隐藏缺失变量、数学错误与查询成本。", "en": "Image white-box, image black-box, text Unicode, and physical patches use different threat models. Reliable evaluation needs established libraries, explicit preprocessing, and aggregate metrics; treating fragments as payloads hides missing variables, mathematical errors, and query cost." },
+        "vulnerability": { "zh": "对抗风险来自模型在任务相关扰动下决策不稳定，以及输入规范化和检测器与下游模型不一致。攻击代码能生成数组不代表系统存在漏洞；必须把模型效用、扰动可感知性、约束合规和攻击成功率一起评估。", "en": "Adversarial risk arises when model decisions are unstable under task-relevant perturbations or when normalization and safety detectors disagree with downstream models. Generating an array does not establish a vulnerability; utility, perceptibility, constraint compliance, and attack success must be evaluated together." },
+        "exploitation": { "zh": "先运行干净批次并保存 logits、标签和预处理；再用维护中的鲁棒性库执行固定参数的 FGSM 或查询攻击，并按样本记录范数、查询数和成功状态。Unicode 对照使用相同语义和规范化；物理测试需要距离、角度、光照与打印约束。", "en": "Run a clean batch and preserve logits, labels, and preprocessing, then execute fixed-parameter FGSM or query attacks with a maintained robustness library while recording norm, queries, and success per sample. Unicode controls preserve semantics and normalization; physical tests include distance, angle, lighting, and print constraints." },
+        "mitigation": { "zh": "统一并测试输入规范化，采用与威胁模型匹配的数据增强或对抗训练，监控分布漂移并设置人工复核边界。使用标准基准持续报告干净与鲁棒准确率，避免用梯度遮蔽或单一输入变换宣称防御成功。", "en": "Unify and test input normalization, apply data augmentation or adversarial training matched to the threat model, monitor distribution shift, and set human-review boundaries. Continuously report clean and robust accuracy on standard benchmarks and do not claim defense from gradient masking or one transform." },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        { "title": { "zh": "固定模型与干净基线", "en": "Fix the model and clean baseline" }, "description": { "zh": "记录权重哈希、预处理、数据集版本、干净预测、类别映射和随机种子。", "en": "Record weight hash, preprocessing, dataset version, clean predictions, class mapping, and random seeds." } },
+        { "title": { "zh": "审查 FGSM 代码边界", "en": "Review the FGSM code boundary" }, "description": { "zh": "将源 FGSM 片段仅作为待迁移工作流，先验证预处理和目标张量，不把单样本翻转当作结论。", "en": "Treat the source FGSM fragment only as a workflow to migrate, first validating preprocessing and target tensors without concluding from one label flip." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "运行标准化批量评估", "en": "Run a standardized batch evaluation" }, "description": { "zh": "由工具库分别执行白盒、黑盒和 Unicode 对照，报告约束、查询和统计指标。", "en": "Use a tool library for white-box, black-box, and Unicode controls and report constraints, queries, and statistical metrics." } },
+        { "title": { "zh": "清理并回归鲁棒性", "en": "Clean up and regress robustness" }, "description": { "zh": "删除样本和缓存，应用规范化或训练修复后，以相同数据、种子和预算重跑。", "en": "Delete samples and caches, then rerun with identical data, seeds, and budget after normalization or training changes." } }
+      ],
+      "references": [
+        "https://arxiv.org/abs/1412.6572",
+        "https://arxiv.org/abs/1712.04248",
+        "https://arxiv.org/abs/1712.09665"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "四种威胁模型和多个不完整 Python 实现被混成一张卡；可复现代码应迁入 ML 工具流程，Unicode 检测语义合并到现有 ai2，错误或物理部署内容退役。",
+        "issuesResolved": ["separated-threat-models", "moved-code-to-tool-workflow", "added-robustness-metrics", "flagged-non-runnable-code", "retired-invalid-physical-and-comment-only-content"],
+        "targetPayloadIds": ["ai2-unicode"],
+        "targetToolIds": ["ml-adversarial-testing"],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 lines 0-30 -> ml-adversarial-testing as a corrected white-box FGSM benchmark",
+          "execution 1 lines 0-28 -> ml-adversarial-testing only after replacing the hand-written routine with a validated query-attack implementation",
+          "execution 2 lines 0-29 -> ml-adversarial-testing after syntax and import fixes; its Unicode-normalization evidence merges into ai2-unicode",
+          "execution 3 lines 0-25 -> retire: the targeted physical-patch optimizer is incomplete and uses the wrong optimization direction",
+          "execution 3 lines 26-29 -> retire: undefined model and save_image plus an uncontrolled instruction to deploy a physical patch",
+          "wafBypass 0 lines 0-8 -> retire: comment-only C&W and ensemble claims provide no runnable or verifiable implementation",
+          "wafBypass 0 lines 9-15 -> ml-adversarial-testing after adding imports, dimensions, normalization, and a complete evaluation caller"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "execution 0 uses deprecated pretrained=True, omits ImageNet normalization, and evaluates only one image without a perturbation or clean-accuracy report",
+          "execution 1 calls undefined to_bytes, does not start from a verified target-class adversarial example, lacks response validation, and allows five thousand remote queries",
+          "execution 2 omits import random and contains invalid Python r.json()[\\x27flagged\\x27] syntax",
+          "execution 3 omits random, model, and save_image and minimizes negative target cross-entropy, which moves away from the claimed target class",
+          "wafBypass 0 describes C&W and ensemble attacks only in comments and its DIM helper omits random and an executable evaluation path"
+        ],
+        "reviewNotes": [
+          { "zh": "模型标签翻转必须建立在干净样本原本正确、扰动满足威胁模型且结果可重复的前提上。", "en": "A label flip matters only when the clean sample was correct, the perturbation satisfies the threat model, and the result is reproducible." },
+          { "zh": "文本同形字更接近规范化一致性测试，不能用“视觉无差异”代替语义、编码和审核结果证据。", "en": "Text homoglyphs are primarily a normalization-consistency test; visual similarity cannot replace semantic, encoding, and moderation-result evidence." },
+          { "zh": "物理补丁需要 EOT、打印色域、距离、角度和光照评估，随机背景上的单段优化不支持“任何物体”结论。", "en": "Physical patches require EOT, print gamut, distance, angle, and lighting evaluation; optimization on random backgrounds does not support an any-object claim." }
+        ]
+      }
+    },
+    {
+      "id": "ai-rag-poisoning",
+      "name": { "zh": "RAG 投毒、间接注入与向量库操作混合集", "en": "Mixed RAG Poisoning, Indirect Injection, and Vector-Store Operations" },
+      "description": { "zh": "原条目把 RAG 识别、文档上传、检索触发、间接提示注入、向量数据库读取/写入和隐写混在一起；核心投毒主题已由 ai2 覆盖，工具和无效写入必须分流。", "en": "The source combines RAG identification, document upload, retrieval triggers, indirect prompt injection, vector-store reads and writes, and steganography. ai2 already covers the poisoning theme, while tooling and invalid writes require separate routing." },
+      "category": { "zh": "AI安全", "en": "AI Security" },
+      "subCategory": { "zh": "RAG 数据流与工具拆分", "en": "RAG Data-Flow and Tooling Split" },
+      "prerequisites": [
+        { "zh": "使用单租户本地 RAG fixture、隔离 scratch collection、固定 embedding 模型和带随机 canary 的自有文档，记录摄取、切块、索引和检索 ID。", "en": "Use a single-tenant local RAG fixture, isolated scratch collection, fixed embedding model, and owned documents with random canaries, recording ingestion, chunking, indexing, and retrieval identifiers." },
+        { "zh": "向量库只允许测试身份读取和删除 scratch collection；任何写入都必须由真实 embedding 维度和可回滚对象组成，禁止访问生产集合。", "en": "Permit the test identity to read and delete only the scratch collection; every write must use real embedding dimensions and reversible objects, with production collections out of scope." }
+      ],
+      "analysis": { "zh": "阳性投毒证据需要受控文档确实被摄取为特定 chunk、在目标查询中进入 top-k，并使回答、引用、授权决定或工具参数按随机 canary 发生可重复变化。模型声称引用文档、回答出现通用短语、端点存在或向量库返回集合都不证明投毒。还要排除训练数据记忆、系统提示、缓存、固定示例、客户端拼接和其他租户文档。直接读取或写入向量库是访问控制/配置问题，与内容投毒不同。", "en": "Positive poisoning evidence requires an owned document to be ingested into identified chunks, enter top-k retrieval for the target query, and reproducibly change an answer, citation, authorization decision, or tool argument according to a random canary. A model claiming sources, a generic phrase in output, endpoint existence, or a collection listing does not prove poisoning. Exclude training memorization, system prompts, caches, fixed examples, client concatenation, and other-tenant documents. Direct vector-store reads or writes are access-control or configuration issues, not content poisoning." },
+      "opsecTips": [
+        { "zh": "只使用一个 scratch collection 和无敏感字段 canary；不得导出对话、凭证或用户数据，不得覆盖生产点、修改真实排名或跨租户查询。", "en": "Use one scratch collection and a nonsensitive canary; do not export conversations, credentials, or user data, overwrite production points, alter real ranking, or query across tenants." },
+        { "zh": "删除测试文档、chunk、point 与 collection，清理 embedding、检索和生成缓存，撤销测试令牌并确认索引计数恢复。", "en": "Delete test documents, chunks, points, and collection, clear embedding, retrieval, and generation caches, revoke test tokens, and confirm index counts return to baseline." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "RAG 投毒至少经过文档摄取、切块、embedding、索引、检索、prompt 组装和生成七个阶段。源卡中的 curl 与 shell 是端到端工具流程；投毒文本属于 ai2-20；隐藏元数据属于间接注入；直接向量库 API 是独立管理边界。", "en": "RAG poisoning crosses document ingestion, chunking, embedding, indexing, retrieval, prompt assembly, and generation. Source curl and shell blocks are end-to-end tooling, poisoned text belongs to ai2-20, hidden metadata is indirect injection, and direct vector-store APIs are a separate administration boundary." },
+        "vulnerability": { "zh": "根因包括未授权摄取、来源或租户 ACL 在切块/检索阶段丢失、把检索文本当成高优先级指令、排序可被关键词或重复内容操纵，以及向量库管理面暴露。仅做字符串过滤不足以解决权限和工具授权。", "en": "Root causes include unauthorized ingestion, source or tenant ACLs lost during chunking or retrieval, treating retrieved text as high-priority instructions, ranking manipulation through repetition, and exposed vector-store administration. String filtering alone does not solve authorization or tool control." },
+        "exploitation": { "zh": "先索引一份只含随机 canary 的正常文档并记录 chunk 和排名，再上传只增加一条无害覆盖指令的对照文档。用固定查询关联 top-k、prompt trace、输出和工具日志；向量库检查限于 scratch collection 的只读 schema，不直接写占位向量。", "en": "Index one normal document containing only a random canary and record chunks and rank, then upload a control document with one harmless override instruction. Use a fixed query to correlate top-k, prompt traces, output, and tool logs. Limit vector-store inspection to read-only scratch-collection schemas and never write placeholder vectors." },
+        "mitigation": { "zh": "对摄取身份、来源和文档执行审批与签名，在 chunk 与 point 上保留租户和 ACL 并在检索时强制过滤；把检索文本标为不可信数据，独立授权工具，监控排名异常和索引漂移。隔离并认证向量库管理面。", "en": "Approve and authenticate ingestion identities, sources, and documents, preserve tenant and ACL metadata on chunks and points, and enforce it during retrieval. Mark retrieved text as untrusted data, authorize tools independently, monitor ranking anomalies and index drift, and isolate and authenticate vector-store administration." },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        { "title": { "zh": "建立可追踪检索基线", "en": "Establish a traceable retrieval baseline" }, "description": { "zh": "记录正常文档的哈希、chunk ID、embedding 版本、top-k 排名、prompt trace 和输出 canary。", "en": "Record normal-document hash, chunk IDs, embedding version, top-k rank, prompt trace, and output canary." } },
+        { "title": { "zh": "审查 RAG 识别流程", "en": "Review the RAG identification workflow" }, "description": { "zh": "仅在本地 fixture 上运行源只读请求，并以检索 trace 而不是模型自述确认 RAG。", "en": "Run the source read-only requests only against a local fixture and confirm RAG through retrieval traces rather than model self-report." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "关联摄取、检索与影响", "en": "Correlate ingestion, retrieval, and impact" }, "description": { "zh": "使用随机 canary 文档逐阶段确认摄取和 top-k，再观察目标或工具参数变化并排除缓存与记忆。", "en": "Use a random-canary document to confirm ingestion and top-k stage by stage, then observe objective or tool-argument changes while excluding cache and memorization." } },
+        { "title": { "zh": "删除索引并回归隔离", "en": "Delete the index and regress isolation" }, "description": { "zh": "删除 scratch collection 和缓存，应用来源/租户控制后重放正常与投毒对照，确认合法检索保留。", "en": "Delete the scratch collection and caches, then replay normal and poisoned controls after source and tenant controls while preserving legitimate retrieval." } }
+      ],
+      "references": [
+        "https://genai.owasp.org/llmrisk/llm04-data-and-model-poisoning/",
+        "https://arxiv.org/abs/2402.07867"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "该记录把内容投毒、间接注入、端点侦测和向量库管理操作混合；ai2 已有核心投毒条目，工具流程和无效/破坏性行必须分开。",
+        "issuesResolved": ["deduplicated-rag-poisoning", "separated-retrieval-and-vector-admin-boundaries", "added-trace-based-evidence", "flagged-invalid-json-and-vectors", "retired-broken-steganography"],
+        "targetPayloadIds": ["ai2-20-rag-poisoning", "ai2-9-prompt-indirect-injection", "ai2-base64"],
+        "targetToolIds": ["rag-security-testing"],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 lines 0-17 -> rag-security-testing as a localhost read-only RAG trace and schema workflow",
+          "execution 1 lines 0-15 -> ai2-20-rag-poisoning after replacing external contact and credential export with a random canary",
+          "execution 1 lines 16-20 -> rag-security-testing as an authenticated scratch-document upload workflow",
+          "execution 1 lines 22-25 -> rag-security-testing as an application-ingestion API workflow, not direct vector-database access",
+          "execution 2 lines 0-7 -> rag-security-testing as a fixed trigger-query and evidence-correlation workflow",
+          "execution 2 lines 8-16 -> ai2-20-rag-poisoning after replacing user-data export with a harmless rank canary",
+          "execution 2 lines 17-23 -> rag-security-testing after replacing invalid backslash-x JSON quoting",
+          "execution 3 lines 0-10 -> rag-security-testing as version-pinned read-only scratch-collection checks",
+          "execution 3 lines 11-20 -> retire: destructive direct PUT uses an ellipsis placeholder vector with unknown dimension and no reversible isolation",
+          "wafBypass 0 lines 0-13 -> retire: the encoder compares phrase characters with 0 and therefore emits only one zero-width code point instead of encoding the hidden text",
+          "wafBypass 0 lines 15-16 -> ai2-9-prompt-indirect-injection as a metadata-ingestion concept",
+          "wafBypass 0 lines 18-21 -> ai2-base64"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "execution 0 guesses generic endpoints and model self-report cannot confirm RAG; use a local fixture with server-side retrieval traces",
+          "execution 1 instructs export of credentials and API keys to evil.com and must use a random canary with no external sink",
+          "execution 2 contains invalid JSON text with literal \\x22 outside a decoding context and a prompt to output previous messages and user data",
+          "execution 3 mixes version-dependent Chroma and Qdrant endpoints and performs a destructive PUT with vector [0.1, 0.2, ...], which is invalid JSON and almost certainly the wrong dimension",
+          "wafBypass 0 does not encode hidden because hidden contains letters rather than the characters 0 and 1; it also mixes comment-only metadata and Base64 concepts"
+        ],
+        "reviewNotes": [
+          { "zh": "模型回答“使用了哪些来源”不能确认 RAG；必须有服务端摄取、chunk、top-k 或 prompt trace。", "en": "A model statement about its sources does not confirm RAG; server-side ingestion, chunk, top-k, or prompt traces are required." },
+          { "zh": "投毒阳性必须证明指定文档被检索并造成可重复影响，需排除训练数据记忆、缓存、系统提示和其他文档。", "en": "A poisoning positive requires the identified document to be retrieved and cause repeatable impact while excluding training memorization, caches, system prompts, and other documents." },
+          { "zh": "向量库未授权读写是访问控制或部署配置问题，不应与检索内容投毒合并报告。", "en": "Unauthorized vector-store reads or writes are access-control or deployment issues and should not be reported as retrieval-content poisoning." }
+        ]
+      }
+    }
+  ]
+}

@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { useAppContext } from '../App';
+import { useAppContext } from '../appContext';
 import { t, getText } from '../i18n';
+import { isProtectedExternalUrl, openProtectedExternalLink } from '../protectedLinks';
 import type { SyntaxPart, I18nText } from '../types';
-import { toolCommands } from '../data/toolCommands';
+import { resolveVariableParts, resolveVariableText } from '../utils/variables';
 import SyntaxModal from './SyntaxModal';
 
 interface ToolDetailProps {
@@ -10,11 +11,11 @@ interface ToolDetailProps {
 }
 
 function ToolDetail({ toolId }: ToolDetailProps) {
-  const { globalVariables, language } = useAppContext();
+  const { globalVariables, language, allToolCommands } = useAppContext();
   const [copiedIndex, setCopiedIndex] = useState<string | null>(null);
   const [selectedSyntax, setSelectedSyntax] = useState<{syntax: SyntaxPart[], title: I18nText} | null>(null);
 
-  const tool = toolCommands.find(t => t.id === toolId);
+  const tool = allToolCommands.find(t => t.id === toolId);
 
   if (!tool) {
     return (
@@ -25,20 +26,41 @@ function ToolDetail({ toolId }: ToolDetailProps) {
     );
   }
 
-  const replaceVariables = (text: string): string => {
-    let result = text;
-    globalVariables.forEach(v => {
-      result = result.replace(new RegExp(`\\{${v.key}\\}`, 'g'), v.value);
-    });
-    return result;
-  };
-
   const copyToClipboard = async (text: string, index: string) => {
-    const processedText = replaceVariables(text);
-    await navigator.clipboard.writeText(processedText);
+    const processedText = resolveVariableText(text, globalVariables);
+    try {
+      await navigator.clipboard.writeText(processedText);
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = processedText;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      document.execCommand('copy');
+      textarea.remove();
+    }
     setCopiedIndex(index);
     setTimeout(() => setCopiedIndex(null), 2000);
   };
+
+  const renderCommand = (command: string) => {
+    const parts = resolveVariableParts(command, globalVariables);
+    if (!parts.some(part => part.key)) return command;
+
+    return parts.map((part, index) => (
+      part.key ? (
+        <span key={`${part.key}-${index}`} className="var-highlight" title={`${part.raw} -> ${part.value}`}>
+          {part.text}
+        </span>
+      ) : (
+        <span key={`text-${index}`}>{part.text}</span>
+      )
+    ));
+  };
+
+  const isExternalTool = Boolean(tool.externalUrl);
 
   return (
     <div className="tool-detail">
@@ -55,11 +77,27 @@ function ToolDetail({ toolId }: ToolDetailProps) {
         </div>
       </div>
 
-      {tool.installation && (
+      {isExternalTool && (
+        <div className="external-tool-section">
+          <div>
+            <h3>{language === 'zh' ? '平台入口' : 'Platform Entry'}</h3>
+            <p>{language === 'zh' ? '这是默认提供的 Xeye 平台入口，部署管理员可在后台工具列表中删除。' : 'This default Xeye entry can be removed by the deployment administrator.'}</p>
+          </div>
+          <button
+            className="external-open-btn"
+            type="button"
+            onClick={() => openProtectedExternalLink(tool.externalUrl)}
+          >
+            {language === 'zh' ? '打开 XSS 平台' : 'Open XSS Platform'}
+          </button>
+        </div>
+      )}
+
+      {!isExternalTool && tool.installation && (
         <div className="installation-section">
           <h3>{t('tool.installation', language)}</h3>
           <div className="code-block">
-            <code>{getText(tool.installation, language)}</code>
+            <code>{renderCommand(getText(tool.installation, language))}</code>
             <button 
               className={`copy-btn ${copiedIndex === 'install' ? 'copied' : ''}`}
               onClick={() => copyToClipboard(getText(tool.installation, language), 'install')}
@@ -70,6 +108,7 @@ function ToolDetail({ toolId }: ToolDetailProps) {
         </div>
       )}
 
+      {!isExternalTool && (
       <div className="commands-section">
         <h3>{t('tool.commands', language)}</h3>
         <div className="commands-list">
@@ -86,7 +125,7 @@ function ToolDetail({ toolId }: ToolDetailProps) {
               <p className="command-desc">{getText(cmd.description, language)}</p>
               <div className="code-block-wrapper">
                 <div className="code-block">
-                  <code>{replaceVariables(cmd.command)}</code>
+                  <code>{renderCommand(cmd.command)}</code>
                 </div>
                 <div className="code-actions">
                   {cmd.syntaxBreakdown && cmd.syntaxBreakdown.length > 0 && (
@@ -113,7 +152,7 @@ function ToolDetail({ toolId }: ToolDetailProps) {
                   <h5>{t('tool.examples', language)}</h5>
                   <ul>
                     {cmd.examples.map((example, i) => (
-                      <li key={i}>{getText(example, language)}</li>
+                      <li key={i}>{renderCommand(getText(example, language))}</li>
                     ))}
                   </ul>
                 </div>
@@ -122,6 +161,7 @@ function ToolDetail({ toolId }: ToolDetailProps) {
           ))}
         </div>
       </div>
+      )}
 
       {tool.references && tool.references.length > 0 && (
         <div className="references-section">
@@ -129,7 +169,14 @@ function ToolDetail({ toolId }: ToolDetailProps) {
           <ul>
             {tool.references.map((ref, index) => (
               <li key={index}>
-                <a href={ref} target="_blank" rel="noopener noreferrer">{ref}</a>
+                <a
+                  href={ref}
+                  target="_blank"
+                  rel={isProtectedExternalUrl(ref) ? 'noopener' : 'noopener noreferrer'}
+                  referrerPolicy={isProtectedExternalUrl(ref) ? 'origin' : undefined}
+                >
+                  {ref}
+                </a>
               </li>
             ))}
           </ul>
@@ -162,6 +209,7 @@ function ToolDetail({ toolId }: ToolDetailProps) {
 
         .tool-title-section {
           flex: 1;
+          min-width: 0;
         }
 
         .tool-title {
@@ -172,6 +220,7 @@ function ToolDetail({ toolId }: ToolDetailProps) {
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
+          overflow-wrap: anywhere;
         }
 
         .tool-description {
@@ -211,6 +260,47 @@ function ToolDetail({ toolId }: ToolDetailProps) {
           border-radius: 8px;
           padding: 16px;
           margin-bottom: 24px;
+        }
+
+        .external-tool-section {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 16px;
+          background: var(--bg-card);
+          border: 1px solid rgba(0, 240, 255, 0.28);
+          border-radius: 8px;
+          padding: 18px;
+          margin-bottom: 24px;
+        }
+
+        .external-tool-section h3 {
+          font-size: 16px;
+          font-weight: 700;
+          margin-bottom: 6px;
+        }
+
+        .external-tool-section p {
+          color: var(--text-secondary);
+          font-size: 13px;
+          line-height: 1.6;
+        }
+
+        .external-open-btn {
+          flex: 0 0 auto;
+          border: 1px solid var(--neon-cyan);
+          border-radius: 6px;
+          background: rgba(0, 240, 255, 0.12);
+          color: var(--neon-cyan);
+          cursor: pointer;
+          font-weight: 700;
+          padding: 10px 14px;
+          transition: all var(--transition-fast);
+        }
+
+        .external-open-btn:hover {
+          background: var(--neon-cyan);
+          color: var(--bg-primary);
         }
 
         .installation-section h3 {
@@ -292,11 +382,28 @@ function ToolDetail({ toolId }: ToolDetailProps) {
           padding: 12px 16px;
           font-family: var(--font-mono);
           font-size: 13px;
-          overflow-x: auto;
+          overflow-x: hidden;
           position: relative;
           display: flex;
           justify-content: space-between;
           align-items: center;
+          gap: 12px;
+          min-width: 0;
+        }
+
+        .code-block code {
+          min-width: 0;
+          white-space: pre-wrap;
+          overflow-wrap: anywhere;
+          word-break: break-word;
+        }
+
+        .var-highlight {
+          display: inline;
+          color: var(--neon-cyan);
+          background: rgba(0, 229, 255, 0.12);
+          border-radius: 3px;
+          padding: 0 2px;
         }
 
         .code-block::before {
@@ -314,6 +421,7 @@ function ToolDetail({ toolId }: ToolDetailProps) {
           display: flex;
           justify-content: flex-end;
           gap: 8px;
+          min-width: 0;
         }
 
         .syntax-btn, .copy-btn {
@@ -323,6 +431,9 @@ function ToolDetail({ toolId }: ToolDetailProps) {
           padding: 6px 12px;
           border-radius: 4px;
           font-size: 12px;
+          min-height: 34px;
+          min-width: 0;
+          white-space: nowrap;
           cursor: pointer;
           transition: all var(--transition-fast);
         }
@@ -408,6 +519,52 @@ function ToolDetail({ toolId }: ToolDetailProps) {
           justify-content: center;
           height: 100%;
           text-align: center;
+        }
+
+        @media (max-width: 900px) {
+          .tool-detail {
+            padding: 16px;
+          }
+
+          .tool-header,
+          .external-tool-section,
+          .command-header,
+          .code-block-wrapper,
+          .code-actions {
+            flex-direction: column;
+            align-items: stretch;
+          }
+
+          .tool-meta {
+            min-width: 0;
+          }
+
+          .installation-section .code-block {
+            align-items: stretch;
+            flex-direction: column;
+          }
+        }
+
+        @media (max-width: 520px) {
+          .tool-title {
+            font-size: 22px;
+          }
+
+          .command-item,
+          .installation-section,
+          .references-section {
+            padding: 14px;
+          }
+
+          .code-actions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+          }
+
+          .syntax-btn,
+          .copy-btn {
+            width: 100%;
+          }
         }
       `}</style>
     </div>

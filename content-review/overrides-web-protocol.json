@@ -1,0 +1,704 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "sourceIds": [
+    "clickjacking-basic",
+    "flask-vuln",
+    "proto-server-rce",
+    "redirect-bypass",
+    "ws-hijack"
+  ],
+  "entries": [
+    {
+      "id": "clickjacking-basic",
+      "name": {
+        "zh": "点击劫持对齐边界验证",
+        "en": "Clickjacking Alignment Boundary Validation"
+      },
+      "description": {
+        "zh": "验证敏感页面能否被第三方页面嵌入并与诱导界面对齐，同时区分响应头缺失、浏览器实际拦截和业务操作是否可被触发。",
+        "en": "Validate whether a sensitive page can be embedded and aligned with a decoy interface while distinguishing missing headers, browser enforcement, and actual business-action reachability."
+      },
+      "category": {
+        "zh": "点击劫持",
+        "en": "Clickjacking"
+      },
+      "subCategory": {
+        "zh": "Frame 嵌入与交互对齐",
+        "en": "Frame Embedding and Interaction Alignment"
+      },
+      "prerequisites": [
+        {
+          "zh": "只使用 127.0.0.1 实验页面，并准备一个不会改变真实数据的确认或预览端点。",
+          "en": "Use only the 127.0.0.1 lab pages and prepare a confirmation or preview endpoint that cannot change real data."
+        },
+        {
+          "zh": "在 Chromium 中记录 CSP、X-Frame-Options、控制台消息和点击后的服务端请求日志。",
+          "en": "Record CSP, X-Frame-Options, browser console messages, and server request logs after interaction in Chromium."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "点击劫持成立需要三个条件同时出现：目标页面可被跨站 Frame 加载，敏感控件能够与诱导界面稳定对齐，并且用户的一次或多次交互会触发具有安全影响的操作。本条目把浏览器侧演示与响应头审计分开，Payload 只保留本地可视化对齐样例。",
+          "en": "Clickjacking requires three conditions at once: cross-site framing must succeed, sensitive controls must align reliably with a decoy interface, and one or more user interactions must trigger a security-relevant action. This entry separates browser demonstrations from header auditing and keeps only local visual-alignment samples as payloads."
+        },
+        "vulnerability": {
+          "zh": "仅缺少 X-Frame-Options 不能单独证明漏洞，因为 CSP frame-ancestors、SameSite Cookie、重新认证、CSRF Token 或业务确认步骤仍可能阻断利用。确认问题时应记录 Frame 是否渲染、认证状态是否携带、目标控件坐标是否稳定以及服务端是否收到预期的状态变更请求。",
+          "en": "A missing X-Frame-Options header alone does not prove vulnerability because CSP frame-ancestors, SameSite cookies, reauthentication, CSRF tokens, or business confirmation steps may still block exploitation. Confirmation requires evidence that the frame renders, authentication state is present, control coordinates remain stable, and the server receives the expected state-changing request."
+        },
+        "exploitation": {
+          "zh": "先对本地实验端点采集响应头基线，再用低透明度 Frame 观察真实布局而不是隐藏页面。逐个执行单按钮、两步交互和 pointer-events 对齐样例，每次只使用唯一 marker，并在浏览器网络面板与服务端日志中核对 marker。若页面被拒绝嵌入或操作没有产生请求，应记录为阻断证据。",
+          "en": "First capture a response-header baseline for the local fixture, then inspect the real layout using a low-opacity frame rather than hiding the page. Run the single-control, two-step, and pointer-events alignment samples one at a time with unique markers, correlating each marker in browser network data and server logs. A refused frame or absent action request is blocking evidence."
+        },
+        "mitigation": {
+          "zh": "优先部署 CSP frame-ancestors 并按兼容性需要补充 X-Frame-Options；对状态变更操作要求 CSRF 防护、重新认证或明确确认；避免仅依赖可被 Frame 环境影响的前端 frame-busting 脚本。自动化回归应同时验证响应头和浏览器实际嵌入结果。",
+          "en": "Deploy CSP frame-ancestors first and add X-Frame-Options where compatibility requires it. Protect state-changing actions with CSRF controls, reauthentication, or explicit confirmation, and do not rely only on client-side frame-busting scripts. Regression tests should verify both response headers and actual browser framing behavior."
+        },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "建立 Frame 策略基线",
+            "en": "Establish the frame-policy baseline"
+          },
+          "description": {
+            "zh": "采集本地敏感页面的状态码、CSP frame-ancestors 与 X-Frame-Options，记录缺失和冲突配置。",
+            "en": "Capture status, CSP frame-ancestors, and X-Frame-Options for the local sensitive page and record missing or conflicting policies."
+          }
+        },
+        {
+          "title": {
+            "zh": "执行可视化对齐样例",
+            "en": "Run a visible alignment sample"
+          },
+          "description": {
+            "zh": "以低透明度加载实验页面并保留红色定位边界，确认控件坐标而不隐藏用户界面。",
+            "en": "Load the fixture at low opacity with visible alignment boundaries to verify control coordinates without hiding the interface."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 1
+          }
+        },
+        {
+          "title": {
+            "zh": "关联交互证据",
+            "en": "Correlate interaction evidence"
+          },
+          "description": {
+            "zh": "使用唯一 marker 对照浏览器请求和服务端日志，判断交互是否真正到达业务处理器。",
+            "en": "Correlate a unique marker across browser requests and server logs to determine whether interaction reached the business handler."
+          }
+        },
+        {
+          "title": {
+            "zh": "验证修复回归",
+            "en": "Verify remediation regression"
+          },
+          "description": {
+            "zh": "启用 Frame 策略后重复浏览器测试，要求页面拒绝嵌入且敏感操作没有请求记录。",
+            "en": "Repeat the browser test after enabling frame policy and require framing refusal with no sensitive-action request."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "阳性结论必须同时包含跨站 Frame 成功、认证上下文可用、控件可稳定对齐和状态变更请求四类证据。响应头缺失、页面截图或单次坐标重合都只能作为线索，不能替代浏览器与服务端的关联证据。",
+        "en": "A positive conclusion requires evidence for successful cross-site framing, usable authentication context, stable control alignment, and a state-changing request. Missing headers, a screenshot, or one coordinate match is only a lead and cannot replace correlated browser and server evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "实验端点只能写入一次性 marker，不连接生产账号、支付、权限或删除操作。",
+          "en": "The fixture may write only disposable markers and must not connect to production account, payment, privilege, or deletion actions."
+        },
+        {
+          "zh": "演示时保持 Frame 可见并限制在本地浏览器会话，结束后清理实验 Cookie 与日志标记。",
+          "en": "Keep the frame visible and confined to a local browser session, then clear fixture cookies and log markers after testing."
+        }
+      ],
+      "references": [
+        "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/frame-ancestors",
+        "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Frame-Options",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Clickjacking_Defense_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "split",
+        "targetPayloadIds": [
+          "clickjacking-alignment-boundary"
+        ],
+        "targetToolIds": [
+          "frame-policy-audit"
+        ],
+        "rationale": "旧条目混合响应头扫描、错误的跨域拖拽表述、Frame 对齐样例和规避脚本；保留本地可视化 Payload，将策略采集与浏览器回归迁入工具区。",
+        "issuesResolved": [
+          "split-tooling-from-payloads",
+          "removed-destructive-actions",
+          "corrected-cross-origin-claims",
+          "added-browser-evidence-boundary"
+        ],
+        "retainedCommandIndexes": [
+          1,
+          2,
+          3
+        ],
+        "lineDisposition": [
+          "execution 0 -> frame-policy-audit",
+          "execution 1-3 -> clickjacking-alignment-boundary",
+          "wafBypass 0-2 -> frame-policy-audit"
+        ],
+        "needsCommandOverride": true
+      }
+    },
+    {
+      "id": "redirect-bypass",
+      "name": {
+        "zh": "开放重定向解析差异样例",
+        "en": "Open-Redirect Parsing-Difference Samples"
+      },
+      "description": {
+        "zh": "使用保留域名和本地重定向 Fixture 验证编码、userinfo、反斜杠、协议相对 URL、片段与 CRLF 双重解码等解析差异。",
+        "en": "Use reserved domains and a local redirect fixture to validate parsing differences involving encoding, userinfo, backslashes, protocol-relative URLs, fragments, and double-decoded CRLF."
+      },
+      "category": {
+        "zh": "开放重定向",
+        "en": "Open Redirect"
+      },
+      "subCategory": {
+        "zh": "URL 规范化与目标校验",
+        "en": "URL Normalization and Destination Validation"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用 127.0.0.1 重定向 Fixture，并让 redirect-canary.invalid 只作为不可解析的保留测试域名。",
+          "en": "Use the 127.0.0.1 redirect fixture and keep redirect-canary.invalid as a non-resolving reserved test domain."
+        },
+        {
+          "zh": "记录服务端接收值、规范化结果、Location Header 和浏览器最终目标，不自动跟随外部跳转。",
+          "en": "Record the server input, normalized value, Location header, and browser destination without automatically following external redirects."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "开放重定向测试的核心不是堆叠字符串，而是比较输入、一次解码、URL 解析、允许列表判断与最终 Location 生成这几个阶段。样例按单一解析变量拆分，并使用 RFC 保留域名避免把测试流量发送到第三方。",
+          "en": "Open-redirect testing is about comparing input, one decoding pass, URL parsing, allowlist evaluation, and final Location generation rather than accumulating strings. Each sample changes one parsing variable and uses a reserved domain so test traffic is never sent to a third party."
+        },
+        "vulnerability": {
+          "zh": "当应用把用户输入直接写入 Location，或在解码与规范化前做字符串前缀、后缀或子串判断时，浏览器和服务端可能对主机、userinfo、反斜杠与片段得出不同结果。只有最终 Location 或浏览器导航离开批准源时才确认开放重定向。",
+          "en": "A vulnerability arises when user input is written directly to Location or checked with string prefixes, suffixes, or substrings before decoding and normalization, allowing browser and server disagreement over hosts, userinfo, backslashes, or fragments. Confirm only when the final Location or browser navigation leaves the approved origin."
+        },
+        "exploitation": {
+          "zh": "先提交同源相对路径建立基线，再逐个测试编码、userinfo、反斜杠、协议相对 URL、片段和双重编码 CRLF。每次保存原始参数、服务端规范化值与响应 Header；默认关闭 curl 跟随跳转。若应用拒绝输入或把目标固定到同源路径，应记录为有效防护。",
+          "en": "Start with a same-origin relative path, then test encoding, userinfo, backslashes, protocol-relative URLs, fragments, and double-encoded CRLF one at a time. Preserve the raw parameter, server-normalized value, and response headers with redirect following disabled. Rejection or canonicalization to a same-origin path is valid protection."
+        },
+        "mitigation": {
+          "zh": "尽量使用服务端定义的目标标识符或固定相对路径，不接受任意绝对 URL。必须支持外部目标时，使用标准 URL 解析器完成一次明确解码，拒绝 userinfo、控制字符和非 HTTP(S) Scheme，再对规范化后的 scheme、host 与 port 做精确允许列表判断。",
+          "en": "Prefer server-defined destination identifiers or fixed relative paths and do not accept arbitrary absolute URLs. When external destinations are required, use a standard URL parser with one explicit decoding pass, reject userinfo, control characters, and non-HTTP(S) schemes, then apply an exact allowlist to normalized scheme, host, and port."
+        },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "记录同源跳转基线",
+            "en": "Record a same-origin redirect baseline"
+          },
+          "description": {
+            "zh": "先提交固定相对路径并保存状态码与 Location，确认测试端点的正常行为。",
+            "en": "Submit a fixed relative path and preserve status and Location to establish normal fixture behavior."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "逐一改变解析变量",
+            "en": "Change one parsing variable at a time"
+          },
+          "description": {
+            "zh": "分别测试 userinfo、反斜杠、协议相对形式和片段，避免把多个差异混入同一次请求。",
+            "en": "Test userinfo, backslashes, protocol-relative forms, and fragments separately so each request contains one parsing difference."
+          }
+        },
+        {
+          "title": {
+            "zh": "比较规范化与最终目标",
+            "en": "Compare normalization and final destination"
+          },
+          "description": {
+            "zh": "对照原始输入、服务端解析结果、Location 与浏览器地址栏，定位发生分歧的阶段。",
+            "en": "Compare raw input, server parsing, Location, and the browser address bar to identify the stage where interpretation diverges."
+          }
+        },
+        {
+          "title": {
+            "zh": "验证允许列表修复",
+            "en": "Verify allowlist remediation"
+          },
+          "description": {
+            "zh": "修复后重复全部样例，要求外部保留域名被拒绝或被规范化为批准的同源路径。",
+            "en": "Repeat every sample after remediation and require the reserved external domain to be rejected or normalized to an approved same-origin path."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "只有响应 Location 或浏览器最终地址的规范化 host 为未批准域名时才确认问题。输入字符串含外域、服务端返回 3xx、或校验日志出现告警都不足以证明可利用，必须核对最终解析结果。",
+        "en": "Confirm only when the normalized host in Location or the browser destination is unapproved. An external-looking input, a 3xx response, or a validation warning alone does not prove exploitability; the final parsed destination must be checked."
+      },
+      "opsecTips": [
+        {
+          "zh": "使用 `.invalid` 保留域名并关闭自动跟随，避免任何样例访问真实第三方站点。",
+          "en": "Use the reserved .invalid domain and disable automatic following so no sample reaches a real third-party site."
+        },
+        {
+          "zh": "每次只改变一个 URL 组成部分，保存原始字节和解码次数，防止把代理或浏览器重写误判为应用行为。",
+          "en": "Change one URL component per request and preserve raw bytes and decode counts to avoid mistaking proxy or browser rewriting for application behavior."
+        }
+      ],
+      "references": [
+        "https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html",
+        "https://url.spec.whatwg.org/",
+        "https://datatracker.ietf.org/doc/html/rfc3986"
+      ],
+      "review": {
+        "decision": "payload",
+        "targetPayloadIds": [
+          "redirect-bypass"
+        ],
+        "targetToolIds": [],
+        "rationale": "旧条目是有效的 URL 解析 Payload 类别，但混入重复、不可控外域和错误的规避叙述；改为本地 Fixture 与保留域名的单变量样例。",
+        "issuesResolved": [
+          "removed-live-third-party-targets",
+          "deduplicated-variants",
+          "added-parser-stage-evidence",
+          "corrected-localization"
+        ],
+        "retainedCommandIndexes": [
+          0,
+          1,
+          2
+        ],
+        "lineDisposition": [
+          "execution 0-2 -> normalized redirect samples",
+          "wafBypass 0-2 -> parser-difference samples"
+        ],
+        "needsCommandOverride": true
+      }
+    },
+    {
+      "id": "ws-hijack",
+      "name": {
+        "zh": "跨站 WebSocket 会话边界验证",
+        "en": "Cross-Site WebSocket Session-Boundary Validation"
+      },
+      "description": {
+        "zh": "验证浏览器跨站握手时 Origin、Cookie、子协议和消息级授权是否共同阻止跨站 WebSocket 会话劫持。",
+        "en": "Validate whether Origin checks, cookies, subprotocols, and message-level authorization jointly prevent cross-site WebSocket session hijacking."
+      },
+      "category": {
+        "zh": "WebSocket 安全",
+        "en": "WebSocket Security"
+      },
+      "subCategory": {
+        "zh": "CSWSH 与消息授权",
+        "en": "CSWSH and Message Authorization"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用本地 ws://127.0.0.1 实验端点，并准备只返回 marker 的无敏感数据测试账号。",
+          "en": "Use the local ws://127.0.0.1 fixture and a test identity that returns markers only and has no sensitive data."
+        },
+        {
+          "zh": "同时采集握手状态、Origin、Cookie 是否附带、子协议、消息授权结果和连接关闭码。",
+          "en": "Capture handshake status, Origin, cookie presence, subprotocol, message authorization result, and connection close code together."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "CSWSH 发生在浏览器自动携带会话凭据，而服务端没有严格验证 Origin 或消息级授权时。条目把握手采集、Origin 矩阵与有界消息记录迁入工具区，Payload 区只保留浏览器建立跨站连接和发送无害 marker 的最小样例。",
+          "en": "CSWSH occurs when the browser automatically carries session credentials while the server fails to enforce Origin and message-level authorization. Handshake collection, Origin matrices, and bounded message capture move to tools; payloads retain only minimal browser samples that establish a cross-site connection and send harmless markers."
+        },
+        "vulnerability": {
+          "zh": "能够建立 WebSocket 连接不等于会话已被劫持；公开匿名端点、无 Cookie 的 Token 认证端点或连接后拒绝敏感消息的服务都可能安全。确认问题必须证明跨站浏览器连接携带了受害者身份，并能读取受保护数据或执行受保护动作。",
+          "en": "Establishing a WebSocket connection does not itself prove session hijacking. Public anonymous endpoints, token-authenticated endpoints without ambient cookies, or services that reject sensitive messages after connection may be safe. Confirmation requires a cross-site browser connection carrying victim identity that can read protected data or perform a protected action."
+        },
+        "exploitation": {
+          "zh": "先采集同源与跨站 Origin 的握手差异，再从本地 HTML 页面建立浏览器连接并发送唯一 echo marker。随后发送一个只返回权限结果的 profile_preview 消息，记录服务端身份、授权判定和关闭码。所有消息都应限制次数，不保存 Token、Cookie 或业务数据。",
+          "en": "First compare same-origin and cross-site handshake behavior, then establish a browser connection from a local HTML page and send a unique echo marker. Next send a profile_preview message that returns only an authorization result, recording server identity, authorization decision, and close code. Bound message counts and never store tokens, cookies, or business data."
+        },
+        "mitigation": {
+          "zh": "在握手阶段精确允许受信 Origin，拒绝缺失或 null Origin，除非有明确业务需求；使用 SameSite Cookie 或显式短期 Token 降低环境凭据风险；每条消息执行身份与对象授权、Schema 校验、速率限制和大小限制，并在注销后立即失效连接。",
+          "en": "Allow only trusted Origins during the handshake and reject missing or null Origin unless explicitly required. Use SameSite cookies or explicit short-lived tokens to reduce ambient-credential risk. Enforce identity and object authorization, schema validation, rate and size limits on every message, and terminate connections immediately after logout."
+        },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "比较握手策略",
+            "en": "Compare handshake policy"
+          },
+          "description": {
+            "zh": "分别使用同源、跨站与 null Origin，保存状态码、选择的子协议和连接关闭原因。",
+            "en": "Use same-origin, cross-site, and null Origin values and preserve status, selected subprotocol, and close reason."
+          }
+        },
+        {
+          "title": {
+            "zh": "建立浏览器跨站连接",
+            "en": "Establish a browser cross-site connection"
+          },
+          "description": {
+            "zh": "从本地 HTML 建立连接并只发送 echo marker，确认浏览器侧凭据与 Origin 行为。",
+            "en": "Connect from local HTML and send only an echo marker to verify browser credential and Origin behavior."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 1
+          }
+        },
+        {
+          "title": {
+            "zh": "验证消息级授权",
+            "en": "Verify message-level authorization"
+          },
+          "description": {
+            "zh": "发送 profile_preview marker，要求服务端返回授权结果而不是任何真实资料内容。",
+            "en": "Send a profile_preview marker and require an authorization result rather than real profile content."
+          }
+        },
+        {
+          "title": {
+            "zh": "关联日志并复验",
+            "en": "Correlate logs and retest"
+          },
+          "description": {
+            "zh": "按 request marker 关联握手与消息日志，修复后要求跨站连接或受保护消息被拒绝。",
+            "en": "Correlate handshake and message logs by marker and require the cross-site connection or protected message to be rejected after remediation."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "阳性证据需要跨站浏览器 Origin、自动携带的有效身份和受保护消息成功三者同时成立。命令行客户端可以伪造 Origin，因此它只能测试服务端策略，不能单独证明浏览器可利用的 CSWSH。",
+        "en": "Positive evidence requires a cross-site browser Origin, automatically carried valid identity, and successful protected messaging together. A command-line client can forge Origin, so it tests server policy but cannot by itself prove browser-exploitable CSWSH."
+      },
+      "opsecTips": [
+        {
+          "zh": "测试账号只允许 echo 与权限预览，消息体不得包含真实聊天、Token、密码或个人资料。",
+          "en": "The test identity may use only echo and authorization-preview actions, with no real chat, token, password, or profile data in messages."
+        },
+        {
+          "zh": "限制连接时长和消息数量，按正常关闭码结束并删除本地抓取文件中的 Cookie Header。",
+          "en": "Limit connection duration and message count, close with a normal code, and remove cookie headers from local capture files."
+        }
+      ],
+      "references": [
+        "https://cheatsheetseries.owasp.org/cheatsheets/WebSocket_Security_Cheat_Sheet.html",
+        "https://developer.mozilla.org/en-US/docs/Web/API/WebSocket",
+        "https://datatracker.ietf.org/doc/html/rfc6455"
+      ],
+      "review": {
+        "decision": "split",
+        "targetPayloadIds": [
+          "websocket-cross-origin-boundary"
+        ],
+        "targetToolIds": [
+          "websocket-session-audit"
+        ],
+        "rationale": "旧条目混合端点发现、浏览器劫持、数据外带、SQL/XSS/命令注入和监听脚本；删除外带与复合注入，只保留 CSWSH 会话边界，并将握手与日志工具迁移。",
+        "issuesResolved": [
+          "removed-data-exfiltration",
+          "removed-unrelated-injection-payloads",
+          "bounded-message-capture",
+          "separated-browser-proof-from-cli-policy-test"
+        ],
+        "retainedCommandIndexes": [
+          1,
+          2
+        ],
+        "lineDisposition": [
+          "execution 0,3 -> websocket-session-audit",
+          "execution 1,2 -> websocket-cross-origin-boundary",
+          "wafBypass 0 -> websocket-session-audit"
+        ],
+        "needsCommandOverride": true
+      }
+    },
+    {
+      "id": "proto-server-rce",
+      "name": {
+        "zh": "服务端原型链污染边界验证",
+        "en": "Server-Side Prototype-Pollution Boundary Validation"
+      },
+      "description": {
+        "zh": "使用无害 marker 验证深度合并是否拒绝 __proto__、constructor.prototype 与嵌套原型路径，并把依赖与合并函数审计迁入工具区。",
+        "en": "Use harmless markers to verify that deep merges reject __proto__, constructor.prototype, and nested prototype paths, while moving dependency and merge-function audits into tools."
+      },
+      "category": {
+        "zh": "原型链污染",
+        "en": "Prototype Pollution"
+      },
+      "subCategory": {
+        "zh": "服务端对象合并边界",
+        "en": "Server-Side Object-Merge Boundary"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用无网络出口的 127.0.0.1 Node.js Fixture，并在每次请求后重启或清理 Worker。",
+          "en": "Use a no-egress 127.0.0.1 Node.js fixture and restart or clean the worker after each request."
+        },
+        {
+          "zh": "响应只暴露 ownMarker 与 prototypeMarker 两个布尔或空值证据，不读取文件也不启动子进程。",
+          "en": "Expose only ownMarker and prototypeMarker boolean or null evidence in responses, without reading files or starting child processes."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "服务端原型链污染的第一步是证明非可信键进入递归合并并影响后续新对象，而不是直接假定存在 RCE Gadget。条目使用三个合成 marker 覆盖常见键路径，配合静态合并点和依赖版本审计，明确区分污染原语、可观察影响和版本特定 Gadget。",
+          "en": "The first step in server-side prototype-pollution review is proving that untrusted keys enter recursive merging and affect later fresh objects, not assuming an RCE gadget exists. Three synthetic markers cover common key paths, while static merge-site and dependency audits distinguish the pollution primitive, observable impact, and version-specific gadgets."
+        },
+        "vulnerability": {
+          "zh": "漏洞通常来自递归复制可枚举键时未拒绝 __proto__、prototype 或 constructor，或使用存在已知缺陷的深度合并库。只有 marker 出现在请求输入没有直接赋值的新对象原型上，且能排除缓存、单例状态和响应回显时，才确认污染原语；RCE 需要额外且独立的 Gadget 证据。",
+          "en": "The flaw usually comes from recursively copying enumerable keys without rejecting __proto__, prototype, or constructor, or from a vulnerable deep-merge dependency. Confirm the primitive only when a marker appears on the prototype of a fresh object that was not directly assigned by the request, excluding cache, singleton state, and response reflection. RCE requires separate gadget evidence."
+        },
+        "exploitation": {
+          "zh": "对全新 Worker 依次提交 __proto__、constructor.prototype 和嵌套路径 marker，每次请求后查询独立的新对象并断言原型上没有 marker。随后静态定位合并函数，检查是否只复制 own properties、是否拒绝危险键以及依赖版本。若出现污染，立即重启进程并保留最小请求和日志。",
+          "en": "Against a fresh worker, submit __proto__, constructor.prototype, and nested-path markers one at a time, then query an independent fresh object and assert that no marker exists on its prototype. Statically locate merge functions and check own-property handling, dangerous-key rejection, and dependency versions. If pollution appears, restart the process immediately and retain the minimal request and logs."
+        },
+        "mitigation": {
+          "zh": "在 Schema 层拒绝未知字段和危险键，使用 Object.create(null) 或 Map 存储任意键值；递归合并只处理 own properties，并显式拒绝 __proto__、prototype 与 constructor。升级受影响依赖并添加回归测试，验证新对象原型保持未污染。",
+          "en": "Reject unknown fields and dangerous keys at the schema boundary, and use Object.create(null) or Map for arbitrary key-value storage. Recursive merge code must process own properties only and explicitly reject __proto__, prototype, and constructor. Upgrade affected dependencies and add regression tests asserting that fresh object prototypes remain clean."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "固定全新 Worker 基线",
+            "en": "Fix a fresh-worker baseline"
+          },
+          "description": {
+            "zh": "启动无网络出口的实验 Worker，确认普通对象上不存在任何测试 marker。",
+            "en": "Start the no-egress fixture worker and confirm that ordinary objects contain no test marker."
+          }
+        },
+        {
+          "title": {
+            "zh": "提交单一原型路径",
+            "en": "Submit one prototype path"
+          },
+          "description": {
+            "zh": "一次只提交一种危险键路径，并要求响应区分直接属性与原型继承属性。",
+            "en": "Submit one dangerous-key path at a time and require the response to distinguish own and inherited properties."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "验证跨对象影响",
+            "en": "Verify cross-object impact"
+          },
+          "description": {
+            "zh": "在独立请求中创建新对象并检查 marker，排除单纯回显、缓存和请求对象复用。",
+            "en": "Create a fresh object in an independent request and inspect the marker, excluding reflection, caching, and request-object reuse."
+          }
+        },
+        {
+          "title": {
+            "zh": "定位合并点并回归",
+            "en": "Locate merge sites and regress"
+          },
+          "description": {
+            "zh": "把阳性 marker 关联到具体合并函数或依赖，修复后对全部路径重复测试。",
+            "en": "Map a positive marker to a specific merge function or dependency and repeat every path after remediation."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "marker 仅在响应 JSON 中出现不代表原型污染；必须证明它来自新对象的继承链。即使污染原语成立，也不能直接写成 RCE，除非另有确定版本、调用路径和无害 Gadget 证据。",
+        "en": "A marker appearing only in response JSON does not prove prototype pollution; it must be inherited by a fresh object. Even when the primitive is confirmed, it must not be labeled RCE without separate evidence for the exact version, call path, and a harmless gadget effect."
+      },
+      "opsecTips": [
+        {
+          "zh": "每次 marker 请求后销毁 Worker，避免污染状态影响后续测试或其他开发任务。",
+          "en": "Destroy the worker after each marker request so polluted state cannot affect later tests or other development work."
+        },
+        {
+          "zh": "禁止使用 child_process、环境变量覆盖、文件读取或外连 Gadget；证据只使用合成字符串。",
+          "en": "Do not use child_process, environment overrides, file reads, or outbound gadgets; use synthetic strings as the only evidence."
+        }
+      ],
+      "references": [
+        "https://developer.mozilla.org/en-US/docs/Web/Security/Attacks/Prototype_pollution",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Prototype_Pollution_Prevention_Cheat_Sheet.html",
+        "https://nodejs.org/api/globals.html"
+      ],
+      "review": {
+        "decision": "split",
+        "targetPayloadIds": [
+          "server-prototype-pollution-boundary"
+        ],
+        "targetToolIds": [
+          "node-object-merge-audit"
+        ],
+        "rationale": "旧条目把污染原语、模板 Gadget、子进程、文件读取和 WAF 规避混为 RCE；重写为无害 marker 边界验证，并把代码与依赖审计迁入工具区。",
+        "issuesResolved": [
+          "removed-rce-gadgets",
+          "removed-file-read-and-egress",
+          "separated-primitive-from-impact",
+          "migrated-static-audit-tools"
+        ],
+        "retainedCommandIndexes": [
+          0,
+          1
+        ],
+        "lineDisposition": [
+          "execution 0,1 and wafBypass 0 -> server-prototype-pollution-boundary",
+          "execution 2,3 -> node-object-merge-audit"
+        ],
+        "needsCommandOverride": true
+      }
+    },
+    {
+      "id": "flask-vuln",
+      "name": {
+        "zh": "Flask Jinja 求值边界验证",
+        "en": "Flask Jinja Evaluation-Boundary Validation"
+      },
+      "description": {
+        "zh": "把宽泛的 Flask 漏洞合集拆成 Jinja 表达式求值 Payload 与 Flask 配置诊断工具，删除 Session 伪造、调试控制台执行和 PIN 推导内容。",
+        "en": "Split the broad Flask vulnerability collection into Jinja expression-evaluation payloads and Flask configuration diagnostics, removing session forgery, debug-console execution, and PIN derivation."
+      },
+      "category": {
+        "zh": "框架漏洞",
+        "en": "Framework Vulnerabilities"
+      },
+      "subCategory": {
+        "zh": "Flask 与 Jinja 模板边界",
+        "en": "Flask and Jinja Template Boundary"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用 127.0.0.1 Flask Fixture，模板只渲染合成 name 参数并以 JSON 返回结果。",
+          "en": "Use the 127.0.0.1 Flask fixture, rendering only a synthetic name parameter and returning the result as JSON."
+        },
+        {
+          "zh": "准备可读取配置但不会打印 SECRET_KEY 值的本地应用上下文，并确保 debug=False。",
+          "en": "Prepare a local application context that can inspect configuration without printing the SECRET_KEY value and ensure debug=False."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "Flask 本身不是一个统一的“可利用漏洞”；风险通常来自把非可信字符串交给 render_template_string、泄露 SECRET_KEY、在不受信网络暴露调试器或错误配置扩展。条目只保留算术和字符串拼接两个无副作用 Jinja marker，其余配置检查迁入工具区。",
+          "en": "Flask is not one uniform exploitable vulnerability. Risk usually comes from passing untrusted strings to render_template_string, exposing SECRET_KEY, publishing the debugger to untrusted networks, or misconfiguring extensions. This entry retains only side-effect-free arithmetic and string-concatenation Jinja markers and moves configuration checks into tools."
+        },
+        "vulnerability": {
+          "zh": "如果应用把请求文本当作模板源解析，Jinja 会计算表达式而不是按字面输出。返回 49 或合成字符串只能证明模板求值边界，不能自动证明文件读取或代码执行。SECRET_KEY 配置和调试器暴露是不同问题，应分别验证、分别报告。",
+          "en": "When request text becomes template source, Jinja evaluates expressions instead of rendering them literally. Returning 49 or a synthetic string proves only a template-evaluation boundary, not file read or code execution. SECRET_KEY configuration and debugger exposure are separate issues that must be tested and reported independently."
+        },
+        "exploitation": {
+          "zh": "先用普通字符串记录 JSON 响应基线，再提交 {{7*7}} 与字符串拼接 marker。要求服务端返回 request_id，并在日志中定位模板渲染调用；不访问对象继承链、配置对象、文件或进程。随后用工具命令检查 SECRET_KEY 是否配置、debug 状态和敏感路由暴露。",
+          "en": "Start with a plain-string JSON response baseline, then submit the {{7*7}} and string-concatenation markers. Require a request_id and locate the template-rendering call in logs without accessing object inheritance, configuration objects, files, or processes. Then use tool commands to inspect SECRET_KEY presence, debug state, and sensitive route exposure."
+        },
+        "mitigation": {
+          "zh": "不要把用户输入作为模板源传给 render_template_string；使用固定模板文件并把输入作为数据变量传入，让 Jinja 自动转义。生产环境关闭调试器，使用高熵 SECRET_KEY 并通过受控密钥系统轮换；敏感路由需要认证和网络边界。",
+          "en": "Do not pass user input as template source to render_template_string. Use fixed template files and pass input as data so Jinja escaping applies. Disable the debugger in production, use a high-entropy SECRET_KEY managed and rotated through a controlled secret system, and protect sensitive routes with authentication and network boundaries."
+        },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "建立字面输出基线",
+            "en": "Establish a literal-output baseline"
+          },
+          "description": {
+            "zh": "提交普通 name 值并记录 JSON、request_id 和模板渲染日志的正常结果。",
+            "en": "Submit a plain name value and record normal JSON, request_id, and template-rendering logs."
+          }
+        },
+        {
+          "title": {
+            "zh": "提交无副作用表达式",
+            "en": "Submit a side-effect-free expression"
+          },
+          "description": {
+            "zh": "使用算术 marker 判断输入被当作模板源还是普通变量，不访问任何对象属性。",
+            "en": "Use an arithmetic marker to distinguish template source from an ordinary variable without accessing object attributes."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "复核第二种表达式",
+            "en": "Confirm with a second expression"
+          },
+          "description": {
+            "zh": "用字符串拼接 marker 复核结果，排除应用硬编码 49 或缓存响应造成的误报。",
+            "en": "Confirm with a string-concatenation marker to exclude a hard-coded 49 or cached response."
+          }
+        },
+        {
+          "title": {
+            "zh": "分离配置风险并修复",
+            "en": "Separate configuration risks and remediate"
+          },
+          "description": {
+            "zh": "单独检查 debug、SECRET_KEY 状态和敏感路由，修复后要求表达式按字面输出。",
+            "en": "Inspect debug, SECRET_KEY state, and sensitive routes separately, then require expressions to render literally after remediation."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "只有输入表达式被稳定求值且能关联到模板源构造点时才确认 SSTI 边界。调试器返回 404、SECRET_KEY 已配置或响应出现数字都不是同一结论；每类风险必须有独立证据。",
+        "en": "Confirm the SSTI boundary only when input expressions are evaluated consistently and can be mapped to template-source construction. A debugger 404, a configured SECRET_KEY, or a numeric response are not the same finding; each risk needs independent evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "Payload 仅使用算术与字符串 marker，禁止对象遍历、文件读取、环境变量访问和命令执行。",
+          "en": "Payloads use arithmetic and string markers only; object traversal, file reads, environment access, and command execution are excluded."
+        },
+        {
+          "zh": "配置诊断只输出布尔值、长度和路由名，不打印 SECRET_KEY、Cookie、PIN 或用户数据。",
+          "en": "Configuration diagnostics output booleans, lengths, and route names only, never SECRET_KEY values, cookies, PINs, or user data."
+        }
+      ],
+      "references": [
+        "https://flask.palletsprojects.com/en/stable/web-security/",
+        "https://flask.palletsprojects.com/en/stable/debugging/",
+        "https://jinja.palletsprojects.com/en/stable/templates/"
+      ],
+      "review": {
+        "decision": "split",
+        "targetPayloadIds": [
+          "flask-jinja-evaluation-boundary"
+        ],
+        "targetToolIds": [
+          "flask-security-diagnostics"
+        ],
+        "rationale": "旧条目混合 SSTI、Session 伪造、调试控制台 RCE 与 PIN 推导；仅保留无副作用 Jinja 求值 marker，并将配置存在性和路由检查迁入工具区。",
+        "issuesResolved": [
+          "removed-session-forgery",
+          "removed-debug-console-rce",
+          "removed-pin-derivation",
+          "separated-ssti-from-configuration"
+        ],
+        "retainedCommandIndexes": [
+          0
+        ],
+        "lineDisposition": [
+          "execution 0 and wafBypass 0 -> flask-jinja-evaluation-boundary",
+          "execution 1-3 -> flask-security-diagnostics"
+        ],
+        "needsCommandOverride": true
+      }
+    }
+  ]
+}

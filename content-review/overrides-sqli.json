@@ -1,0 +1,2316 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "sourcePrefix": "sqli",
+  "entries": [
+    {
+      "id": "sqli-mysql-basic",
+      "name": {
+        "zh": "MySQL 联合查询与元数据注入验证",
+        "en": "MySQL Union and Metadata Injection Validation"
+      },
+      "description": {
+        "zh": "覆盖布尔对照、列数推断、UNION 类型对齐、information_schema 元数据读取与 MySQL 注释/版本注释变体，用于确认字符串输入是否改变真实 MySQL 查询结构。",
+        "en": "Covers Boolean controls, column-count inference, UNION type alignment, information_schema metadata reads, and MySQL comment or version-comment variants to confirm whether string input alters a real MySQL query."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "MySQL UNION 与元数据",
+        "en": "MySQL UNION and Metadata"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "覆盖布尔对照、列数推断、UNION 类型对齐、information_schema 元数据读取与 MySQL 注释/版本注释变体，用于确认字符串输入是否改变真实 MySQL 查询结构。 本教程把“能被输入触达”“数据库实际解释”和“形成可复验证据”分开审查。已通过错误签名、驱动或版本函数确认后端为 MySQL，并知道参数处于字符串、数字或排序上下文。隔离数据库只包含专用 schema、表和 marker 行，能够记录最终 SQL、绑定参数、数据库错误和同一请求 ID。",
+          "en": "Covers Boolean controls, column-count inference, UNION type alignment, information_schema metadata reads, and MySQL comment or version-comment variants to confirm whether string input alters a real MySQL query. This tutorial reviews input reachability, actual database interpretation, and reproducible evidence as separate claims. The backend is confirmed as MySQL through errors, driver evidence, or version output, and the parameter context is known as string, numeric, or ordering. An isolated database contains a dedicated schema, table, and marker row, with final SQL, bind parameters, database errors, and the same request identifier observable."
+        },
+        "vulnerability": {
+          "zh": "阳性证据是同一入口的真/假谓词产生可重复差异，或列数/类型对齐后 UNION 返回专用 marker；最终数据库语句须显示可控片段脱离数据绑定。 核心判断是受控输入是否越过预期的数据绑定或查询构造边界，并由同一请求的应用与数据库证据相互印证。仅有 HTTP 200/500、语法错误、WAF 告警、页面长度波动、information_schema 字样回显、错误列数或人工在数据库控制台执行都不能证明应用 SQL 注入。",
+          "en": "Positive evidence requires repeatable true and false predicate differences at the same entry or a dedicated marker returned after UNION column and type alignment; the final database statement must show controlled text escaping data binding. The core decision is whether controlled input crosses the intended data-binding or query-construction boundary, corroborated by application and database evidence for the same request. HTTP 200 or 500, syntax errors, WAF alerts, page-length noise, reflected information_schema text, wrong column counts, or manual database-console execution does not prove application SQL injection."
+        },
+        "exploitation": {
+          "zh": "先用 1=1/1=2 建立响应与查询日志基线，再逐列使用 NULL 对齐，只从合成表读取固定 marker；每轮只提交一行并保留 MySQL 版本、字符集与 sql_mode。 条目中的源命令仅作为逐字节审校与路由证据保留；标记为需覆盖的行在得到安全替代、隔离环境和明确授权前不执行，也不从本教程推导新的攻击命令。",
+          "en": "Establish response and query-log baselines with 1=1 and 1=2, align one column at a time with NULL, and read only a fixed marker from a synthetic table; submit one line per run and retain MySQL version, character set, and sql_mode. The source command is retained only as byte-exact editorial and routing evidence. Any line flagged for override remains unexecuted until a safe substitute, an isolated environment, and explicit authorization are in place; this tutorial derives no new attack command."
+        },
+        "mitigation": {
+          "zh": "对所有值和分页/排序选择使用参数化查询与服务端允许列表，数据库账户只授予业务 schema 的最小 SELECT 权限，并统一错误响应。 修复验收必须在相同入口重放正常业务输入、阳性对照和阴性对照，核对最终语句、绑定参数、权限与副作用均回到预期边界，并确认清理完成。",
+          "en": "Use parameterized queries for values and server-side allowlists for pagination or ordering choices, grant the database identity minimal SELECT rights to the business schema, and normalize error responses. Acceptance testing replays normal business input plus positive and negative controls at the same entry point, verifies final statements, bindings, privileges, and side effects return to the intended boundary, and confirms cleanup is complete."
+        },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认MySQL UNION 与元数据前提",
+            "en": "Confirm MySQL UNION and Metadata prerequisites"
+          },
+          "description": {
+            "zh": "针对MySQL 联合查询与元数据注入验证先确认数据库类型、输入上下文、隔离资产、最小权限和可观测日志，未满足两项前置条件时不进入命令审查。",
+            "en": "For MySQL Union and Metadata Injection Validation, confirm the database type, input context, isolated asset, least privilege, and observable logs; do not proceed to command review until both prerequisites hold."
+          }
+        },
+        {
+          "title": {
+            "zh": "建立MySQL UNION 与元数据对照",
+            "en": "Establish MySQL UNION and Metadata controls"
+          },
+          "description": {
+            "zh": "为MySQL 联合查询与元数据注入验证记录正常输入、无效输入和固定 marker 的响应、查询日志、绑定值及请求标识，先量化自然波动再判断差异。",
+            "en": "For MySQL Union and Metadata Injection Validation, record responses, query logs, bound values, and request identifiers for normal input, invalid input, and a fixed marker, measuring natural variation before judging differences."
+          }
+        },
+        {
+          "title": {
+            "zh": "逐行审校MySQL UNION 与元数据源命令",
+            "en": "Review the MySQL UNION and Metadata source command line by line"
+          },
+          "description": {
+            "zh": "原始首条命令在此逐字节保留，只用于证明条目来源和行路由；任何实际运行都必须遵守本条记录的隔离、marker、停止和清理条件。",
+            "en": "The original first command is retained here byte for byte only to prove provenance and line routing; any execution must obey this entry's isolation, marker, stop, and cleanup conditions."
+          },
+          "payload": "' OR '1'='1\n' OR 1=1--\n1' AND '1'='1\n1' AND '1'='2"
+        },
+        {
+          "title": {
+            "zh": "修复并回归MySQL UNION 与元数据",
+            "en": "Remediate and regress MySQL UNION and Metadata"
+          },
+          "description": {
+            "zh": "应用MySQL 联合查询与元数据注入验证对应修复后，重放三组对照并关联同一请求证据，确认业务结果保持正常、注入证据消失且测试状态已清理。",
+            "en": "After applying the remediation for MySQL Union and Metadata Injection Validation, replay all three controls with correlated request evidence and confirm business behavior remains correct, injection evidence disappears, and test state is removed."
+          }
+        }
+      ],
+      "prerequisites": [
+        {
+          "zh": "已通过错误签名、驱动或版本函数确认后端为 MySQL，并知道参数处于字符串、数字或排序上下文。",
+          "en": "The backend is confirmed as MySQL through errors, driver evidence, or version output, and the parameter context is known as string, numeric, or ordering."
+        },
+        {
+          "zh": "隔离数据库只包含专用 schema、表和 marker 行，能够记录最终 SQL、绑定参数、数据库错误和同一请求 ID。",
+          "en": "An isolated database contains a dedicated schema, table, and marker row, with final SQL, bind parameters, database errors, and the same request identifier observable."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性证据是同一入口的真/假谓词产生可重复差异，或列数/类型对齐后 UNION 返回专用 marker；最终数据库语句须显示可控片段脱离数据绑定。 假阳性边界：仅有 HTTP 200/500、语法错误、WAF 告警、页面长度波动、information_schema 字样回显、错误列数或人工在数据库控制台执行都不能证明应用 SQL 注入。",
+        "en": "Positive evidence requires repeatable true and false predicate differences at the same entry or a dedicated marker returned after UNION column and type alignment; the final database statement must show controlled text escaping data binding. False-positive boundary: HTTP 200 or 500, syntax errors, WAF alerts, page-length noise, reflected information_schema text, wrong column counts, or manual database-console execution does not prove application SQL injection."
+      },
+      "opsecTips": [
+        {
+          "zh": "MySQL 基础验证不读取真实 users、password 或其他 schema；出现生产行、查询计划膨胀、锁等待、错误风暴或数据库负载时立即停止。",
+          "en": "MySQL basic validation never reads real users, passwords, or other schemas; stop on production rows, plan expansion, lock waits, error storms, or database load."
+        },
+        {
+          "zh": "删除合成 schema/表/marker 和测试会话，清理查询缓存、慢日志与响应副本，恢复参数化路径后重放真/假与正常输入。",
+          "en": "Delete synthetic schemas, tables, markers, and test sessions, clear query caches, slow logs, and response copies, restore parameterization, and replay true, false, and normal inputs."
+        }
+      ],
+      "references": [
+        "https://dev.mysql.com/doc/refman/8.4/en/union.html",
+        "https://dev.mysql.com/doc/refman/8.4/en/comments.html",
+        "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "payload",
+        "rationale": "“MySQL 联合查询与元数据注入验证”具有单一验证边界，可保留为独立载荷卡；审校重点是证据闭环、假阳性排除和安全停止条件。",
+        "issuesResolved": [
+          "rewrote-unique-bilingual-content",
+          "added-four-part-tutorial",
+          "added-four-step-evidence-chain",
+          "added-positive-and-false-positive-boundaries",
+          "added-stop-and-cleanup-guidance",
+          "preserved-source-command-byte-for-byte",
+          "flagged-source-command-for-command-override"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "command 1 contains Chinese instructions and a narrative alternative inside the command block",
+          "many MySQL -- comments omit the required trailing whitespace or control character when copied line by line",
+          "commands 10 and 12 contain filter-specific or lossy transformations that are not general extraction primitives"
+        ]
+      }
+    },
+    {
+      "id": "sqli-mysql-advanced",
+      "name": {
+        "zh": "MySQL 文件、日志与 UDF 能力混合集",
+        "en": "Mixed MySQL File, Log, and UDF Capability Set"
+      },
+      "description": {
+        "zh": "同一条目混合 FILE 权限探测、LOAD_FILE 读取、OUTFILE/DUMPFILE 写入、general_log 文件写入和 UDF 插件执行，前提与影响不同，必须拆分。",
+        "en": "Combines FILE privilege checks, LOAD_FILE reads, OUTFILE or DUMPFILE writes, general_log file writes, and UDF plugin execution, which have different prerequisites and impacts and must be split."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "MySQL 高权限能力拆分",
+        "en": "MySQL Privileged-Capability Split"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "同一条目混合 FILE 权限探测、LOAD_FILE 读取、OUTFILE/DUMPFILE 写入、general_log 文件写入和 UDF 插件执行，前提与影响不同，必须拆分。 本教程把“能被输入触达”“数据库实际解释”和“形成可复验证据”分开审查。仅在隔离 MySQL 实例确认 current_user、FILE 权限、secure_file_priv、plugin_dir、general_log 和服务账户文件权限。文件读写使用专用 marker 目录，UDF 使用不启动进程的测试函数，禁止 Web 根、插件目录真实二进制和生产日志。",
+          "en": "Combines FILE privilege checks, LOAD_FILE reads, OUTFILE or DUMPFILE writes, general_log file writes, and UDF plugin execution, which have different prerequisites and impacts and must be split. This tutorial reviews input reachability, actual database interpretation, and reproducible evidence as separate claims. Only an isolated MySQL instance is used, with current_user, FILE privilege, secure_file_priv, plugin_dir, general_log, and service-account filesystem rights confirmed. File operations use a dedicated marker directory and UDF testing uses a function that starts no process, excluding web roots, real plugin binaries, and production logs."
+        },
+        "vulnerability": {
+          "zh": "阳性证据按分支判定：读取需数据库进程返回 marker；写入需审计证明创建精确测试文件；日志需专用日志 marker；UDF 需加载测试函数并返回 canary。 核心判断是受控输入是否越过预期的数据绑定或查询构造边界，并由同一请求的应用与数据库证据相互印证。FILE_priv=Y、路径字符串回显、secure_file_priv 错误、文件已预置、日志配置可查询、SONAME 名称存在或 SQL 执行失败都不能跨分支证明读写或代码执行。",
+          "en": "Positive evidence is branch-specific: reads need the database process to return a marker, writes need audited creation of an exact test file, logging needs a dedicated log marker, and UDF needs a test function to load and return a canary. The core decision is whether controlled input crosses the intended data-binding or query-construction boundary, corroborated by application and database evidence for the same request. FILE_priv=Y, reflected paths, secure_file_priv errors, preexisting files, readable log settings, a SONAME, or failed SQL cannot prove file access or code execution across branches."
+        },
+        "exploitation": {
+          "zh": "按路由先验证权限与沙箱目录，再分别用短 marker 读取、写入、日志和测试 UDF；所有源 WebShell/UDF 命令只保留审计，不直接执行。 条目中的源命令仅作为逐字节审校与路由证据保留；标记为需覆盖的行在得到安全替代、隔离环境和明确授权前不执行，也不从本教程推导新的攻击命令。",
+          "en": "Follow the routes by checking privileges and the sandbox directory first, then use short markers separately for reads, writes, logging, and a test UDF; source webshell and UDF commands remain audit-only and are not executed. The source command is retained only as byte-exact editorial and routing evidence. Any line flagged for override remains unexecuted until a safe substitute, an isolated environment, and explicit authorization are in place; this tutorial derives no new attack command."
+        },
+        "mitigation": {
+          "zh": "应用账户移除 FILE/SYSTEM_VARIABLES_ADMIN 等非业务权限，固定 secure_file_priv，禁止 general_log 写 Web 路径，保护 plugin_dir 并使用参数化 SQL。 修复验收必须在相同入口重放正常业务输入、阳性对照和阴性对照，核对最终语句、绑定参数、权限与副作用均回到预期边界，并确认清理完成。",
+          "en": "Remove FILE, SYSTEM_VARIABLES_ADMIN, and other nonbusiness privileges from the application account, constrain secure_file_priv, prevent general_log from writing web paths, protect plugin_dir, and parameterize SQL. Acceptance testing replays normal business input plus positive and negative controls at the same entry point, verifies final statements, bindings, privileges, and side effects return to the intended boundary, and confirms cleanup is complete."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认MySQL 高权限能力拆分前提",
+            "en": "Confirm MySQL Privileged-Capability Split prerequisites"
+          },
+          "description": {
+            "zh": "针对MySQL 文件、日志与 UDF 能力混合集先确认数据库类型、输入上下文、隔离资产、最小权限和可观测日志，未满足两项前置条件时不进入命令审查。",
+            "en": "For Mixed MySQL File, Log, and UDF Capability Set, confirm the database type, input context, isolated asset, least privilege, and observable logs; do not proceed to command review until both prerequisites hold."
+          }
+        },
+        {
+          "title": {
+            "zh": "建立MySQL 高权限能力拆分对照",
+            "en": "Establish MySQL Privileged-Capability Split controls"
+          },
+          "description": {
+            "zh": "为MySQL 文件、日志与 UDF 能力混合集记录正常输入、无效输入和固定 marker 的响应、查询日志、绑定值及请求标识，先量化自然波动再判断差异。",
+            "en": "For Mixed MySQL File, Log, and UDF Capability Set, record responses, query logs, bound values, and request identifiers for normal input, invalid input, and a fixed marker, measuring natural variation before judging differences."
+          }
+        },
+        {
+          "title": {
+            "zh": "逐行审校MySQL 高权限能力拆分源命令",
+            "en": "Review the MySQL Privileged-Capability Split source command line by line"
+          },
+          "description": {
+            "zh": "原始首条命令在此逐字节保留，只用于证明条目来源和行路由；任何实际运行都必须遵守本条记录的隔离、marker、停止和清理条件。",
+            "en": "The original first command is retained here byte for byte only to prove provenance and line routing; any execution must obey this entry's isolation, marker, stop, and cleanup conditions."
+          },
+          "payload": "' UNION SELECT 1,file_priv,3 FROM mysql.user WHERE user=current_user()--\n' AND (SELECT file_priv FROM mysql.user WHERE user=current_user())='Y'--"
+        },
+        {
+          "title": {
+            "zh": "修复并回归MySQL 高权限能力拆分",
+            "en": "Remediate and regress MySQL Privileged-Capability Split"
+          },
+          "description": {
+            "zh": "应用MySQL 文件、日志与 UDF 能力混合集对应修复后，重放三组对照并关联同一请求证据，确认业务结果保持正常、注入证据消失且测试状态已清理。",
+            "en": "After applying the remediation for Mixed MySQL File, Log, and UDF Capability Set, replay all three controls with correlated request evidence and confirm business behavior remains correct, injection evidence disappears, and test state is removed."
+          }
+        }
+      ],
+      "prerequisites": [
+        {
+          "zh": "仅在隔离 MySQL 实例确认 current_user、FILE 权限、secure_file_priv、plugin_dir、general_log 和服务账户文件权限。",
+          "en": "Only an isolated MySQL instance is used, with current_user, FILE privilege, secure_file_priv, plugin_dir, general_log, and service-account filesystem rights confirmed."
+        },
+        {
+          "zh": "文件读写使用专用 marker 目录，UDF 使用不启动进程的测试函数，禁止 Web 根、插件目录真实二进制和生产日志。",
+          "en": "File operations use a dedicated marker directory and UDF testing uses a function that starts no process, excluding web roots, real plugin binaries, and production logs."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性证据按分支判定：读取需数据库进程返回 marker；写入需审计证明创建精确测试文件；日志需专用日志 marker；UDF 需加载测试函数并返回 canary。 假阳性边界：FILE_priv=Y、路径字符串回显、secure_file_priv 错误、文件已预置、日志配置可查询、SONAME 名称存在或 SQL 执行失败都不能跨分支证明读写或代码执行。",
+        "en": "Positive evidence is branch-specific: reads need the database process to return a marker, writes need audited creation of an exact test file, logging needs a dedicated log marker, and UDF needs a test function to load and return a canary. False-positive boundary: FILE_priv=Y, reflected paths, secure_file_priv errors, preexisting files, readable log settings, a SONAME, or failed SQL cannot prove file access or code execution across branches."
+      },
+      "opsecTips": [
+        {
+          "zh": "MySQL 高权限测试出现 WebShell 文件、真实配置读取、全局日志变化、插件加载、进程创建、权限变更或非 marker 文件时立即停止。",
+          "en": "MySQL privileged testing stops immediately on webshell files, real configuration reads, global-log changes, plugin loading, process creation, privilege changes, or non-marker files."
+        },
+        {
+          "zh": "删除测试文件/UDF/marker，恢复 general_log、general_log_file 和 secure_file_priv 相关状态，清理日志/缓存并重启隔离实例。",
+          "en": "Delete test files, UDFs, and markers, restore general_log, general_log_file, and related secure_file_priv state, clear logs and caches, and restart the isolated instance."
+        }
+      ],
+      "references": [
+        "https://dev.mysql.com/doc/refman/8.4/en/string-functions.html#function_load-file",
+        "https://dev.mysql.com/doc/refman/8.4/en/select-into.html",
+        "https://dev.mysql.com/doc/refman/8.4/en/adding-loadable-function.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "“MySQL 文件、日志与 UDF 能力混合集”混合了前提、影响或数据库机制不同的多条路线，保留在一张卡中会模糊证据边界，因此必须按记录的行路由拆分。",
+        "issuesResolved": [
+          "rewrote-unique-bilingual-content",
+          "added-four-part-tutorial",
+          "added-four-step-evidence-chain",
+          "added-positive-and-false-positive-boundaries",
+          "added-stop-and-cleanup-guidance",
+          "preserved-source-command-byte-for-byte",
+          "flagged-source-command-for-command-override"
+        ],
+        "targetPayloadIds": [
+          "sqli-mysql-file-capability",
+          "sqli-mysql-file-read",
+          "sqli-mysql-server-file-write",
+          "sqli-mysql-general-log-write",
+          "sqli-mysql-udf-execution"
+        ],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "command 0 -> sqli-mysql-file-capability",
+          "commands 1-2 -> sqli-mysql-file-read",
+          "commands 3 and 6-7 -> sqli-mysql-server-file-write",
+          "command 4 -> sqli-mysql-general-log-write",
+          "command 5 -> sqli-mysql-udf-execution"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "replace every WebShell body and web-root path with a marker file in a sandbox directory",
+          "replace the UDF sys_eval process command with a non-process canary function before execution"
+        ]
+      }
+    },
+    {
+      "id": "sqli-mssql-basic",
+      "name": {
+        "zh": "SQL Server UNION 与目录视图注入验证",
+        "en": "SQL Server UNION and Catalog-View Injection Validation"
+      },
+      "description": {
+        "zh": "覆盖布尔条件、版本/身份、数据库、sys.* 与 information_schema 目录视图，以及 SQL Server 类型转换和注释语义。",
+        "en": "Covers Boolean predicates, version and identity, databases, sys and information_schema catalog views, plus SQL Server conversion and comment semantics."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "SQL Server 基础 UNION",
+        "en": "SQL Server Basic UNION"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "覆盖布尔条件、版本/身份、数据库、sys.* 与 information_schema 目录视图，以及 SQL Server 类型转换和注释语义。 本教程把“能被输入触达”“数据库实际解释”和“形成可复验证据”分开审查。已确认后端为 Microsoft SQL Server，并知道参数引号、列数、数据类型和当前数据库兼容级别。隔离数据库提供合成 schema/users marker，Extended Events 或等价审计可记录最终批次、登录身份和响应请求 ID。",
+          "en": "Covers Boolean predicates, version and identity, databases, sys and information_schema catalog views, plus SQL Server conversion and comment semantics. This tutorial reviews input reachability, actual database interpretation, and reproducible evidence as separate claims. The backend is confirmed as Microsoft SQL Server, with parameter quoting, column count, data types, and current database compatibility level known. An isolated database provides synthetic schema and user markers, while Extended Events or equivalent audit records final batches, login identity, and response request identifiers."
+        },
+        "vulnerability": {
+          "zh": "阳性证据是布尔对照或类型对齐 UNION 稳定改变结果并返回合成目录/数据 marker，最终 T-SQL 显示输入突破参数边界。 核心判断是受控输入是否越过预期的数据绑定或查询构造边界，并由同一请求的应用与数据库证据相互印证。转换错误、对象名不存在、sysadmin 返回 NULL、HTTP 状态变化、客户端拼接结果、NUL 被上游拒绝或手工 SSMS 查询都不是应用注入证据。",
+          "en": "Positive evidence requires Boolean controls or a type-aligned UNION to change results consistently and return a synthetic catalog or data marker, with final T-SQL showing input escaping its parameter boundary. The core decision is whether controlled input crosses the intended data-binding or query-construction boundary, corroborated by application and database evidence for the same request. Conversion errors, missing objects, a NULL sysadmin result, HTTP status changes, client-side concatenation, upstream NUL rejection, or manual SSMS queries does not prove application injection."
+        },
+        "exploitation": {
+          "zh": "从 1=1/1=2 和 NULL 列对齐开始，只读取专用目录对象与 marker 行，记录数据库/登录上下文和 NVARCHAR/VARCHAR 类型差异。 条目中的源命令仅作为逐字节审校与路由证据保留；标记为需覆盖的行在得到安全替代、隔离环境和明确授权前不执行，也不从本教程推导新的攻击命令。",
+          "en": "Start with 1=1 and 1=2 plus NULL column alignment, read only dedicated catalog objects and marker rows, and record database or login context plus NVARCHAR and VARCHAR differences. The source command is retained only as byte-exact editorial and routing evidence. Any line flagged for override remains unexecuted until a safe substitute, an isolated environment, and explicit authorization are in place; this tutorial derives no new attack command."
+        },
+        "mitigation": {
+          "zh": "使用 sp_executesql 参数绑定而非字符串拼接，动态标识符采用固定映射，应用登录只授予业务 schema 权限并隐藏数据库错误。 修复验收必须在相同入口重放正常业务输入、阳性对照和阴性对照，核对最终语句、绑定参数、权限与副作用均回到预期边界，并确认清理完成。",
+          "en": "Use sp_executesql parameter binding instead of concatenation, map dynamic identifiers to fixed choices, grant the application login business-schema rights only, and hide database errors. Acceptance testing replays normal business input plus positive and negative controls at the same entry point, verifies final statements, bindings, privileges, and side effects return to the intended boundary, and confirms cleanup is complete."
+        },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认SQL Server 基础 UNION前提",
+            "en": "Confirm SQL Server Basic UNION prerequisites"
+          },
+          "description": {
+            "zh": "针对SQL Server UNION 与目录视图注入验证先确认数据库类型、输入上下文、隔离资产、最小权限和可观测日志，未满足两项前置条件时不进入命令审查。",
+            "en": "For SQL Server UNION and Catalog-View Injection Validation, confirm the database type, input context, isolated asset, least privilege, and observable logs; do not proceed to command review until both prerequisites hold."
+          }
+        },
+        {
+          "title": {
+            "zh": "建立SQL Server 基础 UNION对照",
+            "en": "Establish SQL Server Basic UNION controls"
+          },
+          "description": {
+            "zh": "为SQL Server UNION 与目录视图注入验证记录正常输入、无效输入和固定 marker 的响应、查询日志、绑定值及请求标识，先量化自然波动再判断差异。",
+            "en": "For SQL Server UNION and Catalog-View Injection Validation, record responses, query logs, bound values, and request identifiers for normal input, invalid input, and a fixed marker, measuring natural variation before judging differences."
+          }
+        },
+        {
+          "title": {
+            "zh": "逐行审校SQL Server 基础 UNION源命令",
+            "en": "Review the SQL Server Basic UNION source command line by line"
+          },
+          "description": {
+            "zh": "原始首条命令在此逐字节保留，只用于证明条目来源和行路由；任何实际运行都必须遵守本条记录的隔离、marker、停止和清理条件。",
+            "en": "The original first command is retained here byte for byte only to prove provenance and line routing; any execution must obey this entry's isolation, marker, stop, and cleanup conditions."
+          },
+          "payload": "' OR 1=1--\n' OR '1'='1\n1' AND 1=1--\n1' AND 1=2--"
+        },
+        {
+          "title": {
+            "zh": "修复并回归SQL Server 基础 UNION",
+            "en": "Remediate and regress SQL Server Basic UNION"
+          },
+          "description": {
+            "zh": "应用SQL Server UNION 与目录视图注入验证对应修复后，重放三组对照并关联同一请求证据，确认业务结果保持正常、注入证据消失且测试状态已清理。",
+            "en": "After applying the remediation for SQL Server UNION and Catalog-View Injection Validation, replay all three controls with correlated request evidence and confirm business behavior remains correct, injection evidence disappears, and test state is removed."
+          }
+        }
+      ],
+      "prerequisites": [
+        {
+          "zh": "已确认后端为 Microsoft SQL Server，并知道参数引号、列数、数据类型和当前数据库兼容级别。",
+          "en": "The backend is confirmed as Microsoft SQL Server, with parameter quoting, column count, data types, and current database compatibility level known."
+        },
+        {
+          "zh": "隔离数据库提供合成 schema/users marker，Extended Events 或等价审计可记录最终批次、登录身份和响应请求 ID。",
+          "en": "An isolated database provides synthetic schema and user markers, while Extended Events or equivalent audit records final batches, login identity, and response request identifiers."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性证据是布尔对照或类型对齐 UNION 稳定改变结果并返回合成目录/数据 marker，最终 T-SQL 显示输入突破参数边界。 假阳性边界：转换错误、对象名不存在、sysadmin 返回 NULL、HTTP 状态变化、客户端拼接结果、NUL 被上游拒绝或手工 SSMS 查询都不是应用注入证据。",
+        "en": "Positive evidence requires Boolean controls or a type-aligned UNION to change results consistently and return a synthetic catalog or data marker, with final T-SQL showing input escaping its parameter boundary. False-positive boundary: Conversion errors, missing objects, a NULL sysadmin result, HTTP status changes, client-side concatenation, upstream NUL rejection, or manual SSMS queries does not prove application injection."
+      },
+      "opsecTips": [
+        {
+          "zh": "SQL Server 基础验证不读取真实 sysdatabases、用户凭据或跨库对象；出现生产行、锁等待、计划异常或错误洪泛时停止。",
+          "en": "SQL Server basic validation never reads real database inventories, credentials, or cross-database objects; stop on production rows, lock waits, plan anomalies, or error flooding."
+        },
+        {
+          "zh": "删除合成对象、marker 和测试登录会话，清理 Extended Events/缓存/响应副本，恢复参数化批次后回归。",
+          "en": "Delete synthetic objects, markers, and test-login sessions, clear Extended Events, caches, and response copies, restore parameterized batches, and regress."
+        }
+      ],
+      "references": [
+        "https://learn.microsoft.com/en-us/sql/t-sql/language-elements/set-operators-union-transact-sql",
+        "https://learn.microsoft.com/en-us/sql/relational-databases/system-catalog-views/catalog-views-transact-sql",
+        "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "payload",
+        "rationale": "“SQL Server UNION 与目录视图注入验证”具有单一验证边界，可保留为独立载荷卡；审校重点是证据闭环、假阳性排除和安全停止条件。",
+        "issuesResolved": [
+          "rewrote-unique-bilingual-content",
+          "added-four-part-tutorial",
+          "added-four-step-evidence-chain",
+          "added-positive-and-false-positive-boundaries",
+          "added-stop-and-cleanup-guidance",
+          "preserved-source-command-byte-for-byte"
+        ]
+      }
+    },
+    {
+      "id": "sqli-mssql-advanced",
+      "name": {
+        "zh": "SQL Server xp_cmdshell 与 OLE Automation 混合集",
+        "en": "Mixed SQL Server xp_cmdshell and OLE Automation Set"
+      },
+      "description": {
+        "zh": "混合 xp_cmdshell 存在性/启用/调用、通过命令写 WebShell，以及 SP_OACREATE/WScript.Shell 执行，必须按不同服务器配置与权限拆分。",
+        "en": "Combines xp_cmdshell discovery, enablement, invocation, command-written webshells, and SP_OACREATE with WScript.Shell, requiring separation by server configuration and privilege."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "SQL Server 系统执行能力拆分",
+        "en": "SQL Server System-Execution Capability Split"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "混合 xp_cmdshell 存在性/启用/调用、通过命令写 WebShell，以及 SP_OACREATE/WScript.Shell 执行，必须按不同服务器配置与权限拆分。 本教程把“能被输入触达”“数据库实际解释”和“形成可复验证据”分开审查。仅在隔离 SQL Server 实例确认 sysadmin/control server 权限、xp_cmdshell 与 Ole Automation Procedures 初始状态及服务账户。执行分支全部替换为返回固定 canary 的安全代理过程，禁止 cmd、certutil、WScript.Shell、Web 根写入和外部下载。",
+          "en": "Combines xp_cmdshell discovery, enablement, invocation, command-written webshells, and SP_OACREATE with WScript.Shell, requiring separation by server configuration and privilege. This tutorial reviews input reachability, actual database interpretation, and reproducible evidence as separate claims. Only an isolated SQL Server instance is used, with sysadmin or CONTROL SERVER rights, initial xp_cmdshell and Ole Automation Procedures state, and service identity confirmed. All execution branches are replaced by a safe proxy procedure returning a fixed canary, excluding cmd, certutil, WScript.Shell, web-root writes, and external downloads."
+        },
+        "vulnerability": {
+          "zh": "阳性证据按分支判定：xp_cmdshell 分支需由目标实例调用测试代理并返回 canary；OLE 分支需 SP_OACREATE 路径调用受控测试 COM 对象，配置和审计连续。 核心判断是受控输入是否越过预期的数据绑定或查询构造边界，并由同一请求的应用与数据库证据相互印证。OBJECT_ID 非空、配置值可读、命令文本回显、xp_cmdshell 被禁用、OLE 对象创建失败、文件已存在或 SQL 错误都不能证明系统执行。",
+          "en": "Positive evidence is branch-specific: xp_cmdshell must invoke a test proxy and return a canary on the target instance, while OLE must reach a controlled test COM object through SP_OACREATE, with continuous configuration and audit evidence. The core decision is whether controlled input crosses the intended data-binding or query-construction boundary, corroborated by application and database evidence for the same request. A nonnull OBJECT_ID, readable configuration, reflected command text, disabled xp_cmdshell, OLE object-creation failure, preexisting files, or SQL errors does not prove system execution."
+        },
+        "exploitation": {
+          "zh": "先记录配置基线，再按路由分别验证测试代理；任何启用操作在同一事务/窗口回滚，源 WebShell、下载和 whoami 命令不执行。 条目中的源命令仅作为逐字节审校与路由证据保留；标记为需覆盖的行在得到安全替代、隔离环境和明确授权前不执行，也不从本教程推导新的攻击命令。",
+          "en": "Record configuration baselines first, then validate test proxies per route; roll back every enablement in the same transaction or window and do not execute source webshell, download, or whoami commands. The source command is retained only as byte-exact editorial and routing evidence. Any line flagged for override remains unexecuted until a safe substitute, an isolated environment, and explicit authorization are in place; this tutorial derives no new attack command."
+        },
+        "mitigation": {
+          "zh": "应用登录移除 sysadmin/CONTROL SERVER，保持 xp_cmdshell 和 OLE Automation 禁用，以低权限服务账户运行并参数化所有查询。 修复验收必须在相同入口重放正常业务输入、阳性对照和阴性对照，核对最终语句、绑定参数、权限与副作用均回到预期边界，并确认清理完成。",
+          "en": "Remove sysadmin and CONTROL SERVER from the application login, keep xp_cmdshell and OLE Automation disabled, run under a low-privilege service identity, and parameterize every query. Acceptance testing replays normal business input plus positive and negative controls at the same entry point, verifies final statements, bindings, privileges, and side effects return to the intended boundary, and confirms cleanup is complete."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认SQL Server 系统执行能力拆分前提",
+            "en": "Confirm SQL Server System-Execution Capability Split prerequisites"
+          },
+          "description": {
+            "zh": "针对SQL Server xp_cmdshell 与 OLE Automation 混合集先确认数据库类型、输入上下文、隔离资产、最小权限和可观测日志，未满足两项前置条件时不进入命令审查。",
+            "en": "For Mixed SQL Server xp_cmdshell and OLE Automation Set, confirm the database type, input context, isolated asset, least privilege, and observable logs; do not proceed to command review until both prerequisites hold."
+          }
+        },
+        {
+          "title": {
+            "zh": "建立SQL Server 系统执行能力拆分对照",
+            "en": "Establish SQL Server System-Execution Capability Split controls"
+          },
+          "description": {
+            "zh": "为SQL Server xp_cmdshell 与 OLE Automation 混合集记录正常输入、无效输入和固定 marker 的响应、查询日志、绑定值及请求标识，先量化自然波动再判断差异。",
+            "en": "For Mixed SQL Server xp_cmdshell and OLE Automation Set, record responses, query logs, bound values, and request identifiers for normal input, invalid input, and a fixed marker, measuring natural variation before judging differences."
+          }
+        },
+        {
+          "title": {
+            "zh": "逐行审校SQL Server 系统执行能力拆分源命令",
+            "en": "Review the SQL Server System-Execution Capability Split source command line by line"
+          },
+          "description": {
+            "zh": "原始首条命令在此逐字节保留，只用于证明条目来源和行路由；任何实际运行都必须遵守本条记录的隔离、marker、停止和清理条件。",
+            "en": "The original first command is retained here byte for byte only to prove provenance and line routing; any execution must obey this entry's isolation, marker, stop, and cleanup conditions."
+          },
+          "payload": "' UNION SELECT 1,OBJECT_ID('xp_cmdshell'),3--\n'; EXEC master..xp_cmdshell 'whoami'--"
+        },
+        {
+          "title": {
+            "zh": "修复并回归SQL Server 系统执行能力拆分",
+            "en": "Remediate and regress SQL Server System-Execution Capability Split"
+          },
+          "description": {
+            "zh": "应用SQL Server xp_cmdshell 与 OLE Automation 混合集对应修复后，重放三组对照并关联同一请求证据，确认业务结果保持正常、注入证据消失且测试状态已清理。",
+            "en": "After applying the remediation for Mixed SQL Server xp_cmdshell and OLE Automation Set, replay all three controls with correlated request evidence and confirm business behavior remains correct, injection evidence disappears, and test state is removed."
+          }
+        }
+      ],
+      "prerequisites": [
+        {
+          "zh": "仅在隔离 SQL Server 实例确认 sysadmin/control server 权限、xp_cmdshell 与 Ole Automation Procedures 初始状态及服务账户。",
+          "en": "Only an isolated SQL Server instance is used, with sysadmin or CONTROL SERVER rights, initial xp_cmdshell and Ole Automation Procedures state, and service identity confirmed."
+        },
+        {
+          "zh": "执行分支全部替换为返回固定 canary 的安全代理过程，禁止 cmd、certutil、WScript.Shell、Web 根写入和外部下载。",
+          "en": "All execution branches are replaced by a safe proxy procedure returning a fixed canary, excluding cmd, certutil, WScript.Shell, web-root writes, and external downloads."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性证据按分支判定：xp_cmdshell 分支需由目标实例调用测试代理并返回 canary；OLE 分支需 SP_OACREATE 路径调用受控测试 COM 对象，配置和审计连续。 假阳性边界：OBJECT_ID 非空、配置值可读、命令文本回显、xp_cmdshell 被禁用、OLE 对象创建失败、文件已存在或 SQL 错误都不能证明系统执行。",
+        "en": "Positive evidence is branch-specific: xp_cmdshell must invoke a test proxy and return a canary on the target instance, while OLE must reach a controlled test COM object through SP_OACREATE, with continuous configuration and audit evidence. False-positive boundary: A nonnull OBJECT_ID, readable configuration, reflected command text, disabled xp_cmdshell, OLE object-creation failure, preexisting files, or SQL errors does not prove system execution."
+      },
+      "opsecTips": [
+        {
+          "zh": "SQL Server 高级测试出现配置持久变化、cmd/COM 进程、文件写入、下载、WebShell、服务账户动作或实例不稳定时立即停止。",
+          "en": "SQL Server advanced testing stops immediately on persistent configuration changes, cmd or COM processes, file writes, downloads, webshells, service-account actions, or instance instability."
+        },
+        {
+          "zh": "恢复 sp_configure 初始值，删除测试代理/文件/canary，终止 COM 对象，清理审计与计划缓存并重启隔离实例。",
+          "en": "Restore initial sp_configure values, delete test proxies, files, and canaries, terminate COM objects, clear audit and plan caches, and restart the isolated instance."
+        }
+      ],
+      "references": [
+        "https://learn.microsoft.com/en-us/sql/database-engine/configure-windows/xp-cmdshell-server-configuration-option",
+        "https://learn.microsoft.com/en-us/sql/relational-databases/system-stored-procedures/sp-oacreate-transact-sql",
+        "https://learn.microsoft.com/en-us/sql/database-engine/configure-windows/ole-automation-procedures-server-configuration-option"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "“SQL Server xp_cmdshell 与 OLE Automation 混合集”混合了前提、影响或数据库机制不同的多条路线，保留在一张卡中会模糊证据边界，因此必须按记录的行路由拆分。",
+        "issuesResolved": [
+          "rewrote-unique-bilingual-content",
+          "added-four-part-tutorial",
+          "added-four-step-evidence-chain",
+          "added-positive-and-false-positive-boundaries",
+          "added-stop-and-cleanup-guidance",
+          "preserved-source-command-byte-for-byte",
+          "flagged-source-command-for-command-override"
+        ],
+        "targetPayloadIds": [
+          "sqli-mssql-xp-cmdshell",
+          "sqli-mssql-ole-automation"
+        ],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "commands 0-3 and 5 -> sqli-mssql-xp-cmdshell",
+          "command 4 -> sqli-mssql-ole-automation"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "replace process, WebShell, and certutil commands with an audited non-process canary",
+          "do not enable xp_cmdshell or Ole Automation Procedures outside an isolated reversible fixture"
+        ]
+      }
+    },
+    {
+      "id": "sqli-oracle-basic",
+      "name": {
+        "zh": "Oracle UNION 枚举与 UTL_HTTP 外带混合集",
+        "en": "Mixed Oracle UNION Enumeration and UTL_HTTP Egress Set"
+      },
+      "description": {
+        "zh": "前六组是 Oracle DUAL/目录视图 UNION 枚举，最后一组通过 UTL_HTTP 把查询值放入 URL，属于不同的网络权限与证据边界。",
+        "en": "The first six groups are Oracle DUAL and catalog-view UNION enumeration, while the final group places query data into a URL through UTL_HTTP, which has a distinct network privilege and evidence boundary."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "Oracle 查询与网络外带拆分",
+        "en": "Oracle Query and Network-Egress Split"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "前六组是 Oracle DUAL/目录视图 UNION 枚举，最后一组通过 UTL_HTTP 把查询值放入 URL，属于不同的网络权限与证据边界。 本教程把“能被输入触达”“数据库实际解释”和“形成可复验证据”分开审查。已确认 Oracle 版本、参数上下文、列数/类型、当前 schema 权限，以及 UTL_HTTP execute 权限与 network ACL。目录枚举只用合成 owner/table marker；UTL_HTTP 仅访问自有空 endpoint 并携带随机 token，不放入查询数据。",
+          "en": "The first six groups are Oracle DUAL and catalog-view UNION enumeration, while the final group places query data into a URL through UTL_HTTP, which has a distinct network privilege and evidence boundary. This tutorial reviews input reachability, actual database interpretation, and reproducible evidence as separate claims. Oracle version, parameter context, column count and types, current schema rights, UTL_HTTP execute privilege, and network ACL are confirmed. Catalog enumeration uses a synthetic owner and table marker only, while UTL_HTTP contacts an owned empty endpoint carrying a random token and no query data."
+        },
+        "vulnerability": {
+          "zh": "UNION 分支需返回合成目录 marker；UTL_HTTP 分支需 Oracle 进程向自有 endpoint 发出与请求 ID 对应的 token 请求，两者不得互相推断。 核心判断是受控输入是否越过预期的数据绑定或查询构造边界，并由同一请求的应用与数据库证据相互印证。ORA 错误、DUAL 查询可用、目录视图权限拒绝、HTTP URL 回显、DNS 查询、ACL 错误或分析机请求 endpoint 都不是数据枚举/服务器外带证据。",
+          "en": "The UNION branch needs a synthetic catalog marker returned, while the UTL_HTTP branch needs an Oracle-origin token request at the owned endpoint correlated with the request identifier; neither branch proves the other. The core decision is whether controlled input crosses the intended data-binding or query-construction boundary, corroborated by application and database evidence for the same request. ORA errors, working DUAL queries, denied catalog views, reflected HTTP URLs, DNS only, ACL errors, or analyst requests to the endpoint does not prove enumeration or server egress."
+        },
+        "exploitation": {
+          "zh": "先用 DUAL 常量和合成表验证列数，再单独用无数据 token 检查 UTL_HTTP；记录 Oracle session、ACL、最终 SQL 与网络源。 条目中的源命令仅作为逐字节审校与路由证据保留；标记为需覆盖的行在得到安全替代、隔离环境和明确授权前不执行，也不从本教程推导新的攻击命令。",
+          "en": "Validate columns first with DUAL constants and a synthetic table, then check UTL_HTTP separately with a data-free token, recording Oracle session, ACL, final SQL, and network source. The source command is retained only as byte-exact editorial and routing evidence. Any line flagged for override remains unexecuted until a safe substitute, an isolated environment, and explicit authorization are in place; this tutorial derives no new attack command."
+        },
+        "mitigation": {
+          "zh": "使用绑定变量，动态标识符允许列表化，应用 schema 仅授予必要对象权限并撤销 UTL_HTTP/目录广泛访问与非业务 network ACL。 修复验收必须在相同入口重放正常业务输入、阳性对照和阴性对照，核对最终语句、绑定参数、权限与副作用均回到预期边界，并确认清理完成。",
+          "en": "Use bind variables, allowlist dynamic identifiers, grant the application schema only necessary object rights, and revoke broad UTL_HTTP, catalog, and nonbusiness network ACL access. Acceptance testing replays normal business input plus positive and negative controls at the same entry point, verifies final statements, bindings, privileges, and side effects return to the intended boundary, and confirms cleanup is complete."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认Oracle 查询与网络外带拆分前提",
+            "en": "Confirm Oracle Query and Network-Egress Split prerequisites"
+          },
+          "description": {
+            "zh": "针对Oracle UNION 枚举与 UTL_HTTP 外带混合集先确认数据库类型、输入上下文、隔离资产、最小权限和可观测日志，未满足两项前置条件时不进入命令审查。",
+            "en": "For Mixed Oracle UNION Enumeration and UTL_HTTP Egress Set, confirm the database type, input context, isolated asset, least privilege, and observable logs; do not proceed to command review until both prerequisites hold."
+          }
+        },
+        {
+          "title": {
+            "zh": "建立Oracle 查询与网络外带拆分对照",
+            "en": "Establish Oracle Query and Network-Egress Split controls"
+          },
+          "description": {
+            "zh": "为Oracle UNION 枚举与 UTL_HTTP 外带混合集记录正常输入、无效输入和固定 marker 的响应、查询日志、绑定值及请求标识，先量化自然波动再判断差异。",
+            "en": "For Mixed Oracle UNION Enumeration and UTL_HTTP Egress Set, record responses, query logs, bound values, and request identifiers for normal input, invalid input, and a fixed marker, measuring natural variation before judging differences."
+          }
+        },
+        {
+          "title": {
+            "zh": "逐行审校Oracle 查询与网络外带拆分源命令",
+            "en": "Review the Oracle Query and Network-Egress Split source command line by line"
+          },
+          "description": {
+            "zh": "原始首条命令在此逐字节保留，只用于证明条目来源和行路由；任何实际运行都必须遵守本条记录的隔离、marker、停止和清理条件。",
+            "en": "The original first command is retained here byte for byte only to prove provenance and line routing; any execution must obey this entry's isolation, marker, stop, and cleanup conditions."
+          },
+          "payload": "' OR 1=1--\n' OR '1'='1\n' UNION SELECT NULL,NULL,NULL FROM DUAL--"
+        },
+        {
+          "title": {
+            "zh": "修复并回归Oracle 查询与网络外带拆分",
+            "en": "Remediate and regress Oracle Query and Network-Egress Split"
+          },
+          "description": {
+            "zh": "应用Oracle UNION 枚举与 UTL_HTTP 外带混合集对应修复后，重放三组对照并关联同一请求证据，确认业务结果保持正常、注入证据消失且测试状态已清理。",
+            "en": "After applying the remediation for Mixed Oracle UNION Enumeration and UTL_HTTP Egress Set, replay all three controls with correlated request evidence and confirm business behavior remains correct, injection evidence disappears, and test state is removed."
+          }
+        }
+      ],
+      "prerequisites": [
+        {
+          "zh": "已确认 Oracle 版本、参数上下文、列数/类型、当前 schema 权限，以及 UTL_HTTP execute 权限与 network ACL。",
+          "en": "Oracle version, parameter context, column count and types, current schema rights, UTL_HTTP execute privilege, and network ACL are confirmed."
+        },
+        {
+          "zh": "目录枚举只用合成 owner/table marker；UTL_HTTP 仅访问自有空 endpoint 并携带随机 token，不放入查询数据。",
+          "en": "Catalog enumeration uses a synthetic owner and table marker only, while UTL_HTTP contacts an owned empty endpoint carrying a random token and no query data."
+        }
+      ],
+      "analysis": {
+        "zh": "UNION 分支需返回合成目录 marker；UTL_HTTP 分支需 Oracle 进程向自有 endpoint 发出与请求 ID 对应的 token 请求，两者不得互相推断。 假阳性边界：ORA 错误、DUAL 查询可用、目录视图权限拒绝、HTTP URL 回显、DNS 查询、ACL 错误或分析机请求 endpoint 都不是数据枚举/服务器外带证据。",
+        "en": "The UNION branch needs a synthetic catalog marker returned, while the UTL_HTTP branch needs an Oracle-origin token request at the owned endpoint correlated with the request identifier; neither branch proves the other. False-positive boundary: ORA errors, working DUAL queries, denied catalog views, reflected HTTP URLs, DNS only, ACL errors, or analyst requests to the endpoint does not prove enumeration or server egress."
+      },
+      "opsecTips": [
+        {
+          "zh": "Oracle 测试不读取真实 ALL_USERS/users/password 或向 URL 放数据；出现生产目录、真实网络目标、敏感路径、长查询或会话异常时停止。",
+          "en": "Oracle testing never reads real users or passwords or places data in URLs; stop on production catalogs, real network targets, sensitive paths, long queries, or session anomalies."
+        },
+        {
+          "zh": "删除合成 owner/table/marker 与 endpoint token，关闭监听器，清理审计/游标缓存/响应，恢复 ACL 和绑定查询。",
+          "en": "Delete synthetic owners, tables, markers, and endpoint tokens, close listeners, clear audit, cursor caches, and responses, and restore ACLs and bound queries."
+        }
+      ],
+      "references": [
+        "https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/The-UNION-ALL-INTERSECT-MINUS-Operators.html",
+        "https://docs.oracle.com/en/database/oracle/oracle-database/19/arpls/UTL_HTTP.html",
+        "https://docs.oracle.com/en/database/oracle/oracle-database/19/dbseg/managing-fine-grained-access-in-pl-sql-packages-and-types.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "“Oracle UNION 枚举与 UTL_HTTP 外带混合集”混合了前提、影响或数据库机制不同的多条路线，保留在一张卡中会模糊证据边界，因此必须按记录的行路由拆分。",
+        "issuesResolved": [
+          "rewrote-unique-bilingual-content",
+          "added-four-part-tutorial",
+          "added-four-step-evidence-chain",
+          "added-positive-and-false-positive-boundaries",
+          "added-stop-and-cleanup-guidance",
+          "preserved-source-command-byte-for-byte",
+          "flagged-source-command-for-command-override"
+        ],
+        "targetPayloadIds": [
+          "sqli-oracle-union-enumeration",
+          "sqli-oracle-utl-http-oob"
+        ],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "commands 0-5 -> sqli-oracle-union-enumeration",
+          "command 6 -> sqli-oracle-utl-http-oob"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "replace attacker.com and selected password data with an owned token-only endpoint"
+        ]
+      }
+    },
+    {
+      "id": "sqli-oracle-advanced",
+      "name": {
+        "zh": "Oracle Java、文件与侧信道语句混合集",
+        "en": "Mixed Oracle Java, File, and Side-Channel Statements"
+      },
+      "description": {
+        "zh": "混合 DBMS_JAVA、UTL_FILE、XMLType、DBMS_PIPE、条件表达式和编码变体；前三组及 PACK_MESSAGE 行把过程当函数使用，原语句技术上无效。",
+        "en": "Combines DBMS_JAVA, UTL_FILE, XMLType, DBMS_PIPE, conditional expressions, and encodings; the first three groups and PACK_MESSAGE line incorrectly use procedures as scalar functions and are technically invalid."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "Oracle 高级包能力拆分",
+        "en": "Oracle Advanced-Package Capability Split"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "混合 DBMS_JAVA、UTL_FILE、XMLType、DBMS_PIPE、条件表达式和编码变体；前三组及 PACK_MESSAGE 行把过程当函数使用，原语句技术上无效。 本教程把“能被输入触达”“数据库实际解释”和“形成可复验证据”分开审查。在隔离 Oracle 实例确认 DBMS_JAVA/UTL_FILE/DBMS_PIPE package signature、Java VM、DIRECTORY 对象、execute 权限与 network ACL。所有替代验证使用合成 DIRECTORY marker、测试 Java procedure 和专用 pipe，不执行 Runtime、主机文件或真实跨会话数据。",
+          "en": "Combines DBMS_JAVA, UTL_FILE, XMLType, DBMS_PIPE, conditional expressions, and encodings; the first three groups and PACK_MESSAGE line incorrectly use procedures as scalar functions and are technically invalid. This tutorial reviews input reachability, actual database interpretation, and reproducible evidence as separate claims. An isolated Oracle instance confirms DBMS_JAVA, UTL_FILE, and DBMS_PIPE package signatures, Java VM, DIRECTORY objects, execute rights, and network ACLs. All replacement validation uses a synthetic DIRECTORY marker, test Java procedure, and dedicated pipe without Runtime, host files, or real cross-session data."
+        },
+        "vulnerability": {
+          "zh": "阳性证据按替代目标分别要求有效 PL/SQL 调用和 canary；XML/条件/编码分支只证明 SQL 表达式可控，不能从原无效语句推断 Java、文件或 pipe 能力。 核心判断是受控输入是否越过预期的数据绑定或查询构造边界，并由同一请求的应用与数据库证据相互印证。ORA-00904/00920/06550、package 名存在、错误提示签名、XMLType 构造成功、CHR/RAWTOHEX 输出或管理员手工执行有效 procedure 都不是原注入链证据。",
+          "en": "Positive evidence requires valid PL/SQL calls and canaries for each replacement target; XML, conditional, and encoding branches prove only controlled SQL expressions and cannot infer Java, file, or pipe capability from invalid source statements. The core decision is whether controlled input crosses the intended data-binding or query-construction boundary, corroborated by application and database evidence for the same request. ORA-00904, ORA-00920, ORA-06550, package names, signature errors, successful XMLType construction, CHR or RAWTOHEX output, or manual administrator procedure calls does not prove the original injection chain."
+        },
+        "exploitation": {
+          "zh": "先按官方 package signature 把无效标量调用替换为独立 PL/SQL fixture，再分别使用 marker；原命令仍逐字保留用于审计，不在应用入口执行。 条目中的源命令仅作为逐字节审校与路由证据保留；标记为需覆盖的行在得到安全替代、隔离环境和明确授权前不执行，也不从本教程推导新的攻击命令。",
+          "en": "Replace invalid scalar calls with isolated PL/SQL fixtures matching official package signatures, then use separate markers; source commands remain byte-preserved for audit and are not executed through the application entry. The source command is retained only as byte-exact editorial and routing evidence. Any line flagged for override remains unexecuted until a safe substitute, an isolated environment, and explicit authorization are in place; this tutorial derives no new attack command."
+        },
+        "mitigation": {
+          "zh": "参数化查询，撤销应用 schema 对 DBMS_JAVA/UTL_FILE/DBMS_PIPE 的 execute，限制 DIRECTORY 与 Java 权限，并对动态 SQL 使用固定操作映射。 修复验收必须在相同入口重放正常业务输入、阳性对照和阴性对照，核对最终语句、绑定参数、权限与副作用均回到预期边界，并确认清理完成。",
+          "en": "Parameterize queries, revoke application-schema execute rights on DBMS_JAVA, UTL_FILE, and DBMS_PIPE, constrain DIRECTORY and Java permissions, and map dynamic SQL to fixed operations. Acceptance testing replays normal business input plus positive and negative controls at the same entry point, verifies final statements, bindings, privileges, and side effects return to the intended boundary, and confirms cleanup is complete."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认Oracle 高级包能力拆分前提",
+            "en": "Confirm Oracle Advanced-Package Capability Split prerequisites"
+          },
+          "description": {
+            "zh": "针对Oracle Java、文件与侧信道语句混合集先确认数据库类型、输入上下文、隔离资产、最小权限和可观测日志，未满足两项前置条件时不进入命令审查。",
+            "en": "For Mixed Oracle Java, File, and Side-Channel Statements, confirm the database type, input context, isolated asset, least privilege, and observable logs; do not proceed to command review until both prerequisites hold."
+          }
+        },
+        {
+          "title": {
+            "zh": "建立Oracle 高级包能力拆分对照",
+            "en": "Establish Oracle Advanced-Package Capability Split controls"
+          },
+          "description": {
+            "zh": "为Oracle Java、文件与侧信道语句混合集记录正常输入、无效输入和固定 marker 的响应、查询日志、绑定值及请求标识，先量化自然波动再判断差异。",
+            "en": "For Mixed Oracle Java, File, and Side-Channel Statements, record responses, query logs, bound values, and request identifiers for normal input, invalid input, and a fixed marker, measuring natural variation before judging differences."
+          }
+        },
+        {
+          "title": {
+            "zh": "逐行审校Oracle 高级包能力拆分源命令",
+            "en": "Review the Oracle Advanced-Package Capability Split source command line by line"
+          },
+          "description": {
+            "zh": "原始首条命令在此逐字节保留，只用于证明条目来源和行路由；任何实际运行都必须遵守本条记录的隔离、marker、停止和清理条件。",
+            "en": "The original first command is retained here byte for byte only to prove provenance and line routing; any execution must obey this entry's isolation, marker, stop, and cleanup conditions."
+          },
+          "payload": "' UNION SELECT 1,CASE WHEN DBMS_JAVA.TEST_OUTPUT('test') IS NOT NULL THEN 'YES' ELSE 'NO' END FROM DUAL--"
+        },
+        {
+          "title": {
+            "zh": "修复并回归Oracle 高级包能力拆分",
+            "en": "Remediate and regress Oracle Advanced-Package Capability Split"
+          },
+          "description": {
+            "zh": "应用Oracle Java、文件与侧信道语句混合集对应修复后，重放三组对照并关联同一请求证据，确认业务结果保持正常、注入证据消失且测试状态已清理。",
+            "en": "After applying the remediation for Mixed Oracle Java, File, and Side-Channel Statements, replay all three controls with correlated request evidence and confirm business behavior remains correct, injection evidence disappears, and test state is removed."
+          }
+        }
+      ],
+      "prerequisites": [
+        {
+          "zh": "在隔离 Oracle 实例确认 DBMS_JAVA/UTL_FILE/DBMS_PIPE package signature、Java VM、DIRECTORY 对象、execute 权限与 network ACL。",
+          "en": "An isolated Oracle instance confirms DBMS_JAVA, UTL_FILE, and DBMS_PIPE package signatures, Java VM, DIRECTORY objects, execute rights, and network ACLs."
+        },
+        {
+          "zh": "所有替代验证使用合成 DIRECTORY marker、测试 Java procedure 和专用 pipe，不执行 Runtime、主机文件或真实跨会话数据。",
+          "en": "All replacement validation uses a synthetic DIRECTORY marker, test Java procedure, and dedicated pipe without Runtime, host files, or real cross-session data."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性证据按替代目标分别要求有效 PL/SQL 调用和 canary；XML/条件/编码分支只证明 SQL 表达式可控，不能从原无效语句推断 Java、文件或 pipe 能力。 假阳性边界：ORA-00904/00920/06550、package 名存在、错误提示签名、XMLType 构造成功、CHR/RAWTOHEX 输出或管理员手工执行有效 procedure 都不是原注入链证据。",
+        "en": "Positive evidence requires valid PL/SQL calls and canaries for each replacement target; XML, conditional, and encoding branches prove only controlled SQL expressions and cannot infer Java, file, or pipe capability from invalid source statements. False-positive boundary: ORA-00904, ORA-00920, ORA-06550, package names, signature errors, successful XMLType construction, CHR or RAWTOHEX output, or manual administrator procedure calls does not prove the original injection chain."
+      },
+      "opsecTips": [
+        {
+          "zh": "Oracle 高级包验证出现 Java Runtime、主机文件、跨会话 pipe、ACL 修改、外连、权限提升或实例不稳定时停止。",
+          "en": "Oracle advanced-package validation stops on Java Runtime, host files, cross-session pipes, ACL changes, egress, privilege escalation, or instance instability."
+        },
+        {
+          "zh": "删除测试 Java procedure、DIRECTORY marker、pipe/canary 和临时对象，恢复 grants/ACL，清理游标/审计并重启隔离实例。",
+          "en": "Delete test Java procedures, DIRECTORY markers, pipes, canaries, and temporary objects, restore grants and ACLs, clear cursors and audit, and restart the isolated instance."
+        }
+      ],
+      "references": [
+        "https://docs.oracle.com/en/database/oracle/oracle-database/19/arpls/DBMS_JAVA.html",
+        "https://docs.oracle.com/en/database/oracle/oracle-database/19/arpls/UTL_FILE.html",
+        "https://docs.oracle.com/en/database/oracle/oracle-database/19/arpls/DBMS_PIPE.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "“Oracle Java、文件与侧信道语句混合集”混合了前提、影响或数据库机制不同的多条路线，保留在一张卡中会模糊证据边界，因此必须按记录的行路由拆分。",
+        "issuesResolved": [
+          "rewrote-unique-bilingual-content",
+          "added-four-part-tutorial",
+          "added-four-step-evidence-chain",
+          "added-positive-and-false-positive-boundaries",
+          "added-stop-and-cleanup-guidance",
+          "preserved-source-command-byte-for-byte",
+          "flagged-source-command-for-command-override"
+        ],
+        "targetPayloadIds": [
+          "sqli-oracle-java-package-capability",
+          "sqli-oracle-utl-file-capability",
+          "sqli-oracle-dbms-pipe-side-channel",
+          "sqli-oracle-expression-obfuscation"
+        ],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "commands 0-1 -> sqli-oracle-java-package-capability after replacing invalid scalar procedure calls",
+          "command 2 -> sqli-oracle-utl-file-capability after replacing invalid FGETATTR function syntax with a valid PL/SQL block",
+          "command 3 line 0 and line 2 -> sqli-oracle-expression-obfuscation",
+          "command 3 line 1 -> sqli-oracle-dbms-pipe-side-channel after replacing invalid PACK_MESSAGE scalar use",
+          "command 4 -> sqli-oracle-expression-obfuscation"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "DBMS_JAVA.RUNJAVA and UTL_FILE.FGETATTR are procedures and cannot be selected as scalar expressions",
+          "DBMS_PIPE.PACK_MESSAGE is a procedure and cannot be concatenated with SEND_MESSAGE",
+          "DBMS_JAVA.TEST_OUTPUT source syntax does not match a usable scalar capability probe"
+        ]
+      }
+    },
+    {
+      "id": "sqli-postgres-basic",
+      "name": {
+        "zh": "PostgreSQL UNION 与服务器文件能力混合集",
+        "en": "Mixed PostgreSQL UNION and Server-File Capability Set"
+      },
+      "description": {
+        "zh": "基础 UNION/目录枚举与 pg_read_file 高权限读取被放在同一条目，另有把 COPY 语句错误放入 SELECT 列的无效写文件语句，需拆分。",
+        "en": "Combines basic UNION and catalog enumeration with privileged pg_read_file access and includes an invalid file-write statement that places COPY in a SELECT column, requiring a split."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "PostgreSQL 查询与文件能力拆分",
+        "en": "PostgreSQL Query and File-Capability Split"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "基础 UNION/目录枚举与 pg_read_file 高权限读取被放在同一条目，另有把 COPY 语句错误放入 SELECT 列的无效写文件语句，需拆分。 本教程把“能被输入触达”“数据库实际解释”和“形成可复验证据”分开审查。已确认 PostgreSQL 版本、参数/列类型、search_path、当前角色，以及 pg_read_server_files/超级用户等服务器文件权限。基础查询只用专用 schema/table marker，文件分支只读取数据库沙箱 marker；任何 COPY 写入使用独立有效语句和临时目录。",
+          "en": "Combines basic UNION and catalog enumeration with privileged pg_read_file access and includes an invalid file-write statement that places COPY in a SELECT column, requiring a split. This tutorial reviews input reachability, actual database interpretation, and reproducible evidence as separate claims. PostgreSQL version, parameter and column types, search_path, current role, and server-file rights such as pg_read_server_files or superuser are confirmed. Basic queries use a dedicated schema and table marker, file branches read only a database-sandbox marker, and any COPY write uses a separate valid statement and temporary directory."
+        },
+        "vulnerability": {
+          "zh": "基础分支需返回合成目录 marker；文件分支需 PostgreSQL backend 审计读取 marker；写文件分支只有替换为有效 COPY 后创建精确测试文件才成立。 核心判断是受控输入是否越过预期的数据绑定或查询构造边界，并由同一请求的应用与数据库证据相互印证。version() 输出、权限错误、函数名回显、pg_read_file 被拒绝、COPY 语法错误、文件已存在或数据库控制台手工执行均不能跨分支证明能力。",
+          "en": "The basic branch needs a synthetic catalog marker, the file branch needs audited PostgreSQL-backend reading of a marker, and file writing is valid only after replacement with a correct COPY that creates the exact test file. The core decision is whether controlled input crosses the intended data-binding or query-construction boundary, corroborated by application and database evidence for the same request. version output, permission errors, reflected function names, denied pg_read_file, COPY syntax errors, preexisting files, or manual console execution cannot prove capabilities across branches."
+        },
+        "exploitation": {
+          "zh": "先做 NULL 列对齐和合成目录读取，再单独验证 marker 文件；command 5 只保留为错误样例，修正为顶层 COPY 后方可在沙箱执行。 条目中的源命令仅作为逐字节审校与路由证据保留；标记为需覆盖的行在得到安全替代、隔离环境和明确授权前不执行，也不从本教程推导新的攻击命令。",
+          "en": "Align NULL columns and read synthetic catalogs first, then validate marker files separately; command 5 remains an invalid example and may run in a sandbox only after replacement with top-level COPY syntax. The source command is retained only as byte-exact editorial and routing evidence. Any line flagged for override remains unexecuted until a safe substitute, an isolated environment, and explicit authorization are in place; this tutorial derives no new attack command."
+        },
+        "mitigation": {
+          "zh": "参数化 SQL，应用角色不授予 pg_read_server_files/pg_write_server_files/pg_execute_server_program，限制 COPY 与文件目录权限。 修复验收必须在相同入口重放正常业务输入、阳性对照和阴性对照，核对最终语句、绑定参数、权限与副作用均回到预期边界，并确认清理完成。",
+          "en": "Parameterize SQL, withhold pg_read_server_files, pg_write_server_files, and pg_execute_server_program from the application role, and constrain COPY and filesystem directories. Acceptance testing replays normal business input plus positive and negative controls at the same entry point, verifies final statements, bindings, privileges, and side effects return to the intended boundary, and confirms cleanup is complete."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认PostgreSQL 查询与文件能力拆分前提",
+            "en": "Confirm PostgreSQL Query and File-Capability Split prerequisites"
+          },
+          "description": {
+            "zh": "针对PostgreSQL UNION 与服务器文件能力混合集先确认数据库类型、输入上下文、隔离资产、最小权限和可观测日志，未满足两项前置条件时不进入命令审查。",
+            "en": "For Mixed PostgreSQL UNION and Server-File Capability Set, confirm the database type, input context, isolated asset, least privilege, and observable logs; do not proceed to command review until both prerequisites hold."
+          }
+        },
+        {
+          "title": {
+            "zh": "建立PostgreSQL 查询与文件能力拆分对照",
+            "en": "Establish PostgreSQL Query and File-Capability Split controls"
+          },
+          "description": {
+            "zh": "为PostgreSQL UNION 与服务器文件能力混合集记录正常输入、无效输入和固定 marker 的响应、查询日志、绑定值及请求标识，先量化自然波动再判断差异。",
+            "en": "For Mixed PostgreSQL UNION and Server-File Capability Set, record responses, query logs, bound values, and request identifiers for normal input, invalid input, and a fixed marker, measuring natural variation before judging differences."
+          }
+        },
+        {
+          "title": {
+            "zh": "逐行审校PostgreSQL 查询与文件能力拆分源命令",
+            "en": "Review the PostgreSQL Query and File-Capability Split source command line by line"
+          },
+          "description": {
+            "zh": "原始首条命令在此逐字节保留，只用于证明条目来源和行路由；任何实际运行都必须遵守本条记录的隔离、marker、停止和清理条件。",
+            "en": "The original first command is retained here byte for byte only to prove provenance and line routing; any execution must obey this entry's isolation, marker, stop, and cleanup conditions."
+          },
+          "payload": "' OR 1=1--\n' OR '1'='1\n' UNION SELECT NULL,NULL,NULL--"
+        },
+        {
+          "title": {
+            "zh": "修复并回归PostgreSQL 查询与文件能力拆分",
+            "en": "Remediate and regress PostgreSQL Query and File-Capability Split"
+          },
+          "description": {
+            "zh": "应用PostgreSQL UNION 与服务器文件能力混合集对应修复后，重放三组对照并关联同一请求证据，确认业务结果保持正常、注入证据消失且测试状态已清理。",
+            "en": "After applying the remediation for Mixed PostgreSQL UNION and Server-File Capability Set, replay all three controls with correlated request evidence and confirm business behavior remains correct, injection evidence disappears, and test state is removed."
+          }
+        }
+      ],
+      "prerequisites": [
+        {
+          "zh": "已确认 PostgreSQL 版本、参数/列类型、search_path、当前角色，以及 pg_read_server_files/超级用户等服务器文件权限。",
+          "en": "PostgreSQL version, parameter and column types, search_path, current role, and server-file rights such as pg_read_server_files or superuser are confirmed."
+        },
+        {
+          "zh": "基础查询只用专用 schema/table marker，文件分支只读取数据库沙箱 marker；任何 COPY 写入使用独立有效语句和临时目录。",
+          "en": "Basic queries use a dedicated schema and table marker, file branches read only a database-sandbox marker, and any COPY write uses a separate valid statement and temporary directory."
+        }
+      ],
+      "analysis": {
+        "zh": "基础分支需返回合成目录 marker；文件分支需 PostgreSQL backend 审计读取 marker；写文件分支只有替换为有效 COPY 后创建精确测试文件才成立。 假阳性边界：version() 输出、权限错误、函数名回显、pg_read_file 被拒绝、COPY 语法错误、文件已存在或数据库控制台手工执行均不能跨分支证明能力。",
+        "en": "The basic branch needs a synthetic catalog marker, the file branch needs audited PostgreSQL-backend reading of a marker, and file writing is valid only after replacement with a correct COPY that creates the exact test file. False-positive boundary: version output, permission errors, reflected function names, denied pg_read_file, COPY syntax errors, preexisting files, or manual console execution cannot prove capabilities across branches."
+      },
+      "opsecTips": [
+        {
+          "zh": "PostgreSQL 测试不读取 /etc 或写 Web 根；出现真实文件、COPY PROGRAM、锁/长事务、磁盘写入、生产 schema 或 backend 异常时停止。",
+          "en": "PostgreSQL testing never reads system files or writes web roots; stop on real files, COPY PROGRAM, locks or long transactions, disk writes, production schemas, or backend anomalies."
+        },
+        {
+          "zh": "删除合成 schema/table/file/marker 与测试事务，清理日志/计划缓存，恢复角色权限和参数化查询并重启隔离实例。",
+          "en": "Delete synthetic schemas, tables, files, markers, and test transactions, clear logs and plan caches, restore role rights and parameterized queries, and restart the isolated instance."
+        }
+      ],
+      "references": [
+        "https://www.postgresql.org/docs/current/queries-union.html",
+        "https://www.postgresql.org/docs/current/functions-admin.html",
+        "https://www.postgresql.org/docs/current/sql-copy.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "“PostgreSQL UNION 与服务器文件能力混合集”混合了前提、影响或数据库机制不同的多条路线，保留在一张卡中会模糊证据边界，因此必须按记录的行路由拆分。",
+        "issuesResolved": [
+          "rewrote-unique-bilingual-content",
+          "added-four-part-tutorial",
+          "added-four-step-evidence-chain",
+          "added-positive-and-false-positive-boundaries",
+          "added-stop-and-cleanup-guidance",
+          "preserved-source-command-byte-for-byte",
+          "flagged-source-command-for-command-override"
+        ],
+        "targetPayloadIds": [
+          "sqli-postgresql-union-enumeration",
+          "sqli-postgresql-server-file-read",
+          "sqli-postgresql-server-file-write"
+        ],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "commands 0-3 and 6 -> sqli-postgresql-union-enumeration",
+          "command 4 -> sqli-postgresql-server-file-read",
+          "command 5 -> sqli-postgresql-server-file-write after replacing invalid COPY-as-expression syntax"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "COPY is a statement and cannot be used as a SELECT-list expression in command 5"
+        ]
+      }
+    },
+    {
+      "id": "sqli-sqlite-basic",
+      "name": {
+        "zh": "SQLite UNION、Schema 与扩展函数混合集",
+        "en": "Mixed SQLite UNION, Schema, and Extension-Function Set"
+      },
+      "description": {
+        "zh": "基础 UNION/sqlite_master 枚举与 load_extension、readfile 等可选 CLI/扩展函数混合；后者并非所有嵌入式 SQLite 运行时默认存在。",
+        "en": "Combines basic UNION and sqlite_master enumeration with optional load_extension and readfile CLI or extension functions that are not present by default in every embedded SQLite runtime."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "SQLite 核心与可选扩展拆分",
+        "en": "SQLite Core and Optional-Extension Split"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "基础 UNION/sqlite_master 枚举与 load_extension、readfile 等可选 CLI/扩展函数混合；后者并非所有嵌入式 SQLite 运行时默认存在。 本教程把“能被输入触达”“数据库实际解释”和“形成可复验证据”分开审查。已确认使用 SQLite、库版本、参数上下文和连接 API，并可判断 load_extension 是否启用及 readfile 是否由 CLI/应用扩展注册。隔离数据库包含专用 sqlite_master 对象和 marker，扩展分支只加载签名测试扩展或读取数据库目录内 marker。",
+          "en": "Combines basic UNION and sqlite_master enumeration with optional load_extension and readfile CLI or extension functions that are not present by default in every embedded SQLite runtime. This tutorial reviews input reachability, actual database interpretation, and reproducible evidence as separate claims. SQLite use, library version, parameter context, and connection API are confirmed, including whether load_extension is enabled and readfile is registered by the CLI or application. An isolated database contains dedicated sqlite_master objects and a marker, while extension branches load only a signed test extension or read a marker inside the database directory."
+        },
+        "vulnerability": {
+          "zh": "核心分支需 UNION/条件稳定返回合成 schema marker；扩展分支需目标应用连接实际调用已注册函数并产生 canary 或读取 marker。 核心判断是受控输入是否越过预期的数据绑定或查询构造边界，并由同一请求的应用与数据库证据相互印证。sqlite_version 输出、sqlite_master 关键字、readfile 在 sqlite3 CLI 可用、load_extension 被禁用、函数不存在、文件错误或 X'...' 常量均不能证明应用扩展能力。",
+          "en": "The core branch needs UNION or predicates to return a synthetic schema marker consistently, while extension branches need the target application connection to invoke a registered function and produce a canary or read a marker. The core decision is whether controlled input crosses the intended data-binding or query-construction boundary, corroborated by application and database evidence for the same request. sqlite_version output, sqlite_master text, readfile availability in the sqlite3 CLI, disabled load_extension, missing functions, file errors, or X literals does not prove application extension capability."
+        },
+        "exploitation": {
+          "zh": "先用合成表和 sqlite_master 建立核心注入证据，再在相同应用连接查询 function_list/行为并单独验证测试扩展或 marker 文件。 条目中的源命令仅作为逐字节审校与路由证据保留；标记为需覆盖的行在得到安全替代、隔离环境和明确授权前不执行，也不从本教程推导新的攻击命令。",
+          "en": "Establish core injection with a synthetic table and sqlite_master first, then inspect function availability on the same application connection and separately validate a test extension or marker file. The source command is retained only as byte-exact editorial and routing evidence. Any line flagged for override remains unexecuted until a safe substitute, an isolated environment, and explicit authorization are in place; this tutorial derives no new attack command."
+        },
+        "mitigation": {
+          "zh": "使用绑定参数，关闭运行时扩展加载，不向应用注册 readfile/writefile 等文件函数，数据库文件及目录使用最小权限。 修复验收必须在相同入口重放正常业务输入、阳性对照和阴性对照，核对最终语句、绑定参数、权限与副作用均回到预期边界，并确认清理完成。",
+          "en": "Use bound parameters, disable runtime extension loading, avoid registering file functions such as readfile or writefile, and apply least privilege to the database file and directory. Acceptance testing replays normal business input plus positive and negative controls at the same entry point, verifies final statements, bindings, privileges, and side effects return to the intended boundary, and confirms cleanup is complete."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认SQLite 核心与可选扩展拆分前提",
+            "en": "Confirm SQLite Core and Optional-Extension Split prerequisites"
+          },
+          "description": {
+            "zh": "针对SQLite UNION、Schema 与扩展函数混合集先确认数据库类型、输入上下文、隔离资产、最小权限和可观测日志，未满足两项前置条件时不进入命令审查。",
+            "en": "For Mixed SQLite UNION, Schema, and Extension-Function Set, confirm the database type, input context, isolated asset, least privilege, and observable logs; do not proceed to command review until both prerequisites hold."
+          }
+        },
+        {
+          "title": {
+            "zh": "建立SQLite 核心与可选扩展拆分对照",
+            "en": "Establish SQLite Core and Optional-Extension Split controls"
+          },
+          "description": {
+            "zh": "为SQLite UNION、Schema 与扩展函数混合集记录正常输入、无效输入和固定 marker 的响应、查询日志、绑定值及请求标识，先量化自然波动再判断差异。",
+            "en": "For Mixed SQLite UNION, Schema, and Extension-Function Set, record responses, query logs, bound values, and request identifiers for normal input, invalid input, and a fixed marker, measuring natural variation before judging differences."
+          }
+        },
+        {
+          "title": {
+            "zh": "逐行审校SQLite 核心与可选扩展拆分源命令",
+            "en": "Review the SQLite Core and Optional-Extension Split source command line by line"
+          },
+          "description": {
+            "zh": "原始首条命令在此逐字节保留，只用于证明条目来源和行路由；任何实际运行都必须遵守本条记录的隔离、marker、停止和清理条件。",
+            "en": "The original first command is retained here byte for byte only to prove provenance and line routing; any execution must obey this entry's isolation, marker, stop, and cleanup conditions."
+          },
+          "payload": "' OR 1=1--\n' UNION SELECT 1,2,3--\n' UNION SELECT NULL,NULL,NULL--"
+        },
+        {
+          "title": {
+            "zh": "修复并回归SQLite 核心与可选扩展拆分",
+            "en": "Remediate and regress SQLite Core and Optional-Extension Split"
+          },
+          "description": {
+            "zh": "应用SQLite UNION、Schema 与扩展函数混合集对应修复后，重放三组对照并关联同一请求证据，确认业务结果保持正常、注入证据消失且测试状态已清理。",
+            "en": "After applying the remediation for Mixed SQLite UNION, Schema, and Extension-Function Set, replay all three controls with correlated request evidence and confirm business behavior remains correct, injection evidence disappears, and test state is removed."
+          }
+        }
+      ],
+      "prerequisites": [
+        {
+          "zh": "已确认使用 SQLite、库版本、参数上下文和连接 API，并可判断 load_extension 是否启用及 readfile 是否由 CLI/应用扩展注册。",
+          "en": "SQLite use, library version, parameter context, and connection API are confirmed, including whether load_extension is enabled and readfile is registered by the CLI or application."
+        },
+        {
+          "zh": "隔离数据库包含专用 sqlite_master 对象和 marker，扩展分支只加载签名测试扩展或读取数据库目录内 marker。",
+          "en": "An isolated database contains dedicated sqlite_master objects and a marker, while extension branches load only a signed test extension or read a marker inside the database directory."
+        }
+      ],
+      "analysis": {
+        "zh": "核心分支需 UNION/条件稳定返回合成 schema marker；扩展分支需目标应用连接实际调用已注册函数并产生 canary 或读取 marker。 假阳性边界：sqlite_version 输出、sqlite_master 关键字、readfile 在 sqlite3 CLI 可用、load_extension 被禁用、函数不存在、文件错误或 X'...' 常量均不能证明应用扩展能力。",
+        "en": "The core branch needs UNION or predicates to return a synthetic schema marker consistently, while extension branches need the target application connection to invoke a registered function and produce a canary or read a marker. False-positive boundary: sqlite_version output, sqlite_master text, readfile availability in the sqlite3 CLI, disabled load_extension, missing functions, file errors, or X literals does not prove application extension capability."
+      },
+      "opsecTips": [
+        {
+          "zh": "SQLite 验证不加载未知 so/dll 或读取真实文件；出现进程崩溃、扩展持久化、文件写入、生产数据库行或锁争用时停止。",
+          "en": "SQLite validation never loads unknown shared libraries or reads real files; stop on process crashes, persistent extensions, file writes, production rows, or lock contention."
+        },
+        {
+          "zh": "删除测试数据库/扩展/marker，关闭连接并清理 WAL/journal/缓存，恢复 extension loading 禁用后重启应用。",
+          "en": "Delete test databases, extensions, and markers, close connections and clear WAL, journals, and caches, restore disabled extension loading, and restart the application."
+        }
+      ],
+      "references": [
+        "https://www.sqlite.org/lang_select.html",
+        "https://www.sqlite.org/cli.html",
+        "https://www.sqlite.org/loadext.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "“SQLite UNION、Schema 与扩展函数混合集”混合了前提、影响或数据库机制不同的多条路线，保留在一张卡中会模糊证据边界，因此必须按记录的行路由拆分。",
+        "issuesResolved": [
+          "rewrote-unique-bilingual-content",
+          "added-four-part-tutorial",
+          "added-four-step-evidence-chain",
+          "added-positive-and-false-positive-boundaries",
+          "added-stop-and-cleanup-guidance",
+          "preserved-source-command-byte-for-byte"
+        ],
+        "targetPayloadIds": [
+          "sqli-sqlite-union-enumeration",
+          "sqli-sqlite-extension-file-functions"
+        ],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "commands 0-3 and 5-6 -> sqli-sqlite-union-enumeration",
+          "command 4 -> sqli-sqlite-extension-file-functions"
+        ]
+      }
+    },
+    {
+      "id": "sqli-mongodb-basic",
+      "name": {
+        "zh": "MongoDB 查询操作符与正则注入验证",
+        "en": "MongoDB Query-Operator and Regex Injection Validation"
+      },
+      "description": {
+        "zh": "验证标量凭据是否被客户端对象替换为 $ne、$gt、$regex、$where 等查询语义，并区分顶层逻辑操作符与字段操作符。",
+        "en": "Tests whether scalar credentials can be replaced by client objects using $ne, $gt, $regex, or $where semantics and distinguishes top-level logical operators from field operators."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "MongoDB 操作符注入",
+        "en": "MongoDB Operator Injection"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "验证标量凭据是否被客户端对象替换为 $ne、$gt、$regex、$where 等查询语义，并区分顶层逻辑操作符与字段操作符。 本教程把“能被输入触达”“数据库实际解释”和“形成可复验证据”分开审查。API 接受 JSON/BSON 对象并直接构造 MongoDB filter，schema validation、driver 版本和 $where/JavaScript 配置已确认。隔离集合只有合成账户与 marker，command/query profiler 可记录最终 filter、匹配文档和会话签发。",
+          "en": "Tests whether scalar credentials can be replaced by client objects using $ne, $gt, $regex, or $where semantics and distinguishes top-level logical operators from field operators. This tutorial reviews input reachability, actual database interpretation, and reproducible evidence as separate claims. The API accepts JSON or BSON objects and builds MongoDB filters directly, with schema validation, driver version, and $where or JavaScript settings confirmed. An isolated collection contains synthetic accounts and markers only, while command or query profiling records the final filter, matched documents, and session issuance."
+        },
+        "vulnerability": {
+          "zh": "阳性证据是客户端操作符保留到最终 filter 并替代预期等值条件，导致未授权合成账户登录、marker 返回或可重复的合成前缀 oracle。 核心判断是受控输入是否越过预期的数据绑定或查询构造边界，并由同一请求的应用与数据库证据相互印证。JSON 接受对象、CastError/BadValue、响应状态变化、正则超时、$where 被禁用、查询仍包含固定等值条件或已有测试会话均不是绕过。",
+          "en": "Positive evidence requires client operators to survive into the final filter and replace expected equality, causing unauthorized synthetic-account login, marker return, or a repeatable synthetic-prefix oracle. The core decision is whether controlled input crosses the intended data-binding or query-construction boundary, corroborated by application and database evidence for the same request. JSON object acceptance, CastError or BadValue, status changes, regex timeout, disabled $where, a query retaining fixed equality, or an existing test session does not prove bypass."
+        },
+        "exploitation": {
+          "zh": "比较字符串错误凭据与单一操作符对象，保存最终 BSON filter；只在合成字段做短前缀正则，不执行 $where JavaScript。 条目中的源命令仅作为逐字节审校与路由证据保留；标记为需覆盖的行在得到安全替代、隔离环境和明确授权前不执行，也不从本教程推导新的攻击命令。",
+          "en": "Compare an invalid string credential with one operator object and preserve the final BSON filter; use short-prefix regex only on synthetic fields and do not execute $where JavaScript. The source command is retained only as byte-exact editorial and routing evidence. Any line flagged for override remains unexecuted until a safe substitute, an isolated environment, and explicit authorization are in place; this tutorial derives no new attack command."
+        },
+        "mitigation": {
+          "zh": "用 JSON Schema/DTO 强制标量类型，服务端构造固定 filter 并拒绝所有未允许的 $ 操作符，认证采用专用常量时间比较。 修复验收必须在相同入口重放正常业务输入、阳性对照和阴性对照，核对最终语句、绑定参数、权限与副作用均回到预期边界，并确认清理完成。",
+          "en": "Enforce scalar types with JSON Schema or DTOs, build fixed filters server-side and reject all nonallowed dollar operators, and use dedicated constant-time authentication comparison. Acceptance testing replays normal business input plus positive and negative controls at the same entry point, verifies final statements, bindings, privileges, and side effects return to the intended boundary, and confirms cleanup is complete."
+        },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认MongoDB 操作符注入前提",
+            "en": "Confirm MongoDB Operator Injection prerequisites"
+          },
+          "description": {
+            "zh": "针对MongoDB 查询操作符与正则注入验证先确认数据库类型、输入上下文、隔离资产、最小权限和可观测日志，未满足两项前置条件时不进入命令审查。",
+            "en": "For MongoDB Query-Operator and Regex Injection Validation, confirm the database type, input context, isolated asset, least privilege, and observable logs; do not proceed to command review until both prerequisites hold."
+          }
+        },
+        {
+          "title": {
+            "zh": "建立MongoDB 操作符注入对照",
+            "en": "Establish MongoDB Operator Injection controls"
+          },
+          "description": {
+            "zh": "为MongoDB 查询操作符与正则注入验证记录正常输入、无效输入和固定 marker 的响应、查询日志、绑定值及请求标识，先量化自然波动再判断差异。",
+            "en": "For MongoDB Query-Operator and Regex Injection Validation, record responses, query logs, bound values, and request identifiers for normal input, invalid input, and a fixed marker, measuring natural variation before judging differences."
+          }
+        },
+        {
+          "title": {
+            "zh": "逐行审校MongoDB 操作符注入源命令",
+            "en": "Review the MongoDB Operator Injection source command line by line"
+          },
+          "description": {
+            "zh": "原始首条命令在此逐字节保留，只用于证明条目来源和行路由；任何实际运行都必须遵守本条记录的隔离、marker、停止和清理条件。",
+            "en": "The original first command is retained here byte for byte only to prove provenance and line routing; any execution must obey this entry's isolation, marker, stop, and cleanup conditions."
+          },
+          "payload": "{\"username\": \"admin\", \"password\": \"password\"}\n{\"username\": \"admin\", \"password\": {\"$ne\": \"\"}}\n{\"username\": \"admin\", \"password\": {\"$gt\": \"\"}}"
+        },
+        {
+          "title": {
+            "zh": "修复并回归MongoDB 操作符注入",
+            "en": "Remediate and regress MongoDB Operator Injection"
+          },
+          "description": {
+            "zh": "应用MongoDB 查询操作符与正则注入验证对应修复后，重放三组对照并关联同一请求证据，确认业务结果保持正常、注入证据消失且测试状态已清理。",
+            "en": "After applying the remediation for MongoDB Query-Operator and Regex Injection Validation, replay all three controls with correlated request evidence and confirm business behavior remains correct, injection evidence disappears, and test state is removed."
+          }
+        }
+      ],
+      "prerequisites": [
+        {
+          "zh": "API 接受 JSON/BSON 对象并直接构造 MongoDB filter，schema validation、driver 版本和 $where/JavaScript 配置已确认。",
+          "en": "The API accepts JSON or BSON objects and builds MongoDB filters directly, with schema validation, driver version, and $where or JavaScript settings confirmed."
+        },
+        {
+          "zh": "隔离集合只有合成账户与 marker，command/query profiler 可记录最终 filter、匹配文档和会话签发。",
+          "en": "An isolated collection contains synthetic accounts and markers only, while command or query profiling records the final filter, matched documents, and session issuance."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性证据是客户端操作符保留到最终 filter 并替代预期等值条件，导致未授权合成账户登录、marker 返回或可重复的合成前缀 oracle。 假阳性边界：JSON 接受对象、CastError/BadValue、响应状态变化、正则超时、$where 被禁用、查询仍包含固定等值条件或已有测试会话均不是绕过。",
+        "en": "Positive evidence requires client operators to survive into the final filter and replace expected equality, causing unauthorized synthetic-account login, marker return, or a repeatable synthetic-prefix oracle. False-positive boundary: JSON object acceptance, CastError or BadValue, status changes, regex timeout, disabled $where, a query retaining fixed equality, or an existing test session does not prove bypass."
+      },
+      "opsecTips": [
+        {
+          "zh": "MongoDB 操作符测试不枚举真实用户或运行 $where/宽泛正则；出现全表扫描、CPU 增长、真实会话、锁定或生产文档时停止。",
+          "en": "MongoDB operator testing never enumerates real users or runs $where or broad regex; stop on collection scans, CPU growth, real sessions, lockout, or production documents."
+        },
+        {
+          "zh": "删除合成账户/marker，吊销测试会话，清理 profiler/缓存/响应副本，恢复 schema 与固定 filter 后回归。",
+          "en": "Delete synthetic accounts and markers, revoke test sessions, clear profiler data, caches, and response copies, restore schemas and fixed filters, and regress."
+        }
+      ],
+      "references": [
+        "https://www.mongodb.com/docs/manual/reference/operator/query/",
+        "https://www.mongodb.com/docs/manual/reference/operator/query/or/",
+        "https://www.mongodb.com/docs/manual/reference/operator/query/where/"
+      ],
+      "review": {
+        "decision": "payload",
+        "rationale": "“MongoDB 查询操作符与正则注入验证”具有单一验证边界，可保留为独立载荷卡；审校重点是证据闭环、假阳性排除和安全停止条件。",
+        "issuesResolved": [
+          "rewrote-unique-bilingual-content",
+          "added-four-part-tutorial",
+          "added-four-step-evidence-chain",
+          "added-positive-and-false-positive-boundaries",
+          "added-stop-and-cleanup-guidance",
+          "preserved-source-command-byte-for-byte",
+          "flagged-source-command-for-command-override"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "command 2 places $or inside the password field, but $or is a top-level logical query operator rather than a valid field operator",
+          "command 5 includes narrative Chinese text that is not JSON"
+        ]
+      }
+    },
+    {
+      "id": "sqli-redis",
+      "name": {
+        "zh": "Redis 客户端与服务配置操作工作流",
+        "en": "Redis Client and Server-Configuration Workflows"
+      },
+      "description": {
+        "zh": "全部内容是 redis-cli 会话、CONFIG/SET/SAVE 命令或 rogue-server 工具调用，属于数据库运维/测试工具流程，不是可直接注入应用参数的 Payload。",
+        "en": "All content consists of redis-cli sessions, CONFIG, SET, or SAVE commands, or a rogue-server invocation, making it a database testing tool workflow rather than payload input for an application parameter."
+      },
+      "category": {
+        "zh": "工具命令",
+        "en": "Tool Commands"
+      },
+      "subCategory": {
+        "zh": "Redis 安全测试工作流",
+        "en": "Redis Security Testing Workflow"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "全部内容是 redis-cli 会话、CONFIG/SET/SAVE 命令或 rogue-server 工具调用，属于数据库运维/测试工具流程，不是可直接注入应用参数的 Payload。 本教程把“能被输入触达”“数据库实际解释”和“形成可复验证据”分开审查。仅连接自有隔离 Redis，确认版本、protected-mode、ACL/TLS、bind 地址、持久化类型和 CONFIG 权限。验证默认只执行 PING 与最小 INFO；写文件、SSH/cron/WebShell、主从复制和恶意模块命令仅离线保存，不执行。",
+          "en": "All content consists of redis-cli sessions, CONFIG, SET, or SAVE commands, or a rogue-server invocation, making it a database testing tool workflow rather than payload input for an application parameter. This tutorial reviews input reachability, actual database interpretation, and reproducible evidence as separate claims. Only an owned isolated Redis is contacted, with version, protected mode, ACL or TLS, bind address, persistence type, and CONFIG rights confirmed. Validation runs PING and minimal INFO only; file writes, SSH, cron, webshell, replication, and malicious-module commands remain offline and are not executed."
+        },
+        "vulnerability": {
+          "zh": "阳性证据是工具条目保留原命令、版本/权限标签和高影响说明，并由授权连接证明 ACL/网络边界；它不以命令可复制作为应用漏洞证据。 核心判断是受控输入是否越过预期的数据绑定或查询构造边界，并由同一请求的应用与数据库证据相互印证。端口开放、PING 成功、INFO banner、redis-cli 可安装、缓存中存在 key、rogue-server 脚本存在或命令在本地实例可运行都不能证明未授权访问。",
+          "en": "Positive evidence means the tool entry preserves commands, version and privilege tags, and high-impact notes, with an authorized connection proving ACL or network boundaries; command copyability is not an application vulnerability. The core decision is whether controlled input crosses the intended data-binding or query-construction boundary, corroborated by application and database evidence for the same request. An open port, PING, INFO banner, installed redis-cli, existing keys, a rogue-server script, or commands working on a local instance does not prove unauthorized access."
+        },
+        "exploitation": {
+          "zh": "在工具卡中按只读发现、危险配置写入、持久化写文件和复制/模块分段展示；运行验证仅限 PING/ACL WHOAMI 与测试 key。 条目中的源命令仅作为逐字节审校与路由证据保留；标记为需覆盖的行在得到安全替代、隔离环境和明确授权前不执行，也不从本教程推导新的攻击命令。",
+          "en": "Present read-only discovery, dangerous configuration writes, persistence file writes, and replication or modules as separate tool sections; runtime validation is limited to PING, ACL WHOAMI, and a test key. The source command is retained only as byte-exact editorial and routing evidence. Any line flagged for override remains unexecuted until a safe substitute, an isolated environment, and explicit authorization are in place; this tutorial derives no new attack command."
+        },
+        "mitigation": {
+          "zh": "启用 protected-mode、ACL/TLS 与网络隔离，禁用外部 CONFIG/模块能力，以非特权账户运行并保护持久化目录。 修复验收必须在相同入口重放正常业务输入、阳性对照和阴性对照，核对最终语句、绑定参数、权限与副作用均回到预期边界，并确认清理完成。",
+          "en": "Enable protected mode, ACLs, TLS, and network isolation, disable external CONFIG and module capabilities, run as an unprivileged identity, and protect persistence directories. Acceptance testing replays normal business input plus positive and negative controls at the same entry point, verifies final statements, bindings, privileges, and side effects return to the intended boundary, and confirms cleanup is complete."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认Redis 安全测试工作流前提",
+            "en": "Confirm Redis Security Testing Workflow prerequisites"
+          },
+          "description": {
+            "zh": "针对Redis 客户端与服务配置操作工作流先确认数据库类型、输入上下文、隔离资产、最小权限和可观测日志，未满足两项前置条件时不进入命令审查。",
+            "en": "For Redis Client and Server-Configuration Workflows, confirm the database type, input context, isolated asset, least privilege, and observable logs; do not proceed to command review until both prerequisites hold."
+          }
+        },
+        {
+          "title": {
+            "zh": "建立Redis 安全测试工作流对照",
+            "en": "Establish Redis Security Testing Workflow controls"
+          },
+          "description": {
+            "zh": "为Redis 客户端与服务配置操作工作流记录正常输入、无效输入和固定 marker 的响应、查询日志、绑定值及请求标识，先量化自然波动再判断差异。",
+            "en": "For Redis Client and Server-Configuration Workflows, record responses, query logs, bound values, and request identifiers for normal input, invalid input, and a fixed marker, measuring natural variation before judging differences."
+          }
+        },
+        {
+          "title": {
+            "zh": "逐行审校Redis 安全测试工作流源命令",
+            "en": "Review the Redis Security Testing Workflow source command line by line"
+          },
+          "description": {
+            "zh": "原始首条命令在此逐字节保留，只用于证明条目来源和行路由；任何实际运行都必须遵守本条记录的隔离、marker、停止和清理条件。",
+            "en": "The original first command is retained here byte for byte only to prove provenance and line routing; any execution must obey this entry's isolation, marker, stop, and cleanup conditions."
+          },
+          "payload": "redis-cli -h target.com ping\nredis-cli -h target.com info"
+        },
+        {
+          "title": {
+            "zh": "修复并回归Redis 安全测试工作流",
+            "en": "Remediate and regress Redis Security Testing Workflow"
+          },
+          "description": {
+            "zh": "应用Redis 客户端与服务配置操作工作流对应修复后，重放三组对照并关联同一请求证据，确认业务结果保持正常、注入证据消失且测试状态已清理。",
+            "en": "After applying the remediation for Redis Client and Server-Configuration Workflows, replay all three controls with correlated request evidence and confirm business behavior remains correct, injection evidence disappears, and test state is removed."
+          }
+        }
+      ],
+      "prerequisites": [
+        {
+          "zh": "仅连接自有隔离 Redis，确认版本、protected-mode、ACL/TLS、bind 地址、持久化类型和 CONFIG 权限。",
+          "en": "Only an owned isolated Redis is contacted, with version, protected mode, ACL or TLS, bind address, persistence type, and CONFIG rights confirmed."
+        },
+        {
+          "zh": "验证默认只执行 PING 与最小 INFO；写文件、SSH/cron/WebShell、主从复制和恶意模块命令仅离线保存，不执行。",
+          "en": "Validation runs PING and minimal INFO only; file writes, SSH, cron, webshell, replication, and malicious-module commands remain offline and are not executed."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性证据是工具条目保留原命令、版本/权限标签和高影响说明，并由授权连接证明 ACL/网络边界；它不以命令可复制作为应用漏洞证据。 假阳性边界：端口开放、PING 成功、INFO banner、redis-cli 可安装、缓存中存在 key、rogue-server 脚本存在或命令在本地实例可运行都不能证明未授权访问。",
+        "en": "Positive evidence means the tool entry preserves commands, version and privilege tags, and high-impact notes, with an authorized connection proving ACL or network boundaries; command copyability is not an application vulnerability. False-positive boundary: An open port, PING, INFO banner, installed redis-cli, existing keys, a rogue-server script, or commands working on a local instance does not prove unauthorized access."
+      },
+      "opsecTips": [
+        {
+          "zh": "Redis 工具验证出现 KEYS *、敏感 GET、CONFIG/SAVE、文件写入、复制、模块加载、真实 key 或非测试实例时立即停止。",
+          "en": "Redis tool validation stops immediately on KEYS *, sensitive GET, CONFIG or SAVE, file writes, replication, module loading, real keys, or a nontest instance."
+        },
+        {
+          "zh": "删除测试 key/ACL 用户，关闭连接和临时实例，清理命令历史/日志，验证 dir/dbfilename/replicaof/modules 未变化并恢复网络策略。",
+          "en": "Delete test keys and ACL users, close connections and temporary instances, clear command history and logs, verify dir, dbfilename, replicaof, and modules are unchanged, and restore network policy."
+        }
+      ],
+      "references": [
+        "https://redis.io/docs/latest/operate/oss_and_stack/management/security/",
+        "https://redis.io/docs/latest/commands/acl-whoami/",
+        "https://redis.io/docs/latest/commands/config-set/"
+      ],
+      "review": {
+        "decision": "tool",
+        "rationale": "“Redis 客户端与服务配置操作工作流”由连续客户端操作组成，状态、权限和清理动作不可由单条载荷表达，因此应迁移到工具工作流。",
+        "issuesResolved": [
+          "rewrote-unique-bilingual-content",
+          "added-four-part-tutorial",
+          "added-four-step-evidence-chain",
+          "added-positive-and-false-positive-boundaries",
+          "added-stop-and-cleanup-guidance",
+          "preserved-source-command-byte-for-byte",
+          "flagged-source-command-for-command-override"
+        ],
+        "targetToolIds": [
+          "redis-pentest"
+        ],
+        "retainedCommandIndexes": [],
+      "lineDisposition": [
+        "commands 0-4 -> redis-pentest as high-impact redis-cli workflow sections",
+        "command 5 -> redis-pentest as a rogue-server or replication-module workflow section"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "all write, SSH, cron, WebShell, replication, EVAL, and module-loading commands require safe marker replacements before any execution"
+        ]
+      }
+    },
+    {
+      "id": "sqli-blind",
+      "name": {
+        "zh": "布尔盲注输入与 sqlmap 工作流混合集",
+        "en": "Mixed Boolean-Blind Inputs and sqlmap Workflow"
+      },
+      "description": {
+        "zh": "大部分命令是 MySQL 风格布尔 oracle 与字符二分输入，但其中混入 sqlmap 客户端命令和中文步骤/占位符，需分开维护。",
+        "en": "Most commands are MySQL-style Boolean oracles and character-bisection inputs, but a sqlmap client command and narrative steps or placeholders are mixed in and require separation."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "布尔盲注与自动化工具拆分",
+        "en": "Boolean-Blind and Automation Split"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "大部分命令是 MySQL 风格布尔 oracle 与字符二分输入，但其中混入 sqlmap 客户端命令和中文步骤/占位符，需分开维护。 本教程把“能被输入触达”“数据库实际解释”和“形成可复验证据”分开审查。同一参数的真/假条件可重复影响稳定响应特征，后端 MySQL 函数、字符集和参数上下文已确认。只使用合成数据库名/marker 和统计基线，记录最终 SQL、响应特征、缓存状态与请求 ID；sqlmap 仅在工具分支配置。",
+          "en": "Most commands are MySQL-style Boolean oracles and character-bisection inputs, but a sqlmap client command and narrative steps or placeholders are mixed in and require separation. This tutorial reviews input reachability, actual database interpretation, and reproducible evidence as separate claims. True and false conditions on the same parameter reproducibly affect a stable response feature, with MySQL functions, character set, and parameter context confirmed. Only a synthetic database name or marker and statistical baselines are used, recording final SQL, response feature, cache state, and request identifier; sqlmap is configured only in the tool branch."
+        },
+        "vulnerability": {
+          "zh": "阳性证据是成对谓词在多轮交错请求中产生显著、可重复且与数据库条件一致的响应 oracle，并可恢复一个已知合成字符。 核心判断是受控输入是否越过预期的数据绑定或查询构造边界，并由同一请求的应用与数据库证据相互印证。页面随机内容、缓存、速率限制、账号状态、单次长度差、网络抖动、错误码或 sqlmap 报 heuristic positive 但无手工真/假复现均不是盲注。",
+          "en": "Positive evidence requires paired predicates to produce a significant, repeatable response oracle across interleaved runs consistent with database conditions and recover one known synthetic character. The core decision is whether controlled input crosses the intended data-binding or query-construction boundary, corroborated by application and database evidence for the same request. Random page content, caching, rate limits, account state, one length difference, network jitter, status codes, or a sqlmap heuristic positive without manual true and false reproduction does not prove blind injection."
+        },
+        "exploitation": {
+          "zh": "交错发送 1=1/1=2 取得统计基线，只对合成值做一位二分；工具分支单独记录 sqlmap 版本、参数和完整请求。 条目中的源命令仅作为逐字节审校与路由证据保留；标记为需覆盖的行在得到安全替代、隔离环境和明确授权前不执行，也不从本教程推导新的攻击命令。",
+          "en": "Interleave 1=1 and 1=2 for a statistical baseline and bisect one character of a synthetic value only; the tool branch separately records sqlmap version, arguments, and complete request. The source command is retained only as byte-exact editorial and routing evidence. Any line flagged for override remains unexecuted until a safe substitute, an isolated environment, and explicit authorization are in place; this tutorial derives no new attack command."
+        },
+        "mitigation": {
+          "zh": "使用绑定参数、固定查询结构和统一响应，限制查询账户元数据权限，并为异常请求建立速率/复杂度控制。 修复验收必须在相同入口重放正常业务输入、阳性对照和阴性对照，核对最终语句、绑定参数、权限与副作用均回到预期边界，并确认清理完成。",
+          "en": "Use bound parameters, fixed query structure, and normalized responses, limit metadata rights for the query identity, and apply rate and complexity controls to abnormal requests. Acceptance testing replays normal business input plus positive and negative controls at the same entry point, verifies final statements, bindings, privileges, and side effects return to the intended boundary, and confirms cleanup is complete."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认布尔盲注与自动化工具拆分前提",
+            "en": "Confirm Boolean-Blind and Automation Split prerequisites"
+          },
+          "description": {
+            "zh": "针对布尔盲注输入与 sqlmap 工作流混合集先确认数据库类型、输入上下文、隔离资产、最小权限和可观测日志，未满足两项前置条件时不进入命令审查。",
+            "en": "For Mixed Boolean-Blind Inputs and sqlmap Workflow, confirm the database type, input context, isolated asset, least privilege, and observable logs; do not proceed to command review until both prerequisites hold."
+          }
+        },
+        {
+          "title": {
+            "zh": "建立布尔盲注与自动化工具拆分对照",
+            "en": "Establish Boolean-Blind and Automation Split controls"
+          },
+          "description": {
+            "zh": "为布尔盲注输入与 sqlmap 工作流混合集记录正常输入、无效输入和固定 marker 的响应、查询日志、绑定值及请求标识，先量化自然波动再判断差异。",
+            "en": "For Mixed Boolean-Blind Inputs and sqlmap Workflow, record responses, query logs, bound values, and request identifiers for normal input, invalid input, and a fixed marker, measuring natural variation before judging differences."
+          }
+        },
+        {
+          "title": {
+            "zh": "逐行审校布尔盲注与自动化工具拆分源命令",
+            "en": "Review the Boolean-Blind and Automation Split source command line by line"
+          },
+          "description": {
+            "zh": "原始首条命令在此逐字节保留，只用于证明条目来源和行路由；任何实际运行都必须遵守本条记录的隔离、marker、停止和清理条件。",
+            "en": "The original first command is retained here byte for byte only to prove provenance and line routing; any execution must obey this entry's isolation, marker, stop, and cleanup conditions."
+          },
+          "payload": "' AND 1=1-- (返回正常)\n' AND 1=2-- (返回异常)\n确认存在布尔盲注"
+        },
+        {
+          "title": {
+            "zh": "修复并回归布尔盲注与自动化工具拆分",
+            "en": "Remediate and regress Boolean-Blind and Automation Split"
+          },
+          "description": {
+            "zh": "应用布尔盲注输入与 sqlmap 工作流混合集对应修复后，重放三组对照并关联同一请求证据，确认业务结果保持正常、注入证据消失且测试状态已清理。",
+            "en": "After applying the remediation for Mixed Boolean-Blind Inputs and sqlmap Workflow, replay all three controls with correlated request evidence and confirm business behavior remains correct, injection evidence disappears, and test state is removed."
+          }
+        }
+      ],
+      "prerequisites": [
+        {
+          "zh": "同一参数的真/假条件可重复影响稳定响应特征，后端 MySQL 函数、字符集和参数上下文已确认。",
+          "en": "True and false conditions on the same parameter reproducibly affect a stable response feature, with MySQL functions, character set, and parameter context confirmed."
+        },
+        {
+          "zh": "只使用合成数据库名/marker 和统计基线，记录最终 SQL、响应特征、缓存状态与请求 ID；sqlmap 仅在工具分支配置。",
+          "en": "Only a synthetic database name or marker and statistical baselines are used, recording final SQL, response feature, cache state, and request identifier; sqlmap is configured only in the tool branch."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性证据是成对谓词在多轮交错请求中产生显著、可重复且与数据库条件一致的响应 oracle，并可恢复一个已知合成字符。 假阳性边界：页面随机内容、缓存、速率限制、账号状态、单次长度差、网络抖动、错误码或 sqlmap 报 heuristic positive 但无手工真/假复现均不是盲注。",
+        "en": "Positive evidence requires paired predicates to produce a significant, repeatable response oracle across interleaved runs consistent with database conditions and recover one known synthetic character. False-positive boundary: Random page content, caching, rate limits, account state, one length difference, network jitter, status codes, or a sqlmap heuristic positive without manual true and false reproduction does not prove blind injection."
+      },
+      "opsecTips": [
+        {
+          "zh": "布尔盲注只恢复一个合成字符并低速运行；出现真实 schema、请求量增长、锁定、WAF 封禁、缓存污染或服务压力时停止。",
+          "en": "Boolean-blind testing recovers one synthetic character at low rate only; stop on real schemas, rising request volume, lockout, WAF blocking, cache contamination, or service pressure."
+        },
+        {
+          "zh": "删除合成 marker 和 sqlmap 输出/会话，清理缓存/日志/测试 Cookie，恢复参数化查询并重放交错真/假基线。",
+          "en": "Delete synthetic markers and sqlmap output or sessions, clear caches, logs, and test cookies, restore parameterized queries, and replay interleaved true and false baselines."
+        }
+      ],
+      "references": [
+        "https://owasp.org/www-community/attacks/Blind_SQL_Injection",
+        "https://github.com/sqlmapproject/sqlmap/wiki/Usage",
+        "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "“布尔盲注输入与 sqlmap 工作流混合集”混合了前提、影响或数据库机制不同的多条路线，保留在一张卡中会模糊证据边界，因此必须按记录的行路由拆分。",
+        "issuesResolved": [
+          "rewrote-unique-bilingual-content",
+          "added-four-part-tutorial",
+          "added-four-step-evidence-chain",
+          "added-positive-and-false-positive-boundaries",
+          "added-stop-and-cleanup-guidance",
+          "preserved-source-command-byte-for-byte",
+          "flagged-source-command-for-command-override"
+        ],
+        "targetPayloadIds": [
+          "sqli-boolean-blind"
+        ],
+        "targetToolIds": [
+          "sqlmap"
+        ],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "commands 0-2 and 4-5 -> sqli-boolean-blind after removing narrative and placeholder lines",
+          "command 3 -> sqlmap"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "commands 0-2 contain Chinese instructions, ellipses, and N placeholders that are not executable SQL inputs"
+        ]
+      }
+    },
+    {
+      "id": "sqli-time-based",
+      "name": {
+        "zh": "跨 DBMS 时间盲注混合集",
+        "en": "Mixed Cross-DBMS Time-Based Injection Set"
+      },
+      "description": {
+        "zh": "混合 MySQL SLEEP/BENCHMARK、SQL Server WAITFOR、PostgreSQL pg_sleep 和 Oracle DBMS_LOCK/DBMS_PIPE，并含说明标签与不稳定延迟表达式。",
+        "en": "Combines MySQL SLEEP or BENCHMARK, SQL Server WAITFOR, PostgreSQL pg_sleep, and Oracle DBMS_LOCK or DBMS_PIPE, with labels and unstable delay expressions mixed in."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "DBMS 时间 Oracle 拆分",
+        "en": "DBMS Time-Oracle Split"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "混合 MySQL SLEEP/BENCHMARK、SQL Server WAITFOR、PostgreSQL pg_sleep 和 Oracle DBMS_LOCK/DBMS_PIPE，并含说明标签与不稳定延迟表达式。 本教程把“能被输入触达”“数据库实际解释”和“形成可复验证据”分开审查。已通过独立证据确认具体 DBMS、函数权限、参数上下文和连接超时，不能在未知后端混用函数。预先采集足够正常延迟分布，使用 0.3-1 秒隔离 canary 延迟与交错对照，不运行 CPU 密集 BENCHMARK 或大笛卡尔积。",
+          "en": "Combines MySQL SLEEP or BENCHMARK, SQL Server WAITFOR, PostgreSQL pg_sleep, and Oracle DBMS_LOCK or DBMS_PIPE, with labels and unstable delay expressions mixed in. This tutorial reviews input reachability, actual database interpretation, and reproducible evidence as separate claims. The exact DBMS, function rights, parameter context, and connection timeout are independently confirmed; functions are not mixed on an unknown backend. A sufficient normal-latency distribution is collected first, using an isolated 0.3 to 1 second canary delay with interleaved controls and no CPU-heavy BENCHMARK or large Cartesian product."
+        },
+        "vulnerability": {
+          "zh": "阳性证据是条件真时延迟在多轮交错样本中显著且接近目标时间，条件假时恢复基线，并由数据库会话等待事件/最终 SQL 佐证。 核心判断是受控输入是否越过预期的数据绑定或查询构造边界，并由同一请求的应用与数据库证据相互印证。单次 5 秒响应、网络抖动、连接池等待、限速、锁竞争、BENCHMARK CPU 抢占、GET_LOCK 未预持有、超时或不同 DBMS 函数报错均不是时间盲注。",
+          "en": "Positive evidence requires true conditions to add a significant delay near the target across interleaved samples, false conditions to return to baseline, and database wait events or final SQL to corroborate it. The core decision is whether controlled input crosses the intended data-binding or query-construction boundary, corroborated by application and database evidence for the same request. One five-second response, network jitter, pool waits, rate limiting, lock contention, BENCHMARK CPU pressure, GET_LOCK without a preheld lock, timeout, or wrong-DBMS function errors does not prove time-based injection."
+        },
+        "exploitation": {
+          "zh": "按 DBMS 路由采用短、可取消的睡眠函数，交错真/假/普通请求并记录数据库 wait event；只验证合成布尔位，不提取真实名称。 条目中的源命令仅作为逐字节审校与路由证据保留；标记为需覆盖的行在得到安全替代、隔离环境和明确授权前不执行，也不从本教程推导新的攻击命令。",
+          "en": "Use a short cancelable sleep per DBMS route, interleave true, false, and normal requests, and record database wait events; validate one synthetic Boolean bit without extracting real names. The source command is retained only as byte-exact editorial and routing evidence. Any line flagged for override remains unexecuted until a safe substitute, an isolated environment, and explicit authorization are in place; this tutorial derives no new attack command."
+        },
+        "mitigation": {
+          "zh": "参数化查询，限制数据库账户调用延迟/锁/网络 package，设置语句超时和资源治理，并统一异常响应。 修复验收必须在相同入口重放正常业务输入、阳性对照和阴性对照，核对最终语句、绑定参数、权限与副作用均回到预期边界，并确认清理完成。",
+          "en": "Parameterize queries, restrict delay, lock, and network packages for the database identity, set statement timeouts and resource governance, and normalize abnormal responses. Acceptance testing replays normal business input plus positive and negative controls at the same entry point, verifies final statements, bindings, privileges, and side effects return to the intended boundary, and confirms cleanup is complete."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认DBMS 时间 Oracle 拆分前提",
+            "en": "Confirm DBMS Time-Oracle Split prerequisites"
+          },
+          "description": {
+            "zh": "针对跨 DBMS 时间盲注混合集先确认数据库类型、输入上下文、隔离资产、最小权限和可观测日志，未满足两项前置条件时不进入命令审查。",
+            "en": "For Mixed Cross-DBMS Time-Based Injection Set, confirm the database type, input context, isolated asset, least privilege, and observable logs; do not proceed to command review until both prerequisites hold."
+          }
+        },
+        {
+          "title": {
+            "zh": "建立DBMS 时间 Oracle 拆分对照",
+            "en": "Establish DBMS Time-Oracle Split controls"
+          },
+          "description": {
+            "zh": "为跨 DBMS 时间盲注混合集记录正常输入、无效输入和固定 marker 的响应、查询日志、绑定值及请求标识，先量化自然波动再判断差异。",
+            "en": "For Mixed Cross-DBMS Time-Based Injection Set, record responses, query logs, bound values, and request identifiers for normal input, invalid input, and a fixed marker, measuring natural variation before judging differences."
+          }
+        },
+        {
+          "title": {
+            "zh": "逐行审校DBMS 时间 Oracle 拆分源命令",
+            "en": "Review the DBMS Time-Oracle Split source command line by line"
+          },
+          "description": {
+            "zh": "原始首条命令在此逐字节保留，只用于证明条目来源和行路由；任何实际运行都必须遵守本条记录的隔离、marker、停止和清理条件。",
+            "en": "The original first command is retained here byte for byte only to prove provenance and line routing; any execution must obey this entry's isolation, marker, stop, and cleanup conditions."
+          },
+          "payload": "' AND SLEEP(5)--\n' AND IF(1=1,SLEEP(5),0)--\n观察响应是否延迟5秒"
+        },
+        {
+          "title": {
+            "zh": "修复并回归DBMS 时间 Oracle 拆分",
+            "en": "Remediate and regress DBMS Time-Oracle Split"
+          },
+          "description": {
+            "zh": "应用跨 DBMS 时间盲注混合集对应修复后，重放三组对照并关联同一请求证据，确认业务结果保持正常、注入证据消失且测试状态已清理。",
+            "en": "After applying the remediation for Mixed Cross-DBMS Time-Based Injection Set, replay all three controls with correlated request evidence and confirm business behavior remains correct, injection evidence disappears, and test state is removed."
+          }
+        }
+      ],
+      "prerequisites": [
+        {
+          "zh": "已通过独立证据确认具体 DBMS、函数权限、参数上下文和连接超时，不能在未知后端混用函数。",
+          "en": "The exact DBMS, function rights, parameter context, and connection timeout are independently confirmed; functions are not mixed on an unknown backend."
+        },
+        {
+          "zh": "预先采集足够正常延迟分布，使用 0.3-1 秒隔离 canary 延迟与交错对照，不运行 CPU 密集 BENCHMARK 或大笛卡尔积。",
+          "en": "A sufficient normal-latency distribution is collected first, using an isolated 0.3 to 1 second canary delay with interleaved controls and no CPU-heavy BENCHMARK or large Cartesian product."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性证据是条件真时延迟在多轮交错样本中显著且接近目标时间，条件假时恢复基线，并由数据库会话等待事件/最终 SQL 佐证。 假阳性边界：单次 5 秒响应、网络抖动、连接池等待、限速、锁竞争、BENCHMARK CPU 抢占、GET_LOCK 未预持有、超时或不同 DBMS 函数报错均不是时间盲注。",
+        "en": "Positive evidence requires true conditions to add a significant delay near the target across interleaved samples, false conditions to return to baseline, and database wait events or final SQL to corroborate it. False-positive boundary: One five-second response, network jitter, pool waits, rate limiting, lock contention, BENCHMARK CPU pressure, GET_LOCK without a preheld lock, timeout, or wrong-DBMS function errors does not prove time-based injection."
+      },
+      "opsecTips": [
+        {
+          "zh": "时间盲注出现数据库 CPU/锁等待、连接池耗尽、超时告警、用户请求受影响、请求量上升或无法取消的 sleep 时停止。",
+          "en": "Time-based testing stops on database CPU or lock waits, pool exhaustion, timeout alerts, user impact, rising request volume, or an uncancelable sleep."
+        },
+        {
+          "zh": "取消测试会话/等待/锁，删除 marker 与采样数据，清理连接池和日志，恢复资源限制并重放延迟基线。",
+          "en": "Cancel test sessions, waits, and locks, delete markers and samples, clear connection pools and logs, restore resource limits, and replay latency baselines."
+        }
+      ],
+      "references": [
+        "https://dev.mysql.com/doc/refman/8.4/en/miscellaneous-functions.html#function_sleep",
+        "https://learn.microsoft.com/en-us/sql/t-sql/language-elements/waitfor-transact-sql",
+        "https://www.postgresql.org/docs/current/functions-datetime.html",
+        "https://docs.oracle.com/en/database/oracle/oracle-database/19/arpls/DBMS_PIPE.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "“跨 DBMS 时间盲注混合集”混合了前提、影响或数据库机制不同的多条路线，保留在一张卡中会模糊证据边界，因此必须按记录的行路由拆分。",
+        "issuesResolved": [
+          "rewrote-unique-bilingual-content",
+          "added-four-part-tutorial",
+          "added-four-step-evidence-chain",
+          "added-positive-and-false-positive-boundaries",
+          "added-stop-and-cleanup-guidance",
+          "preserved-source-command-byte-for-byte",
+          "flagged-source-command-for-command-override"
+        ],
+        "targetPayloadIds": [
+          "sqli-time-mysql",
+          "sqli-time-mssql",
+          "sqli-time-postgresql",
+          "sqli-time-oracle"
+        ],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "commands 0-2 and 4 plus command 3 line 0 and command 5 line 3 -> sqli-time-mysql",
+          "command 3 line 1 and command 5 line 1 -> sqli-time-mssql",
+          "command 3 line 2 and command 5 line 0 -> sqli-time-postgresql",
+          "command 3 line 3 and command 5 line 2 -> sqli-time-oracle after replacing labels and invalid procedure context"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "remove DBMS labels and narrative lines before execution",
+          "GET_LOCK does not delay unless another session already holds the named lock",
+          "POW(value,0) is always one and does not extract a character",
+          "DBMS_LOCK.SLEEP is a procedure and requires a valid PL/SQL context and privilege"
+        ]
+      }
+    },
+    {
+      "id": "sqli-error-based",
+      "name": {
+        "zh": "MySQL 版本相关报错回显注入",
+        "en": "Version-Specific MySQL Error-Reflection Injection"
+      },
+      "description": {
+        "zh": "覆盖 MySQL 5.7 XML 函数、重复键/RAND、数学、GIS 与 JSON 错误路径；许多函数已在 MySQL 8.x 移除或不稳定回显数据。",
+        "en": "Covers MySQL 5.7 XML functions, duplicate-key or RAND, mathematical, GIS, and JSON error paths, many of which were removed in MySQL 8.x or do not reliably reflect data."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "MySQL 错误 Oracle",
+        "en": "MySQL Error Oracle"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "覆盖 MySQL 5.7 XML 函数、重复键/RAND、数学、GIS 与 JSON 错误路径；许多函数已在 MySQL 8.x 移除或不稳定回显数据。 本教程把“能被输入触达”“数据库实际解释”和“形成可复验证据”分开审查。已确认 MySQL/MariaDB 精确版本、SQL mode、错误是否返回客户端，以及 extractvalue/updatexml/GIS/JSON 函数实际存在。只用固定 marker 字符串和合成表，保存数据库 error code/message、应用包装后的错误、最终 SQL 与请求 ID。",
+          "en": "Covers MySQL 5.7 XML functions, duplicate-key or RAND, mathematical, GIS, and JSON error paths, many of which were removed in MySQL 8.x or do not reliably reflect data. This tutorial reviews input reachability, actual database interpretation, and reproducible evidence as separate claims. The exact MySQL or MariaDB version, SQL mode, client error visibility, and availability of extractvalue, updatexml, GIS, and JSON functions are confirmed. Only fixed marker strings and a synthetic table are used, preserving database error code and message, application-wrapped error, final SQL, and request identifier."
+        },
+        "vulnerability": {
+          "zh": "阳性证据是可控子查询结果进入数据库生成的错误文本并以同一请求返回 marker，且错误函数在目标版本确实执行。 核心判断是受控输入是否越过预期的数据绑定或查询构造边界，并由同一请求的应用与数据库证据相互印证。普通语法错误、函数不存在、错误页固定模板、路径/函数名回显、应用自行拼接 marker、NTILE 正常窗口结果或其他版本 PoC 都不是报错数据回显。",
+          "en": "Positive evidence requires the controlled subquery result to enter database-generated error text and return the marker in the same request, with the error function executing on the target version. The core decision is whether controlled input crosses the intended data-binding or query-construction boundary, corroborated by application and database evidence for the same request. Ordinary syntax errors, missing functions, fixed error pages, reflected paths or function names, application-added markers, a normal NTILE window result, or proof on another version does not establish error-based reflection."
+        },
+        "exploitation": {
+          "zh": "先用常量 marker 验证目标版本可回显，再对合成表一行做最小子查询；每个函数族独立测试并记录弃用/移除状态。 条目中的源命令仅作为逐字节审校与路由证据保留；标记为需覆盖的行在得到安全替代、隔离环境和明确授权前不执行，也不从本教程推导新的攻击命令。",
+          "en": "First verify marker reflection for the target version, then use one minimal subquery against a synthetic row; test each function family independently and record deprecation or removal state. The source command is retained only as byte-exact editorial and routing evidence. Any line flagged for override remains unexecuted until a safe substitute, an isolated environment, and explicit authorization are in place; this tutorial derives no new attack command."
+        },
+        "mitigation": {
+          "zh": "参数化查询、生产关闭详细数据库错误、统一异常映射，应用账户限制 information_schema/业务敏感列并升级移除旧危险路径。 修复验收必须在相同入口重放正常业务输入、阳性对照和阴性对照，核对最终语句、绑定参数、权限与副作用均回到预期边界，并确认清理完成。",
+          "en": "Parameterize queries, suppress detailed database errors in production, normalize exception mapping, limit information_schema and sensitive-column access, and upgrade away from legacy error paths. Acceptance testing replays normal business input plus positive and negative controls at the same entry point, verifies final statements, bindings, privileges, and side effects return to the intended boundary, and confirms cleanup is complete."
+        },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认MySQL 错误 Oracle前提",
+            "en": "Confirm MySQL Error Oracle prerequisites"
+          },
+          "description": {
+            "zh": "针对MySQL 版本相关报错回显注入先确认数据库类型、输入上下文、隔离资产、最小权限和可观测日志，未满足两项前置条件时不进入命令审查。",
+            "en": "For Version-Specific MySQL Error-Reflection Injection, confirm the database type, input context, isolated asset, least privilege, and observable logs; do not proceed to command review until both prerequisites hold."
+          }
+        },
+        {
+          "title": {
+            "zh": "建立MySQL 错误 Oracle对照",
+            "en": "Establish MySQL Error Oracle controls"
+          },
+          "description": {
+            "zh": "为MySQL 版本相关报错回显注入记录正常输入、无效输入和固定 marker 的响应、查询日志、绑定值及请求标识，先量化自然波动再判断差异。",
+            "en": "For Version-Specific MySQL Error-Reflection Injection, record responses, query logs, bound values, and request identifiers for normal input, invalid input, and a fixed marker, measuring natural variation before judging differences."
+          }
+        },
+        {
+          "title": {
+            "zh": "逐行审校MySQL 错误 Oracle源命令",
+            "en": "Review the MySQL Error Oracle source command line by line"
+          },
+          "description": {
+            "zh": "原始首条命令在此逐字节保留，只用于证明条目来源和行路由；任何实际运行都必须遵守本条记录的隔离、marker、停止和清理条件。",
+            "en": "The original first command is retained here byte for byte only to prove provenance and line routing; any execution must obey this entry's isolation, marker, stop, and cleanup conditions."
+          },
+          "payload": "' AND extractvalue(1,concat(0x7e,version()))--\n' AND updatexml(1,concat(0x7e,version()),1)--"
+        },
+        {
+          "title": {
+            "zh": "修复并回归MySQL 错误 Oracle",
+            "en": "Remediate and regress MySQL Error Oracle"
+          },
+          "description": {
+            "zh": "应用MySQL 版本相关报错回显注入对应修复后，重放三组对照并关联同一请求证据，确认业务结果保持正常、注入证据消失且测试状态已清理。",
+            "en": "After applying the remediation for Version-Specific MySQL Error-Reflection Injection, replay all three controls with correlated request evidence and confirm business behavior remains correct, injection evidence disappears, and test state is removed."
+          }
+        }
+      ],
+      "prerequisites": [
+        {
+          "zh": "已确认 MySQL/MariaDB 精确版本、SQL mode、错误是否返回客户端，以及 extractvalue/updatexml/GIS/JSON 函数实际存在。",
+          "en": "The exact MySQL or MariaDB version, SQL mode, client error visibility, and availability of extractvalue, updatexml, GIS, and JSON functions are confirmed."
+        },
+        {
+          "zh": "只用固定 marker 字符串和合成表，保存数据库 error code/message、应用包装后的错误、最终 SQL 与请求 ID。",
+          "en": "Only fixed marker strings and a synthetic table are used, preserving database error code and message, application-wrapped error, final SQL, and request identifier."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性证据是可控子查询结果进入数据库生成的错误文本并以同一请求返回 marker，且错误函数在目标版本确实执行。 假阳性边界：普通语法错误、函数不存在、错误页固定模板、路径/函数名回显、应用自行拼接 marker、NTILE 正常窗口结果或其他版本 PoC 都不是报错数据回显。",
+        "en": "Positive evidence requires the controlled subquery result to enter database-generated error text and return the marker in the same request, with the error function executing on the target version. False-positive boundary: Ordinary syntax errors, missing functions, fixed error pages, reflected paths or function names, application-added markers, a normal NTILE window result, or proof on another version does not establish error-based reflection."
+      },
+      "opsecTips": [
+        {
+          "zh": "报错注入仅触发少量 marker 错误；出现日志洪泛、监控告警、真实数据、CPU/内存异常、事务回滚或服务降级时停止。",
+          "en": "Error-based testing triggers a small number of marker errors only; stop on log flooding, monitoring alerts, real data, CPU or memory anomalies, transaction rollback, or service degradation."
+        },
+        {
+          "zh": "删除合成表/marker 和错误响应副本，清理应用/数据库错误日志与告警队列，恢复参数化和统一错误处理。",
+          "en": "Delete synthetic tables, markers, and error-response copies, clear application and database error logs plus alert queues, and restore parameterization and normalized errors."
+        }
+      ],
+      "references": [
+        "https://dev.mysql.com/doc/refman/5.7/en/xml-functions.html",
+        "https://dev.mysql.com/doc/refman/8.4/en/error-handling.html",
+        "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "payload",
+        "rationale": "“MySQL 版本相关报错回显注入”具有单一验证边界，可保留为独立载荷卡；审校重点是证据闭环、假阳性排除和安全停止条件。",
+        "issuesResolved": [
+          "rewrote-unique-bilingual-content",
+          "added-four-part-tutorial",
+          "added-four-step-evidence-chain",
+          "added-positive-and-false-positive-boundaries",
+          "added-stop-and-cleanup-guidance",
+          "preserved-source-command-byte-for-byte",
+          "flagged-source-command-for-command-override"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "extractvalue and updatexml are legacy MySQL 5.7 techniques and are unavailable in current MySQL 8.x",
+          "the NTILE command is not a reliable error-reflection primitive and should be retired or replaced",
+          "GIS and JSON error content varies by exact server version and must not be advertised generically"
+        ]
+      }
+    },
+    {
+      "id": "sqli-second-order",
+      "name": {
+        "zh": "二阶 SQL 存储到后续查询注入",
+        "en": "Second-Order SQL Storage-to-Later-Query Injection"
+      },
+      "description": {
+        "zh": "验证首次写入时作为数据保存的值，是否在登录、密码修改、重置、评论后台等后续路径被当作可信 SQL 重新拼接。",
+        "en": "Tests whether a value stored as data during an initial write is later treated as trusted SQL and concatenated in login, password change, reset, or administrative-comment flows."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "二阶存储型 SQL 注入",
+        "en": "Second-Order Stored SQL Injection"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "验证首次写入时作为数据保存的值，是否在登录、密码修改、重置、评论后台等后续路径被当作可信 SQL 重新拼接。 本教程把“能被输入触达”“数据库实际解释”和“形成可复验证据”分开审查。已定位首次参数化写入与后续动态 SQL sink 的两个独立代码路径，能用唯一 token 关联存储记录、任务/会话和最终 SQL。隔离事务只使用合成用户/评论和 marker 行，后续动作只读或可回滚，不触发真实密码重置、管理员数据或通知。",
+          "en": "Tests whether a value stored as data during an initial write is later treated as trusted SQL and concatenated in login, password change, reset, or administrative-comment flows. This tutorial reviews input reachability, actual database interpretation, and reproducible evidence as separate claims. The initial parameterized write and later dynamic-SQL sink are located as separate code paths, with a unique token correlating stored record, job or session, and final SQL. An isolated transaction uses synthetic users or comments and marker rows only, with later actions read-only or reversible and no real password reset, administrator data, or notification."
+        },
+        "vulnerability": {
+          "zh": "阳性证据是同一存储 token 在后续路径脱离绑定参数、改变最终 SQL AST 并访问/影响专用 marker；首次写入与二次执行连续。 核心判断是受控输入是否越过预期的数据绑定或查询构造边界，并由同一请求的应用与数据库证据相互印证。首次保存成功、立即请求可注入、后续普通错误、字符串出现在日志、手工复制到 SQL 控制台、全角引号未标准化或 CONCAT 文本仍作为用户名均不是二阶执行。",
+          "en": "Positive evidence requires the same stored token to leave parameter binding in a later path, alter the final SQL AST, and access or affect a dedicated marker, continuously linking initial write and second execution. The core decision is whether controlled input crosses the intended data-binding or query-construction boundary, corroborated by application and database evidence for the same request. Successful storage, immediate injection, a later ordinary error, strings in logs, manual SQL-console copying, unnormalized full-width quotes, or literal CONCAT text remaining a username does not prove second-order execution."
+        },
+        "exploitation": {
+          "zh": "用短 token 写入合成记录，完成真实后续业务动作并捕获最终 SQL；只验证 marker 选择/条件变化，不运行源凭据提取、重置或管理员评论命令。 条目中的源命令仅作为逐字节审校与路由证据保留；标记为需覆盖的行在得到安全替代、隔离环境和明确授权前不执行，也不从本教程推导新的攻击命令。",
+          "en": "Store a short token in a synthetic record, execute the real later business action, and capture final SQL; validate marker selection or predicate change only and do not run source credential extraction, reset, or administrator-comment commands. The source command is retained only as byte-exact editorial and routing evidence. Any line flagged for override remains unexecuted until a safe substitute, an isolated environment, and explicit authorization are in place; this tutorial derives no new attack command."
+        },
+        "mitigation": {
+          "zh": "所有后续查询仍使用绑定参数，存储值不得成为 SQL 片段；动态标识符映射固定值，并对跨任务/后台流程做同等代码审计。 修复验收必须在相同入口重放正常业务输入、阳性对照和阴性对照，核对最终语句、绑定参数、权限与副作用均回到预期边界，并确认清理完成。",
+          "en": "Keep every later query parameterized and never treat stored values as SQL fragments, map dynamic identifiers to fixed values, and audit background and cross-job flows equally. Acceptance testing replays normal business input plus positive and negative controls at the same entry point, verifies final statements, bindings, privileges, and side effects return to the intended boundary, and confirms cleanup is complete."
+        },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认二阶存储型 SQL 注入前提",
+            "en": "Confirm Second-Order Stored SQL Injection prerequisites"
+          },
+          "description": {
+            "zh": "针对二阶 SQL 存储到后续查询注入先确认数据库类型、输入上下文、隔离资产、最小权限和可观测日志，未满足两项前置条件时不进入命令审查。",
+            "en": "For Second-Order SQL Storage-to-Later-Query Injection, confirm the database type, input context, isolated asset, least privilege, and observable logs; do not proceed to command review until both prerequisites hold."
+          }
+        },
+        {
+          "title": {
+            "zh": "建立二阶存储型 SQL 注入对照",
+            "en": "Establish Second-Order Stored SQL Injection controls"
+          },
+          "description": {
+            "zh": "为二阶 SQL 存储到后续查询注入记录正常输入、无效输入和固定 marker 的响应、查询日志、绑定值及请求标识，先量化自然波动再判断差异。",
+            "en": "For Second-Order SQL Storage-to-Later-Query Injection, record responses, query logs, bound values, and request identifiers for normal input, invalid input, and a fixed marker, measuring natural variation before judging differences."
+          }
+        },
+        {
+          "title": {
+            "zh": "逐行审校二阶存储型 SQL 注入源命令",
+            "en": "Review the Second-Order Stored SQL Injection source command line by line"
+          },
+          "description": {
+            "zh": "原始首条命令在此逐字节保留，只用于证明条目来源和行路由；任何实际运行都必须遵守本条记录的隔离、marker、停止和清理条件。",
+            "en": "The original first command is retained here byte for byte only to prove provenance and line routing; any execution must obey this entry's isolation, marker, stop, and cleanup conditions."
+          },
+          "payload": "注册用户名: admin'--\n或: admin' OR '1'='1\n登录后查看是否影响其他功能"
+        },
+        {
+          "title": {
+            "zh": "修复并回归二阶存储型 SQL 注入",
+            "en": "Remediate and regress Second-Order Stored SQL Injection"
+          },
+          "description": {
+            "zh": "应用二阶 SQL 存储到后续查询注入对应修复后，重放三组对照并关联同一请求证据，确认业务结果保持正常、注入证据消失且测试状态已清理。",
+            "en": "After applying the remediation for Second-Order SQL Storage-to-Later-Query Injection, replay all three controls with correlated request evidence and confirm business behavior remains correct, injection evidence disappears, and test state is removed."
+          }
+        }
+      ],
+      "prerequisites": [
+        {
+          "zh": "已定位首次参数化写入与后续动态 SQL sink 的两个独立代码路径，能用唯一 token 关联存储记录、任务/会话和最终 SQL。",
+          "en": "The initial parameterized write and later dynamic-SQL sink are located as separate code paths, with a unique token correlating stored record, job or session, and final SQL."
+        },
+        {
+          "zh": "隔离事务只使用合成用户/评论和 marker 行，后续动作只读或可回滚，不触发真实密码重置、管理员数据或通知。",
+          "en": "An isolated transaction uses synthetic users or comments and marker rows only, with later actions read-only or reversible and no real password reset, administrator data, or notification."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性证据是同一存储 token 在后续路径脱离绑定参数、改变最终 SQL AST 并访问/影响专用 marker；首次写入与二次执行连续。 假阳性边界：首次保存成功、立即请求可注入、后续普通错误、字符串出现在日志、手工复制到 SQL 控制台、全角引号未标准化或 CONCAT 文本仍作为用户名均不是二阶执行。",
+        "en": "Positive evidence requires the same stored token to leave parameter binding in a later path, alter the final SQL AST, and access or affect a dedicated marker, continuously linking initial write and second execution. False-positive boundary: Successful storage, immediate injection, a later ordinary error, strings in logs, manual SQL-console copying, unnormalized full-width quotes, or literal CONCAT text remaining a username does not prove second-order execution."
+      },
+      "opsecTips": [
+        {
+          "zh": "二阶 SQL 测试出现真实账户、密码/重置、管理员操作、写入多行、锁等待、通知发送或生产数据时立即停止。",
+          "en": "Second-order SQL testing stops immediately on real accounts, passwords or resets, administrator actions, multirow writes, lock waits, notifications, or production data."
+        },
+        {
+          "zh": "回滚/删除合成记录、marker 和任务副本，清理队列/缓存/日志/测试会话，恢复后续参数化后完整回归两阶段流程。",
+          "en": "Roll back or delete synthetic records, markers, and job copies, clear queues, caches, logs, and test sessions, restore later parameterization, and regress the full two-stage flow."
+        }
+      ],
+      "references": [
+        "https://owasp.org/www-community/attacks/SQL_Injection",
+        "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html",
+        "https://cwe.mitre.org/data/definitions/89.html"
+      ],
+      "review": {
+        "decision": "payload",
+        "rationale": "“二阶 SQL 存储到后续查询注入”具有单一验证边界，可保留为独立载荷卡；审校重点是证据闭环、假阳性排除和安全停止条件。",
+        "issuesResolved": [
+          "rewrote-unique-bilingual-content",
+          "added-four-part-tutorial",
+          "added-four-step-evidence-chain",
+          "added-positive-and-false-positive-boundaries",
+          "added-stop-and-cleanup-guidance",
+          "preserved-source-command-byte-for-byte",
+          "flagged-source-command-for-command-override"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "source command blocks contain narrative workflow text rather than copyable input-only payloads",
+          "CONCAT(...) submitted as a username is normally stored literally unless an independent decoder exists",
+          "full-width quote normalization to ASCII is not standard database behavior and requires a proven application normalization step"
+        ]
+      }
+    },
+    {
+      "id": "sqli-union",
+      "name": {
+        "zh": "UNION 查询与 HTTP 分块载体混合集",
+        "en": "Mixed UNION Query and HTTP Chunked-Carrier Set"
+      },
+      "description": {
+        "zh": "主体是 MySQL UNION 列数/显示列/元数据与注释编码变体，但最后命令块混入不完整 chunked HTTP 载体，需与 SQL 语义分开。",
+        "en": "Primarily contains MySQL UNION column-count, reflected-column, metadata, and comment-encoding variants, but the final block mixes in an incomplete chunked HTTP carrier that must be separated from SQL semantics."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "UNION SQL 与传输载体拆分",
+        "en": "UNION SQL and Transport-Carrier Split"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "主体是 MySQL UNION 列数/显示列/元数据与注释编码变体，但最后命令块混入不完整 chunked HTTP 载体，需与 SQL 语义分开。 本教程把“能被输入触达”“数据库实际解释”和“形成可复验证据”分开审查。SQL 分支已确认 MySQL 参数上下文、列数/类型和注释语义；传输分支有隔离代理链可捕获重组后的参数字节。UNION 只读合成 marker 表，HTTP 分块只承载无害 id=marker 并使用完整合法请求，不访问生产数据。",
+          "en": "Primarily contains MySQL UNION column-count, reflected-column, metadata, and comment-encoding variants, but the final block mixes in an incomplete chunked HTTP carrier that must be separated from SQL semantics. This tutorial reviews input reachability, actual database interpretation, and reproducible evidence as separate claims. The SQL branch has confirmed MySQL parameter context, column types, and comment semantics, while the transport branch has an isolated proxy chain that captures reassembled parameter bytes. UNION reads a synthetic marker table only, while HTTP chunking carries harmless id=marker in a complete valid request without production data."
+        },
+        "vulnerability": {
+          "zh": "SQL 分支需列类型对齐后返回 marker；传输分支需证明前端重组字节与后端参数值差异并使已确认 SQL sink 收到 marker，两个阶段独立。 核心判断是受控输入是否越过预期的数据绑定或查询构造边界，并由同一请求的应用与数据库证据相互印证。ORDER BY 报错、中文说明、UNION 字符串回显、NUL 被拒绝、chunked 请求 400/连接关闭、代理正常重组或 group_concat 在控制台有效均不是完整注入。",
+          "en": "The SQL branch needs a marker returned after column and type alignment, while the transport branch must prove frontend reassembly and backend parameter differences that deliver a marker to a confirmed SQL sink; stages are independent. The core decision is whether controlled input crosses the intended data-binding or query-construction boundary, corroborated by application and database evidence for the same request. ORDER BY errors, narrative text, reflected UNION strings, rejected NUL, HTTP 400 or connection closure for chunking, normal proxy reassembly, or console group_concat success does not prove the complete injection."
+        },
+        "exploitation": {
+          "zh": "SQL 路由逐步 NULL 对齐并只读 marker；chunked 路由先用非 SQL marker 验证传输，再连接 SQL sink，不执行源不完整请求。 条目中的源命令仅作为逐字节审校与路由证据保留；标记为需覆盖的行在得到安全替代、隔离环境和明确授权前不执行，也不从本教程推导新的攻击命令。",
+          "en": "The SQL route aligns NULL columns and reads a marker only; the chunked route validates transport first with a non-SQL marker before connecting to the SQL sink and does not execute the incomplete source request. The source command is retained only as byte-exact editorial and routing evidence. Any line flagged for override remains unexecuted until a safe substitute, an isolated environment, and explicit authorization are in place; this tutorial derives no new attack command."
+        },
+        "mitigation": {
+          "zh": "参数化查询、固定列/标识符映射，代理统一 HTTP/1 分帧并拒绝歧义请求、NUL 和重复解码，后端不信任载体形式。 修复验收必须在相同入口重放正常业务输入、阳性对照和阴性对照，核对最终语句、绑定参数、权限与副作用均回到预期边界，并确认清理完成。",
+          "en": "Parameterize queries, map columns and identifiers to fixed choices, normalize HTTP/1 framing at the proxy and reject ambiguous requests, NULs, and duplicate decoding, and never trust carrier shape at the backend. Acceptance testing replays normal business input plus positive and negative controls at the same entry point, verifies final statements, bindings, privileges, and side effects return to the intended boundary, and confirms cleanup is complete."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认UNION SQL 与传输载体拆分前提",
+            "en": "Confirm UNION SQL and Transport-Carrier Split prerequisites"
+          },
+          "description": {
+            "zh": "针对UNION 查询与 HTTP 分块载体混合集先确认数据库类型、输入上下文、隔离资产、最小权限和可观测日志，未满足两项前置条件时不进入命令审查。",
+            "en": "For Mixed UNION Query and HTTP Chunked-Carrier Set, confirm the database type, input context, isolated asset, least privilege, and observable logs; do not proceed to command review until both prerequisites hold."
+          }
+        },
+        {
+          "title": {
+            "zh": "建立UNION SQL 与传输载体拆分对照",
+            "en": "Establish UNION SQL and Transport-Carrier Split controls"
+          },
+          "description": {
+            "zh": "为UNION 查询与 HTTP 分块载体混合集记录正常输入、无效输入和固定 marker 的响应、查询日志、绑定值及请求标识，先量化自然波动再判断差异。",
+            "en": "For Mixed UNION Query and HTTP Chunked-Carrier Set, record responses, query logs, bound values, and request identifiers for normal input, invalid input, and a fixed marker, measuring natural variation before judging differences."
+          }
+        },
+        {
+          "title": {
+            "zh": "逐行审校UNION SQL 与传输载体拆分源命令",
+            "en": "Review the UNION SQL and Transport-Carrier Split source command line by line"
+          },
+          "description": {
+            "zh": "原始首条命令在此逐字节保留，只用于证明条目来源和行路由；任何实际运行都必须遵守本条记录的隔离、marker、停止和清理条件。",
+            "en": "The original first command is retained here byte for byte only to prove provenance and line routing; any execution must obey this entry's isolation, marker, stop, and cleanup conditions."
+          },
+          "payload": "' ORDER BY 1--\n' ORDER BY 2--\n' ORDER BY 3--\n直到报错\n或:\n' UNION SELECT NULL--\n' UNION SELECT NULL,NULL--\n' UNION SELECT NULL,NULL,NULL--"
+        },
+        {
+          "title": {
+            "zh": "修复并回归UNION SQL 与传输载体拆分",
+            "en": "Remediate and regress UNION SQL and Transport-Carrier Split"
+          },
+          "description": {
+            "zh": "应用UNION 查询与 HTTP 分块载体混合集对应修复后，重放三组对照并关联同一请求证据，确认业务结果保持正常、注入证据消失且测试状态已清理。",
+            "en": "After applying the remediation for Mixed UNION Query and HTTP Chunked-Carrier Set, replay all three controls with correlated request evidence and confirm business behavior remains correct, injection evidence disappears, and test state is removed."
+          }
+        }
+      ],
+      "prerequisites": [
+        {
+          "zh": "SQL 分支已确认 MySQL 参数上下文、列数/类型和注释语义；传输分支有隔离代理链可捕获重组后的参数字节。",
+          "en": "The SQL branch has confirmed MySQL parameter context, column types, and comment semantics, while the transport branch has an isolated proxy chain that captures reassembled parameter bytes."
+        },
+        {
+          "zh": "UNION 只读合成 marker 表，HTTP 分块只承载无害 id=marker 并使用完整合法请求，不访问生产数据。",
+          "en": "UNION reads a synthetic marker table only, while HTTP chunking carries harmless id=marker in a complete valid request without production data."
+        }
+      ],
+      "analysis": {
+        "zh": "SQL 分支需列类型对齐后返回 marker；传输分支需证明前端重组字节与后端参数值差异并使已确认 SQL sink 收到 marker，两个阶段独立。 假阳性边界：ORDER BY 报错、中文说明、UNION 字符串回显、NUL 被拒绝、chunked 请求 400/连接关闭、代理正常重组或 group_concat 在控制台有效均不是完整注入。",
+        "en": "The SQL branch needs a marker returned after column and type alignment, while the transport branch must prove frontend reassembly and backend parameter differences that deliver a marker to a confirmed SQL sink; stages are independent. False-positive boundary: ORDER BY errors, narrative text, reflected UNION strings, rejected NUL, HTTP 400 or connection closure for chunking, normal proxy reassembly, or console group_concat success does not prove the complete injection."
+      },
+      "opsecTips": [
+        {
+          "zh": "UNION/分块测试出现生产行、跨连接错位、缓存污染、真实用户请求、连接池异常或查询负载时停止。",
+          "en": "UNION or chunked testing stops on production rows, cross-connection desynchronization, cache contamination, real-user requests, pool anomalies, or query load."
+        },
+        {
+          "zh": "删除合成表/marker 和抓包，排空测试连接/代理缓存，清理查询日志与会话，恢复参数化和严格分帧后回归。",
+          "en": "Delete synthetic tables, markers, and captures, drain test connections and proxy caches, clear query logs and sessions, restore parameterization and strict framing, and regress."
+        }
+      ],
+      "references": [
+        "https://dev.mysql.com/doc/refman/8.4/en/union.html",
+        "https://dev.mysql.com/doc/refman/8.4/en/comments.html",
+        "https://datatracker.ietf.org/doc/html/rfc9112"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "“UNION 查询与 HTTP 分块载体混合集”混合了前提、影响或数据库机制不同的多条路线，保留在一张卡中会模糊证据边界，因此必须按记录的行路由拆分。",
+        "issuesResolved": [
+          "rewrote-unique-bilingual-content",
+          "added-four-part-tutorial",
+          "added-four-step-evidence-chain",
+          "added-positive-and-false-positive-boundaries",
+          "added-stop-and-cleanup-guidance",
+          "preserved-source-command-byte-for-byte",
+          "flagged-source-command-for-command-override"
+        ],
+        "targetPayloadIds": [
+          "sqli-union-query",
+          "sqli-http-chunked-carrier"
+        ],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "commands 0-4 -> sqli-union-query after removing narrative lines",
+          "command 5 lines 0-1 and 12 -> sqli-union-query",
+          "command 5 lines 2-11 -> sqli-http-chunked-carrier after replacement with a complete valid HTTP request"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "commands 0-1 contain Chinese narrative lines",
+          "command 5 contains an incomplete chunked body rather than a complete HTTP request",
+          "UNION%00SELECT is generally invalid unless a proven upstream layer strips NUL"
+        ]
+      }
+    },
+    {
+      "id": "sqli-stacked",
+      "name": {
+        "zh": "跨 DBMS 堆叠语句混合集",
+        "en": "Mixed Cross-DBMS Stacked-Statement Set"
+      },
+      "description": {
+        "zh": "混合 MySQL 多语句/PREPARE、SQL Server WAITFOR/xp_cmdshell、PostgreSQL COPY/pg_read_file/DO/dblink，以及破坏性 DML，运行时与风险不同。",
+        "en": "Combines MySQL multi-statements and PREPARE, SQL Server WAITFOR and xp_cmdshell, PostgreSQL COPY, pg_read_file, DO, and dblink, plus destructive DML, with different runtimes and risks."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "DBMS 堆叠语句拆分",
+        "en": "DBMS Stacked-Statement Split"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "混合 MySQL 多语句/PREPARE、SQL Server WAITFOR/xp_cmdshell、PostgreSQL COPY/pg_read_file/DO/dblink，以及破坏性 DML，运行时与风险不同。 本教程把“能被输入触达”“数据库实际解释”和“形成可复验证据”分开审查。已确认具体 DBMS 与驱动是否允许多语句/批次，参数位置能够结束当前语句，事务和权限边界可观察。每个 DBMS 使用独立隔离 schema 和可回滚 marker 语句，禁止源 DROP、密码修改、xp_cmdshell、文件读取和 dblink 外连。",
+          "en": "Combines MySQL multi-statements and PREPARE, SQL Server WAITFOR and xp_cmdshell, PostgreSQL COPY, pg_read_file, DO, and dblink, plus destructive DML, with different runtimes and risks. This tutorial reviews input reachability, actual database interpretation, and reproducible evidence as separate claims. The exact DBMS and driver support for multi-statements or batches are confirmed, the parameter can terminate the current statement, and transaction and privilege boundaries are observable. Each DBMS uses its own isolated schema and reversible marker statement, excluding source DROP, password changes, xp_cmdshell, file reads, and dblink egress."
+        },
+        "vulnerability": {
+          "zh": "阳性证据是应用输入终止原语句并让同一数据库会话执行第二个 marker 语句，事务/审计显示批次边界和 marker 结果；DBMS 分支不得混用。 核心判断是受控输入是否越过预期的数据绑定或查询构造边界，并由同一请求的应用与数据库证据相互印证。分号被接受、第二语句在数据库控制台可运行、驱动禁止 multiStatements、语法/权限错误、只执行第一语句、延迟来自锁或命令文本回显均不是堆叠执行。",
+          "en": "Positive evidence requires application input to terminate the original statement and execute a second marker statement in the same database session, with transaction or audit showing batch boundaries and marker results; DBMS branches cannot be mixed. The core decision is whether controlled input crosses the intended data-binding or query-construction boundary, corroborated by application and database evidence for the same request. An accepted semicolon, a second statement working in a console, driver-disabled multi-statements, syntax or permission errors, execution of only the first statement, lock delays, or reflected command text does not prove stacked execution."
+        },
+        "exploitation": {
+          "zh": "按 DBMS 仅堆叠 `SELECT marker` 或事务内临时表 canary，捕获同一连接的两个语句；高影响源命令只审计不执行。 条目中的源命令仅作为逐字节审校与路由证据保留；标记为需覆盖的行在得到安全替代、隔离环境和明确授权前不执行，也不从本教程推导新的攻击命令。",
+          "en": "Per DBMS, stack only SELECT marker or a transactional temporary-table canary and capture both statements on the same connection; high-impact source commands are audit-only. The source command is retained only as byte-exact editorial and routing evidence. Any line flagged for override remains unexecuted until a safe substitute, an isolated environment, and explicit authorization are in place; this tutorial derives no new attack command."
+        },
+        "mitigation": {
+          "zh": "绑定参数并禁用驱动多语句，应用账户最小权限，分离管理连接，设置语句/事务超时并阻断危险 package/过程。 修复验收必须在相同入口重放正常业务输入、阳性对照和阴性对照，核对最终语句、绑定参数、权限与副作用均回到预期边界，并确认清理完成。",
+          "en": "Bind parameters and disable driver multi-statements, apply least privilege, separate administrative connections, set statement and transaction timeouts, and block dangerous packages or procedures. Acceptance testing replays normal business input plus positive and negative controls at the same entry point, verifies final statements, bindings, privileges, and side effects return to the intended boundary, and confirms cleanup is complete."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认DBMS 堆叠语句拆分前提",
+            "en": "Confirm DBMS Stacked-Statement Split prerequisites"
+          },
+          "description": {
+            "zh": "针对跨 DBMS 堆叠语句混合集先确认数据库类型、输入上下文、隔离资产、最小权限和可观测日志，未满足两项前置条件时不进入命令审查。",
+            "en": "For Mixed Cross-DBMS Stacked-Statement Set, confirm the database type, input context, isolated asset, least privilege, and observable logs; do not proceed to command review until both prerequisites hold."
+          }
+        },
+        {
+          "title": {
+            "zh": "建立DBMS 堆叠语句拆分对照",
+            "en": "Establish DBMS Stacked-Statement Split controls"
+          },
+          "description": {
+            "zh": "为跨 DBMS 堆叠语句混合集记录正常输入、无效输入和固定 marker 的响应、查询日志、绑定值及请求标识，先量化自然波动再判断差异。",
+            "en": "For Mixed Cross-DBMS Stacked-Statement Set, record responses, query logs, bound values, and request identifiers for normal input, invalid input, and a fixed marker, measuring natural variation before judging differences."
+          }
+        },
+        {
+          "title": {
+            "zh": "逐行审校DBMS 堆叠语句拆分源命令",
+            "en": "Review the DBMS Stacked-Statement Split source command line by line"
+          },
+          "description": {
+            "zh": "原始首条命令在此逐字节保留，只用于证明条目来源和行路由；任何实际运行都必须遵守本条记录的隔离、marker、停止和清理条件。",
+            "en": "The original first command is retained here byte for byte only to prove provenance and line routing; any execution must obey this entry's isolation, marker, stop, and cleanup conditions."
+          },
+          "payload": "'; SELECT SLEEP(5)--\n'; SELECT 1--\n'; WAITFOR DELAY '0:0:5'--"
+        },
+        {
+          "title": {
+            "zh": "修复并回归DBMS 堆叠语句拆分",
+            "en": "Remediate and regress DBMS Stacked-Statement Split"
+          },
+          "description": {
+            "zh": "应用跨 DBMS 堆叠语句混合集对应修复后，重放三组对照并关联同一请求证据，确认业务结果保持正常、注入证据消失且测试状态已清理。",
+            "en": "After applying the remediation for Mixed Cross-DBMS Stacked-Statement Set, replay all three controls with correlated request evidence and confirm business behavior remains correct, injection evidence disappears, and test state is removed."
+          }
+        }
+      ],
+      "prerequisites": [
+        {
+          "zh": "已确认具体 DBMS 与驱动是否允许多语句/批次，参数位置能够结束当前语句，事务和权限边界可观察。",
+          "en": "The exact DBMS and driver support for multi-statements or batches are confirmed, the parameter can terminate the current statement, and transaction and privilege boundaries are observable."
+        },
+        {
+          "zh": "每个 DBMS 使用独立隔离 schema 和可回滚 marker 语句，禁止源 DROP、密码修改、xp_cmdshell、文件读取和 dblink 外连。",
+          "en": "Each DBMS uses its own isolated schema and reversible marker statement, excluding source DROP, password changes, xp_cmdshell, file reads, and dblink egress."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性证据是应用输入终止原语句并让同一数据库会话执行第二个 marker 语句，事务/审计显示批次边界和 marker 结果；DBMS 分支不得混用。 假阳性边界：分号被接受、第二语句在数据库控制台可运行、驱动禁止 multiStatements、语法/权限错误、只执行第一语句、延迟来自锁或命令文本回显均不是堆叠执行。",
+        "en": "Positive evidence requires application input to terminate the original statement and execute a second marker statement in the same database session, with transaction or audit showing batch boundaries and marker results; DBMS branches cannot be mixed. False-positive boundary: An accepted semicolon, a second statement working in a console, driver-disabled multi-statements, syntax or permission errors, execution of only the first statement, lock delays, or reflected command text does not prove stacked execution."
+      },
+      "opsecTips": [
+        {
+          "zh": "堆叠测试出现 INSERT/UPDATE/DROP、真实表、进程/文件/网络动作、长事务、锁、跨连接影响或服务压力时立即停止。",
+          "en": "Stacked testing stops immediately on INSERT, UPDATE, DROP, real tables, process, file, or network actions, long transactions, locks, cross-connection impact, or service pressure."
+        },
+        {
+          "zh": "回滚测试事务，删除临时表/marker/会话，取消等待与连接，清理审计/计划缓存，恢复 multiStatements 禁用和参数化。",
+          "en": "Roll back test transactions, delete temporary tables, markers, and sessions, cancel waits and connections, clear audit and plan caches, and restore disabled multi-statements and parameterization."
+        }
+      ],
+      "references": [
+        "https://dev.mysql.com/doc/refman/8.4/en/sql-prepared-statements.html",
+        "https://learn.microsoft.com/en-us/sql/t-sql/language-elements/sql-server-utilities-statements-go",
+        "https://www.postgresql.org/docs/current/sql-do.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "“跨 DBMS 堆叠语句混合集”混合了前提、影响或数据库机制不同的多条路线，保留在一张卡中会模糊证据边界，因此必须按记录的行路由拆分。",
+        "issuesResolved": [
+          "rewrote-unique-bilingual-content",
+          "added-four-part-tutorial",
+          "added-four-step-evidence-chain",
+          "added-positive-and-false-positive-boundaries",
+          "added-stop-and-cleanup-guidance",
+          "preserved-source-command-byte-for-byte",
+          "flagged-source-command-for-command-override"
+        ],
+        "targetPayloadIds": [
+          "sqli-stacked-mysql",
+          "sqli-stacked-mssql",
+          "sqli-stacked-postgresql",
+          "sqli-stacked-destructive-dml"
+        ],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "command 0 lines 0-1 and command 4 -> sqli-stacked-mysql",
+          "command 0 line 2, command 2, and command 5 lines 0-1 -> sqli-stacked-mssql",
+          "command 3 and command 5 lines 2-3 -> sqli-stacked-postgresql",
+          "command 1 -> sqli-stacked-destructive-dml but replace all source DML with a transactional marker"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "command 1 is destructive and must be replaced by reversible marker DML",
+          "command 5 line 0 EXEC('whoami') attempts to execute whoami as T-SQL, not as an OS command, and is invalid for the stated purpose",
+          "all xp_cmdshell, file-read, and dblink destinations require safe replacements"
+        ]
+      }
+    },
+    {
+      "id": "sqli-waf-bypass",
+      "name": {
+        "zh": "SQL 表达式与 HTTP 载体绕过混合集",
+        "en": "Mixed SQL Expression and HTTP Carrier Bypass Set"
+      },
+      "description": {
+        "zh": "混合 chunked body、重复参数、SQL 等价表达式、垃圾注释、multipart 和 JSON 载体；载体解析与 SQL 语义是不同证据边界。",
+        "en": "Combines chunked bodies, duplicate parameters, equivalent SQL expressions, padding comments, multipart, and JSON carriers; transport parsing and SQL semantics have distinct evidence boundaries."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "SQL WAF 载体与语义拆分",
+        "en": "SQL WAF Carrier and Semantic Split"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "混合 chunked body、重复参数、SQL 等价表达式、垃圾注释、multipart 和 JSON 载体；载体解析与 SQL 语义是不同证据边界。 本教程把“能被输入触达”“数据库实际解释”和“形成可复验证据”分开审查。已确认同一请求经过的 WAF/代理/框架解析链和后端 DBMS，能够分别记录原始字节、参数集合、最终 SQL 与规则事件。传输分支先承载无害 marker，SQL 分支只使用合成表/常量；准备直接基线、被阻断基线和无 SQL 载体对照。",
+          "en": "Combines chunked bodies, duplicate parameters, equivalent SQL expressions, padding comments, multipart, and JSON carriers; transport parsing and SQL semantics have distinct evidence boundaries. This tutorial reviews input reachability, actual database interpretation, and reproducible evidence as separate claims. The WAF, proxy, framework parsing chain, and backend DBMS are confirmed, with raw bytes, parameter collections, final SQL, and rule events recorded separately. Transport branches carry a harmless marker first, SQL branches use a synthetic table or constants only, and direct, blocked, and no-SQL carrier controls are prepared."
+        },
+        "vulnerability": {
+          "zh": "阳性证据需两段连续：某载体或 SQL 等价式通过实际 WAF/解析链，后端最终 SQL 收到不同于校验层的可控 marker 并触发已确认注入 oracle。 核心判断是受控输入是否越过预期的数据绑定或查询构造边界，并由同一请求的应用与数据库证据相互印证。WAF 放行/无告警、HTTP 200、chunked/multipart/JSON 被解析、SQL 语法错误、GREATEST 常量为真、dual 在错误 DBMS、占位垃圾文本或直连源站成功均不是绕过。",
+          "en": "Positive evidence requires two continuous stages: a carrier or equivalent SQL form passes the real WAF and parser chain, and backend final SQL receives a controlled marker different from the validated value and triggers a confirmed injection oracle. The core decision is whether controlled input crosses the intended data-binding or query-construction boundary, corroborated by application and database evidence for the same request. WAF allowance, no alert, HTTP 200, parsed chunked, multipart, or JSON input, SQL syntax errors, a true GREATEST constant, dual on the wrong DBMS, placeholder padding text, or direct-origin success does not prove bypass."
+        },
+        "exploitation": {
+          "zh": "按 carrier 路由先比较各层 marker 值，再连接已确认的低影响 SQL oracle；每轮只改变一个编码/载体/表达式并记录 DBMS。 条目中的源命令仅作为逐字节审校与路由证据保留；标记为需覆盖的行在得到安全替代、隔离环境和明确授权前不执行，也不从本教程推导新的攻击命令。",
+          "en": "Per carrier route, compare marker values at every layer before connecting to a confirmed low-impact SQL oracle; change one encoding, carrier, or expression per run and record the DBMS. The source command is retained only as byte-exact editorial and routing evidence. Any line flagged for override remains unexecuted until a safe substitute, an isolated environment, and explicit authorization are in place; this tutorial derives no new attack command."
+        },
+        "mitigation": {
+          "zh": "边缘统一解码与内容类型解析，拒绝歧义 chunking/重复参数/NUL，应用使用严格 schema 和参数化查询；WAF 仅作纵深防御。 修复验收必须在相同入口重放正常业务输入、阳性对照和阴性对照，核对最终语句、绑定参数、权限与副作用均回到预期边界，并确认清理完成。",
+          "en": "Normalize decoding and content-type parsing at the edge, reject ambiguous chunking, duplicate parameters, and NUL, use strict schemas and parameterized queries in the application, and treat the WAF as defense in depth. Acceptance testing replays normal business input plus positive and negative controls at the same entry point, verifies final statements, bindings, privileges, and side effects return to the intended boundary, and confirms cleanup is complete."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认SQL WAF 载体与语义拆分前提",
+            "en": "Confirm SQL WAF Carrier and Semantic Split prerequisites"
+          },
+          "description": {
+            "zh": "针对SQL 表达式与 HTTP 载体绕过混合集先确认数据库类型、输入上下文、隔离资产、最小权限和可观测日志，未满足两项前置条件时不进入命令审查。",
+            "en": "For Mixed SQL Expression and HTTP Carrier Bypass Set, confirm the database type, input context, isolated asset, least privilege, and observable logs; do not proceed to command review until both prerequisites hold."
+          }
+        },
+        {
+          "title": {
+            "zh": "建立SQL WAF 载体与语义拆分对照",
+            "en": "Establish SQL WAF Carrier and Semantic Split controls"
+          },
+          "description": {
+            "zh": "为SQL 表达式与 HTTP 载体绕过混合集记录正常输入、无效输入和固定 marker 的响应、查询日志、绑定值及请求标识，先量化自然波动再判断差异。",
+            "en": "For Mixed SQL Expression and HTTP Carrier Bypass Set, record responses, query logs, bound values, and request identifiers for normal input, invalid input, and a fixed marker, measuring natural variation before judging differences."
+          }
+        },
+        {
+          "title": {
+            "zh": "逐行审校SQL WAF 载体与语义拆分源命令",
+            "en": "Review the SQL WAF Carrier and Semantic Split source command line by line"
+          },
+          "description": {
+            "zh": "原始首条命令在此逐字节保留，只用于证明条目来源和行路由；任何实际运行都必须遵守本条记录的隔离、marker、停止和清理条件。",
+            "en": "The original first command is retained here byte for byte only to prove provenance and line routing; any execution must obey this entry's isolation, marker, stop, and cleanup conditions."
+          },
+          "payload": "Transfer-Encoding: chunked\n\n2\nid\n1\n=\n1\n1\n\n0"
+        },
+        {
+          "title": {
+            "zh": "修复并回归SQL WAF 载体与语义拆分",
+            "en": "Remediate and regress SQL WAF Carrier and Semantic Split"
+          },
+          "description": {
+            "zh": "应用SQL 表达式与 HTTP 载体绕过混合集对应修复后，重放三组对照并关联同一请求证据，确认业务结果保持正常、注入证据消失且测试状态已清理。",
+            "en": "After applying the remediation for Mixed SQL Expression and HTTP Carrier Bypass Set, replay all three controls with correlated request evidence and confirm business behavior remains correct, injection evidence disappears, and test state is removed."
+          }
+        }
+      ],
+      "prerequisites": [
+        {
+          "zh": "已确认同一请求经过的 WAF/代理/框架解析链和后端 DBMS，能够分别记录原始字节、参数集合、最终 SQL 与规则事件。",
+          "en": "The WAF, proxy, framework parsing chain, and backend DBMS are confirmed, with raw bytes, parameter collections, final SQL, and rule events recorded separately."
+        },
+        {
+          "zh": "传输分支先承载无害 marker，SQL 分支只使用合成表/常量；准备直接基线、被阻断基线和无 SQL 载体对照。",
+          "en": "Transport branches carry a harmless marker first, SQL branches use a synthetic table or constants only, and direct, blocked, and no-SQL carrier controls are prepared."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性证据需两段连续：某载体或 SQL 等价式通过实际 WAF/解析链，后端最终 SQL 收到不同于校验层的可控 marker 并触发已确认注入 oracle。 假阳性边界：WAF 放行/无告警、HTTP 200、chunked/multipart/JSON 被解析、SQL 语法错误、GREATEST 常量为真、dual 在错误 DBMS、占位垃圾文本或直连源站成功均不是绕过。",
+        "en": "Positive evidence requires two continuous stages: a carrier or equivalent SQL form passes the real WAF and parser chain, and backend final SQL receives a controlled marker different from the validated value and triggers a confirmed injection oracle. False-positive boundary: WAF allowance, no alert, HTTP 200, parsed chunked, multipart, or JSON input, SQL syntax errors, a true GREATEST constant, dual on the wrong DBMS, placeholder padding text, or direct-origin success does not prove bypass."
+      },
+      "opsecTips": [
+        {
+          "zh": "WAF 绕过测试出现跨连接错位、大垃圾体、生产规则变化、缓存污染、真实数据、CPU/日志增长或用户流量影响时停止。",
+          "en": "WAF-bypass testing stops on cross-connection desynchronization, large padding bodies, production-rule changes, cache contamination, real data, CPU or log growth, or user-traffic impact."
+        },
+        {
+          "zh": "删除抓包/marker/测试请求，排空连接并清理 WAF/代理/应用缓存和日志，恢复 schema/参数化后重放所有载体基线。",
+          "en": "Delete captures, markers, and test requests, drain connections, clear WAF, proxy, and application caches and logs, restore schemas and parameterization, and replay carrier baselines."
+        }
+      ],
+      "references": [
+        "https://datatracker.ietf.org/doc/html/rfc9112",
+        "https://datatracker.ietf.org/doc/html/rfc7578",
+        "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "“SQL 表达式与 HTTP 载体绕过混合集”混合了前提、影响或数据库机制不同的多条路线，保留在一张卡中会模糊证据边界，因此必须按记录的行路由拆分。",
+        "issuesResolved": [
+          "rewrote-unique-bilingual-content",
+          "added-four-part-tutorial",
+          "added-four-step-evidence-chain",
+          "added-positive-and-false-positive-boundaries",
+          "added-stop-and-cleanup-guidance",
+          "preserved-source-command-byte-for-byte",
+          "flagged-source-command-for-command-override"
+        ],
+        "targetPayloadIds": [
+          "sqli-carrier-chunked",
+          "sqli-carrier-http-parameter-pollution",
+          "sqli-expression-waf-variants",
+          "sqli-padding-comment-bypass",
+          "sqli-carrier-multipart",
+          "sqli-carrier-json"
+        ],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "command 0 -> sqli-carrier-chunked after replacement with a complete valid HTTP request",
+          "command 1 -> sqli-carrier-http-parameter-pollution",
+          "commands 2-4 -> sqli-expression-waf-variants with DBMS-specific labels",
+          "command 5 -> sqli-padding-comment-bypass after replacing the literal placeholder with bounded generated padding",
+          "command 6 -> sqli-carrier-multipart",
+          "command 7 -> sqli-carrier-json"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "command 0 is a chunk stream fragment rather than a complete HTTP request and its resulting parameter value is ambiguous",
+          "command 5 contains a literal narrative placeholder instead of actual bounded padding bytes",
+          "command 4 is Oracle-specific because of DUAL and must not be presented as a generic SQL equivalent"
+        ]
+      }
+    }
+  ]
+}

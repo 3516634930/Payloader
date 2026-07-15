@@ -1,0 +1,419 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "sourceIds": [
+    "csrf-bypass",
+    "csrf-cors",
+    "csrf-samesite"
+  ],
+  "entries": [
+    {
+      "id": "csrf-bypass",
+      "name": {
+        "zh": "CSRF 防护矩阵审计",
+        "en": "CSRF Defense-Matrix Audit"
+      },
+      "description": {
+        "zh": "把旧绕过合集重分类为工具工作流，统一检查 Token、Origin、Referer、SameSite 与 CORS 响应策略，并把结果关联到固定本地路由。",
+        "en": "Reclassify the legacy bypass collection as a tool workflow that checks token, Origin, Referer, SameSite, and CORS response policy against fixed local routes."
+      },
+      "category": {
+        "zh": "CSRF跨站请求伪造",
+        "en": "CSRF Cross-Site Request Forgery"
+      },
+      "subCategory": {
+        "zh": "防护矩阵工具工作流",
+        "en": "Defense-Matrix Tool Workflow"
+      },
+      "prerequisites": [
+        {
+          "zh": "准备本地 CSRF/CORS Fixture 与声明每个状态变更路由所需防护的 JSON 矩阵。",
+          "en": "Prepare local CSRF and CORS fixtures plus a JSON matrix declaring required controls for every state-changing route."
+        },
+        {
+          "zh": "使用合成 Session 和 marker，保存浏览器 Cookie、来源 Header、策略结果与服务端 request_id。",
+          "en": "Use synthetic sessions and markers while preserving browser cookies, source headers, policy results, and server request_id."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "旧“绕过技巧”不是一个可投递 Payload，而是 Token、来源 Header、SameSite 和 CORS 的多套诊断流程。不同控制解决的问题也不同：CORS 决定跨源脚本能否读取响应，CSRF Token 与来源验证决定状态变更是否被接受，SameSite 影响环境 Cookie 是否附带。",
+          "en": "The legacy bypass collection is not one deliverable payload but several diagnostic workflows for tokens, source headers, SameSite, and CORS. These controls solve different problems: CORS governs whether cross-origin scripts can read responses, CSRF tokens and source validation govern acceptance of state changes, and SameSite influences ambient cookie inclusion."
+        },
+        "vulnerability": {
+          "zh": "风险来自某条状态变更路由缺失必要控制，或不同方法、解析器和浏览器请求形状执行了不一致的策略。单个 Header 配置、Cookie 属性或 curl 接受结果不能证明 CSRF；必须关联浏览器凭据、服务端判定和合成状态变化。",
+          "en": "Risk comes from a state-changing route missing a required control or enforcing inconsistent policy across methods, parsers, and browser request shapes. One header setting, cookie attribute, or accepted curl result does not prove CSRF; browser credentials, server decision, and synthetic state change must be correlated."
+        },
+        "exploitation": {
+          "zh": "先读取控制矩阵，再依次运行 Referer、Origin、SameSite Chromium 和 CORS Header 检查。每项只使用三个固定值并输出允许原因，不构造真实敏感操作。对发现的差异转到对应专用 Payload 卡复验，而不是从工具结果直接下漏洞结论。",
+          "en": "Read the control matrix first, then run Referer, Origin, SameSite Chromium, and CORS header checks in sequence. Each uses only three fixed values and reports allow reasons without real sensitive actions. Reproduce any difference through the matching specialized payload card rather than concluding directly from tool output."
+        },
+        "mitigation": {
+          "zh": "为每个状态变更路由声明并自动测试 Token、来源验证和 Cookie 策略；统一中间件覆盖所有方法与解析器。CORS 使用精确 Origin 允许列表和 Vary: Origin，不能代替 CSRF 防护。浏览器回归应覆盖导航、子资源、Fetch 和 Frame。",
+          "en": "Declare and automatically test token, source-validation, and cookie policy for every state-changing route, using common middleware across methods and parsers. CORS must use an exact Origin allowlist plus Vary: Origin and cannot replace CSRF defenses. Browser regression should cover navigation, subresources, Fetch, and frames."
+        },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "读取路由控制矩阵",
+            "en": "Read the route-control matrix"
+          },
+          "description": {
+            "zh": "列出每条状态变更路由的 Token 绑定、允许方法和来源验证要求。",
+            "en": "List token binding, allowed methods, and source-validation requirements for every state-changing route."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "运行来源 Header 矩阵",
+            "en": "Run the source-header matrices"
+          },
+          "description": {
+            "zh": "分别比较允许源、后缀混淆与缺失或 null 值的 Referer 和 Origin 结果。",
+            "en": "Compare allowed, suffix-confused, and missing or null Referer and Origin values separately."
+          }
+        },
+        {
+          "title": {
+            "zh": "运行真实浏览器矩阵",
+            "en": "Run the real-browser matrix"
+          },
+          "description": {
+            "zh": "用 Chromium 比较 SameSite Cookie 在导航、子资源、Fetch 与 Frame 中的附带行为。",
+            "en": "Use Chromium to compare SameSite cookie inclusion in navigation, subresources, Fetch, and frames."
+          }
+        },
+        {
+          "title": {
+            "zh": "转交专用 Payload 复验",
+            "en": "Hand off to specialized payload validation"
+          },
+          "description": {
+            "zh": "工具差异必须由对应 Token、来源、SameSite 或 CORS Payload 与服务端状态证据确认。",
+            "en": "Tool differences require confirmation through the matching token, source, SameSite, or CORS payload plus server-state evidence."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "该条目只生成策略差异证据，不直接证明 CSRF。阳性结论必须来自专用 Payload 在真实浏览器中携带环境凭据并改变合成状态，工具输出仅用于定位哪一层控制不一致。",
+        "en": "This entry generates policy-difference evidence and does not directly prove CSRF. A positive conclusion requires a specialized payload carrying ambient credentials in a real browser and changing synthetic state; tool output only locates inconsistent controls."
+      },
+      "opsecTips": [
+        {
+          "zh": "矩阵值固定为本地或 `.invalid` Origin，不读取真实 Token、Cookie 或业务响应。",
+          "en": "Matrix values are fixed to local or .invalid origins and never read real tokens, cookies, or business responses."
+        },
+        {
+          "zh": "浏览器用例逐项运行并在结束后清理上下文，避免 Cookie 状态污染下一项。",
+          "en": "Run browser cases individually and clear each context afterward so cookie state cannot contaminate the next case."
+        }
+      ],
+      "references": [
+        "https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html",
+        "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Origin",
+        "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Sec-Fetch-Site"
+      ],
+      "review": {
+        "decision": "split",
+        "targetPayloadIds": [],
+        "targetToolIds": [
+          "csrf-defense-matrix-audit"
+        ],
+        "rationale": "旧条目是 Token、Referer、Origin、SameSite 和 CORS 的工具检查集合，不是单一 Payload；整体迁入工具区并纠正控制边界。",
+        "issuesResolved": [
+          "reclassified-as-tool",
+          "removed-prose-from-commands",
+          "separated-cors-from-csrf",
+          "added-browser-matrix"
+        ],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0-3 and wafBypass 0 -> csrf-defense-matrix-audit"
+        ],
+        "needsCommandOverride": true
+      }
+    },
+    {
+      "id": "csrf-cors",
+      "name": {
+        "zh": "凭据型 CORS 响应可见性边界",
+        "en": "Credentialed CORS Response-Visibility Boundary"
+      },
+      "description": {
+        "zh": "从 CSRF 分类中拆出 CORS，验证反射 Origin、null Origin、正则允许列表和携带凭据的跨源响应是否可被浏览器脚本读取。",
+        "en": "Separate CORS from CSRF and validate whether reflected origins, null origins, regex allowlists, and credentialed cross-origin responses are readable by browser scripts."
+      },
+      "category": {
+        "zh": "CORS 安全",
+        "en": "CORS Security"
+      },
+      "subCategory": {
+        "zh": "凭据型响应读取",
+        "en": "Credentialed Response Reading"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用两个本地 Origin 和只返回 marker 的 CORS Fixture，Cookie 仅代表合成身份。",
+          "en": "Use two local origins and a marker-only CORS fixture whose cookie represents only a synthetic identity."
+        },
+        {
+          "zh": "在 Chromium 中记录 Request Origin、预检、ACAO、ACAC、Vary、响应可见性和控制台错误。",
+          "en": "Record request Origin, preflight, ACAO, ACAC, Vary, response visibility, and console errors in Chromium."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "CORS 是浏览器响应读取策略，不是 CSRF 防护本身。配置错误可能让恶意 Origin 的脚本读取带凭据响应；即使响应不可读，某些简单跨源请求仍可能发送，因此状态变更仍需要独立 CSRF 防护。本条目按反射 Origin、null Origin、正则允许列表和凭据读取拆分。",
+          "en": "CORS is a browser response-reading policy, not a CSRF defense by itself. Misconfiguration may let a script from an untrusted origin read credentialed responses; even when responses are unreadable, some simple cross-origin requests may still be sent, so state changes need independent CSRF protection. This entry separates reflected origin, null origin, regex allowlist, and credentialed-read cases."
+        },
+        "vulnerability": {
+          "zh": "阳性需要浏览器从未批准 Origin 发起请求、携带合成凭据、服务端返回与该 Origin 匹配的 ACAO 和 ACAC，并且脚本实际读取 marker 响应。ACAO:* 与 ACAC:true 的组合会被浏览器阻止凭据读取，不能被错误写成可利用配置。",
+          "en": "A positive requires a browser request from an unapproved origin carrying synthetic credentials, server ACAO matching that origin with ACAC, and script access to the marker response. Browsers block credentialed reads for ACAO:* combined with ACAC:true, so that header pair must not be mislabeled exploitable."
+        },
+        "exploitation": {
+          "zh": "先用 curl 采集三个 Origin 的 Header 策略，再在 Chromium 运行反射、null Origin、正则混淆、凭据读取和 JSON POST marker。Payload 只把 marker 或响应长度写入 DOM，不传输响应内容。curl 只能诊断 Header，浏览器可见性才是确认依据。",
+          "en": "Use curl first to collect header policy for three origins, then run reflected, null-origin, regex-confusion, credentialed-read, and JSON POST markers in Chromium. Payloads write only a marker or response length to DOM and never transmit response content. Curl diagnoses headers; browser visibility is the confirmation boundary."
+        },
+        "mitigation": {
+          "zh": "使用标准 URL 解析后的精确 Origin 允许列表，只对确有需要的受信 Origin 返回 ACAO 与 ACAC，并设置 Vary: Origin。拒绝 null Origin，除非有明确沙箱业务；限制方法与 Header。所有状态变更仍使用 CSRF Token 与来源验证。",
+          "en": "Use an exact allowlist of parsed origins, return ACAO and ACAC only for explicitly trusted origins, and set Vary: Origin. Reject null Origin unless required by a documented sandbox workflow, and limit methods plus headers. Continue to use CSRF tokens and source validation for every state change."
+        },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "采集 CORS Header 基线",
+            "en": "Capture the CORS header baseline"
+          },
+          "description": {
+            "zh": "比较允许源、跨站源和 null Origin 的 ACAO、ACAC 与 Vary。",
+            "en": "Compare ACAO, ACAC, and Vary for allowed, cross-site, and null origins."
+          }
+        },
+        {
+          "title": {
+            "zh": "运行反射 Origin 浏览器样例",
+            "en": "Run the reflected-origin browser sample"
+          },
+          "description": {
+            "zh": "从未批准本地 Origin 发起带凭据请求并只显示返回 marker。",
+            "en": "Send a credentialed request from an unapproved local origin and display only the returned marker."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 1
+          }
+        },
+        {
+          "title": {
+            "zh": "覆盖 null 与正则允许列表",
+            "en": "Cover null and regex allowlists"
+          },
+          "description": {
+            "zh": "使用 Sandbox null Origin 和三个混淆 Origin 分别验证解析与响应可见性。",
+            "en": "Validate parsing and response visibility separately for a sandboxed null origin and three confused origins."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复后重放可见性矩阵",
+            "en": "Replay the visibility matrix after remediation"
+          },
+          "description": {
+            "zh": "要求未批准 Origin 无法读取 marker，且允许 Origin 仍保留正常业务读取。",
+            "en": "Require unapproved origins to lose marker visibility while approved origins retain normal business reads."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "CORS 阳性证据是浏览器脚本实际获得带凭据 marker，而不只是响应 Header 看起来宽松。状态变更是否发生属于独立 CSRF/授权结论，应分别报告。",
+        "en": "Positive CORS evidence is actual browser-script access to a credentialed marker, not merely permissive-looking response headers. Whether a state change occurs is a separate CSRF or authorization conclusion and must be reported separately."
+      },
+      "opsecTips": [
+        {
+          "zh": "响应只包含合成 marker 或长度，禁止读取用户资料、Token、邮箱或业务对象。",
+          "en": "Responses contain only synthetic markers or lengths, never user profiles, tokens, email, or business objects."
+        },
+        {
+          "zh": "使用独立浏览器上下文验证每个 Origin，完成后删除合成 Cookie 与 CORS 日志。",
+          "en": "Use a separate browser context per origin and remove synthetic cookies plus CORS logs afterward."
+        }
+      ],
+      "references": [
+        "https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS",
+        "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Origin",
+        "https://fetch.spec.whatwg.org/#http-cors-protocol"
+      ],
+      "review": {
+        "decision": "split",
+        "targetPayloadIds": [
+          "cors-credentialed-read-boundary"
+        ],
+        "targetToolIds": [
+          "cors-policy-audit"
+        ],
+        "rationale": "CORS 不是 CSRF 子类；旧条目含数据外带和错误的通配符+凭据断言，重分类到 CORS 分支并拆分 Header 工具与浏览器 Payload。",
+        "issuesResolved": [
+          "corrected-category",
+          "removed-data-exfiltration",
+          "corrected-wildcard-credentials-claim",
+          "split-tools-from-payloads"
+        ],
+        "retainedCommandIndexes": [
+          1,
+          2
+        ],
+        "lineDisposition": [
+          "execution 1,2 and wafBypass 0-1 -> cors-credentialed-read-boundary",
+          "execution 0,3 -> cors-policy-audit"
+        ],
+        "needsCommandOverride": true
+      }
+    },
+    {
+      "id": "csrf-samesite",
+      "name": {
+        "zh": "SameSite Cookie 浏览器发送边界",
+        "en": "SameSite Cookie Browser-Sending Boundary"
+      },
+      "description": {
+        "zh": "验证 Lax、Strict、None 和未声明 Cookie 在顶级导航、子资源、弹窗回调、Schemeful Site 与客户端重定向中的实际附带行为。",
+        "en": "Validate actual Lax, Strict, None, and unspecified cookie inclusion across top-level navigation, subresources, popup callbacks, schemeful sites, and client redirects."
+      },
+      "category": {
+        "zh": "CSRF跨站请求伪造",
+        "en": "CSRF Cross-Site Request Forgery"
+      },
+      "subCategory": {
+        "zh": "SameSite Cookie 行为",
+        "en": "SameSite Cookie Behavior"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用 Chromium 与本地 Cookie Fixture，为每个用例创建独立 Context 和合成 Cookie。",
+          "en": "Use Chromium and a local cookie fixture with a separate context and synthetic cookie for every case."
+        },
+        {
+          "zh": "记录 Set-Cookie 属性、请求类型、top-level site、Cookie 是否附带、服务端 marker 与浏览器版本。",
+          "en": "Record Set-Cookie attributes, request type, top-level site, cookie inclusion, server marker, and browser version."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "SameSite 判断的是 Site 而非 Origin，并影响浏览器是否在跨站请求中附带 Cookie。Lax 通常允许跨站顶级安全方法导航，但阻止多数子资源和跨站 POST；Strict 更严格；None 需要 Secure。未声明属性的默认行为与显式 Lax 可能存在兼容性差异，应以当前浏览器实测。",
+          "en": "SameSite compares sites rather than origins and controls whether browsers attach cookies to cross-site requests. Lax generally allows cross-site top-level safe-method navigation while blocking most subresources and cross-site POST, Strict is tighter, and None requires Secure. Unspecified cookies may have compatibility differences from explicit Lax and require current-browser testing."
+        },
+        "vulnerability": {
+          "zh": "SameSite 不是完整 CSRF 防护。如果应用用 GET 修改状态、受信同站子域可被控制、Cookie Domain 范围过宽，或未声明/None Cookie 在跨站请求中附带，风险仍可能存在。所谓“两分钟窗口”是部分浏览器对近期设置且未显式 SameSite Cookie 的兼容行为，不能泛化到显式 Lax。",
+          "en": "SameSite is not a complete CSRF defense. Risk remains when GET changes state, a trusted same-site subdomain is controllable, cookie Domain scope is too broad, or unspecified or None cookies are attached cross-site. The so-called two-minute window is a compatibility behavior for recently set cookies without explicit SameSite in some browsers and must not be generalized to explicit Lax."
+        },
+        "exploitation": {
+          "zh": "先采集 Fixture 的 Set-Cookie 属性，再用 Playwright 运行 Cookie 矩阵。Payload 分别产生顶级导航与子资源、弹窗回调、127.0.0.1 与 localhost Site 对照及客户端重定向。每次只记录 Cookie 是否附带和 marker，不执行真实状态变更。",
+          "en": "Capture fixture Set-Cookie attributes, then run the Playwright cookie matrix. Payloads generate top-level navigation versus subresource, popup callback, 127.0.0.1 versus localhost site comparison, and client redirect. Record only cookie inclusion and markers without real state changes."
+        },
+        "mitigation": {
+          "zh": "会话 Cookie 明确设置合适的 SameSite、Secure、HttpOnly 和最小 Domain/Path；状态变更禁止 GET，并保留 CSRF Token 与 Origin 校验。OAuth 等确需跨站回调的 Cookie 应缩小用途和生命周期，不要把全局会话 Cookie 放宽为 None。",
+          "en": "Set explicit suitable SameSite, Secure, HttpOnly, and minimal Domain and Path on session cookies, reject state changes over GET, and retain CSRF tokens plus Origin validation. Cookies needed for cross-site callbacks such as OAuth should have narrow purpose and lifetime rather than weakening the global session cookie to None."
+        },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "采集 Cookie 属性",
+            "en": "Capture cookie attributes"
+          },
+          "description": {
+            "zh": "保存 Lax、Strict、None 与未声明 Fixture 的完整 Set-Cookie Header。",
+            "en": "Preserve complete Set-Cookie headers for Lax, Strict, None, and unspecified fixtures."
+          }
+        },
+        {
+          "title": {
+            "zh": "比较导航与子资源",
+            "en": "Compare navigation and subresource requests"
+          },
+          "description": {
+            "zh": "从独立 Site 触发顶级导航和 img 子资源，比较 Cookie 是否附带。",
+            "en": "Trigger top-level navigation and an img subresource from a separate site and compare cookie inclusion."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "运行 Chromium Cookie 矩阵",
+            "en": "Run the Chromium cookie matrix"
+          },
+          "description": {
+            "zh": "自动覆盖四种 Cookie 配置和多种请求类型，逐项保存浏览器与服务端证据。",
+            "en": "Automatically cover four cookie configurations and multiple request types, preserving browser and server evidence per case."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复后验证业务兼容",
+            "en": "Verify business compatibility after remediation"
+          },
+          "description": {
+            "zh": "要求跨站状态请求无会话，同时同站登录与必要回调仍按设计工作。",
+            "en": "Require no session on cross-site state requests while preserving same-site login and required callbacks by design."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "阳性结论必须指出具体 Cookie 属性、浏览器版本、请求类型、top-level site 和实际附带结果。仅看到 SameSite=None、存在子域或使用重定向不能直接证明 CSRF。",
+        "en": "A positive conclusion must identify cookie attributes, browser version, request type, top-level site, and actual inclusion result. Seeing SameSite=None, a subdomain, or a redirect alone does not prove CSRF."
+      },
+      "opsecTips": [
+        {
+          "zh": "所有 Cookie 值为合成 marker，不记录真实 Session；每个用例使用全新浏览器 Context。",
+          "en": "Every cookie value is a synthetic marker, with no real sessions recorded and a fresh browser context per case."
+        },
+        {
+          "zh": "只观察 Cookie 附带和日志 marker，不把 GET、OAuth 回调或重定向连接到真实状态变更。",
+          "en": "Observe only cookie inclusion and log markers without connecting GET, OAuth callback, or redirects to real state changes."
+        }
+      ],
+      "references": [
+        "https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Set-Cookie",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html",
+        "https://web.dev/articles/samesite-cookies-explained"
+      ],
+      "review": {
+        "decision": "split",
+        "targetPayloadIds": [
+          "samesite-browser-request-boundary"
+        ],
+        "targetToolIds": [
+          "samesite-cookie-browser-audit"
+        ],
+        "rationale": "旧条目含过时浏览器版本、错误的显式 Lax 两分钟窗口和混合内容断言；改为当前 Chromium 请求矩阵并拆分工具。",
+        "issuesResolved": [
+          "removed-outdated-browser-claims",
+          "corrected-lax-window-scope",
+          "removed-prose-from-commands",
+          "added-schemeful-site-boundary"
+        ],
+        "retainedCommandIndexes": [
+          0,
+          3
+        ],
+        "lineDisposition": [
+          "execution 0,3 and wafBypass 0-1 -> samesite-browser-request-boundary",
+          "execution 1,2 -> samesite-cookie-browser-audit"
+        ],
+        "needsCommandOverride": true
+      }
+    }
+  ]
+}

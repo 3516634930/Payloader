@@ -1,6 +1,8 @@
 import type { SyntaxPart, I18nText } from '../types';
-import { useAppContext } from '../App';
+import { useEffect, useId, useRef } from 'react';
+import { useAppContext } from '../appContext';
 import { t, getText } from '../i18n';
+import { resolveVariableText } from '../utils/variables';
 
 interface SyntaxModalProps {
   syntax: SyntaxPart[];
@@ -9,7 +11,57 @@ interface SyntaxModalProps {
 }
 
 function SyntaxModal({ syntax, title, onClose }: SyntaxModalProps) {
-  const { language } = useAppContext();
+  const { globalVariables, language } = useAppContext();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previousFocus = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  const titleId = useId();
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    previousFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const dialog = dialogRef.current;
+    const focusableSelector = 'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const focusDialog = window.requestAnimationFrame(() => {
+      (dialog?.querySelector<HTMLElement>(focusableSelector) || dialog)?.focus();
+    });
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== 'Tab' || !dialog) return;
+
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector))
+        .filter(element => element.offsetParent !== null);
+      if (!focusable.length) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.cancelAnimationFrame(focusDialog);
+      document.removeEventListener('keydown', handleKeyDown);
+      previousFocus.current?.focus();
+    };
+  }, []);
 
   // 19种SyntaxPart type的完整颜色映射 (name now from i18n)
   const typeColorMap: Record<string, { color: string; group: string }> = {
@@ -44,7 +96,7 @@ function SyntaxModal({ syntax, title, onClose }: SyntaxModalProps) {
   const getTypeName = (type: string) => {
     const key = `syntax.${type}` as Parameters<typeof t>[0];
     const result = t(key, language);
-    // If key not found, t() returns the key itself — fall back to 'Other'
+    // If key not found, t() returns the key itself - fall back to 'Other'
     return result === key ? t('syntax.other', language) : result;
   };
 
@@ -52,11 +104,20 @@ function SyntaxModal({ syntax, title, onClose }: SyntaxModalProps) {
   const usedTypes = [...new Set(syntax.map(s => s.type).filter(Boolean))] as string[];
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay" onMouseDown={event => {
+      if (event.target === event.currentTarget) onClose();
+    }}>
+      <div
+        ref={dialogRef}
+        className="modal-content"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+      >
         <div className="modal-header">
-          <h3>{t('syntax.title', language)}{getText(title, language)}</h3>
-          <button className="modal-close" onClick={onClose}>×</button>
+          <h3 id={titleId}>{t('syntax.title', language)}{getText(title, language)}</h3>
+          <button type="button" className="modal-close" onClick={onClose} aria-label="关闭语法解析">×</button>
         </div>
         <div className="modal-body">
           <div className="syntax-legend">
@@ -78,7 +139,7 @@ function SyntaxModal({ syntax, title, onClose }: SyntaxModalProps) {
                       color: getTypeColor(item.type || '')
                     }}
                   >
-                    {item.part}
+                    {resolveVariableText(item.part, globalVariables)}
                   </code>
                   {item.type && (
                     <span 
@@ -90,7 +151,7 @@ function SyntaxModal({ syntax, title, onClose }: SyntaxModalProps) {
                   )}
                 </div>
                 <div className="syntax-explanation">
-                  {getText(item.explanation, language)}
+                  {resolveVariableText(getText(item.explanation, language), globalVariables)}
                 </div>
               </div>
             ))}
@@ -148,9 +209,11 @@ function SyntaxModal({ syntax, title, onClose }: SyntaxModalProps) {
           }
 
           .modal-header h3 {
+            min-width: 0;
             font-size: 16px;
             font-weight: 600;
             color: var(--neon-cyan);
+            overflow-wrap: anywhere;
           }
 
           .modal-close {
@@ -159,8 +222,8 @@ function SyntaxModal({ syntax, title, onClose }: SyntaxModalProps) {
             color: var(--text-muted);
             font-size: 24px;
             cursor: pointer;
-            width: 32px;
-            height: 32px;
+            width: 44px;
+            height: 44px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -216,6 +279,7 @@ function SyntaxModal({ syntax, title, onClose }: SyntaxModalProps) {
             background: var(--bg-tertiary);
             border-radius: 8px;
             align-items: flex-start;
+            min-width: 0;
           }
 
           .syntax-part-wrapper {
@@ -232,8 +296,9 @@ function SyntaxModal({ syntax, title, onClose }: SyntaxModalProps) {
             padding: 6px 10px;
             background: var(--bg-secondary);
             border-radius: 4px;
-            border-left: 3px solid;
+            border: 1px solid;
             word-break: break-all;
+            max-width: 100%;
           }
 
           .syntax-type {
@@ -247,10 +312,71 @@ function SyntaxModal({ syntax, title, onClose }: SyntaxModalProps) {
 
           .syntax-explanation {
             flex: 1;
+            min-width: 0;
             font-size: 13px;
             color: var(--text-secondary);
             line-height: 1.6;
             padding-top: 6px;
+            overflow-wrap: anywhere;
+          }
+
+          @media (max-width: 640px) {
+            .modal-overlay {
+              align-items: stretch;
+              justify-content: stretch;
+              padding: 8px;
+            }
+
+            .modal-content {
+              width: 100%;
+              max-width: none;
+              max-height: calc(100dvh - 16px);
+              border-radius: 8px;
+            }
+
+            .modal-header {
+              padding: 14px 16px;
+            }
+
+            .modal-body {
+              padding: 14px;
+              max-height: calc(100dvh - 78px);
+            }
+
+            .syntax-legend {
+              gap: 8px;
+              margin-bottom: 14px;
+              padding-bottom: 12px;
+            }
+
+            .syntax-item {
+              display: grid;
+              grid-template-columns: 1fr;
+              gap: 10px;
+            }
+
+            .syntax-part-wrapper {
+              min-width: 0;
+              width: 100%;
+            }
+          }
+
+          @media (max-width: 420px) {
+            .modal-overlay {
+              padding: 0;
+            }
+
+            .modal-content {
+              min-height: 100dvh;
+              max-height: 100dvh;
+              border-radius: 0;
+              border-left: 0;
+              border-right: 0;
+            }
+
+            .modal-body {
+              max-height: calc(100dvh - 65px);
+            }
           }
         `}</style>
       </div>

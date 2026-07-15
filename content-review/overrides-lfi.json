@@ -1,0 +1,1630 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "sourceIds": [
+    "lfi-basic",
+    "lfi-log-poison",
+    "lfi-phar",
+    "lfi-php-data",
+    "lfi-php-filter",
+    "lfi-php-input",
+    "lfi-php-zip",
+    "lfi-proc",
+    "lfi-session",
+    "lfi-traversal",
+    "lfi-wrapper"
+  ],
+  "entries": [
+    {
+      "id": "lfi-basic",
+      "name": {
+        "zh": "本地文件包含边界审校",
+        "en": "Local File Inclusion Boundary Review"
+      },
+      "description": {
+        "zh": "本地文件包含边界审校将来源中的混合命令、危险执行和说明文字拆成单一 include/read 证据卡、工具工作流与明确退休项，所有验证均限定为本地 PAYLOADER_MARKER。",
+        "en": "Local File Inclusion Boundary Review separates mixed commands, dangerous execution, and prose into one include or read evidence card, tool workflows, and explicit retirements, with every check limited to local PAYLOADER_MARKER fixtures."
+      },
+      "category": {
+        "zh": "LFI/RFI文件包含",
+        "en": "LFI/RFI File Inclusion"
+      },
+      "subCategory": {
+        "zh": "本地 Marker 读取与路径边界",
+        "en": "Local Marker Read and Path Boundary"
+      },
+      "tags": [
+        "lfi",
+        "file-inclusion",
+        "marker-validation",
+        "lfi-basic"
+      ],
+      "prerequisites": [
+        {
+          "zh": "已在工作目录创建只读 PAYLOADER_MARKER 夹具，并能查看最终规范路径、wrapper 选择或 include 日志。",
+          "en": "A read-only PAYLOADER_MARKER fixture exists in the working directory, and final canonical-path, wrapper-selection, or include logs are observable."
+        },
+        {
+          "zh": "测试服务仅监听 127.0.0.1，临时文件和请求数量有上限，结束后可以完整清理。",
+          "en": "The test service listens only on 127.0.0.1, temporary files and request counts are bounded, and cleanup is complete after testing."
+        }
+      ],
+      "analysis": {
+        "zh": "该来源的核心边界是用户控制的文件参数未经固定标识映射便进入读取或 include API，旧条目同时混入系统路径、wrapper 和日志执行说明。确认必须依赖唯一 marker、请求 ID 与最终读取路径或 wrapper 日志的一致性；HTTP 200、PHP 警告、空响应或规则命中都不是充分证据。",
+        "en": "The core boundary is that a user-controlled file parameter reaches read or include APIs without fixed identifier mapping, while the legacy entry mixes system paths, wrappers, and log-execution notes. Confirmation requires agreement among a unique marker, request ID, and final read path or wrapper logs; HTTP 200, PHP warnings, empty responses, or rule matches are not sufficient evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "不读取 /etc/passwd、环境变量、凭据文件或其他进程内容，只使用工作目录 marker。",
+          "en": "Do not read /etc/passwd, environment variables, credential files, or other process data; use only the working-directory marker."
+        },
+        {
+          "zh": "不提交 PHP 执行代码、WebShell、反向通道或反序列化对象，出现意外副作用时立即停止。",
+          "en": "Do not submit executable PHP, web shells, reverse channels, or serialized objects, and stop immediately on unexpected side effects."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "本地文件包含边界审校先区分“读取现有文件或流”与“执行被包含内容”，再把路径字典、编码生成、夹具制作和请求重放迁入工具卡。Payload 只承担一个可观察的读取边界。",
+          "en": "Local File Inclusion Boundary Review first separates reading an existing file or stream from executing included content, then moves path dictionaries, encoding generation, fixture creation, and request replay into tools. The payload owns one observable read boundary only."
+        },
+        "vulnerability": {
+          "zh": "根因是用户控制的文件参数未经固定标识映射便进入读取或 include API，旧条目同时混入系统路径、wrapper 和日志执行说明。安全判断必须在 URL 解码、路径规范化和 wrapper 解析全部完成后执行，不能依赖黑名单字符串替换或客户端文件名。",
+          "en": "The root cause is that a user-controlled file parameter reaches read or include APIs without fixed identifier mapping, while the legacy entry mixes system paths, wrappers, and log-execution notes. Security decisions must occur after URL decoding, path canonicalization, and wrapper resolution, rather than relying on blacklist replacements or client-controlled filenames."
+        },
+        "exploitation": {
+          "zh": "先请求批准根目录内的普通 marker 建立基线，再只重放一个路径或 wrapper 变体，并关联请求 ID、最终路径、所选 stream wrapper 与精确 marker 输出。缺失 marker 对照必须失败。",
+          "en": "Request a normal marker inside the approved root as a baseline, then replay one path or wrapper variant and correlate the request ID, final path, selected stream wrapper, and exact marker output. A missing-marker control must fail."
+        },
+        "mitigation": {
+          "zh": "应用应使用逻辑资源 ID 与固定映射，拒绝用户提供的路径和 scheme；必须访问文件时，在一次解码和规范化后验证根目录边界，并以低权限、无执行权限方式打开只读对象。",
+          "en": "Use logical resource IDs with fixed mappings and reject user-supplied paths and schemes. When file access is required, decode and canonicalize once, enforce the root boundary, and open read-only objects with low privilege and no execute permission."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认读取入口",
+            "en": "Confirm the read entry"
+          },
+          "description": {
+            "zh": "定位参数进入 file_get_contents、readfile、include 或等价 API 的位置，并记录正常资源 ID 基线。",
+            "en": "Locate where the parameter reaches file_get_contents, readfile, include, or an equivalent API, and record a normal resource-ID baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "准备只读 Marker",
+            "en": "Prepare a read-only marker"
+          },
+          "description": {
+            "zh": "在批准工作目录创建随机文本 marker，设置只读权限并记录其规范路径和清理责任。",
+            "en": "Create a random text marker in the approved working directory, make it read-only, and record its canonical path and cleanup owner."
+          }
+        },
+        {
+          "title": {
+            "zh": "提交单一读取变体",
+            "en": "Submit one read variant"
+          },
+          "description": {
+            "zh": "一次只提交一个来源命令块，保存原始请求、解码后参数和服务端最终路径或 wrapper 记录。",
+            "en": "Submit one source command block at a time and preserve the raw request, decoded parameter, and server-side final path or wrapper record."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "关联 Marker 证据",
+            "en": "Correlate marker evidence"
+          },
+          "description": {
+            "zh": "只有精确 marker 输出、请求 ID 与最终读取记录一致才确认边界；错误页、警告和响应时延仅作线索。",
+            "en": "Confirm the boundary only when exact marker output, request ID, and final read record agree; error pages, warnings, and latency are only leads."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并双向回归",
+            "en": "Remediate and regress both paths"
+          },
+          "description": {
+            "zh": "改用固定资源映射后，重放异常变体和正常业务资源，确认越界读取消失且合法功能仍可用。",
+            "en": "After adopting fixed resource mappings, replay the variant and a normal business resource to prove out-of-bound reads are gone while valid behavior remains."
+          }
+        }
+      ],
+      "references": [
+        "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/11.1-Testing_for_File_Inclusion",
+        "https://www.php.net/manual/en/wrappers.file.php"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "来源包含多个不同机制或工具工作流，按单一读取边界拆分并显式退休执行与无效内容。",
+        "targetPayloadIds": [
+          "lfi-basic-marker-read-boundary"
+        ],
+        "targetToolIds": [
+          "lfi-rfi-tools"
+        ],
+        "issuesResolved": [
+          "mixed-collection",
+          "dangerous-command",
+          "tool-placement",
+          "wrapper-prerequisite",
+          "evidence-quality"
+        ]
+      }
+    },
+    {
+      "id": "lfi-log-poison",
+      "name": {
+        "zh": "日志文件包含边界审校",
+        "en": "Log File Inclusion Boundary Review"
+      },
+      "description": {
+        "zh": "日志文件包含边界审校将来源中的混合命令、危险执行和说明文字拆成单一 include/read 证据卡、工具工作流与明确退休项，所有验证均限定为本地 PAYLOADER_MARKER。",
+        "en": "Log File Inclusion Boundary Review separates mixed commands, dangerous execution, and prose into one include or read evidence card, tool workflows, and explicit retirements, with every check limited to local PAYLOADER_MARKER fixtures."
+      },
+      "category": {
+        "zh": "LFI/RFI文件包含",
+        "en": "LFI/RFI File Inclusion"
+      },
+      "subCategory": {
+        "zh": "Marker 日志读取边界",
+        "en": "Marker Log Read Boundary"
+      },
+      "tags": [
+        "lfi",
+        "file-inclusion",
+        "marker-validation",
+        "lfi-log-poison"
+      ],
+      "prerequisites": [
+        {
+          "zh": "已在工作目录创建只读 PAYLOADER_MARKER 夹具，并能查看最终规范路径、wrapper 选择或 include 日志。",
+          "en": "A read-only PAYLOADER_MARKER fixture exists in the working directory, and final canonical-path, wrapper-selection, or include logs are observable."
+        },
+        {
+          "zh": "测试服务仅监听 127.0.0.1，临时文件和请求数量有上限，结束后可以完整清理。",
+          "en": "The test service listens only on 127.0.0.1, temporary files and request counts are bounded, and cleanup is complete after testing."
+        }
+      ],
+      "analysis": {
+        "zh": "该来源的核心边界是应用可包含可写日志文件，但旧条目把路径枚举、日志写入、PHP 执行和反向通道错误地合并为一个 Payload。确认必须依赖唯一 marker、请求 ID 与最终读取路径或 wrapper 日志的一致性；HTTP 200、PHP 警告、空响应或规则命中都不是充分证据。",
+        "en": "The core boundary is that the application can include a writable log file, while the legacy entry incorrectly combines path enumeration, log writes, PHP execution, and reverse channels as one payload. Confirmation requires agreement among a unique marker, request ID, and final read path or wrapper logs; HTTP 200, PHP warnings, empty responses, or rule matches are not sufficient evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "不读取 /etc/passwd、环境变量、凭据文件或其他进程内容，只使用工作目录 marker。",
+          "en": "Do not read /etc/passwd, environment variables, credential files, or other process data; use only the working-directory marker."
+        },
+        {
+          "zh": "不提交 PHP 执行代码、WebShell、反向通道或反序列化对象，出现意外副作用时立即停止。",
+          "en": "Do not submit executable PHP, web shells, reverse channels, or serialized objects, and stop immediately on unexpected side effects."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "日志文件包含边界审校先区分“读取现有文件或流”与“执行被包含内容”，再把路径字典、编码生成、夹具制作和请求重放迁入工具卡。Payload 只承担一个可观察的读取边界。",
+          "en": "Log File Inclusion Boundary Review first separates reading an existing file or stream from executing included content, then moves path dictionaries, encoding generation, fixture creation, and request replay into tools. The payload owns one observable read boundary only."
+        },
+        "vulnerability": {
+          "zh": "根因是应用可包含可写日志文件，但旧条目把路径枚举、日志写入、PHP 执行和反向通道错误地合并为一个 Payload。安全判断必须在 URL 解码、路径规范化和 wrapper 解析全部完成后执行，不能依赖黑名单字符串替换或客户端文件名。",
+          "en": "The root cause is that the application can include a writable log file, while the legacy entry incorrectly combines path enumeration, log writes, PHP execution, and reverse channels as one payload. Security decisions must occur after URL decoding, path canonicalization, and wrapper resolution, rather than relying on blacklist replacements or client-controlled filenames."
+        },
+        "exploitation": {
+          "zh": "先请求批准根目录内的普通 marker 建立基线，再只重放一个路径或 wrapper 变体，并关联请求 ID、最终路径、所选 stream wrapper 与精确 marker 输出。缺失 marker 对照必须失败。",
+          "en": "Request a normal marker inside the approved root as a baseline, then replay one path or wrapper variant and correlate the request ID, final path, selected stream wrapper, and exact marker output. A missing-marker control must fail."
+        },
+        "mitigation": {
+          "zh": "应用应使用逻辑资源 ID 与固定映射，拒绝用户提供的路径和 scheme；必须访问文件时，在一次解码和规范化后验证根目录边界，并以低权限、无执行权限方式打开只读对象。",
+          "en": "Use logical resource IDs with fixed mappings and reject user-supplied paths and schemes. When file access is required, decode and canonicalize once, enforce the root boundary, and open read-only objects with low privilege and no execute permission."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认读取入口",
+            "en": "Confirm the read entry"
+          },
+          "description": {
+            "zh": "定位参数进入 file_get_contents、readfile、include 或等价 API 的位置，并记录正常资源 ID 基线。",
+            "en": "Locate where the parameter reaches file_get_contents, readfile, include, or an equivalent API, and record a normal resource-ID baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "准备只读 Marker",
+            "en": "Prepare a read-only marker"
+          },
+          "description": {
+            "zh": "在批准工作目录创建随机文本 marker，设置只读权限并记录其规范路径和清理责任。",
+            "en": "Create a random text marker in the approved working directory, make it read-only, and record its canonical path and cleanup owner."
+          }
+        },
+        {
+          "title": {
+            "zh": "提交单一读取变体",
+            "en": "Submit one read variant"
+          },
+          "description": {
+            "zh": "一次只提交一个来源命令块，保存原始请求、解码后参数和服务端最终路径或 wrapper 记录。",
+            "en": "Submit one source command block at a time and preserve the raw request, decoded parameter, and server-side final path or wrapper record."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "关联 Marker 证据",
+            "en": "Correlate marker evidence"
+          },
+          "description": {
+            "zh": "只有精确 marker 输出、请求 ID 与最终读取记录一致才确认边界；错误页、警告和响应时延仅作线索。",
+            "en": "Confirm the boundary only when exact marker output, request ID, and final read record agree; error pages, warnings, and latency are only leads."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并双向回归",
+            "en": "Remediate and regress both paths"
+          },
+          "description": {
+            "zh": "改用固定资源映射后，重放异常变体和正常业务资源，确认越界读取消失且合法功能仍可用。",
+            "en": "After adopting fixed resource mappings, replay the variant and a normal business resource to prove out-of-bound reads are gone while valid behavior remains."
+          }
+        }
+      ],
+      "references": [
+        "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/11.1-Testing_for_File_Inclusion",
+        "https://cwe.mitre.org/data/definitions/98.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "来源包含多个不同机制或工具工作流，按单一读取边界拆分并显式退休执行与无效内容。",
+        "targetPayloadIds": [
+          "lfi-log-marker-read-boundary"
+        ],
+        "targetToolIds": [
+          "lfi-rfi-tools",
+          "burpsuite"
+        ],
+        "issuesResolved": [
+          "mixed-collection",
+          "dangerous-command",
+          "tool-placement",
+          "wrapper-prerequisite",
+          "evidence-quality"
+        ]
+      }
+    },
+    {
+      "id": "lfi-phar",
+      "name": {
+        "zh": "PHAR 成员读取边界审校",
+        "en": "PHAR Member Read Boundary Review"
+      },
+      "description": {
+        "zh": "PHAR 成员读取边界审校将来源中的混合命令、危险执行和说明文字拆成单一 include/read 证据卡、工具工作流与明确退休项，所有验证均限定为本地 PAYLOADER_MARKER。",
+        "en": "PHAR Member Read Boundary Review separates mixed commands, dangerous execution, and prose into one include or read evidence card, tool workflows, and explicit retirements, with every check limited to local PAYLOADER_MARKER fixtures."
+      },
+      "category": {
+        "zh": "LFI/RFI文件包含",
+        "en": "LFI/RFI File Inclusion"
+      },
+      "subCategory": {
+        "zh": "PHAR 归档成员读取",
+        "en": "PHAR Archive Member Read"
+      },
+      "tags": [
+        "lfi",
+        "file-inclusion",
+        "marker-validation",
+        "lfi-phar"
+      ],
+      "prerequisites": [
+        {
+          "zh": "已在工作目录创建只读 PAYLOADER_MARKER 夹具，并能查看最终规范路径、wrapper 选择或 include 日志。",
+          "en": "A read-only PAYLOADER_MARKER fixture exists in the working directory, and final canonical-path, wrapper-selection, or include logs are observable."
+        },
+        {
+          "zh": "测试服务仅监听 127.0.0.1，临时文件和请求数量有上限，结束后可以完整清理。",
+          "en": "The test service listens only on 127.0.0.1, temporary files and request counts are bounded, and cleanup is complete after testing."
+        }
+      ],
+      "analysis": {
+        "zh": "该来源的核心边界是phar:// 可以读取归档成员，但旧条目混入 metadata 反序列化、gadget 生成与命令执行；PHP 8 已不再自动反序列化 PHAR metadata。确认必须依赖唯一 marker、请求 ID 与最终读取路径或 wrapper 日志的一致性；HTTP 200、PHP 警告、空响应或规则命中都不是充分证据。",
+        "en": "The core boundary is that phar:// can read archive members, but the legacy entry mixes metadata deserialization, gadget generation, and command execution; PHP 8 no longer automatically unserializes PHAR metadata. Confirmation requires agreement among a unique marker, request ID, and final read path or wrapper logs; HTTP 200, PHP warnings, empty responses, or rule matches are not sufficient evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "不读取 /etc/passwd、环境变量、凭据文件或其他进程内容，只使用工作目录 marker。",
+          "en": "Do not read /etc/passwd, environment variables, credential files, or other process data; use only the working-directory marker."
+        },
+        {
+          "zh": "不提交 PHP 执行代码、WebShell、反向通道或反序列化对象，出现意外副作用时立即停止。",
+          "en": "Do not submit executable PHP, web shells, reverse channels, or serialized objects, and stop immediately on unexpected side effects."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "PHAR 成员读取边界审校先区分“读取现有文件或流”与“执行被包含内容”，再把路径字典、编码生成、夹具制作和请求重放迁入工具卡。Payload 只承担一个可观察的读取边界。",
+          "en": "PHAR Member Read Boundary Review first separates reading an existing file or stream from executing included content, then moves path dictionaries, encoding generation, fixture creation, and request replay into tools. The payload owns one observable read boundary only."
+        },
+        "vulnerability": {
+          "zh": "根因是phar:// 可以读取归档成员，但旧条目混入 metadata 反序列化、gadget 生成与命令执行；PHP 8 已不再自动反序列化 PHAR metadata。安全判断必须在 URL 解码、路径规范化和 wrapper 解析全部完成后执行，不能依赖黑名单字符串替换或客户端文件名。",
+          "en": "The root cause is that phar:// can read archive members, but the legacy entry mixes metadata deserialization, gadget generation, and command execution; PHP 8 no longer automatically unserializes PHAR metadata. Security decisions must occur after URL decoding, path canonicalization, and wrapper resolution, rather than relying on blacklist replacements or client-controlled filenames."
+        },
+        "exploitation": {
+          "zh": "先请求批准根目录内的普通 marker 建立基线，再只重放一个路径或 wrapper 变体，并关联请求 ID、最终路径、所选 stream wrapper 与精确 marker 输出。缺失 marker 对照必须失败。",
+          "en": "Request a normal marker inside the approved root as a baseline, then replay one path or wrapper variant and correlate the request ID, final path, selected stream wrapper, and exact marker output. A missing-marker control must fail."
+        },
+        "mitigation": {
+          "zh": "应用应使用逻辑资源 ID 与固定映射，拒绝用户提供的路径和 scheme；必须访问文件时，在一次解码和规范化后验证根目录边界，并以低权限、无执行权限方式打开只读对象。",
+          "en": "Use logical resource IDs with fixed mappings and reject user-supplied paths and schemes. When file access is required, decode and canonicalize once, enforce the root boundary, and open read-only objects with low privilege and no execute permission."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认读取入口",
+            "en": "Confirm the read entry"
+          },
+          "description": {
+            "zh": "定位参数进入 file_get_contents、readfile、include 或等价 API 的位置，并记录正常资源 ID 基线。",
+            "en": "Locate where the parameter reaches file_get_contents, readfile, include, or an equivalent API, and record a normal resource-ID baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "准备只读 Marker",
+            "en": "Prepare a read-only marker"
+          },
+          "description": {
+            "zh": "在批准工作目录创建随机文本 marker，设置只读权限并记录其规范路径和清理责任。",
+            "en": "Create a random text marker in the approved working directory, make it read-only, and record its canonical path and cleanup owner."
+          }
+        },
+        {
+          "title": {
+            "zh": "提交单一读取变体",
+            "en": "Submit one read variant"
+          },
+          "description": {
+            "zh": "一次只提交一个来源命令块，保存原始请求、解码后参数和服务端最终路径或 wrapper 记录。",
+            "en": "Submit one source command block at a time and preserve the raw request, decoded parameter, and server-side final path or wrapper record."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "关联 Marker 证据",
+            "en": "Correlate marker evidence"
+          },
+          "description": {
+            "zh": "只有精确 marker 输出、请求 ID 与最终读取记录一致才确认边界；错误页、警告和响应时延仅作线索。",
+            "en": "Confirm the boundary only when exact marker output, request ID, and final read record agree; error pages, warnings, and latency are only leads."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并双向回归",
+            "en": "Remediate and regress both paths"
+          },
+          "description": {
+            "zh": "改用固定资源映射后，重放异常变体和正常业务资源，确认越界读取消失且合法功能仍可用。",
+            "en": "After adopting fixed resource mappings, replay the variant and a normal business resource to prove out-of-bound reads are gone while valid behavior remains."
+          }
+        }
+      ],
+      "references": [
+        "https://www.php.net/manual/en/wrappers.phar.php",
+        "https://www.php.net/manual/en/migration80.incompatible.php",
+        "https://www.php.net/manual/en/phar.getmetadata.php"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "来源包含多个不同机制或工具工作流，按单一读取边界拆分并显式退休执行与无效内容。",
+        "targetPayloadIds": [
+          "lfi-phar-member-read-boundary"
+        ],
+        "targetToolIds": [
+          "php-attacks",
+          "file-analysis-toolkit",
+          "lfi-rfi-tools"
+        ],
+        "issuesResolved": [
+          "mixed-collection",
+          "dangerous-command",
+          "tool-placement",
+          "wrapper-prerequisite",
+          "evidence-quality"
+        ]
+      }
+    },
+    {
+      "id": "lfi-php-data",
+      "name": {
+        "zh": "PHP data:// 读取边界审校",
+        "en": "PHP data:// Read Boundary Review"
+      },
+      "description": {
+        "zh": "PHP data:// 读取边界审校将来源中的混合命令、危险执行和说明文字拆成单一 include/read 证据卡、工具工作流与明确退休项，所有验证均限定为本地 PAYLOADER_MARKER。",
+        "en": "PHP data:// Read Boundary Review separates mixed commands, dangerous execution, and prose into one include or read evidence card, tool workflows, and explicit retirements, with every check limited to local PAYLOADER_MARKER fixtures."
+      },
+      "category": {
+        "zh": "LFI/RFI文件包含",
+        "en": "LFI/RFI File Inclusion"
+      },
+      "subCategory": {
+        "zh": "data:// Marker 输入",
+        "en": "data:// Marker Input"
+      },
+      "tags": [
+        "lfi",
+        "file-inclusion",
+        "marker-validation",
+        "lfi-php-data"
+      ],
+      "prerequisites": [
+        {
+          "zh": "已在工作目录创建只读 PAYLOADER_MARKER 夹具，并能查看最终规范路径、wrapper 选择或 include 日志。",
+          "en": "A read-only PAYLOADER_MARKER fixture exists in the working directory, and final canonical-path, wrapper-selection, or include logs are observable."
+        },
+        {
+          "zh": "测试服务仅监听 127.0.0.1，临时文件和请求数量有上限，结束后可以完整清理。",
+          "en": "The test service listens only on 127.0.0.1, temporary files and request counts are bounded, and cleanup is complete after testing."
+        }
+      ],
+      "analysis": {
+        "zh": "该来源的核心边界是data:// 提供只读 RFC 2397 数据流，并同时受 allow_url_fopen 与 allow_url_include 限制；旧条目几乎全部是代码执行内容。确认必须依赖唯一 marker、请求 ID 与最终读取路径或 wrapper 日志的一致性；HTTP 200、PHP 警告、空响应或规则命中都不是充分证据。",
+        "en": "The core boundary is that data:// provides a read-only RFC 2397 stream and is restricted by both allow_url_fopen and allow_url_include, while the legacy entry is dominated by code-execution content. Confirmation requires agreement among a unique marker, request ID, and final read path or wrapper logs; HTTP 200, PHP warnings, empty responses, or rule matches are not sufficient evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "不读取 /etc/passwd、环境变量、凭据文件或其他进程内容，只使用工作目录 marker。",
+          "en": "Do not read /etc/passwd, environment variables, credential files, or other process data; use only the working-directory marker."
+        },
+        {
+          "zh": "不提交 PHP 执行代码、WebShell、反向通道或反序列化对象，出现意外副作用时立即停止。",
+          "en": "Do not submit executable PHP, web shells, reverse channels, or serialized objects, and stop immediately on unexpected side effects."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "PHP data:// 读取边界审校先区分“读取现有文件或流”与“执行被包含内容”，再把路径字典、编码生成、夹具制作和请求重放迁入工具卡。Payload 只承担一个可观察的读取边界。",
+          "en": "PHP data:// Read Boundary Review first separates reading an existing file or stream from executing included content, then moves path dictionaries, encoding generation, fixture creation, and request replay into tools. The payload owns one observable read boundary only."
+        },
+        "vulnerability": {
+          "zh": "根因是data:// 提供只读 RFC 2397 数据流，并同时受 allow_url_fopen 与 allow_url_include 限制；旧条目几乎全部是代码执行内容。安全判断必须在 URL 解码、路径规范化和 wrapper 解析全部完成后执行，不能依赖黑名单字符串替换或客户端文件名。",
+          "en": "The root cause is that data:// provides a read-only RFC 2397 stream and is restricted by both allow_url_fopen and allow_url_include, while the legacy entry is dominated by code-execution content. Security decisions must occur after URL decoding, path canonicalization, and wrapper resolution, rather than relying on blacklist replacements or client-controlled filenames."
+        },
+        "exploitation": {
+          "zh": "先请求批准根目录内的普通 marker 建立基线，再只重放一个路径或 wrapper 变体，并关联请求 ID、最终路径、所选 stream wrapper 与精确 marker 输出。缺失 marker 对照必须失败。",
+          "en": "Request a normal marker inside the approved root as a baseline, then replay one path or wrapper variant and correlate the request ID, final path, selected stream wrapper, and exact marker output. A missing-marker control must fail."
+        },
+        "mitigation": {
+          "zh": "应用应使用逻辑资源 ID 与固定映射，拒绝用户提供的路径和 scheme；必须访问文件时，在一次解码和规范化后验证根目录边界，并以低权限、无执行权限方式打开只读对象。",
+          "en": "Use logical resource IDs with fixed mappings and reject user-supplied paths and schemes. When file access is required, decode and canonicalize once, enforce the root boundary, and open read-only objects with low privilege and no execute permission."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认读取入口",
+            "en": "Confirm the read entry"
+          },
+          "description": {
+            "zh": "定位参数进入 file_get_contents、readfile、include 或等价 API 的位置，并记录正常资源 ID 基线。",
+            "en": "Locate where the parameter reaches file_get_contents, readfile, include, or an equivalent API, and record a normal resource-ID baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "准备只读 Marker",
+            "en": "Prepare a read-only marker"
+          },
+          "description": {
+            "zh": "在批准工作目录创建随机文本 marker，设置只读权限并记录其规范路径和清理责任。",
+            "en": "Create a random text marker in the approved working directory, make it read-only, and record its canonical path and cleanup owner."
+          }
+        },
+        {
+          "title": {
+            "zh": "提交单一读取变体",
+            "en": "Submit one read variant"
+          },
+          "description": {
+            "zh": "一次只提交一个来源命令块，保存原始请求、解码后参数和服务端最终路径或 wrapper 记录。",
+            "en": "Submit one source command block at a time and preserve the raw request, decoded parameter, and server-side final path or wrapper record."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "关联 Marker 证据",
+            "en": "Correlate marker evidence"
+          },
+          "description": {
+            "zh": "只有精确 marker 输出、请求 ID 与最终读取记录一致才确认边界；错误页、警告和响应时延仅作线索。",
+            "en": "Confirm the boundary only when exact marker output, request ID, and final read record agree; error pages, warnings, and latency are only leads."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并双向回归",
+            "en": "Remediate and regress both paths"
+          },
+          "description": {
+            "zh": "改用固定资源映射后，重放异常变体和正常业务资源，确认越界读取消失且合法功能仍可用。",
+            "en": "After adopting fixed resource mappings, replay the variant and a normal business resource to prove out-of-bound reads are gone while valid behavior remains."
+          }
+        }
+      ],
+      "references": [
+        "https://www.php.net/manual/en/wrappers.data.php",
+        "https://www.php.net/manual/en/filesystem.configuration.php",
+        "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/11.1-Testing_for_File_Inclusion"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "来源包含多个不同机制或工具工作流，按单一读取边界拆分并显式退休执行与无效内容。",
+        "targetPayloadIds": [
+          "lfi-data-wrapper-read-boundary"
+        ],
+        "targetToolIds": [
+          "lfi-rfi-tools",
+          "burpsuite"
+        ],
+        "issuesResolved": [
+          "mixed-collection",
+          "dangerous-command",
+          "tool-placement",
+          "wrapper-prerequisite",
+          "evidence-quality"
+        ]
+      }
+    },
+    {
+      "id": "lfi-php-filter",
+      "name": {
+        "zh": "PHP Filter 源码读取边界审校",
+        "en": "PHP Filter Source-Read Boundary Review"
+      },
+      "description": {
+        "zh": "PHP Filter 源码读取边界审校将来源中的混合命令、危险执行和说明文字拆成单一 include/read 证据卡、工具工作流与明确退休项，所有验证均限定为本地 PAYLOADER_MARKER。",
+        "en": "PHP Filter Source-Read Boundary Review separates mixed commands, dangerous execution, and prose into one include or read evidence card, tool workflows, and explicit retirements, with every check limited to local PAYLOADER_MARKER fixtures."
+      },
+      "category": {
+        "zh": "LFI/RFI文件包含",
+        "en": "LFI/RFI File Inclusion"
+      },
+      "subCategory": {
+        "zh": "php://filter 读取过滤器",
+        "en": "php://filter Read Filters"
+      },
+      "tags": [
+        "lfi",
+        "file-inclusion",
+        "marker-validation",
+        "lfi-php-filter"
+      ],
+      "prerequisites": [
+        {
+          "zh": "已在工作目录创建只读 PAYLOADER_MARKER 夹具，并能查看最终规范路径、wrapper 选择或 include 日志。",
+          "en": "A read-only PAYLOADER_MARKER fixture exists in the working directory, and final canonical-path, wrapper-selection, or include logs are observable."
+        },
+        {
+          "zh": "测试服务仅监听 127.0.0.1，临时文件和请求数量有上限，结束后可以完整清理。",
+          "en": "The test service listens only on 127.0.0.1, temporary files and request counts are bounded, and cleanup is complete after testing."
+        }
+      ],
+      "analysis": {
+        "zh": "该来源的核心边界是php://filter 是打开流时应用过滤器的 meta-wrapper，适用于只读源码转换；旧条目把普通转换、已弃用过滤器和 RCE 标签混在一起。确认必须依赖唯一 marker、请求 ID 与最终读取路径或 wrapper 日志的一致性；HTTP 200、PHP 警告、空响应或规则命中都不是充分证据。",
+        "en": "The core boundary is that php://filter is a meta-wrapper that applies filters when opening a stream and supports read-only source transformations, while the legacy entry mixes ordinary transforms, a deprecated filter, and an RCE label. Confirmation requires agreement among a unique marker, request ID, and final read path or wrapper logs; HTTP 200, PHP warnings, empty responses, or rule matches are not sufficient evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "不读取 /etc/passwd、环境变量、凭据文件或其他进程内容，只使用工作目录 marker。",
+          "en": "Do not read /etc/passwd, environment variables, credential files, or other process data; use only the working-directory marker."
+        },
+        {
+          "zh": "不提交 PHP 执行代码、WebShell、反向通道或反序列化对象，出现意外副作用时立即停止。",
+          "en": "Do not submit executable PHP, web shells, reverse channels, or serialized objects, and stop immediately on unexpected side effects."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "PHP Filter 源码读取边界审校先区分“读取现有文件或流”与“执行被包含内容”，再把路径字典、编码生成、夹具制作和请求重放迁入工具卡。Payload 只承担一个可观察的读取边界。",
+          "en": "PHP Filter Source-Read Boundary Review first separates reading an existing file or stream from executing included content, then moves path dictionaries, encoding generation, fixture creation, and request replay into tools. The payload owns one observable read boundary only."
+        },
+        "vulnerability": {
+          "zh": "根因是php://filter 是打开流时应用过滤器的 meta-wrapper，适用于只读源码转换；旧条目把普通转换、已弃用过滤器和 RCE 标签混在一起。安全判断必须在 URL 解码、路径规范化和 wrapper 解析全部完成后执行，不能依赖黑名单字符串替换或客户端文件名。",
+          "en": "The root cause is that php://filter is a meta-wrapper that applies filters when opening a stream and supports read-only source transformations, while the legacy entry mixes ordinary transforms, a deprecated filter, and an RCE label. Security decisions must occur after URL decoding, path canonicalization, and wrapper resolution, rather than relying on blacklist replacements or client-controlled filenames."
+        },
+        "exploitation": {
+          "zh": "先请求批准根目录内的普通 marker 建立基线，再只重放一个路径或 wrapper 变体，并关联请求 ID、最终路径、所选 stream wrapper 与精确 marker 输出。缺失 marker 对照必须失败。",
+          "en": "Request a normal marker inside the approved root as a baseline, then replay one path or wrapper variant and correlate the request ID, final path, selected stream wrapper, and exact marker output. A missing-marker control must fail."
+        },
+        "mitigation": {
+          "zh": "应用应使用逻辑资源 ID 与固定映射，拒绝用户提供的路径和 scheme；必须访问文件时，在一次解码和规范化后验证根目录边界，并以低权限、无执行权限方式打开只读对象。",
+          "en": "Use logical resource IDs with fixed mappings and reject user-supplied paths and schemes. When file access is required, decode and canonicalize once, enforce the root boundary, and open read-only objects with low privilege and no execute permission."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认读取入口",
+            "en": "Confirm the read entry"
+          },
+          "description": {
+            "zh": "定位参数进入 file_get_contents、readfile、include 或等价 API 的位置，并记录正常资源 ID 基线。",
+            "en": "Locate where the parameter reaches file_get_contents, readfile, include, or an equivalent API, and record a normal resource-ID baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "准备只读 Marker",
+            "en": "Prepare a read-only marker"
+          },
+          "description": {
+            "zh": "在批准工作目录创建随机文本 marker，设置只读权限并记录其规范路径和清理责任。",
+            "en": "Create a random text marker in the approved working directory, make it read-only, and record its canonical path and cleanup owner."
+          }
+        },
+        {
+          "title": {
+            "zh": "提交单一读取变体",
+            "en": "Submit one read variant"
+          },
+          "description": {
+            "zh": "一次只提交一个来源命令块，保存原始请求、解码后参数和服务端最终路径或 wrapper 记录。",
+            "en": "Submit one source command block at a time and preserve the raw request, decoded parameter, and server-side final path or wrapper record."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "关联 Marker 证据",
+            "en": "Correlate marker evidence"
+          },
+          "description": {
+            "zh": "只有精确 marker 输出、请求 ID 与最终读取记录一致才确认边界；错误页、警告和响应时延仅作线索。",
+            "en": "Confirm the boundary only when exact marker output, request ID, and final read record agree; error pages, warnings, and latency are only leads."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并双向回归",
+            "en": "Remediate and regress both paths"
+          },
+          "description": {
+            "zh": "改用固定资源映射后，重放异常变体和正常业务资源，确认越界读取消失且合法功能仍可用。",
+            "en": "After adopting fixed resource mappings, replay the variant and a normal business resource to prove out-of-bound reads are gone while valid behavior remains."
+          }
+        }
+      ],
+      "references": [
+        "https://www.php.net/manual/en/wrappers.php.php",
+        "https://www.php.net/manual/en/filters.string.php",
+        "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/11.1-Testing_for_File_Inclusion"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "来源包含多个不同机制或工具工作流，按单一读取边界拆分并显式退休执行与无效内容。",
+        "targetPayloadIds": [
+          "lfi-filter-source-read-boundary"
+        ],
+        "targetToolIds": [
+          "lfi-rfi-tools",
+          "burpsuite"
+        ],
+        "issuesResolved": [
+          "mixed-collection",
+          "dangerous-command",
+          "tool-placement",
+          "wrapper-prerequisite",
+          "evidence-quality"
+        ]
+      }
+    },
+    {
+      "id": "lfi-php-input",
+      "name": {
+        "zh": "PHP Input 请求体读取边界审校",
+        "en": "PHP Input Request-Body Read Boundary Review"
+      },
+      "description": {
+        "zh": "PHP Input 请求体读取边界审校将来源中的混合命令、危险执行和说明文字拆成单一 include/read 证据卡、工具工作流与明确退休项，所有验证均限定为本地 PAYLOADER_MARKER。",
+        "en": "PHP Input Request-Body Read Boundary Review separates mixed commands, dangerous execution, and prose into one include or read evidence card, tool workflows, and explicit retirements, with every check limited to local PAYLOADER_MARKER fixtures."
+      },
+      "category": {
+        "zh": "LFI/RFI文件包含",
+        "en": "LFI/RFI File Inclusion"
+      },
+      "subCategory": {
+        "zh": "php://input 只读请求体",
+        "en": "php://input Read-Only Request Body"
+      },
+      "tags": [
+        "lfi",
+        "file-inclusion",
+        "marker-validation",
+        "lfi-php-input"
+      ],
+      "prerequisites": [
+        {
+          "zh": "已在工作目录创建只读 PAYLOADER_MARKER 夹具，并能查看最终规范路径、wrapper 选择或 include 日志。",
+          "en": "A read-only PAYLOADER_MARKER fixture exists in the working directory, and final canonical-path, wrapper-selection, or include logs are observable."
+        },
+        {
+          "zh": "测试服务仅监听 127.0.0.1，临时文件和请求数量有上限，结束后可以完整清理。",
+          "en": "The test service listens only on 127.0.0.1, temporary files and request counts are bounded, and cleanup is complete after testing."
+        }
+      ],
+      "analysis": {
+        "zh": "该来源的核心边界是php://input 是原始请求体的只读流，multipart/form-data 在默认读取配置下不可用；旧条目把请求体读取错误扩展为命令执行、文件写入和反向通道。确认必须依赖唯一 marker、请求 ID 与最终读取路径或 wrapper 日志的一致性；HTTP 200、PHP 警告、空响应或规则命中都不是充分证据。",
+        "en": "The core boundary is that php://input is a read-only raw request-body stream and is unavailable for multipart/form-data under the default post-data setting, while the legacy entry incorrectly expands body reading into command execution, file writes, and reverse channels. Confirmation requires agreement among a unique marker, request ID, and final read path or wrapper logs; HTTP 200, PHP warnings, empty responses, or rule matches are not sufficient evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "不读取 /etc/passwd、环境变量、凭据文件或其他进程内容，只使用工作目录 marker。",
+          "en": "Do not read /etc/passwd, environment variables, credential files, or other process data; use only the working-directory marker."
+        },
+        {
+          "zh": "不提交 PHP 执行代码、WebShell、反向通道或反序列化对象，出现意外副作用时立即停止。",
+          "en": "Do not submit executable PHP, web shells, reverse channels, or serialized objects, and stop immediately on unexpected side effects."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "PHP Input 请求体读取边界审校先区分“读取现有文件或流”与“执行被包含内容”，再把路径字典、编码生成、夹具制作和请求重放迁入工具卡。Payload 只承担一个可观察的读取边界。",
+          "en": "PHP Input Request-Body Read Boundary Review first separates reading an existing file or stream from executing included content, then moves path dictionaries, encoding generation, fixture creation, and request replay into tools. The payload owns one observable read boundary only."
+        },
+        "vulnerability": {
+          "zh": "根因是php://input 是原始请求体的只读流，multipart/form-data 在默认读取配置下不可用；旧条目把请求体读取错误扩展为命令执行、文件写入和反向通道。安全判断必须在 URL 解码、路径规范化和 wrapper 解析全部完成后执行，不能依赖黑名单字符串替换或客户端文件名。",
+          "en": "The root cause is that php://input is a read-only raw request-body stream and is unavailable for multipart/form-data under the default post-data setting, while the legacy entry incorrectly expands body reading into command execution, file writes, and reverse channels. Security decisions must occur after URL decoding, path canonicalization, and wrapper resolution, rather than relying on blacklist replacements or client-controlled filenames."
+        },
+        "exploitation": {
+          "zh": "先请求批准根目录内的普通 marker 建立基线，再只重放一个路径或 wrapper 变体，并关联请求 ID、最终路径、所选 stream wrapper 与精确 marker 输出。缺失 marker 对照必须失败。",
+          "en": "Request a normal marker inside the approved root as a baseline, then replay one path or wrapper variant and correlate the request ID, final path, selected stream wrapper, and exact marker output. A missing-marker control must fail."
+        },
+        "mitigation": {
+          "zh": "应用应使用逻辑资源 ID 与固定映射，拒绝用户提供的路径和 scheme；必须访问文件时，在一次解码和规范化后验证根目录边界，并以低权限、无执行权限方式打开只读对象。",
+          "en": "Use logical resource IDs with fixed mappings and reject user-supplied paths and schemes. When file access is required, decode and canonicalize once, enforce the root boundary, and open read-only objects with low privilege and no execute permission."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认读取入口",
+            "en": "Confirm the read entry"
+          },
+          "description": {
+            "zh": "定位参数进入 file_get_contents、readfile、include 或等价 API 的位置，并记录正常资源 ID 基线。",
+            "en": "Locate where the parameter reaches file_get_contents, readfile, include, or an equivalent API, and record a normal resource-ID baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "准备只读 Marker",
+            "en": "Prepare a read-only marker"
+          },
+          "description": {
+            "zh": "在批准工作目录创建随机文本 marker，设置只读权限并记录其规范路径和清理责任。",
+            "en": "Create a random text marker in the approved working directory, make it read-only, and record its canonical path and cleanup owner."
+          }
+        },
+        {
+          "title": {
+            "zh": "提交单一读取变体",
+            "en": "Submit one read variant"
+          },
+          "description": {
+            "zh": "一次只提交一个来源命令块，保存原始请求、解码后参数和服务端最终路径或 wrapper 记录。",
+            "en": "Submit one source command block at a time and preserve the raw request, decoded parameter, and server-side final path or wrapper record."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "关联 Marker 证据",
+            "en": "Correlate marker evidence"
+          },
+          "description": {
+            "zh": "只有精确 marker 输出、请求 ID 与最终读取记录一致才确认边界；错误页、警告和响应时延仅作线索。",
+            "en": "Confirm the boundary only when exact marker output, request ID, and final read record agree; error pages, warnings, and latency are only leads."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并双向回归",
+            "en": "Remediate and regress both paths"
+          },
+          "description": {
+            "zh": "改用固定资源映射后，重放异常变体和正常业务资源，确认越界读取消失且合法功能仍可用。",
+            "en": "After adopting fixed resource mappings, replay the variant and a normal business resource to prove out-of-bound reads are gone while valid behavior remains."
+          }
+        }
+      ],
+      "references": [
+        "https://www.php.net/manual/en/wrappers.php.php",
+        "https://www.php.net/manual/en/filesystem.configuration.php",
+        "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/11.1-Testing_for_File_Inclusion"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "来源包含多个不同机制或工具工作流，按单一读取边界拆分并显式退休执行与无效内容。",
+        "targetPayloadIds": [
+          "lfi-input-stream-read-boundary"
+        ],
+        "targetToolIds": [
+          "burpsuite"
+        ],
+        "issuesResolved": [
+          "mixed-collection",
+          "dangerous-command",
+          "tool-placement",
+          "wrapper-prerequisite",
+          "evidence-quality"
+        ]
+      }
+    },
+    {
+      "id": "lfi-php-zip",
+      "name": {
+        "zh": "PHP ZIP 成员读取边界审校",
+        "en": "PHP ZIP Member Read Boundary Review"
+      },
+      "description": {
+        "zh": "PHP ZIP 成员读取边界审校将来源中的混合命令、危险执行和说明文字拆成单一 include/read 证据卡、工具工作流与明确退休项，所有验证均限定为本地 PAYLOADER_MARKER。",
+        "en": "PHP ZIP Member Read Boundary Review separates mixed commands, dangerous execution, and prose into one include or read evidence card, tool workflows, and explicit retirements, with every check limited to local PAYLOADER_MARKER fixtures."
+      },
+      "category": {
+        "zh": "LFI/RFI文件包含",
+        "en": "LFI/RFI File Inclusion"
+      },
+      "subCategory": {
+        "zh": "zip:// 归档成员读取",
+        "en": "zip:// Archive Member Read"
+      },
+      "tags": [
+        "lfi",
+        "file-inclusion",
+        "marker-validation",
+        "lfi-php-zip"
+      ],
+      "prerequisites": [
+        {
+          "zh": "已在工作目录创建只读 PAYLOADER_MARKER 夹具，并能查看最终规范路径、wrapper 选择或 include 日志。",
+          "en": "A read-only PAYLOADER_MARKER fixture exists in the working directory, and final canonical-path, wrapper-selection, or include logs are observable."
+        },
+        {
+          "zh": "测试服务仅监听 127.0.0.1，临时文件和请求数量有上限，结束后可以完整清理。",
+          "en": "The test service listens only on 127.0.0.1, temporary files and request counts are bounded, and cleanup is complete after testing."
+        }
+      ],
+      "analysis": {
+        "zh": "该来源的核心边界是zip:// 使用 archive.zip#member 语法只读归档成员；旧条目混入上传说明、图片拼接、嵌套归档伪语法和可执行成员。确认必须依赖唯一 marker、请求 ID 与最终读取路径或 wrapper 日志的一致性；HTTP 200、PHP 警告、空响应或规则命中都不是充分证据。",
+        "en": "The core boundary is that zip:// reads archive members with archive.zip#member syntax, while the legacy entry mixes upload notes, image concatenation, fake nested-archive syntax, and executable members. Confirmation requires agreement among a unique marker, request ID, and final read path or wrapper logs; HTTP 200, PHP warnings, empty responses, or rule matches are not sufficient evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "不读取 /etc/passwd、环境变量、凭据文件或其他进程内容，只使用工作目录 marker。",
+          "en": "Do not read /etc/passwd, environment variables, credential files, or other process data; use only the working-directory marker."
+        },
+        {
+          "zh": "不提交 PHP 执行代码、WebShell、反向通道或反序列化对象，出现意外副作用时立即停止。",
+          "en": "Do not submit executable PHP, web shells, reverse channels, or serialized objects, and stop immediately on unexpected side effects."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "PHP ZIP 成员读取边界审校先区分“读取现有文件或流”与“执行被包含内容”，再把路径字典、编码生成、夹具制作和请求重放迁入工具卡。Payload 只承担一个可观察的读取边界。",
+          "en": "PHP ZIP Member Read Boundary Review first separates reading an existing file or stream from executing included content, then moves path dictionaries, encoding generation, fixture creation, and request replay into tools. The payload owns one observable read boundary only."
+        },
+        "vulnerability": {
+          "zh": "根因是zip:// 使用 archive.zip#member 语法只读归档成员；旧条目混入上传说明、图片拼接、嵌套归档伪语法和可执行成员。安全判断必须在 URL 解码、路径规范化和 wrapper 解析全部完成后执行，不能依赖黑名单字符串替换或客户端文件名。",
+          "en": "The root cause is that zip:// reads archive members with archive.zip#member syntax, while the legacy entry mixes upload notes, image concatenation, fake nested-archive syntax, and executable members. Security decisions must occur after URL decoding, path canonicalization, and wrapper resolution, rather than relying on blacklist replacements or client-controlled filenames."
+        },
+        "exploitation": {
+          "zh": "先请求批准根目录内的普通 marker 建立基线，再只重放一个路径或 wrapper 变体，并关联请求 ID、最终路径、所选 stream wrapper 与精确 marker 输出。缺失 marker 对照必须失败。",
+          "en": "Request a normal marker inside the approved root as a baseline, then replay one path or wrapper variant and correlate the request ID, final path, selected stream wrapper, and exact marker output. A missing-marker control must fail."
+        },
+        "mitigation": {
+          "zh": "应用应使用逻辑资源 ID 与固定映射，拒绝用户提供的路径和 scheme；必须访问文件时，在一次解码和规范化后验证根目录边界，并以低权限、无执行权限方式打开只读对象。",
+          "en": "Use logical resource IDs with fixed mappings and reject user-supplied paths and schemes. When file access is required, decode and canonicalize once, enforce the root boundary, and open read-only objects with low privilege and no execute permission."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认读取入口",
+            "en": "Confirm the read entry"
+          },
+          "description": {
+            "zh": "定位参数进入 file_get_contents、readfile、include 或等价 API 的位置，并记录正常资源 ID 基线。",
+            "en": "Locate where the parameter reaches file_get_contents, readfile, include, or an equivalent API, and record a normal resource-ID baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "准备只读 Marker",
+            "en": "Prepare a read-only marker"
+          },
+          "description": {
+            "zh": "在批准工作目录创建随机文本 marker，设置只读权限并记录其规范路径和清理责任。",
+            "en": "Create a random text marker in the approved working directory, make it read-only, and record its canonical path and cleanup owner."
+          }
+        },
+        {
+          "title": {
+            "zh": "提交单一读取变体",
+            "en": "Submit one read variant"
+          },
+          "description": {
+            "zh": "一次只提交一个来源命令块，保存原始请求、解码后参数和服务端最终路径或 wrapper 记录。",
+            "en": "Submit one source command block at a time and preserve the raw request, decoded parameter, and server-side final path or wrapper record."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "关联 Marker 证据",
+            "en": "Correlate marker evidence"
+          },
+          "description": {
+            "zh": "只有精确 marker 输出、请求 ID 与最终读取记录一致才确认边界；错误页、警告和响应时延仅作线索。",
+            "en": "Confirm the boundary only when exact marker output, request ID, and final read record agree; error pages, warnings, and latency are only leads."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并双向回归",
+            "en": "Remediate and regress both paths"
+          },
+          "description": {
+            "zh": "改用固定资源映射后，重放异常变体和正常业务资源，确认越界读取消失且合法功能仍可用。",
+            "en": "After adopting fixed resource mappings, replay the variant and a normal business resource to prove out-of-bound reads are gone while valid behavior remains."
+          }
+        }
+      ],
+      "references": [
+        "https://www.php.net/manual/en/wrappers.compression.php",
+        "https://www.php.net/manual/en/wrappers.phar.php",
+        "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/11.1-Testing_for_File_Inclusion"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "来源包含多个不同机制或工具工作流，按单一读取边界拆分并显式退休执行与无效内容。",
+        "targetPayloadIds": [
+          "lfi-zip-member-read-boundary"
+        ],
+        "targetToolIds": [
+          "file-analysis-toolkit",
+          "file-upload-attacks",
+          "lfi-rfi-tools"
+        ],
+        "issuesResolved": [
+          "mixed-collection",
+          "dangerous-command",
+          "tool-placement",
+          "wrapper-prerequisite",
+          "evidence-quality"
+        ]
+      }
+    },
+    {
+      "id": "lfi-proc",
+      "name": {
+        "zh": "Proc 工作目录读取边界审校",
+        "en": "Proc Working-Directory Read Boundary Review"
+      },
+      "description": {
+        "zh": "Proc 工作目录读取边界审校将来源中的混合命令、危险执行和说明文字拆成单一 include/read 证据卡、工具工作流与明确退休项，所有验证均限定为本地 PAYLOADER_MARKER。",
+        "en": "Proc Working-Directory Read Boundary Review separates mixed commands, dangerous execution, and prose into one include or read evidence card, tool workflows, and explicit retirements, with every check limited to local PAYLOADER_MARKER fixtures."
+      },
+      "category": {
+        "zh": "LFI/RFI文件包含",
+        "en": "LFI/RFI File Inclusion"
+      },
+      "subCategory": {
+        "zh": "/proc/self/cwd Marker 读取",
+        "en": "/proc/self/cwd Marker Read"
+      },
+      "tags": [
+        "lfi",
+        "file-inclusion",
+        "marker-validation",
+        "lfi-proc"
+      ],
+      "prerequisites": [
+        {
+          "zh": "已在工作目录创建只读 PAYLOADER_MARKER 夹具，并能查看最终规范路径、wrapper 选择或 include 日志。",
+          "en": "A read-only PAYLOADER_MARKER fixture exists in the working directory, and final canonical-path, wrapper-selection, or include logs are observable."
+        },
+        {
+          "zh": "测试服务仅监听 127.0.0.1，临时文件和请求数量有上限，结束后可以完整清理。",
+          "en": "The test service listens only on 127.0.0.1, temporary files and request counts are bounded, and cleanup is complete after testing."
+        }
+      ],
+      "analysis": {
+        "zh": "该来源的核心边界是/proc/self 的符号链接可暴露当前进程视角的文件路径，旧条目却枚举环境、文件描述符和其他进程，可能读取真实敏感数据。确认必须依赖唯一 marker、请求 ID 与最终读取路径或 wrapper 日志的一致性；HTTP 200、PHP 警告、空响应或规则命中都不是充分证据。",
+        "en": "The core boundary is that /proc/self symlinks can expose paths from the current process view, while the legacy entry enumerates environments, file descriptors, and other processes that may contain real sensitive data. Confirmation requires agreement among a unique marker, request ID, and final read path or wrapper logs; HTTP 200, PHP warnings, empty responses, or rule matches are not sufficient evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "不读取 /etc/passwd、环境变量、凭据文件或其他进程内容，只使用工作目录 marker。",
+          "en": "Do not read /etc/passwd, environment variables, credential files, or other process data; use only the working-directory marker."
+        },
+        {
+          "zh": "不提交 PHP 执行代码、WebShell、反向通道或反序列化对象，出现意外副作用时立即停止。",
+          "en": "Do not submit executable PHP, web shells, reverse channels, or serialized objects, and stop immediately on unexpected side effects."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "Proc 工作目录读取边界审校先区分“读取现有文件或流”与“执行被包含内容”，再把路径字典、编码生成、夹具制作和请求重放迁入工具卡。Payload 只承担一个可观察的读取边界。",
+          "en": "Proc Working-Directory Read Boundary Review first separates reading an existing file or stream from executing included content, then moves path dictionaries, encoding generation, fixture creation, and request replay into tools. The payload owns one observable read boundary only."
+        },
+        "vulnerability": {
+          "zh": "根因是/proc/self 的符号链接可暴露当前进程视角的文件路径，旧条目却枚举环境、文件描述符和其他进程，可能读取真实敏感数据。安全判断必须在 URL 解码、路径规范化和 wrapper 解析全部完成后执行，不能依赖黑名单字符串替换或客户端文件名。",
+          "en": "The root cause is that /proc/self symlinks can expose paths from the current process view, while the legacy entry enumerates environments, file descriptors, and other processes that may contain real sensitive data. Security decisions must occur after URL decoding, path canonicalization, and wrapper resolution, rather than relying on blacklist replacements or client-controlled filenames."
+        },
+        "exploitation": {
+          "zh": "先请求批准根目录内的普通 marker 建立基线，再只重放一个路径或 wrapper 变体，并关联请求 ID、最终路径、所选 stream wrapper 与精确 marker 输出。缺失 marker 对照必须失败。",
+          "en": "Request a normal marker inside the approved root as a baseline, then replay one path or wrapper variant and correlate the request ID, final path, selected stream wrapper, and exact marker output. A missing-marker control must fail."
+        },
+        "mitigation": {
+          "zh": "应用应使用逻辑资源 ID 与固定映射，拒绝用户提供的路径和 scheme；必须访问文件时，在一次解码和规范化后验证根目录边界，并以低权限、无执行权限方式打开只读对象。",
+          "en": "Use logical resource IDs with fixed mappings and reject user-supplied paths and schemes. When file access is required, decode and canonicalize once, enforce the root boundary, and open read-only objects with low privilege and no execute permission."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认读取入口",
+            "en": "Confirm the read entry"
+          },
+          "description": {
+            "zh": "定位参数进入 file_get_contents、readfile、include 或等价 API 的位置，并记录正常资源 ID 基线。",
+            "en": "Locate where the parameter reaches file_get_contents, readfile, include, or an equivalent API, and record a normal resource-ID baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "准备只读 Marker",
+            "en": "Prepare a read-only marker"
+          },
+          "description": {
+            "zh": "在批准工作目录创建随机文本 marker，设置只读权限并记录其规范路径和清理责任。",
+            "en": "Create a random text marker in the approved working directory, make it read-only, and record its canonical path and cleanup owner."
+          }
+        },
+        {
+          "title": {
+            "zh": "提交单一读取变体",
+            "en": "Submit one read variant"
+          },
+          "description": {
+            "zh": "一次只提交一个来源命令块，保存原始请求、解码后参数和服务端最终路径或 wrapper 记录。",
+            "en": "Submit one source command block at a time and preserve the raw request, decoded parameter, and server-side final path or wrapper record."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "关联 Marker 证据",
+            "en": "Correlate marker evidence"
+          },
+          "description": {
+            "zh": "只有精确 marker 输出、请求 ID 与最终读取记录一致才确认边界；错误页、警告和响应时延仅作线索。",
+            "en": "Confirm the boundary only when exact marker output, request ID, and final read record agree; error pages, warnings, and latency are only leads."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并双向回归",
+            "en": "Remediate and regress both paths"
+          },
+          "description": {
+            "zh": "改用固定资源映射后，重放异常变体和正常业务资源，确认越界读取消失且合法功能仍可用。",
+            "en": "After adopting fixed resource mappings, replay the variant and a normal business resource to prove out-of-bound reads are gone while valid behavior remains."
+          }
+        }
+      ],
+      "references": [
+        "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/11.1-Testing_for_File_Inclusion",
+        "https://cwe.mitre.org/data/definitions/22.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "来源包含多个不同机制或工具工作流，按单一读取边界拆分并显式退休执行与无效内容。",
+        "targetPayloadIds": [
+          "lfi-proc-cwd-marker-read-boundary"
+        ],
+        "targetToolIds": [
+          "lfi-rfi-tools"
+        ],
+        "issuesResolved": [
+          "mixed-collection",
+          "dangerous-command",
+          "tool-placement",
+          "wrapper-prerequisite",
+          "evidence-quality"
+        ]
+      }
+    },
+    {
+      "id": "lfi-session",
+      "name": {
+        "zh": "PHP Session 文件读取边界审校",
+        "en": "PHP Session File Read Boundary Review"
+      },
+      "description": {
+        "zh": "PHP Session 文件读取边界审校将来源中的混合命令、危险执行和说明文字拆成单一 include/read 证据卡、工具工作流与明确退休项，所有验证均限定为本地 PAYLOADER_MARKER。",
+        "en": "PHP Session File Read Boundary Review separates mixed commands, dangerous execution, and prose into one include or read evidence card, tool workflows, and explicit retirements, with every check limited to local PAYLOADER_MARKER fixtures."
+      },
+      "category": {
+        "zh": "LFI/RFI文件包含",
+        "en": "LFI/RFI File Inclusion"
+      },
+      "subCategory": {
+        "zh": "受控 Session Marker 读取",
+        "en": "Controlled Session Marker Read"
+      },
+      "tags": [
+        "lfi",
+        "file-inclusion",
+        "marker-validation",
+        "lfi-session"
+      ],
+      "prerequisites": [
+        {
+          "zh": "已在工作目录创建只读 PAYLOADER_MARKER 夹具，并能查看最终规范路径、wrapper 选择或 include 日志。",
+          "en": "A read-only PAYLOADER_MARKER fixture exists in the working directory, and final canonical-path, wrapper-selection, or include logs are observable."
+        },
+        {
+          "zh": "测试服务仅监听 127.0.0.1，临时文件和请求数量有上限，结束后可以完整清理。",
+          "en": "The test service listens only on 127.0.0.1, temporary files and request counts are bounded, and cleanup is complete after testing."
+        }
+      ],
+      "analysis": {
+        "zh": "该来源的核心边界是文件型 Session 可在配置的 session.save_path 中形成受控测试文件，旧条目混入 PHP 注入、竞争条件与 Session ID 预测。确认必须依赖唯一 marker、请求 ID 与最终读取路径或 wrapper 日志的一致性；HTTP 200、PHP 警告、空响应或规则命中都不是充分证据。",
+        "en": "The core boundary is that file-backed sessions can create a controlled test file under session.save_path, while the legacy entry mixes PHP injection, race conditions, and session-ID prediction. Confirmation requires agreement among a unique marker, request ID, and final read path or wrapper logs; HTTP 200, PHP warnings, empty responses, or rule matches are not sufficient evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "不读取 /etc/passwd、环境变量、凭据文件或其他进程内容，只使用工作目录 marker。",
+          "en": "Do not read /etc/passwd, environment variables, credential files, or other process data; use only the working-directory marker."
+        },
+        {
+          "zh": "不提交 PHP 执行代码、WebShell、反向通道或反序列化对象，出现意外副作用时立即停止。",
+          "en": "Do not submit executable PHP, web shells, reverse channels, or serialized objects, and stop immediately on unexpected side effects."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "PHP Session 文件读取边界审校先区分“读取现有文件或流”与“执行被包含内容”，再把路径字典、编码生成、夹具制作和请求重放迁入工具卡。Payload 只承担一个可观察的读取边界。",
+          "en": "PHP Session File Read Boundary Review first separates reading an existing file or stream from executing included content, then moves path dictionaries, encoding generation, fixture creation, and request replay into tools. The payload owns one observable read boundary only."
+        },
+        "vulnerability": {
+          "zh": "根因是文件型 Session 可在配置的 session.save_path 中形成受控测试文件，旧条目混入 PHP 注入、竞争条件与 Session ID 预测。安全判断必须在 URL 解码、路径规范化和 wrapper 解析全部完成后执行，不能依赖黑名单字符串替换或客户端文件名。",
+          "en": "The root cause is that file-backed sessions can create a controlled test file under session.save_path, while the legacy entry mixes PHP injection, race conditions, and session-ID prediction. Security decisions must occur after URL decoding, path canonicalization, and wrapper resolution, rather than relying on blacklist replacements or client-controlled filenames."
+        },
+        "exploitation": {
+          "zh": "先请求批准根目录内的普通 marker 建立基线，再只重放一个路径或 wrapper 变体，并关联请求 ID、最终路径、所选 stream wrapper 与精确 marker 输出。缺失 marker 对照必须失败。",
+          "en": "Request a normal marker inside the approved root as a baseline, then replay one path or wrapper variant and correlate the request ID, final path, selected stream wrapper, and exact marker output. A missing-marker control must fail."
+        },
+        "mitigation": {
+          "zh": "应用应使用逻辑资源 ID 与固定映射，拒绝用户提供的路径和 scheme；必须访问文件时，在一次解码和规范化后验证根目录边界，并以低权限、无执行权限方式打开只读对象。",
+          "en": "Use logical resource IDs with fixed mappings and reject user-supplied paths and schemes. When file access is required, decode and canonicalize once, enforce the root boundary, and open read-only objects with low privilege and no execute permission."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认读取入口",
+            "en": "Confirm the read entry"
+          },
+          "description": {
+            "zh": "定位参数进入 file_get_contents、readfile、include 或等价 API 的位置，并记录正常资源 ID 基线。",
+            "en": "Locate where the parameter reaches file_get_contents, readfile, include, or an equivalent API, and record a normal resource-ID baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "准备只读 Marker",
+            "en": "Prepare a read-only marker"
+          },
+          "description": {
+            "zh": "在批准工作目录创建随机文本 marker，设置只读权限并记录其规范路径和清理责任。",
+            "en": "Create a random text marker in the approved working directory, make it read-only, and record its canonical path and cleanup owner."
+          }
+        },
+        {
+          "title": {
+            "zh": "提交单一读取变体",
+            "en": "Submit one read variant"
+          },
+          "description": {
+            "zh": "一次只提交一个来源命令块，保存原始请求、解码后参数和服务端最终路径或 wrapper 记录。",
+            "en": "Submit one source command block at a time and preserve the raw request, decoded parameter, and server-side final path or wrapper record."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "关联 Marker 证据",
+            "en": "Correlate marker evidence"
+          },
+          "description": {
+            "zh": "只有精确 marker 输出、请求 ID 与最终读取记录一致才确认边界；错误页、警告和响应时延仅作线索。",
+            "en": "Confirm the boundary only when exact marker output, request ID, and final read record agree; error pages, warnings, and latency are only leads."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并双向回归",
+            "en": "Remediate and regress both paths"
+          },
+          "description": {
+            "zh": "改用固定资源映射后，重放异常变体和正常业务资源，确认越界读取消失且合法功能仍可用。",
+            "en": "After adopting fixed resource mappings, replay the variant and a normal business resource to prove out-of-bound reads are gone while valid behavior remains."
+          }
+        }
+      ],
+      "references": [
+        "https://www.php.net/manual/en/session.configuration.php",
+        "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/11.1-Testing_for_File_Inclusion",
+        "https://cwe.mitre.org/data/definitions/98.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "来源包含多个不同机制或工具工作流，按单一读取边界拆分并显式退休执行与无效内容。",
+        "targetPayloadIds": [
+          "lfi-session-file-read-boundary"
+        ],
+        "targetToolIds": [
+          "lfi-rfi-tools",
+          "php-attacks"
+        ],
+        "issuesResolved": [
+          "mixed-collection",
+          "dangerous-command",
+          "tool-placement",
+          "wrapper-prerequisite",
+          "evidence-quality"
+        ]
+      }
+    },
+    {
+      "id": "lfi-traversal",
+      "name": {
+        "zh": "LFI 路径遍历规范化审校",
+        "en": "LFI Path-Traversal Normalization Review"
+      },
+      "description": {
+        "zh": "LFI 路径遍历规范化审校将来源中的混合命令、危险执行和说明文字拆成单一 include/read 证据卡、工具工作流与明确退休项，所有验证均限定为本地 PAYLOADER_MARKER。",
+        "en": "LFI Path-Traversal Normalization Review separates mixed commands, dangerous execution, and prose into one include or read evidence card, tool workflows, and explicit retirements, with every check limited to local PAYLOADER_MARKER fixtures."
+      },
+      "category": {
+        "zh": "LFI/RFI文件包含",
+        "en": "LFI/RFI File Inclusion"
+      },
+      "subCategory": {
+        "zh": "Marker 路径规范化差异",
+        "en": "Marker Path Normalization Differential"
+      },
+      "tags": [
+        "lfi",
+        "file-inclusion",
+        "marker-validation",
+        "lfi-traversal"
+      ],
+      "prerequisites": [
+        {
+          "zh": "已在工作目录创建只读 PAYLOADER_MARKER 夹具，并能查看最终规范路径、wrapper 选择或 include 日志。",
+          "en": "A read-only PAYLOADER_MARKER fixture exists in the working directory, and final canonical-path, wrapper-selection, or include logs are observable."
+        },
+        {
+          "zh": "测试服务仅监听 127.0.0.1，临时文件和请求数量有上限，结束后可以完整清理。",
+          "en": "The test service listens only on 127.0.0.1, temporary files and request counts are bounded, and cleanup is complete after testing."
+        }
+      ],
+      "analysis": {
+        "zh": "该来源的核心边界是多层 URL 解码和路径规范化可能让相对路径越过批准根目录，旧条目使用真实系统文件、过长 UTF-8、NUL 和平台说明混合集合。确认必须依赖唯一 marker、请求 ID 与最终读取路径或 wrapper 日志的一致性；HTTP 200、PHP 警告、空响应或规则命中都不是充分证据。",
+        "en": "The core boundary is that multilayer URL decoding and canonicalization can let relative paths escape an approved root, while the legacy entry uses real system files, overlong UTF-8, NULs, and mixed platform notes. Confirmation requires agreement among a unique marker, request ID, and final read path or wrapper logs; HTTP 200, PHP warnings, empty responses, or rule matches are not sufficient evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "不读取 /etc/passwd、环境变量、凭据文件或其他进程内容，只使用工作目录 marker。",
+          "en": "Do not read /etc/passwd, environment variables, credential files, or other process data; use only the working-directory marker."
+        },
+        {
+          "zh": "不提交 PHP 执行代码、WebShell、反向通道或反序列化对象，出现意外副作用时立即停止。",
+          "en": "Do not submit executable PHP, web shells, reverse channels, or serialized objects, and stop immediately on unexpected side effects."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "LFI 路径遍历规范化审校先区分“读取现有文件或流”与“执行被包含内容”，再把路径字典、编码生成、夹具制作和请求重放迁入工具卡。Payload 只承担一个可观察的读取边界。",
+          "en": "LFI Path-Traversal Normalization Review first separates reading an existing file or stream from executing included content, then moves path dictionaries, encoding generation, fixture creation, and request replay into tools. The payload owns one observable read boundary only."
+        },
+        "vulnerability": {
+          "zh": "根因是多层 URL 解码和路径规范化可能让相对路径越过批准根目录，旧条目使用真实系统文件、过长 UTF-8、NUL 和平台说明混合集合。安全判断必须在 URL 解码、路径规范化和 wrapper 解析全部完成后执行，不能依赖黑名单字符串替换或客户端文件名。",
+          "en": "The root cause is that multilayer URL decoding and canonicalization can let relative paths escape an approved root, while the legacy entry uses real system files, overlong UTF-8, NULs, and mixed platform notes. Security decisions must occur after URL decoding, path canonicalization, and wrapper resolution, rather than relying on blacklist replacements or client-controlled filenames."
+        },
+        "exploitation": {
+          "zh": "先请求批准根目录内的普通 marker 建立基线，再只重放一个路径或 wrapper 变体，并关联请求 ID、最终路径、所选 stream wrapper 与精确 marker 输出。缺失 marker 对照必须失败。",
+          "en": "Request a normal marker inside the approved root as a baseline, then replay one path or wrapper variant and correlate the request ID, final path, selected stream wrapper, and exact marker output. A missing-marker control must fail."
+        },
+        "mitigation": {
+          "zh": "应用应使用逻辑资源 ID 与固定映射，拒绝用户提供的路径和 scheme；必须访问文件时，在一次解码和规范化后验证根目录边界，并以低权限、无执行权限方式打开只读对象。",
+          "en": "Use logical resource IDs with fixed mappings and reject user-supplied paths and schemes. When file access is required, decode and canonicalize once, enforce the root boundary, and open read-only objects with low privilege and no execute permission."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认读取入口",
+            "en": "Confirm the read entry"
+          },
+          "description": {
+            "zh": "定位参数进入 file_get_contents、readfile、include 或等价 API 的位置，并记录正常资源 ID 基线。",
+            "en": "Locate where the parameter reaches file_get_contents, readfile, include, or an equivalent API, and record a normal resource-ID baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "准备只读 Marker",
+            "en": "Prepare a read-only marker"
+          },
+          "description": {
+            "zh": "在批准工作目录创建随机文本 marker，设置只读权限并记录其规范路径和清理责任。",
+            "en": "Create a random text marker in the approved working directory, make it read-only, and record its canonical path and cleanup owner."
+          }
+        },
+        {
+          "title": {
+            "zh": "提交单一读取变体",
+            "en": "Submit one read variant"
+          },
+          "description": {
+            "zh": "一次只提交一个来源命令块，保存原始请求、解码后参数和服务端最终路径或 wrapper 记录。",
+            "en": "Submit one source command block at a time and preserve the raw request, decoded parameter, and server-side final path or wrapper record."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "关联 Marker 证据",
+            "en": "Correlate marker evidence"
+          },
+          "description": {
+            "zh": "只有精确 marker 输出、请求 ID 与最终读取记录一致才确认边界；错误页、警告和响应时延仅作线索。",
+            "en": "Confirm the boundary only when exact marker output, request ID, and final read record agree; error pages, warnings, and latency are only leads."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并双向回归",
+            "en": "Remediate and regress both paths"
+          },
+          "description": {
+            "zh": "改用固定资源映射后，重放异常变体和正常业务资源，确认越界读取消失且合法功能仍可用。",
+            "en": "After adopting fixed resource mappings, replay the variant and a normal business resource to prove out-of-bound reads are gone while valid behavior remains."
+          }
+        }
+      ],
+      "references": [
+        "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/11.1-Testing_for_File_Inclusion",
+        "https://owasp.org/www-community/attacks/Path_Traversal",
+        "https://cwe.mitre.org/data/definitions/22.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "来源包含多个不同机制或工具工作流，按单一读取边界拆分并显式退休执行与无效内容。",
+        "targetPayloadIds": [
+          "lfi-traversal-marker-read-boundary"
+        ],
+        "targetToolIds": [
+          "web-fuzzing-wordlists",
+          "lfi-rfi-tools"
+        ],
+        "issuesResolved": [
+          "mixed-collection",
+          "dangerous-command",
+          "tool-placement",
+          "wrapper-prerequisite",
+          "evidence-quality"
+        ]
+      }
+    },
+    {
+      "id": "lfi-wrapper",
+      "name": {
+        "zh": "PHP Wrapper 能力矩阵审校",
+        "en": "PHP Wrapper Capability Matrix Review"
+      },
+      "description": {
+        "zh": "PHP Wrapper 能力矩阵审校将来源中的混合命令、危险执行和说明文字拆成单一 include/read 证据卡、工具工作流与明确退休项，所有验证均限定为本地 PAYLOADER_MARKER。",
+        "en": "PHP Wrapper Capability Matrix Review separates mixed commands, dangerous execution, and prose into one include or read evidence card, tool workflows, and explicit retirements, with every check limited to local PAYLOADER_MARKER fixtures."
+      },
+      "category": {
+        "zh": "LFI/RFI文件包含",
+        "en": "LFI/RFI File Inclusion"
+      },
+      "subCategory": {
+        "zh": "Wrapper 工具参考迁移",
+        "en": "Wrapper Tool Reference Migration"
+      },
+      "tags": [
+        "lfi",
+        "file-inclusion",
+        "marker-validation",
+        "lfi-wrapper"
+      ],
+      "prerequisites": [
+        {
+          "zh": "已在工作目录创建只读 PAYLOADER_MARKER 夹具，并能查看最终规范路径、wrapper 选择或 include 日志。",
+          "en": "A read-only PAYLOADER_MARKER fixture exists in the working directory, and final canonical-path, wrapper-selection, or include logs are observable."
+        },
+        {
+          "zh": "测试服务仅监听 127.0.0.1，临时文件和请求数量有上限，结束后可以完整清理。",
+          "en": "The test service listens only on 127.0.0.1, temporary files and request counts are bounded, and cleanup is complete after testing."
+        }
+      ],
+      "analysis": {
+        "zh": "该来源的核心边界是旧条目重复汇总 filter、input、data、phar 和 zip，并混入执行代码、大小写伪绕过与归档制作步骤，不应作为单一 Payload。确认必须依赖唯一 marker、请求 ID 与最终读取路径或 wrapper 日志的一致性；HTTP 200、PHP 警告、空响应或规则命中都不是充分证据。",
+        "en": "The core boundary is that the legacy entry duplicates filter, input, data, phar, and zip while mixing executable code, case-based pseudo-bypasses, and archive-building steps, so it cannot remain a single payload. Confirmation requires agreement among a unique marker, request ID, and final read path or wrapper logs; HTTP 200, PHP warnings, empty responses, or rule matches are not sufficient evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "不读取 /etc/passwd、环境变量、凭据文件或其他进程内容，只使用工作目录 marker。",
+          "en": "Do not read /etc/passwd, environment variables, credential files, or other process data; use only the working-directory marker."
+        },
+        {
+          "zh": "不提交 PHP 执行代码、WebShell、反向通道或反序列化对象，出现意外副作用时立即停止。",
+          "en": "Do not submit executable PHP, web shells, reverse channels, or serialized objects, and stop immediately on unexpected side effects."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "PHP Wrapper 能力矩阵审校先区分“读取现有文件或流”与“执行被包含内容”，再把路径字典、编码生成、夹具制作和请求重放迁入工具卡。Payload 只承担一个可观察的读取边界。",
+          "en": "PHP Wrapper Capability Matrix Review first separates reading an existing file or stream from executing included content, then moves path dictionaries, encoding generation, fixture creation, and request replay into tools. The payload owns one observable read boundary only."
+        },
+        "vulnerability": {
+          "zh": "根因是旧条目重复汇总 filter、input、data、phar 和 zip，并混入执行代码、大小写伪绕过与归档制作步骤，不应作为单一 Payload。安全判断必须在 URL 解码、路径规范化和 wrapper 解析全部完成后执行，不能依赖黑名单字符串替换或客户端文件名。",
+          "en": "The root cause is that the legacy entry duplicates filter, input, data, phar, and zip while mixing executable code, case-based pseudo-bypasses, and archive-building steps, so it cannot remain a single payload. Security decisions must occur after URL decoding, path canonicalization, and wrapper resolution, rather than relying on blacklist replacements or client-controlled filenames."
+        },
+        "exploitation": {
+          "zh": "先请求批准根目录内的普通 marker 建立基线，再只重放一个路径或 wrapper 变体，并关联请求 ID、最终路径、所选 stream wrapper 与精确 marker 输出。缺失 marker 对照必须失败。",
+          "en": "Request a normal marker inside the approved root as a baseline, then replay one path or wrapper variant and correlate the request ID, final path, selected stream wrapper, and exact marker output. A missing-marker control must fail."
+        },
+        "mitigation": {
+          "zh": "应用应使用逻辑资源 ID 与固定映射，拒绝用户提供的路径和 scheme；必须访问文件时，在一次解码和规范化后验证根目录边界，并以低权限、无执行权限方式打开只读对象。",
+          "en": "Use logical resource IDs with fixed mappings and reject user-supplied paths and schemes. When file access is required, decode and canonicalize once, enforce the root boundary, and open read-only objects with low privilege and no execute permission."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认读取入口",
+            "en": "Confirm the read entry"
+          },
+          "description": {
+            "zh": "定位参数进入 file_get_contents、readfile、include 或等价 API 的位置，并记录正常资源 ID 基线。",
+            "en": "Locate where the parameter reaches file_get_contents, readfile, include, or an equivalent API, and record a normal resource-ID baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "准备只读 Marker",
+            "en": "Prepare a read-only marker"
+          },
+          "description": {
+            "zh": "在批准工作目录创建随机文本 marker，设置只读权限并记录其规范路径和清理责任。",
+            "en": "Create a random text marker in the approved working directory, make it read-only, and record its canonical path and cleanup owner."
+          }
+        },
+        {
+          "title": {
+            "zh": "提交单一读取变体",
+            "en": "Submit one read variant"
+          },
+          "description": {
+            "zh": "一次只提交一个来源命令块，保存原始请求、解码后参数和服务端最终路径或 wrapper 记录。",
+            "en": "Submit one source command block at a time and preserve the raw request, decoded parameter, and server-side final path or wrapper record."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "关联 Marker 证据",
+            "en": "Correlate marker evidence"
+          },
+          "description": {
+            "zh": "只有精确 marker 输出、请求 ID 与最终读取记录一致才确认边界；错误页、警告和响应时延仅作线索。",
+            "en": "Confirm the boundary only when exact marker output, request ID, and final read record agree; error pages, warnings, and latency are only leads."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并双向回归",
+            "en": "Remediate and regress both paths"
+          },
+          "description": {
+            "zh": "改用固定资源映射后，重放异常变体和正常业务资源，确认越界读取消失且合法功能仍可用。",
+            "en": "After adopting fixed resource mappings, replay the variant and a normal business resource to prove out-of-bound reads are gone while valid behavior remains."
+          }
+        }
+      ],
+      "references": [
+        "https://www.php.net/manual/en/wrappers.php",
+        "https://www.php.net/manual/en/filesystem.configuration.php",
+        "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/11.1-Testing_for_File_Inclusion"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "来源包含多个不同机制或工具工作流，按单一读取边界拆分并显式退休执行与无效内容。",
+        "targetPayloadIds": [],
+        "targetToolIds": [
+          "lfi-rfi-tools",
+          "burpsuite"
+        ],
+        "issuesResolved": [
+          "mixed-collection",
+          "dangerous-command",
+          "tool-placement",
+          "wrapper-prerequisite",
+          "evidence-quality"
+        ]
+      }
+    }
+  ]
+}

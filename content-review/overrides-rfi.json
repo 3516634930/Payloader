@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "sourcePrefix": "rfi",
+  "entries": [
+    {
+      "id": "rfi-basic",
+      "name": {
+        "zh": "远程资源包含边界集合",
+        "en": "Remote Resource Inclusion Boundary Collection"
+      },
+      "description": {
+        "zh": "审校远程 HTTP 资源是否被服务端 include/require 路径获取并作为模板或代码处理；原集合按 HTTP 规范化、工具夹具和退休内容拆分。",
+        "en": "Reviews whether a remote HTTP resource is fetched through a server-side include or require path and processed as template or code, splitting the source into HTTP normalization, tool fixtures, and retired content."
+      },
+      "category": {
+        "zh": "LFI/RFI文件包含",
+        "en": "LFI/RFI File Inclusion"
+      },
+      "subCategory": {
+        "zh": "远程 HTTP 包含",
+        "en": "Remote HTTP Inclusion"
+      },
+      "tags": ["rfi", "remote-include", "http", "url-normalization", "localhost-fixture"],
+      "prerequisites": [
+        {
+          "zh": "目标服务端语言和配置允许远程 URL 进入 include/require 类 Sink；仅 URL 出现在响应、客户端请求或普通 HTTP fetch 不构成 RFI。",
+          "en": "The server language and configuration permit a remote URL to reach an include or require-style sink; a URL in a response, a client request, or an ordinary HTTP fetch does not constitute RFI."
+        },
+        {
+          "zh": "准备只绑定 127.0.0.1 的短文本 marker 服务、单次请求、应用访问日志和模板/包含调用栈，不提供脚本代码。",
+          "en": "Prepare a short-text marker service bound only to 127.0.0.1, one request, application access logs, and template or include call-stack evidence without serving script code."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "RFI 的关键不是应用能请求 URL，而是远程响应进入服务端包含语义。安全验证只提供纯文本 marker，并分别证明网络获取、include Sink 和服务端解释阶段。",
+          "en": "RFI is not merely an application requesting a URL; the remote response must enter server-side inclusion semantics. Safe validation serves plain text only and proves network fetch, include sink, and server interpretation separately."
+        },
+        "vulnerability": {
+          "zh": "应用把用户控制的 URL 直接交给 include/require 或等价模板加载器，且运行时允许远程资源。远程内容因此跨越数据边界进入服务端解析上下文。",
+          "en": "The application sends a user-controlled URL directly to include, require, or an equivalent template loader while the runtime permits remote resources, allowing remote content to cross into a server parsing context."
+        },
+        "exploitation": {
+          "zh": "先用不可解释的纯文本建立负对照，再提交单一回环 marker URL，关联 marker 服务首包、应用请求 ID、include 调用栈和渲染结果。大小写变体必须逐条测试，不能把 DNS、连接错误或普通代理请求当作包含。",
+          "en": "Establish a negative control with non-executable plain text, submit one loopback marker URL, and correlate the marker server's first packet, application request ID, include call stack, and render result. Test scheme-case variants individually and do not treat DNS, connection errors, or an ordinary proxy request as inclusion."
+        },
+        "mitigation": {
+          "zh": "禁止用户输入参与模板或文件路径，关闭不需要的远程包含能力，使用固定资源映射和 allowlist，并对 URL 规范化后再次授权。运行身份应限制网络和文件权限。",
+          "en": "Keep user input out of template and file paths, disable unnecessary remote-inclusion capability, use fixed resource mappings and allowlists, and reauthorize after URL normalization. Restrict network and filesystem permissions for the runtime identity."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {"zh": "确认远程包含前提", "en": "Confirm remote-inclusion prerequisites"},
+          "description": {"zh": "记录运行时、配置、Sink 和纯文本负对照。", "en": "Record the runtime, configuration, sink, and plain-text negative control."}
+        },
+        {
+          "title": {"zh": "提交回环 marker URL", "en": "Submit a loopback marker URL"},
+          "description": {"zh": "只使用执行区的回环资源并触发一次受控包含请求。", "en": "Use only the execution entry's loopback resource and trigger one controlled inclusion request."},
+          "payloadRef": {"area": "execution", "index": 0}
+        },
+        {
+          "title": {"zh": "关联 Fetch 与 Include", "en": "Correlate fetch and include"},
+          "description": {"zh": "将首包、请求 ID、调用栈和服务端结果绑定到同一轮。", "en": "Bind the first packet, request ID, call stack, and server result to the same run."}
+        },
+        {
+          "title": {"zh": "固定资源映射并回归", "en": "Fix resource mapping and regress"},
+          "description": {"zh": "修复后本地模板保持可用，远程 URL 在网络访问前被拒绝。", "en": "After remediation local templates remain functional and remote URLs are rejected before network access."}
+        }
+      ],
+      "analysis": {
+        "zh": "阳性要求应用进程从回环 marker 服务获取当前 token，并由已识别 include/template Sink 消费；仅 HTTP 请求、URL 回显、错误、DNS 或客户端加载不是 RFI。",
+        "en": "A positive requires the application process to fetch the current token from the loopback marker service and have the identified include or template sink consume it; an HTTP request, URL reflection, error, DNS event, or client load alone is not RFI."
+      },
+      "opsecTips": [
+        {"zh": "只提供短纯文本 marker，出现脚本解释、子进程、外连、真实文件访问或 worker 异常时停止。", "en": "Serve short plain-text markers only and stop on script interpretation, child processes, egress, real-file access, or worker anomalies."},
+        {"zh": "测试后停止回环服务、删除临时目录和日志，清空模板/URL 缓存并回归正常本地模板。", "en": "Stop the loopback service, delete temporary directories and logs, clear template and URL caches, and regress normal local templates afterward."}
+      ],
+      "references": [
+        "https://www.php.net/manual/en/filesystem.configuration.php",
+        "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/11.1-Testing_for_File_Inclusion"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "原条目混合 HTTP RFI、外部脚本托管、反弹 Shell、data wrapper、无效双写 URL、scheme 大小写和 FTP/filter；仅保留纯文本 HTTP 解析边界，其余迁到工具或退休。",
+        "issuesResolved": [
+          "generic-description",
+          "missing-tutorial",
+          "mixed-remote-and-local-wrappers",
+          "external-targets",
+          "command-execution-content",
+          "invalid-double-write-urls",
+          "unsafe-reverse-shell"
+        ],
+        "targetPayloadIds": [
+          "rfi-http-marker-include-boundary",
+          "rfi-http-scheme-case-boundary"
+        ],
+        "targetToolIds": ["lfi-rfi-tools"],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 -> rfi-http-marker-include-boundary after localhost rewrite",
+          "execution 1 and execution 3 -> lfi-rfi-tools as local marker fixtures",
+          "wafBypass 1 -> rfi-http-scheme-case-boundary after localhost rewrite",
+          "execution 2, wafBypass 0, and wafBypass 2 -> retire with bilingual reasons"
+        ]
+      }
+    }
+  ]
+}

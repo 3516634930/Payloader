@@ -1,0 +1,2164 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "sourcePrefix": "ssrf2",
+  "entries": [
+    {
+      "id": "ssrf2-expired-domain-takeover",
+      "prerequisites": [
+        {
+          "zh": "使用组织自有域名清单、历史 DNS 数据和当前权威 DNS 查询，确认候选主机确实属于授权范围。",
+          "en": "Use an organization-owned domain inventory, historical DNS data, and current authoritative DNS queries to confirm every candidate is in scope."
+        },
+        {
+          "zh": "为每个候选记录注册域生命周期、A/AAAA/CNAME/NS 链及托管账户归属；不注册或接管任何非测试域。",
+          "en": "Record registrable-domain lifecycle, A, AAAA, CNAME, and NS chains and hosting-account ownership for each candidate; never register or claim a nontest domain."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性工具证据要求候选域名或其委派目标已过期/可重新注册，并且组织仍有 DNS、链接、Cookie、邮件或信任关系指向它；应在自有测试域上完成一次可逆归属验证。仅名称含 old/legacy、NXDOMAIN、WHOIS 即将到期、历史截图、DNS 暂时失败或域名可购买但没有组织引用均是假阳性。",
+        "en": "Positive tool evidence requires the candidate domain or delegated target to be expired or registrable while the organization still has DNS, links, cookies, mail, or trust relationships pointing to it, followed by a reversible ownership proof on an owned test domain. Names such as old or legacy, NXDOMAIN, approaching expiry, historical screenshots, temporary DNS failure, or registrability without an organizational reference are false positives."
+      },
+      "opsecTips": [
+        {
+          "zh": "确认一个自有测试域的过期委派与剩余信任关系后停止，不购买、绑定或解析第三方候选。",
+          "en": "Stop after confirming one owned test domain's expired delegation and residual trust; do not purchase, bind, or resolve third-party candidates."
+        },
+        {
+          "zh": "删除测试 DNS 与托管绑定，撤销验证令牌，清理解析/WHOIS 缓存，并移除组织内的陈旧引用。",
+          "en": "Delete test DNS and hosting bindings, revoke verification tokens, clear resolver and WHOIS caches, and remove stale organizational references."
+        }
+      ],
+      "name": {
+        "zh": "过期域名与遗留引用审计词典",
+        "en": "Expired Domain and Residual Reference Audit Wordlist"
+      },
+      "description": {
+        "zh": "将历史子域候选导入 DNS 与资产治理工具，核对注册生命周期、委派状态和组织剩余信任；该列表不是 SSRF 请求载荷，也不以名称或 NXDOMAIN 单独判定接管。",
+        "en": "Imports historical subdomain candidates into DNS and asset-governance tools to review registration lifecycle, delegation, and residual organizational trust; the list is not an SSRF request payload and names or NXDOMAIN alone do not establish takeover."
+      },
+      "category": {
+        "zh": "域名与 DNS 安全",
+        "en": "Domain and DNS Security"
+      },
+      "subCategory": {
+        "zh": "过期域名与遗留资产审计",
+        "en": "Expired Domain and Legacy Asset Audit"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "该记录是通用历史主机名词典，而不是“过期域名接管”证明。审校应从注册域边界、注册局生命周期、权威 DNS 委派和仍然引用该名称的应用数据流开始，再决定是否存在可被重新注册的外部依赖。",
+          "en": "This record is a generic historical-hostname wordlist rather than proof of expired-domain takeover. Review starts with registrable-domain boundaries, registry lifecycle, authoritative delegation, and application data flows that still reference the name before determining whether a registrable external dependency remains."
+        },
+        "vulnerability": {
+          "zh": "风险来自组织删除或放弃域名/托管资源后仍保留 DNS、OAuth 回调、Cookie Domain、邮件路由、CSP 或链接信任。攻击者只有在能够取得该外部名称且组织信任仍生效时才可能利用；普通 DNS 故障不构成控制权。",
+          "en": "Risk arises when an organization abandons a domain or hosted resource while retaining DNS, OAuth callbacks, cookie Domain scope, mail routing, CSP, or links. Exploitation requires acquisition of the external name while organizational trust remains active; ordinary DNS failure does not confer control."
+        },
+        "exploitation": {
+          "zh": "在授权资产仓库中解析候选的当前与历史记录，核对注册状态和所有内部引用；仅对自有测试域模拟到期和重新绑定，用唯一验证文件证明控制后立即撤销。不得对第三方或真实过期名称执行购买、注册或托管声明。",
+          "en": "Resolve current and historical records from the authorized asset inventory, review registration state and internal references, and simulate expiry and rebinding only on an owned test domain. Use one unique verification file to prove control and immediately revoke it; never purchase, register, or claim third-party or real expired names."
+        },
+        "mitigation": {
+          "zh": "为所有注册域和外部托管资源建立所有者、续费、弃用和 DNS 删除流程；在释放资源前移除回调、Cookie、邮件和策略引用，并监控权威 DNS、注册状态与证书透明度变化。",
+          "en": "Maintain ownership, renewal, decommissioning, and DNS-removal workflows for every registrable domain and external hosting resource. Remove callbacks, cookies, mail, and policy references before release, and monitor authoritative DNS, registration state, and certificate-transparency changes."
+        },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "限定注册域与资产范围",
+            "en": "Scope registrable domains and assets"
+          },
+          "description": {
+            "zh": "从组织资产台账确认候选的注册域边界、业务所有者和允许检查的 DNS 名称。",
+            "en": "Confirm registrable-domain boundaries, business owners, and authorized DNS names from the asset inventory."
+          }
+        },
+        {
+          "title": {
+            "zh": "导入历史候选词典",
+            "en": "Import the historical candidate list"
+          },
+          "description": {
+            "zh": "把原始主机名作为离线/DNS 工具输入，逐项查询权威记录与注册生命周期，不直接访问业务端点。",
+            "en": "Use the original hostnames as offline or DNS-tool input and query authoritative records and registration lifecycle individually without hitting business endpoints."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "关联剩余信任与控制权",
+            "en": "Correlate residual trust and control"
+          },
+          "description": {
+            "zh": "证明组织仍引用该名称，并仅在自有测试域验证重新绑定后的唯一标记，排除普通 DNS 故障。",
+            "en": "Prove the organization still references the name and validate a unique marker after rebinding only on an owned test domain, excluding ordinary DNS failure."
+          }
+        },
+        {
+          "title": {
+            "zh": "撤销测试并完成退役",
+            "en": "Revoke the test and complete decommissioning"
+          },
+          "description": {
+            "zh": "移除测试绑定和全部陈旧引用，恢复监控并记录域名续费或正式退役责任。",
+            "en": "Remove test bindings and every stale reference, restore monitoring, and record domain-renewal or formal decommissioning ownership."
+          }
+        }
+      ],
+      "references": [
+        "https://www.icann.org/resources/pages/gtld-lifecycle-2012-02-25-en",
+        "https://datatracker.ietf.org/doc/html/rfc1034"
+      ],
+      "review": {
+        "decision": "tool",
+        "rationale": "原命令只是通用历史子域候选，没有 DNS 记录、注册状态或可验证控制链；迁入 DNS/资产治理工具，不归 SSRF Payload。",
+        "issuesResolved": [
+          "corrected-classification",
+          "rewrote-bilingual-content",
+          "added-observation-and-false-positive-criteria",
+          "preserved-original-command",
+          "added-authoritative-reference"
+        ],
+        "targetToolIds": [
+          "dnsx",
+          "dns-attacks"
+        ]
+      }
+    },
+    {
+      "id": "ssrf2-git",
+      "prerequisites": [
+        {
+          "zh": "仅对自有测试 Web 根低速请求 Git 元数据路径，并建立随机不存在路径、SPA fallback 和统一错误页基线。",
+          "en": "Request Git metadata paths at low rate only on an owned test web root, with random nonexistent-path, SPA-fallback, and uniform-error baselines."
+        },
+        {
+          "zh": "准备可识别但不含秘密的合成仓库，记录预期 HEAD 引用、对象 ID 和配置 canary，用于确认响应真实性。",
+          "en": "Prepare a recognizable synthetic repository without secrets and record expected HEAD references, object IDs, and configuration canaries to confirm response authenticity."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性要求服务器返回真实 Git 元数据字节，例如可解析的 HEAD、config、index、packed-refs 或对象内容，并能与测试仓库关联。HTTP 200、HTML fallback、目录名回显、空响应、通用错误、robots 条目、公开源码镜像或 hook 路径存在但内容不可读均是假阳性。",
+        "en": "Positive evidence requires authentic Git metadata bytes such as a parseable HEAD, config, index, packed-refs, or object content correlated with the test repository. HTTP 200, HTML fallback, reflected directory names, empty responses, generic errors, robots entries, public source mirrors, or existing but unreadable hook paths are false positives."
+      },
+      "opsecTips": [
+        {
+          "zh": "确认一个最小元数据文件和合成 canary 后停止，不重建仓库、遍历对象或搜索真实秘密。",
+          "en": "Stop after confirming one minimal metadata file and synthetic canary; do not reconstruct the repository, enumerate objects, or search for real secrets."
+        },
+        {
+          "zh": "删除响应副本与解析缓存，清理访问日志中的测试令牌，并从 Web 根移除 `.git` 后验证统一拒绝。",
+          "en": "Delete response copies and parser caches, clear test tokens from access logs, remove .git from the web root, and verify uniform denial."
+        }
+      ],
+      "name": {
+        "zh": "公开 Git 元数据路径探测",
+        "en": "Exposed Git Metadata Path Probes"
+      },
+      "description": {
+        "zh": "逐项检查 Web 根是否公开 `.git` 仓库元数据，以可解析文件和合成仓库标记确认信息泄露；路径状态或页面回显本身不算证据。",
+        "en": "Checks whether a web root exposes .git repository metadata, confirming disclosure with parseable files and synthetic repository markers; path status or reflection alone is not evidence."
+      },
+      "category": {
+        "zh": "文件与源码泄露",
+        "en": "File and Source Exposure"
+      },
+      "subCategory": {
+        "zh": "Git 仓库元数据泄露",
+        "en": "Git Repository Metadata Exposure"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "Git 工作树中的 `.git` 目录保存引用、配置、索引、日志和对象数据库。若 Web 服务器把这些文件作为静态内容返回，攻击者可能重建历史源码；审校必须区分真实二进制/文本元数据与 SPA fallback、错误模板和公开镜像。",
+          "en": "The .git directory stores references, configuration, index data, logs, and the object database. Static exposure may permit repository-history reconstruction, but review must distinguish authentic binary or textual metadata from SPA fallbacks, error templates, and intentional public mirrors."
+        },
+        "vulnerability": {
+          "zh": "常见根因是把开发工作树直接部署到文档根、静态服务器允许点目录、反向代理规则未阻止嵌套路径，或备份镜像保留 Git 管理目录。泄露影响取决于可读取的引用和对象，而不是目录名是否存在。",
+          "en": "Common causes are deploying a development worktree as the document root, static serving of dot-directories, proxy rules that miss nested paths, or backups retaining Git administration data. Impact depends on readable references and objects, not directory-name existence."
+        },
+        "exploitation": {
+          "zh": "以不存在路径和正常页面建立基线，再逐项请求 HEAD、config、index 和引用文件；只保存足以匹配合成仓库的最小片段。若 HEAD 指向已知分支且对象/配置 canary 一致，可确认暴露并停止，不继续下载 pack 或历史。",
+          "en": "Baseline nonexistent paths and normal pages, then request HEAD, config, index, and reference files individually, retaining only the minimum fragment needed to match the synthetic repository. Confirm exposure when HEAD points to the known branch and object or configuration canaries agree, then stop without downloading packs or history."
+        },
+        "mitigation": {
+          "zh": "部署构建产物而非工作树；在源站、代理和 CDN 统一拒绝 `.git` 及点目录，清理已公开缓存并轮换可能进入历史的凭据。回归应验证合法静态文件仍可用且所有 Git 路径统一不可读。",
+          "en": "Deploy build artifacts rather than worktrees. Deny .git and dot-directories consistently at origin, proxy, and CDN, purge exposed caches, and rotate credentials that may have entered history. Regression should preserve legitimate static files while making every Git path unreadable."
+        },
+        "difficulty": "beginner"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "建立错误页与静态基线",
+            "en": "Baseline errors and static content"
+          },
+          "description": {
+            "zh": "记录随机路径、正常静态文件和测试仓库外页面的状态、类型、长度和正文哈希。",
+            "en": "Record status, type, length, and body hash for random paths, normal static files, and pages outside the test repository."
+          }
+        },
+        {
+          "title": {
+            "zh": "逐项请求 Git 元数据",
+            "en": "Request Git metadata individually"
+          },
+          "description": {
+            "zh": "按原始列表一次检查一个路径，优先 HEAD、config 和 index，并保留原始响应字节。",
+            "en": "Check one path from the original list at a time, prioritizing HEAD, config, and index and retaining raw response bytes."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "匹配合成仓库标记",
+            "en": "Match synthetic repository markers"
+          },
+          "description": {
+            "zh": "用 HEAD 引用、对象 ID 或配置 canary 确认内容来自目标测试仓库，排除 HTML fallback。",
+            "en": "Use the HEAD reference, object ID, or configuration canary to confirm content comes from the target test repository and exclude HTML fallback."
+          }
+        },
+        {
+          "title": {
+            "zh": "移除元数据并回归",
+            "en": "Remove metadata and regress"
+          },
+          "description": {
+            "zh": "从 Web 根移除仓库目录、清理缓存后重放最小样本，确认统一拒绝而正常资产不受影响。",
+            "en": "Remove repository metadata from the web root, purge caches, and replay minimal samples to confirm uniform denial while normal assets remain available."
+          }
+        }
+      ],
+      "references": [
+        "https://git-scm.com/docs/gitrepository-layout",
+        "https://owasp.org/www-project-web-security-testing-guide/latest/"
+      ],
+      "review": {
+        "decision": "payload",
+        "rationale": "原命令是可直接放入 HTTP 路径的 Git 元数据候选，属于文件/源码泄露 Payload；以真实 Git 格式和合成仓库 canary 判定。",
+        "issuesResolved": [
+          "corrected-classification",
+          "rewrote-bilingual-content",
+          "added-observation-and-false-positive-criteria",
+          "preserved-original-command",
+          "added-authoritative-reference"
+        ]
+      }
+    },
+    {
+      "id": "ssrf2-svn",
+      "prerequisites": [
+        {
+          "zh": "在自有测试站点部署不含敏感数据的 SVN 工作副本，确认客户端版本对应旧 `.svn/entries` 或新 `.svn/wc.db` 布局。",
+          "en": "Deploy a nonsensitive SVN working copy on an owned test site and identify whether the client version uses legacy .svn/entries or modern .svn/wc.db layout."
+        },
+        {
+          "zh": "建立随机路径和应用 fallback 基线，并记录合成仓库 URL、revision 与文件名 canary 供真实性校验。",
+          "en": "Establish random-path and application-fallback baselines and record synthetic repository URL, revision, and filename canaries for authenticity checks."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性要求服务器返回可解析的 SVN 管理数据，例如 SQLite `wc.db`、entries、all-wcprops 或真实 `.svn-base` 文件，并与合成工作副本一致。仅目录存在、HTTP 200、错误页、空目录列表、旧版路径在新版客户端不存在、文件名回显或公开源码页面都属于假阳性。",
+        "en": "Positive evidence requires parseable SVN administrative data such as SQLite wc.db, entries, all-wcprops, or authentic .svn-base files matching the synthetic working copy. Directory existence, HTTP 200, error pages, empty listings, legacy paths absent in modern clients, reflected filenames, or public source pages are false positives."
+      },
+      "opsecTips": [
+        {
+          "zh": "确认一个管理文件和一个合成 revision/路径标记后停止，不恢复完整源码或读取配置凭据。",
+          "en": "Stop after confirming one administrative file and one synthetic revision or path marker; do not reconstruct full source or read configuration credentials."
+        },
+        {
+          "zh": "删除下载与 SQLite 解析副本，清理服务器缓存/日志，并移除 `.svn` 后重放新旧布局路径。",
+          "en": "Delete downloads and SQLite parse copies, clear server caches and logs, remove .svn, and replay both modern and legacy layout paths."
+        }
+      ],
+      "name": {
+        "zh": "公开 SVN 工作副本元数据探测",
+        "en": "Exposed SVN Working-Copy Metadata Probes"
+      },
+      "description": {
+        "zh": "检查 `.svn` 管理文件是否通过 Web 根公开，并按 SVN 客户端版本用可解析元数据与合成 revision 验证泄露。",
+        "en": "Checks whether .svn administration files are exposed through the web root and validates disclosure with parseable metadata and a synthetic revision for the relevant SVN client generation."
+      },
+      "category": {
+        "zh": "文件与源码泄露",
+        "en": "File and Source Exposure"
+      },
+      "subCategory": {
+        "zh": "SVN 工作副本泄露",
+        "en": "SVN Working-Copy Exposure"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "Subversion 工作副本会在 `.svn` 中保存仓库 URL、revision、属性、pristine 内容和 SQLite 工作副本数据库。布局随版本变化，因此必须先识别实际格式；不存在的旧路径或统一错误不能用来否定或确认泄露。",
+          "en": "Subversion working copies store repository URLs, revisions, properties, pristine content, and a SQLite working-copy database under .svn. Layout varies by client generation, so the actual format must be identified first; absent legacy paths or uniform errors neither confirm nor refute exposure."
+        },
+        "vulnerability": {
+          "zh": "根因通常是直接发布工作副本、静态服务器未阻止点目录、代理只过滤顶层路径，或构建过程把管理目录复制进产物。可读取 pristine 文件和 wc.db 可能泄露源码、内部 URL 与变更历史。",
+          "en": "The root cause is usually publishing a working copy, allowing dot-directories, filtering only top-level paths, or copying administration data into build artifacts. Readable pristine files and wc.db can expose source, internal URLs, and change history."
+        },
+        "exploitation": {
+          "zh": "先请求 `.svn/format`、`entries` 与 `wc.db` 来识别版本，再仅检查一个合成 `.svn-base` 或数据库记录。用文件签名、SQLite schema、revision 与测试路径验证真实性；确认后停止，不批量下载 pristine 内容。",
+          "en": "Request .svn/format, entries, and wc.db first to identify the generation, then inspect only one synthetic .svn-base file or database record. Validate authenticity through file signatures, SQLite schema, revision, and test paths, then stop without bulk-downloading pristine content."
+        },
+        "mitigation": {
+          "zh": "部署导出或构建后的干净产物，禁止所有 `.svn` 路径并清除 CDN/备份缓存；CI 应在发布前检测 VCS 管理目录。回归需覆盖新旧 SVN 布局且不影响合法点文件策略。",
+          "en": "Deploy clean exported or built artifacts, deny every .svn path, and purge CDN or backup caches. CI should detect VCS administration directories before release. Regression should cover modern and legacy layouts without breaking intentionally allowed dot-files."
+        },
+        "difficulty": "beginner"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "识别工作副本布局",
+            "en": "Identify the working-copy layout"
+          },
+          "description": {
+            "zh": "用合成仓库记录 SVN 版本、format、revision 和预期管理文件，不混用旧版与新版结论。",
+            "en": "Record SVN generation, format, revision, and expected administration files for the synthetic repository without mixing legacy and modern conclusions."
+          }
+        },
+        {
+          "title": {
+            "zh": "逐项探测 SVN 路径",
+            "en": "Probe SVN paths individually"
+          },
+          "description": {
+            "zh": "按原始路径清单低速请求并保存媒体类型、文件签名和最小响应样本。",
+            "en": "Request the original path list at low rate and retain media type, file signature, and a minimal response sample."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "确认元数据真实性",
+            "en": "Confirm metadata authenticity"
+          },
+          "description": {
+            "zh": "解析一个 wc.db/entries 或 pristine canary，匹配测试 revision 和路径并排除应用 fallback。",
+            "en": "Parse one wc.db, entries file, or pristine canary, match the test revision and path, and exclude application fallback."
+          }
+        },
+        {
+          "title": {
+            "zh": "清理管理目录并验证",
+            "en": "Remove administration data and verify"
+          },
+          "description": {
+            "zh": "删除 `.svn`、清理缓存后重放代表性路径，确认统一拒绝并保留正常页面。",
+            "en": "Remove .svn, purge caches, and replay representative paths to confirm uniform denial while preserving normal pages."
+          }
+        }
+      ],
+      "references": [
+        "https://svnbook.red-bean.com/en/1.7/svn.basic.in-action.html#svn.basic.in-action.wc",
+        "https://owasp.org/www-project-web-security-testing-guide/latest/"
+      ],
+      "review": {
+        "decision": "payload",
+        "rationale": "原命令是可直接请求的 SVN 管理文件路径，按客户端版本验证真实元数据后属于文件/源码泄露 Payload。",
+        "issuesResolved": [
+          "corrected-classification",
+          "rewrote-bilingual-content",
+          "added-observation-and-false-positive-criteria",
+          "preserved-original-command",
+          "added-authoritative-reference"
+        ]
+      }
+    },
+    {
+      "id": "ssrf2-",
+      "prerequisites": [
+        {
+          "zh": "限定到自有 Web 根和低速率请求，建立随机不存在路径、前端 SPA fallback、目录重定向与公开文档基线。",
+          "en": "Scope an owned web root and low request rate, establishing random nonexistent-path, frontend SPA-fallback, directory-redirect, and public-document baselines."
+        },
+        {
+          "zh": "准备 JSON、YAML、XML、lockfile 与各构建系统解析器，并定义私有仓库、绝对路径、CI secret 和内部包名的脱敏规则。",
+          "en": "Prepare parsers for JSON, YAML, XML, lockfiles, and build systems, and define redaction for private repositories, absolute paths, CI secrets, and internal package names."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性要求候选路径返回真实可解析且与部署项目一致的构建、依赖、CI 或策略文件；安全影响需存在非预期版本、脚本、内部 URL、路径或凭据。HTTP 200 的 SPA 页面、公开开源 manifest、空文件、HTML 错误、文件名索引、下载重定向、示例配置或格式解析失败均是假阳性。",
+        "en": "Positive evidence requires a candidate path to return an authentic, parseable build, dependency, CI, or policy file matching the deployed project; security impact requires unintended versions, scripts, internal URLs, paths, or credentials. An SPA page with HTTP 200, public open-source manifest, empty file, HTML error, filename index, download redirect, sample configuration, or parse failure is a false positive."
+      },
+      "opsecTips": [
+        {
+          "zh": "确认一个真实文件及最小非敏感项目标记后停止，不递归探测源码目录、CI secrets 或依赖缓存。",
+          "en": "Stop after confirming one authentic file and a minimal nonsensitive project marker; do not recursively probe source directories, CI secrets, or dependency caches."
+        },
+        {
+          "zh": "删除下载/解析结果，清理访问日志和 CDN 缓存，撤销暴露的测试凭据，并收紧静态文件白名单。",
+          "en": "Delete downloads and parse results, clear access logs and CDN caches, revoke exposed test credentials, and tighten the static-file allowlist."
+        }
+      ],
+      "name": {
+        "zh": "项目构建、依赖与 CI 文件暴露探测",
+        "en": "Project Build, Dependency, and CI File Exposure Probes"
+      },
+      "description": {
+        "zh": "检查常见构建清单、锁文件、CI 配置和项目策略文件是否意外公开，以真实格式和部署标记验证；不再归入 SSRF。",
+        "en": "Checks whether common build manifests, lockfiles, CI configuration, and project policy files are unintentionally public, validating with authentic formats and deployment markers rather than classifying them as SSRF."
+      },
+      "category": {
+        "zh": "文件与源码泄露",
+        "en": "File and Source Exposure"
+      },
+      "subCategory": {
+        "zh": "构建与项目配置暴露",
+        "en": "Build and Project Configuration Exposure"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "该列表跨 JavaScript、Python、Ruby、Java、Rust、Go、Elixir、Erlang、Clojure、Scala 和 CI 系统，核心用途是低速内容发现。每种文件应由对应解析器确认，且公开开源清单、客户端构建文件与部署私有配置需分开评价。",
+          "en": "The list spans JavaScript, Python, Ruby, Java, Rust, Go, Elixir, Erlang, Clojure, Scala, and CI systems and is intended for low-rate content discovery. Each file needs a matching parser, and public open-source manifests, client build files, and private deployment configuration must be evaluated separately."
+        },
+        "vulnerability": {
+          "zh": "根因通常是把仓库根作为 Web 根、静态文件规则过宽、CI 产物包含源配置，或 CDN 缓存曾公开的文件。泄露可暴露依赖版本、构建脚本、内部注册表、绝对路径和流水线结构，但文件名存在本身没有影响。",
+          "en": "Common causes include serving the repository root, overbroad static-file rules, CI artifacts containing source configuration, or CDN caching of previously public files. Exposure may reveal dependency versions, build scripts, internal registries, absolute paths, and pipeline structure, but filename existence alone has no impact."
+        },
+        "exploitation": {
+          "zh": "对每个生态先请求一个代表性文件，比较随机路径和 fallback；只有媒体类型、语法解析、项目坐标与源站生成证据一致时才确认。保存最小脱敏片段并停止，不下载仓库、依赖目录或流水线 secret。",
+          "en": "Request one representative file per ecosystem and compare random paths and fallbacks. Confirm only when media type, syntax parsing, project coordinates, and origin-generation evidence agree. Retain a minimal redacted fragment and stop without downloading repositories, dependency directories, or pipeline secrets."
+        },
+        "mitigation": {
+          "zh": "发布白名单内的构建产物而非仓库内容，在源站/CDN 禁止清单、锁文件、CI 和点配置路径；CI 增加产物扫描并在泄露后轮换相关凭据。回归应验证业务静态资源可用且候选文件统一不可读。",
+          "en": "Publish allowlisted build artifacts rather than repository contents. Deny manifests, lockfiles, CI, and dot-configuration paths at origin and CDN, scan release artifacts in CI, and rotate affected credentials after exposure. Regression should preserve business static assets while making candidates uniformly unreadable."
+        },
+        "difficulty": "beginner"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "建立各格式响应基线",
+            "en": "Baseline responses by format"
+          },
+          "description": {
+            "zh": "记录随机路径、正常静态文件、SPA fallback 和一个已知测试 manifest 的响应特征。",
+            "en": "Record response characteristics for random paths, normal static files, SPA fallback, and one known test manifest."
+          }
+        },
+        {
+          "title": {
+            "zh": "按生态逐项探测文件",
+            "en": "Probe files by ecosystem"
+          },
+          "description": {
+            "zh": "使用原始清单一次请求一个候选，限制速率并保存媒体类型与最小正文。",
+            "en": "Use the original list to request one candidate at a time, rate-limit traffic, and retain media type and minimal body."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "解析并匹配部署标记",
+            "en": "Parse and match deployment markers"
+          },
+          "description": {
+            "zh": "用对应 parser 验证语法、项目坐标和合成 canary，排除错误页、示例和公开清单。",
+            "en": "Use the matching parser to verify syntax, project coordinates, and synthetic canary, excluding errors, samples, and public manifests."
+          }
+        },
+        {
+          "title": {
+            "zh": "移除暴露并收紧发布",
+            "en": "Remove exposure and tighten release"
+          },
+          "description": {
+            "zh": "从 Web 根和缓存移除配置文件，轮换测试凭据并重放代表性路径完成回归。",
+            "en": "Remove configuration files from the web root and caches, rotate test credentials, and replay representative paths for regression."
+          }
+        }
+      ],
+      "references": [
+        "https://owasp.org/www-project-web-security-testing-guide/latest/"
+      ],
+      "review": {
+        "decision": "payload",
+        "rationale": "原命令是可直接请求的项目清单、锁文件和 CI 配置路径，统一按文件暴露 Payload 审校；`clientaccesspolicy.xml` 作为策略文件候选保留在同一内容发现边界。",
+        "issuesResolved": [
+          "corrected-classification",
+          "rewrote-bilingual-content",
+          "added-observation-and-false-positive-criteria",
+          "preserved-original-command",
+          "added-authoritative-reference"
+        ]
+      }
+    },
+    {
+      "id": "ssrf2-cname-github-pages",
+      "prerequisites": [
+        {
+          "zh": "从组织权威 DNS 与资产台账获取真实子域，不把原始通用名称列表当作已经存在的 CNAME。",
+          "en": "Obtain real subdomains from authoritative DNS and the asset inventory rather than treating the generic source names as existing CNAMEs."
+        },
+        {
+          "zh": "使用自有 GitHub 组织/测试仓库核对 CNAME 目标、Pages 站点状态和域验证，记录 DNSSEC/CAA 与验证 TXT。",
+          "en": "Use an owned GitHub organization and test repository to review CNAME targets, Pages-site state, and domain verification, recording DNSSEC, CAA, and verification TXT data."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性工具证据要求真实子域 CNAME 指向已释放或未绑定的 GitHub Pages 目标，并且自有测试账户能够在官方流程中声明该精确域并发布唯一标记。仅出现 GitHub 404、CNAME 指向 `github.io`、仓库不存在、通用子域名字、DNS 缓存、证书错误或未完成域验证均是假阳性。",
+        "en": "Positive tool evidence requires a real subdomain CNAME to an released or unbound GitHub Pages target and an owned test account to claim that exact domain through the official flow and publish a unique marker. A GitHub 404, CNAME to github.io, missing repository, generic subdomain name, DNS cache, certificate error, or incomplete domain verification is a false positive."
+      },
+      "opsecTips": [
+        {
+          "zh": "一个自有测试域完成唯一标记验证后停止，不尝试声明真实组织子域或第三方仓库名称。",
+          "en": "Stop after one owned test domain completes unique-marker verification; do not claim real organizational subdomains or third-party repository names."
+        },
+        {
+          "zh": "从 GitHub Pages 移除自定义域和测试仓库，删除 CNAME/TXT、清理 DNS 缓存，并恢复组织域验证。",
+          "en": "Remove the custom domain and test repository from GitHub Pages, delete CNAME and TXT records, clear DNS caches, and restore organization domain verification."
+        }
+      ],
+      "name": {
+        "zh": "GitHub Pages 悬空自定义域审计词典",
+        "en": "GitHub Pages Dangling Custom-Domain Audit Wordlist"
+      },
+      "description": {
+        "zh": "把通用子域候选交给 DNS 工具后，按 GitHub Pages 官方自定义域与域验证流程判断真实悬空绑定；不是 SSRF Payload。",
+        "en": "Feeds generic subdomain candidates into DNS tooling and evaluates real dangling bindings through GitHub Pages custom-domain and domain-verification workflows; it is not an SSRF payload."
+      },
+      "category": {
+        "zh": "子域与托管平台安全",
+        "en": "Subdomain and Hosted Platform Security"
+      },
+      "subCategory": {
+        "zh": "GitHub Pages 自定义域悬空",
+        "en": "GitHub Pages Dangling Custom Domains"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "原命令仅列出常见子域标签，没有 GitHub CNAME 目标，因此第一步是权威 DNS 发现。GitHub Pages 接管风险取决于现存 DNS、目标站点是否仍绑定、组织域验证与平台当前声明规则，历史错误页指纹不能替代官方绑定测试。",
+          "en": "The source lists common subdomain labels without GitHub CNAME targets, so authoritative DNS discovery is the first step. GitHub Pages takeover risk depends on live DNS, target binding state, organization domain verification, and current claim rules; historical error-page fingerprints cannot replace an official binding test."
+        },
+        "vulnerability": {
+          "zh": "当组织删除 Pages 仓库或自定义域设置但保留 CNAME，且没有验证域所有权时，其他账户可能尝试绑定该域并托管内容。验证 TXT、账户级域保护和删除 DNS 的退役顺序会改变可利用性。",
+          "en": "When an organization removes a Pages repository or custom-domain setting but retains the CNAME and lacks domain verification, another account may attempt to bind the domain and host content. Verification TXT records, account-level domain protection, and decommissioning order determine exploitability."
+        },
+        "exploitation": {
+          "zh": "解析候选真实记录，确认 CNAME 链与 HTTP/TLS 状态，再在自有测试域模拟删除站点但保留 DNS。通过官方 Pages 设置尝试绑定并发布一次性文本标记；若平台拒绝或要求无法满足的验证，应记录为阴性而非依赖错误页。",
+          "en": "Resolve live candidate records, confirm CNAME chains and HTTP or TLS state, then simulate site deletion with retained DNS only on an owned test domain. Attempt binding through official Pages settings and publish a one-time text marker; record platform rejection or unsatisfied verification as negative instead of relying on error pages."
+        },
+        "mitigation": {
+          "zh": "在删除仓库/站点前先移除 DNS，验证组织自定义域并保留所有权 TXT，监控 CNAME 目标和 Pages 配置漂移。对历史候选建立退役负责人和定期权威 DNS 巡检。",
+          "en": "Remove DNS before deleting repositories or sites, verify organization custom domains and retain ownership TXT records, and monitor CNAME targets and Pages configuration drift. Assign decommissioning owners and periodically audit authoritative DNS for historical candidates."
+        },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "从权威 DNS 找到真实 CNAME",
+            "en": "Find real CNAMEs in authoritative DNS"
+          },
+          "description": {
+            "zh": "把资产台账与通用候选交叉，保留实际存在且指向 GitHub Pages 的精确记录。",
+            "en": "Intersect the asset inventory with generic candidates and retain only live records that point exactly to GitHub Pages."
+          }
+        },
+        {
+          "title": {
+            "zh": "导入候选并核对平台状态",
+            "en": "Import candidates and review platform state"
+          },
+          "description": {
+            "zh": "将原始子域词典作为 DNS 工具输入，逐项检查 CNAME 链、站点绑定与域验证。",
+            "en": "Use the original subdomain wordlist as DNS-tool input and inspect CNAME chains, site binding, and domain verification individually."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "在自有域验证可声明性",
+            "en": "Verify claimability on an owned domain"
+          },
+          "description": {
+            "zh": "只在测试域使用官方 Pages 流程绑定并发布唯一标记，记录平台接受或拒绝证据。",
+            "en": "Use the official Pages flow only on the test domain to bind and publish a unique marker, recording platform acceptance or rejection."
+          }
+        },
+        {
+          "title": {
+            "zh": "撤销绑定并修复退役顺序",
+            "en": "Revoke binding and fix decommissioning order"
+          },
+          "description": {
+            "zh": "移除测试仓库和 DNS，启用组织域验证，并确保未来先删 DNS 后释放托管资源。",
+            "en": "Remove the test repository and DNS, enable organization domain verification, and ensure DNS is removed before hosted resources are released."
+          }
+        }
+      ],
+      "references": [
+        "https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/managing-a-custom-domain-for-your-github-pages-site",
+        "https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/verifying-your-custom-domain-for-github-pages"
+      ],
+      "review": {
+        "decision": "tool",
+        "rationale": "原命令是通用子域名字典，不含 GitHub Pages CNAME 或请求入口；应迁入 DNS/接管审计工具，并以官方域验证和自有测试绑定判定。",
+        "issuesResolved": [
+          "corrected-classification",
+          "rewrote-bilingual-content",
+          "added-observation-and-false-positive-criteria",
+          "preserved-original-command",
+          "added-authoritative-reference"
+        ],
+        "targetToolIds": [
+          "dnsx",
+          "dns-attacks"
+        ]
+      }
+    },
+    {
+      "id": "ssrf2-cname-heroku",
+      "prerequisites": [
+        {
+          "zh": "从权威 DNS 获取真实 CNAME 与 Heroku 分配的 DNS target，区分通用 `herokuapp.com` 主机和应用自定义域。",
+          "en": "Obtain real CNAMEs and Heroku-assigned DNS targets from authoritative DNS, distinguishing generic herokuapp.com hosts from application custom domains."
+        },
+        {
+          "zh": "使用自有 Heroku 测试应用和自定义域设置，记录域绑定、证书/ACM 状态及账户所有权，不操作真实组织应用。",
+          "en": "Use an owned Heroku test application and custom-domain settings, recording domain binding, certificate or ACM state, and account ownership without touching real organizational applications."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性工具证据要求真实组织子域仍 CNAME 到一个已从原应用释放的 Heroku DNS target，且自有测试应用可通过当前官方流程绑定精确域并返回唯一标记。通用 `*.herokuapp.com` 匹配、Heroku 错误页、应用睡眠/下线、TLS 失败、404、DNS target 存在或平台拒绝域绑定都不证明接管。",
+        "en": "Positive tool evidence requires a real organizational subdomain to remain CNAMEd to a Heroku DNS target released from the original app, while an owned test app can bind the exact domain through the current official flow and return a unique marker. Generic *.herokuapp.com matches, Heroku error pages, sleeping or down apps, TLS failure, HTTP 404, target existence, or platform rejection of the binding does not prove takeover."
+      },
+      "opsecTips": [
+        {
+          "zh": "一个自有测试域完成 Heroku 绑定标记后停止，不猜测或声明真实应用名与组织域。",
+          "en": "Stop after one owned test domain completes the Heroku binding marker; do not guess or claim real app names or organizational domains."
+        },
+        {
+          "zh": "从测试应用删除自定义域，移除 CNAME，清理 ACM/DNS 缓存与日志，并恢复资源退役清单。",
+          "en": "Delete the custom domain from the test app, remove the CNAME, clear ACM and DNS caches and logs, and restore the resource-decommissioning checklist."
+        }
+      ],
+      "name": {
+        "zh": "Heroku 悬空自定义域目标审计",
+        "en": "Heroku Dangling Custom-Domain Target Audit"
+      },
+      "description": {
+        "zh": "审计 Heroku 分配 DNS target 与组织 CNAME 的生命周期，只有官方绑定流程中的自有域唯一标记才能确认可声明性。",
+        "en": "Audits lifecycle alignment between Heroku-assigned DNS targets and organizational CNAMEs, requiring a unique marker from an owned domain in the official binding flow to confirm claimability."
+      },
+      "category": {
+        "zh": "子域与托管平台安全",
+        "en": "Subdomain and Hosted Platform Security"
+      },
+      "subCategory": {
+        "zh": "Heroku 自定义域悬空",
+        "en": "Heroku Dangling Custom Domains"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "Heroku 自定义域使用应用设置返回的 DNS target，而不是任意 `herokuapp.com` 通配目标。原列表混合平台后缀和示例映射，应作为 DNS 审计输入；实际结论取决于域是否仍绑定、目标是否释放和当前账户验证规则。",
+          "en": "Heroku custom domains use DNS targets assigned in application settings rather than arbitrary herokuapp.com wildcards. The source mixes platform suffixes and illustrative mappings and should be DNS-audit input; conclusions depend on binding state, released targets, and current account-verification rules."
+        },
+        "vulnerability": {
+          "zh": "当应用删除自定义域或被销毁而组织 CNAME 仍指向旧 DNS target，域所有权约束不足时可能形成悬空绑定。仅应用不可用或默认错误页不表示其他账户可以取得该域。",
+          "en": "A dangling binding may arise when an application custom domain is removed or the app is destroyed while the organizational CNAME remains, if domain-ownership controls are insufficient. App unavailability or a default error page does not show another account can acquire the domain."
+        },
+        "exploitation": {
+          "zh": "解析真实 CNAME 并在资产台账确认所有者；在自有 Heroku 测试应用中模拟先释放应用绑定、保留测试 DNS，再尝试按官方流程重新绑定。只有平台接受精确域且标记经该域返回时确认，随后立即撤销。",
+          "en": "Resolve live CNAMEs and confirm owners in the asset inventory. On an owned Heroku test app, simulate releasing the app binding while retaining test DNS, then attempt rebinding through the official flow. Confirm only when the platform accepts the exact domain and serves the marker, then revoke immediately."
+        },
+        "mitigation": {
+          "zh": "先删除 DNS 再移除 Heroku 自定义域/应用，记录分配 DNS target 与应用所有者，监控 CNAME 指向已退役资源；保留域验证与证书自动化的责任边界。",
+          "en": "Delete DNS before removing Heroku custom domains or applications, track assigned DNS targets and app owners, and monitor CNAMEs pointing to retired resources. Preserve ownership boundaries for domain verification and certificate automation."
+        },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认 Heroku 分配目标",
+            "en": "Confirm the Heroku-assigned target"
+          },
+          "description": {
+            "zh": "从权威 DNS 和应用设置匹配精确 CNAME target、域所有者与当前绑定状态。",
+            "en": "Match the exact CNAME target, domain owner, and current binding state from authoritative DNS and app settings."
+          }
+        },
+        {
+          "title": {
+            "zh": "导入平台候选规则",
+            "en": "Import platform candidate rules"
+          },
+          "description": {
+            "zh": "把原始后缀和示例映射作为工具规则，不直接当作可声明主机，并逐项校验真实记录。",
+            "en": "Use the original suffixes and example mappings as tool rules rather than claimable hosts and validate live records individually."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "在测试应用验证重新绑定",
+            "en": "Verify rebinding on the test app"
+          },
+          "description": {
+            "zh": "仅对自有域释放并重新绑定，发布唯一文本标记并保存平台事件与 HTTP 证据。",
+            "en": "Release and rebind only the owned domain, publish a unique text marker, and save platform events and HTTP evidence."
+          }
+        },
+        {
+          "title": {
+            "zh": "清理绑定与 DNS",
+            "en": "Clean up bindings and DNS"
+          },
+          "description": {
+            "zh": "删除测试自定义域和 CNAME，清理证书状态，并修订先删 DNS 的退役流程。",
+            "en": "Delete the test custom domain and CNAME, clear certificate state, and update the DNS-first decommissioning workflow."
+          }
+        }
+      ],
+      "references": [
+        "https://devcenter.heroku.com/articles/custom-domains",
+        "https://devcenter.heroku.com/articles/automated-certificate-management"
+      ],
+      "review": {
+        "decision": "tool",
+        "rationale": "原命令是 Heroku 后缀/示例映射目录，不是可直接请求的漏洞载荷；迁入 DNS/托管平台审计工具。",
+        "issuesResolved": [
+          "corrected-classification",
+          "rewrote-bilingual-content",
+          "added-observation-and-false-positive-criteria",
+          "preserved-original-command",
+          "added-authoritative-reference"
+        ],
+        "targetToolIds": [
+          "dnsx",
+          "dns-attacks"
+        ]
+      }
+    },
+    {
+      "id": "ssrf2-cname-aws-s3",
+      "prerequisites": [
+        {
+          "zh": "从权威 DNS、AWS 账户清单和区域配置确认真实 CNAME、bucket 名、REST/website endpoint 类型与当前所有者。",
+          "en": "Confirm live CNAMEs, bucket names, REST or website endpoint type, region, and current owner from authoritative DNS and the AWS account inventory."
+        },
+        {
+          "zh": "使用专用 AWS 测试账户和唯一 bucket/域名，启用 CloudTrail 与 DNS 日志；不创建与真实组织名称冲突的 bucket。",
+          "en": "Use a dedicated AWS test account and unique bucket or domain with CloudTrail and DNS logging; do not create buckets that conflict with real organizational names."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性工具证据要求组织 CNAME 指向与域名绑定规则一致但当前不存在/未归属的 S3 endpoint，且自有测试账户能创建精确所需 bucket、满足区域/website 约束并返回唯一标记。`NoSuchBucket`、403、泛化 `s3.amazonaws.com` CNAME、bucket 名看似可用、DNS 解析、公开 bucket 或未完成域名匹配均是假阳性。",
+        "en": "Positive tool evidence requires an organizational CNAME to an S3 endpoint whose required domain-aligned bucket is absent or unowned, and an owned test account to create the exact bucket, satisfy region or website constraints, and return a unique marker. NoSuchBucket, HTTP 403, generic s3.amazonaws.com CNAMEs, apparently available names, DNS resolution, public buckets, or incomplete domain matching are false positives."
+      },
+      "opsecTips": [
+        {
+          "zh": "一个自有测试域/bucket 完成唯一对象验证后停止，不创建真实品牌 bucket 或上传可执行/敏感内容。",
+          "en": "Stop after one owned test domain and bucket serves the unique object; do not create real-brand buckets or upload executable or sensitive content."
+        },
+        {
+          "zh": "删除对象和测试 bucket、移除 CNAME、清空 CloudFront/DNS 缓存并撤销测试 IAM 权限。",
+          "en": "Delete the object and test bucket, remove the CNAME, purge CloudFront and DNS caches, and revoke test IAM permissions."
+        }
+      ],
+      "name": {
+        "zh": "Amazon S3 自定义域与 bucket 绑定审计",
+        "en": "Amazon S3 Custom-Domain and Bucket Binding Audit"
+      },
+      "description": {
+        "zh": "核对组织 CNAME、S3 endpoint 类型、区域和 bucket 命名绑定，只有自有账户创建精确 bucket 并返回唯一标记才确认可声明性。",
+        "en": "Reviews organizational CNAMEs, S3 endpoint type, region, and bucket-name binding, confirming claimability only when an owned account creates the exact bucket and serves a unique marker."
+      },
+      "category": {
+        "zh": "子域与云托管安全",
+        "en": "Subdomain and Cloud Hosting Security"
+      },
+      "subCategory": {
+        "zh": "Amazon S3 悬空 bucket 域",
+        "en": "Amazon S3 Dangling Bucket Domains"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "S3 虚拟托管和静态网站 endpoint 对 bucket 名、区域和 DNS 目标有明确规则。原命令把多条 CNAME 泛化为 `s3.amazonaws.com`，并混合 REST 风格主机，因此只能作为候选目录；必须按实际 endpoint 重建精确绑定条件。",
+          "en": "S3 virtual hosting and static-website endpoints have explicit bucket-name, region, and DNS-target rules. The source generalizes several CNAMEs to s3.amazonaws.com and mixes REST-style hosts, so it is only a candidate catalog; exact binding conditions must be reconstructed from the live endpoint."
+        },
+        "vulnerability": {
+          "zh": "当自定义域仍解析到 S3，而与域名对应的 bucket 已删除且其他账户可以创建时，攻击者可能托管该域内容。区域不匹配、账户级控制、已存在 bucket、CloudFront 前置或仅 REST API 错误都会改变结论。",
+          "en": "When a custom domain still resolves to S3 after its domain-corresponding bucket is deleted and another account can create it, an attacker may host content under that domain. Region mismatch, account controls, an existing bucket, CloudFront in front, or REST-only errors change the conclusion."
+        },
+        "exploitation": {
+          "zh": "解析真实 CNAME 并识别 website/REST endpoint、区域和所需 bucket 名；仅在自有测试域删除测试 bucket 后模拟悬空，再由同一授权测试账户重新创建、放置随机文本对象并请求该域。若平台拒绝创建或域未映射到该 bucket，应记录为阴性。",
+          "en": "Resolve live CNAMEs and identify website or REST endpoint, region, and required bucket name. Only on an owned test domain, delete the test bucket to simulate dangling state, then recreate it from the authorized test account, place a random text object, and request the domain. Record creation rejection or a domain that does not map to the bucket as negative."
+        },
+        "mitigation": {
+          "zh": "先删除 DNS/CDN 别名再删除 bucket，使用 IaC 管理域与 bucket 生命周期，启用组织级命名/账户监控并保留空防御 bucket 直至 DNS 失效。对公开网站启用最小访问策略和日志。",
+          "en": "Remove DNS and CDN aliases before deleting buckets, manage domain and bucket lifecycles through IaC, monitor naming and account ownership, and retain defensive empty buckets until DNS expires. Apply least-privilege website access policies and logging."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "解析精确 S3 endpoint",
+            "en": "Resolve the exact S3 endpoint"
+          },
+          "description": {
+            "zh": "从权威 DNS、区域和 HTTP 响应区分 website、REST 与 CloudFront 前置路径。",
+            "en": "Distinguish website, REST, and CloudFront-fronted paths from authoritative DNS, region, and HTTP responses."
+          }
+        },
+        {
+          "title": {
+            "zh": "审计原始候选映射",
+            "en": "Audit the source candidate mappings"
+          },
+          "description": {
+            "zh": "将原始主机/bucket 候选导入云与 DNS 工具，逐项重建正确区域 endpoint，不直接执行示例箭头。",
+            "en": "Import the original host and bucket candidates into cloud and DNS tools, rebuilding the correct regional endpoint individually rather than executing arrow examples."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "在自有 bucket 验证绑定",
+            "en": "Verify binding with an owned bucket"
+          },
+          "description": {
+            "zh": "只为测试域创建精确 bucket 并放置唯一文本对象，关联 CloudTrail、DNS 与 HTTP 日志。",
+            "en": "Create the exact bucket only for the test domain, place a unique text object, and correlate CloudTrail, DNS, and HTTP logs."
+          }
+        },
+        {
+          "title": {
+            "zh": "删除测试资源并修复生命周期",
+            "en": "Delete test resources and fix lifecycle"
+          },
+          "description": {
+            "zh": "先移除 DNS/CDN，再清空并删除 bucket，撤销 IAM 并更新 IaC 退役顺序。",
+            "en": "Remove DNS and CDN first, empty and delete the bucket, revoke IAM access, and update IaC decommissioning order."
+          }
+        }
+      ],
+      "references": [
+        "https://docs.aws.amazon.com/AmazonS3/latest/userguide/VirtualHosting.html",
+        "https://docs.aws.amazon.com/AmazonS3/latest/userguide/WebsiteHosting.html"
+      ],
+      "review": {
+        "decision": "tool",
+        "rationale": "原命令是 S3 域/bucket 候选目录且多条 `-> s3.amazonaws.com` 缺少 bucket、区域和 website endpoint 约束；迁入云/DNS 工具，并标记后续 command override 校正目标格式。",
+        "issuesResolved": [
+          "corrected-classification",
+          "rewrote-bilingual-content",
+          "added-observation-and-false-positive-criteria",
+          "preserved-original-command",
+          "added-authoritative-reference",
+          "flagged-command-override-required"
+        ],
+        "targetToolIds": [
+          "dnsx",
+          "cloud-security-tools"
+        ],
+        "commandOverrideRequired": true
+      }
+    },
+    {
+      "id": "ssrf2-cname-azure",
+      "prerequisites": [
+        {
+          "zh": "从权威 DNS 与 Azure 租户资产清单确认每条 CNAME 对应的具体服务、区域、资源 ID 和自定义域验证状态。",
+          "en": "Confirm the exact Azure service, region, resource ID, and custom-domain validation state for each CNAME from authoritative DNS and the tenant asset inventory."
+        },
+        {
+          "zh": "在专用测试订阅中使用唯一 App Service/Storage/CDN 等资源，启用 Activity Log；不同服务不得共享一套可声明性假设。",
+          "en": "Use unique App Service, Storage, CDN, or other resources in a dedicated test subscription with Activity Log enabled; do not share claimability assumptions across services."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性工具证据必须按服务成立：真实 CNAME 指向已释放 Azure 资源，当前平台允许自有测试订阅绑定精确域并通过 TXT/资源验证，且唯一标记经该域返回。Azure 默认 404、资源名不存在、`azurewebsites.net`/`blob.core.windows.net` 后缀匹配、DNS 解析、证书错误或某种服务可创建但不能绑定该域均是假阳性。",
+        "en": "Positive tool evidence must hold per service: a live CNAME points to a released Azure resource, the current platform lets an owned test subscription bind the exact domain through TXT or resource verification, and a unique marker is returned through the domain. Azure default 404, missing resource names, azurewebsites.net or blob.core.windows.net suffix matches, DNS resolution, certificate errors, or resource creation without domain binding are false positives."
+      },
+      "opsecTips": [
+        {
+          "zh": "一个自有测试域在单一 Azure 服务完成标记后停止，不跨服务复用域或创建真实组织资源名。",
+          "en": "Stop after one owned test domain completes the marker on one Azure service; do not reuse the domain across services or create real organizational resource names."
+        },
+        {
+          "zh": "移除自定义域/TXT/CNAME，删除测试资源组，撤销服务主体并清理 Azure/DNS/CDN 日志缓存。",
+          "en": "Remove custom domains, TXT, and CNAME records, delete the test resource group, revoke service principals, and clear Azure, DNS, and CDN log caches."
+        }
+      ],
+      "name": {
+        "zh": "Azure 服务自定义域悬空审计",
+        "en": "Azure Service Custom-Domain Dangling Audit"
+      },
+      "description": {
+        "zh": "按 App Service、Storage、CDN 等具体 Azure 服务核对 CNAME 与资源绑定；只有官方验证后的自有测试域标记才能确认风险。",
+        "en": "Reviews CNAME and resource binding for specific Azure services such as App Service, Storage, and CDN; only an officially verified marker on an owned test domain confirms risk."
+      },
+      "category": {
+        "zh": "子域与云托管安全",
+        "en": "Subdomain and Cloud Hosting Security"
+      },
+      "subCategory": {
+        "zh": "Azure 自定义域与资源生命周期",
+        "en": "Azure Custom Domains and Resource Lifecycle"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "原列表混合 App Service、Blob、CDN、数据库、缓存、容器、搜索和其他 Azure 后缀，其中并非所有服务都允许相同的自定义域或由资源名决定控制权。审校必须拆到具体服务的数据平面和验证流程，而不是依赖统一错误页。",
+          "en": "The source mixes App Service, Blob, CDN, databases, caches, containers, search, and other Azure suffixes, whose custom-domain and ownership models differ. Review must follow each service's data plane and validation flow rather than relying on a common error page."
+        },
+        "vulnerability": {
+          "zh": "风险通常来自删除 Azure 资源但保留组织 CNAME，且该服务允许另一个租户重新创建目标/绑定域。TXT 验证、资源 ID 绑定、租户保留、区域化主机和 Front Door/CDN 配置可能阻止接管。",
+          "en": "Risk usually arises when an Azure resource is deleted while an organizational CNAME remains and the service lets another tenant recreate the target or bind the domain. TXT validation, resource-ID binding, tenant reservation, regional hosts, and Front Door or CDN configuration may prevent takeover."
+        },
+        "exploitation": {
+          "zh": "识别精确 Azure 服务和当前官方域绑定步骤；在测试订阅/测试域中模拟资源删除与 DNS 残留，然后尝试创建唯一资源、完成验证并返回固定文本。每个服务单独记录成功/拒绝；不得把一个服务的创建结果外推到其他后缀。",
+          "en": "Identify the exact Azure service and current official domain-binding steps. In a test subscription and domain, simulate resource deletion with retained DNS, then attempt unique resource creation, complete verification, and return fixed text. Record acceptance or rejection per service and never generalize one service's result to another suffix."
+        },
+        "mitigation": {
+          "zh": "使用 Azure Resource Graph/IaC 关联 DNS 与资源 ID，删除 DNS 后再删除资源；启用域验证记录、资源锁和退役审批，监控指向不存在 Azure 资源的 CNAME。不同服务维持独立 runbook。",
+          "en": "Use Azure Resource Graph or IaC to link DNS with resource IDs, deleting DNS before resources. Enable domain-verification records, resource locks, decommission approvals, and monitoring for CNAMEs to missing Azure resources, with separate runbooks per service."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "识别 Azure 服务与资源 ID",
+            "en": "Identify Azure service and resource ID"
+          },
+          "description": {
+            "zh": "从后缀、DNS、证书和租户清单确定实际服务、区域、资源状态和域验证方式。",
+            "en": "Use suffix, DNS, certificate, and tenant inventory to determine service, region, resource state, and domain-verification method."
+          }
+        },
+        {
+          "title": {
+            "zh": "将候选导入分服务审计",
+            "en": "Import candidates into per-service audit"
+          },
+          "description": {
+            "zh": "把原始映射作为工具输入，逐项校正后缀/区域并禁止跨服务推断。",
+            "en": "Use the original mappings as tool input, correcting suffix and region individually and forbidding cross-service inference."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "在测试订阅验证绑定",
+            "en": "Verify binding in a test subscription"
+          },
+          "description": {
+            "zh": "只对自有域创建相应测试资源、完成官方验证并返回唯一标记，保存 Activity Log。",
+            "en": "Create the matching test resource only for an owned domain, complete official verification, return a unique marker, and retain Activity Log evidence."
+          }
+        },
+        {
+          "title": {
+            "zh": "销毁资源并修订退役流程",
+            "en": "Destroy resources and revise decommissioning"
+          },
+          "description": {
+            "zh": "先移除 DNS/自定义域，再删除资源组和凭据，更新每种 Azure 服务的生命周期顺序。",
+            "en": "Remove DNS and custom domains before deleting resource groups and credentials, updating lifecycle order for each Azure service."
+          }
+        }
+      ],
+      "references": [
+        "https://learn.microsoft.com/en-us/azure/app-service/app-service-web-tutorial-custom-domain",
+        "https://learn.microsoft.com/en-us/azure/storage/blobs/storage-custom-domain-name"
+      ],
+      "review": {
+        "decision": "tool",
+        "rationale": "原命令混合多种 Azure 服务后缀，部分主机缺区域/服务格式且可声明性模型不同；迁入 Azure/DNS 工具并标记 command override 做分服务校正。",
+        "issuesResolved": [
+          "corrected-classification",
+          "rewrote-bilingual-content",
+          "added-observation-and-false-positive-criteria",
+          "preserved-original-command",
+          "added-authoritative-reference",
+          "flagged-command-override-required"
+        ],
+        "targetToolIds": [
+          "dnsx",
+          "cloud-azure-pentest"
+        ],
+        "commandOverrideRequired": true
+      }
+    },
+    {
+      "id": "ssrf2-cname-shopify",
+      "prerequisites": [
+        {
+          "zh": "从权威 DNS 和 Shopify 管理后台确认真实自定义域、当前店铺绑定及域所有权验证，不使用示例 `target.com` 记录。",
+          "en": "Confirm live custom domains, current store binding, and domain ownership verification from authoritative DNS and Shopify admin rather than example target.com records."
+        },
+        {
+          "zh": "使用自有开发店铺与测试子域，记录 CNAME/A 目标、primary domain 状态、TLS 与重定向；禁止绑定真实商店域。",
+          "en": "Use an owned development store and test subdomain, recording CNAME or A targets, primary-domain state, TLS, and redirects; never bind a real store domain."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性工具证据要求真实组织域仍指向 Shopify，而原店铺已解除绑定，且自有开发店铺可在当前官方流程中添加精确域、完成所有权检查并返回唯一标记。Shopify 默认页、商店关闭、`myshopify.com` 主机存在、DNS 指向平台、TLS 待签发、重定向或平台提示域已被占用均是假阳性。",
+        "en": "Positive tool evidence requires a real organizational domain to still point to Shopify after the original store unbinds it, and an owned development store to add the exact domain through the current official flow, pass ownership checks, and return a unique marker. Shopify default pages, closed stores, an existing myshopify.com host, DNS pointing to the platform, pending TLS, redirects, or a platform message that the domain is already claimed are false positives."
+      },
+      "opsecTips": [
+        {
+          "zh": "一个自有测试子域完成开发店铺标记后停止，不绑定真实商店、处理订单或影响品牌流量。",
+          "en": "Stop after one owned test subdomain completes the development-store marker; do not bind real stores, process orders, or affect brand traffic."
+        },
+        {
+          "zh": "从 Shopify 删除测试域和店铺，移除 DNS、清理 TLS/浏览器缓存，并恢复域所有权与退役记录。",
+          "en": "Remove the test domain and store from Shopify, delete DNS, clear TLS and browser caches, and restore domain-ownership and decommission records."
+        }
+      ],
+      "name": {
+        "zh": "Shopify 自定义店铺域悬空审计",
+        "en": "Shopify Dangling Store Custom-Domain Audit"
+      },
+      "description": {
+        "zh": "核对 Shopify 店铺绑定与组织 DNS 生命周期，只有自有开发店铺在官方域连接流程中成功返回唯一标记才确认可声明。",
+        "en": "Reviews Shopify store bindings against organizational DNS lifecycle and confirms claimability only when an owned development store returns a unique marker through the official domain-connection flow."
+      },
+      "category": {
+        "zh": "子域与托管平台安全",
+        "en": "Subdomain and Hosted Platform Security"
+      },
+      "subCategory": {
+        "zh": "Shopify 自定义域悬空",
+        "en": "Shopify Dangling Custom Domains"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "原命令中的 `shops.myshopify.com` 是泛化且不准确的示例，真实 Shopify 自定义域连接依赖店铺唯一主机、DNS 记录与平台所有权检查。审校应先纠正 DNS 目标，再验证域是否仍被某店铺占用。",
+          "en": "The source's shops.myshopify.com value is an inaccurate generic example. Real Shopify custom-domain connection depends on a unique store host, DNS records, and platform ownership checks. Review must correct the DNS target before checking whether a store still claims the domain."
+        },
+        "vulnerability": {
+          "zh": "如果商家删除店铺域或店铺退役但保留 DNS，并且 Shopify 允许另一个店铺连接该域，可能发生品牌内容接管。域占用记录、验证流程、TLS 状态与平台保留期可能阻止利用。",
+          "en": "If a merchant removes a store domain or retires the store while retaining DNS and Shopify permits another store to connect the domain, branded-content takeover may occur. Domain claim records, verification, TLS state, and platform retention may prevent exploitation."
+        },
+        "exploitation": {
+          "zh": "在开发店铺和自有测试域中按官方连接流程配置正确 DNS，建立标记基线；模拟从原测试店铺解绑但保留 DNS，再尝试由第二测试店铺添加。只有平台接受并经域返回唯一文本时确认，随后立即删除。",
+          "en": "Configure correct DNS through the official connection flow on a development store and owned test domain to baseline a marker. Simulate unbinding from the first test store while retaining DNS, then try adding it to a second test store. Confirm only if accepted and unique text is served through the domain, then remove it immediately."
+        },
+        "mitigation": {
+          "zh": "从 Shopify 移除域前先删除/切换 DNS，保留店铺和域所有者清单，监控指向 Shopify 但后台未绑定的记录。停用店铺时同时处理 DNS、证书、重定向与第三方营销引用。",
+          "en": "Delete or repoint DNS before removing a domain from Shopify, maintain store and domain ownership inventories, and monitor records pointing to Shopify without an admin binding. Decommission stores together with DNS, certificates, redirects, and marketing references."
+        },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认真实 Shopify DNS 目标",
+            "en": "Confirm the real Shopify DNS target"
+          },
+          "description": {
+            "zh": "从管理后台和权威 DNS 记录店铺唯一主机、域绑定与所有权状态。",
+            "en": "Record the unique store host, domain binding, and ownership state from Shopify admin and authoritative DNS."
+          }
+        },
+        {
+          "title": {
+            "zh": "审查原始示例映射",
+            "en": "Review the source example mappings"
+          },
+          "description": {
+            "zh": "把原始三条作为工具候选，标记错误通用目标并替换为测试店铺当前官方值。",
+            "en": "Use the three source lines as tool candidates, flag the incorrect generic target, and substitute the current official value for the test store."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "用双测试店铺验证释放",
+            "en": "Verify release with two test stores"
+          },
+          "description": {
+            "zh": "在自有域从第一测试店铺解绑后，由第二店铺尝试连接并返回唯一标记。",
+            "en": "After unbinding the owned domain from the first test store, attempt connection from the second and return a unique marker."
+          }
+        },
+        {
+          "title": {
+            "zh": "删除店铺域并清理 DNS",
+            "en": "Remove the store domain and clean DNS"
+          },
+          "description": {
+            "zh": "删除第二绑定、测试店铺和 DNS，清理 TLS/缓存并修订商店退役流程。",
+            "en": "Delete the second binding, test stores, and DNS, clear TLS and caches, and revise store-decommissioning workflow."
+          }
+        }
+      ],
+      "references": [
+        "https://help.shopify.com/en/manual/domains/add-a-domain/connecting-domains",
+        "https://help.shopify.com/en/manual/domains/managing-domains"
+      ],
+      "review": {
+        "decision": "tool",
+        "rationale": "原命令是 Shopify DNS 示例目录，且 `shops.myshopify.com` 不是可直接使用的店铺唯一目标；迁入 DNS/托管工具并标记 command override。",
+        "issuesResolved": [
+          "corrected-classification",
+          "rewrote-bilingual-content",
+          "added-observation-and-false-positive-criteria",
+          "preserved-original-command",
+          "added-authoritative-reference",
+          "flagged-command-override-required"
+        ],
+        "targetToolIds": [
+          "dnsx",
+          "dns-attacks"
+        ],
+        "commandOverrideRequired": true
+      }
+    },
+    {
+      "id": "ssrf2-cname-netlify",
+      "prerequisites": [
+        {
+          "zh": "从权威 DNS 与 Netlify team/site 清单确认真实 CNAME、site ID、custom domain 和域验证状态。",
+          "en": "Confirm live CNAMEs, site IDs, custom domains, and domain-verification state from authoritative DNS and the Netlify team and site inventory."
+        },
+        {
+          "zh": "使用自有 Netlify 测试 team、唯一 site 和测试子域，记录 domain alias、TLS 与 DNS zone；不操作真实组织站点。",
+          "en": "Use an owned Netlify test team, unique site, and test subdomain, recording domain aliases, TLS, and DNS zone without touching real organizational sites."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性工具证据要求真实子域仍 CNAME 到已删除/解绑的 Netlify site target，并且自有测试 team 可添加精确 custom domain、通过当前验证并返回唯一标记。Netlify 404、`netlify.app` 目标存在、site 名可创建、DNS 解析、TLS 错误、域已被其他 team 占用或仅默认页面均是假阳性。",
+        "en": "Positive tool evidence requires a live subdomain to remain CNAMEd to a deleted or unbound Netlify site target, while an owned test team can add the exact custom domain, pass current verification, and return a unique marker. Netlify 404, an existing netlify.app target, creatable site names, DNS resolution, TLS errors, a domain already claimed by another team, or a default page are false positives."
+      },
+      "opsecTips": [
+        {
+          "zh": "一个自有测试域完成 Netlify 唯一标记后停止，不尝试声明真实组织域或复制站点内容。",
+          "en": "Stop after one owned test domain completes the Netlify unique marker; do not claim real organizational domains or copy site content."
+        },
+        {
+          "zh": "从测试 site 删除 custom domain，移除 CNAME/TXT，删除 site 并清理 DNS/TLS/CDN 缓存。",
+          "en": "Remove the custom domain from the test site, delete CNAME and TXT records, delete the site, and clear DNS, TLS, and CDN caches."
+        }
+      ],
+      "name": {
+        "zh": "Netlify 悬空站点自定义域审计",
+        "en": "Netlify Dangling Site Custom-Domain Audit"
+      },
+      "description": {
+        "zh": "关联 Netlify site 生命周期与组织 CNAME，要求在自有 team 中通过官方域验证并返回标记，而不是依赖默认错误页。",
+        "en": "Correlates Netlify site lifecycle with organizational CNAMEs, requiring official domain verification and a marker in an owned team rather than relying on default error pages."
+      },
+      "category": {
+        "zh": "子域与托管平台安全",
+        "en": "Subdomain and Hosted Platform Security"
+      },
+      "subCategory": {
+        "zh": "Netlify 自定义域悬空",
+        "en": "Netlify Dangling Custom Domains"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "Netlify 自定义域绑定到 team/site，并可能使用外部 DNS 或 Netlify DNS。原示例映射适合作为 DNS 发现规则，但实际可声明性取决于域是否仍被 team 占用、验证记录和站点状态。",
+          "en": "Netlify custom domains bind to a team and site and may use external or Netlify DNS. The source mappings are useful DNS-discovery rules, but claimability depends on whether a team still owns the domain, verification records, and site state."
+        },
+        "vulnerability": {
+          "zh": "删除 site 或 domain alias 而保留外部 CNAME，且平台没有保留域所有权时，另一 team 可能尝试连接该域。仅目标 site 不存在或页面 404 并不说明域绑定记录已释放。",
+          "en": "Deleting a site or domain alias while retaining an external CNAME may let another team connect the domain if the platform does not retain ownership. A missing target site or HTTP 404 alone does not show the domain claim was released."
+        },
+        "exploitation": {
+          "zh": "在自有 team 与测试域中建立正常 site/alias，模拟解绑或删除 site 但暂时保留测试 CNAME，再由第二测试 site 尝试添加 custom domain。只有平台接受验证并通过域返回一次性标记时确认，随后立即清理。",
+          "en": "Create a normal site and alias in an owned team and test domain, simulate unbinding or site deletion while temporarily retaining the CNAME, then attempt to add the custom domain to a second test site. Confirm only when verification succeeds and the domain returns a one-time marker, then clean up immediately."
+        },
+        "mitigation": {
+          "zh": "先删除外部 DNS，再移除 Netlify domain alias/site；保留 team 域所有权记录、IaC 资源映射与悬空 CNAME 监控。站点迁移时同步更新 TLS、重定向和 CDN 缓存。",
+          "en": "Delete external DNS before removing Netlify domain aliases or sites. Retain team domain-ownership records, IaC resource mappings, and dangling-CNAME monitoring, and update TLS, redirects, and CDN caches during migration."
+        },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "匹配 site 与 CNAME 所有者",
+            "en": "Match site and CNAME ownership"
+          },
+          "description": {
+            "zh": "从权威 DNS、Netlify team 和 site 配置核对精确目标、alias 与验证状态。",
+            "en": "Review the exact target, alias, and verification state across authoritative DNS, Netlify team, and site configuration."
+          }
+        },
+        {
+          "title": {
+            "zh": "导入 Netlify 候选映射",
+            "en": "Import Netlify candidate mappings"
+          },
+          "description": {
+            "zh": "把原始四条作为 DNS 工具输入，逐项确认实际存在的 CNAME 而非假定主机。",
+            "en": "Use the four source lines as DNS-tool input and confirm live CNAMEs individually rather than assuming hosts exist."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "在第二测试 site 验证",
+            "en": "Verify on a second test site"
+          },
+          "description": {
+            "zh": "解绑测试域后尝试由第二 site 添加、验证并发布唯一标记，保存平台事件。",
+            "en": "After unbinding the test domain, try adding and verifying it on a second site and publish a unique marker, retaining platform events."
+          }
+        },
+        {
+          "title": {
+            "zh": "撤销 alias 并删除 DNS",
+            "en": "Revoke the alias and delete DNS"
+          },
+          "description": {
+            "zh": "移除第二 alias、site、DNS 和证书缓存，恢复 DNS-first 退役流程。",
+            "en": "Remove the second alias, site, DNS, and certificate caches and restore DNS-first decommissioning."
+          }
+        }
+      ],
+      "references": [
+        "https://docs.netlify.com/manage/domains/configure-domains/bring-a-domain-to-netlify/",
+        "https://docs.netlify.com/manage/domains/troubleshooting-tips/"
+      ],
+      "review": {
+        "decision": "tool",
+        "rationale": "原命令是 Netlify CNAME 示例目录，没有真实 DNS 或平台所有权证据；迁入 DNS/托管审计工具。",
+        "issuesResolved": [
+          "corrected-classification",
+          "rewrote-bilingual-content",
+          "added-observation-and-false-positive-criteria",
+          "preserved-original-command",
+          "added-authoritative-reference"
+        ],
+        "targetToolIds": [
+          "dnsx",
+          "dns-attacks"
+        ]
+      }
+    },
+    {
+      "id": "ssrf2-cname-cloudfront",
+      "prerequisites": [
+        {
+          "zh": "从权威 DNS、CloudFront 分配清单和证书配置确认真实 distribution domain、alternate domain name 与账户所有者。",
+          "en": "Confirm live distribution domains, alternate domain names, certificate configuration, and account owners from authoritative DNS and the CloudFront inventory."
+        },
+        {
+          "zh": "使用自有测试 distribution、ACM 证书和唯一子域，启用 CloudTrail/标准日志；不得尝试添加真实组织别名。",
+          "en": "Use an owned test distribution, ACM certificate, and unique subdomain with CloudTrail or standard logging; never try to add real organizational aliases."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性工具证据要求组织 CNAME 指向已退役 distribution，alternate domain name 已从原账户释放，且自有测试 distribution 能持有匹配证书、添加精确别名并返回唯一标记。`*.cloudfront.net` 后缀、UnknownDistribution/403、DNS 解析、distribution 不存在、别名已被占用、证书不匹配或仅默认错误页均是假阳性。",
+        "en": "Positive tool evidence requires an organizational CNAME to a retired distribution whose alternate domain name has been released from the original account, while an owned test distribution can hold a matching certificate, add the exact alias, and return a unique marker. A *.cloudfront.net suffix, UnknownDistribution or HTTP 403, DNS resolution, a missing distribution, an alias already associated, certificate mismatch, or default error page is a false positive."
+      },
+      "opsecTips": [
+        {
+          "zh": "一个自有测试 alias 在测试 distribution 返回标记后停止，不申请真实域证书或添加组织生产别名。",
+          "en": "Stop after one owned test alias returns the marker from the test distribution; do not request real-domain certificates or add production aliases."
+        },
+        {
+          "zh": "禁用并删除测试 distribution/alias，撤销 ACM 证书，移除 CNAME，等待全局部署完成后清理日志。",
+          "en": "Disable and delete the test distribution and alias, revoke the ACM certificate, remove the CNAME, wait for global deployment, and clear logs."
+        }
+      ],
+      "name": {
+        "zh": "CloudFront alternate domain 悬空审计",
+        "en": "CloudFront Alternate-Domain Dangling Audit"
+      },
+      "description": {
+        "zh": "核对 CNAME、distribution 与 alternate domain name/证书归属，只有自有测试 distribution 成功添加精确别名并返回标记才确认风险。",
+        "en": "Reviews CNAME, distribution, alternate-domain, and certificate ownership, confirming risk only when an owned test distribution adds the exact alias and returns a marker."
+      },
+      "category": {
+        "zh": "子域与云托管安全",
+        "en": "Subdomain and Cloud Hosting Security"
+      },
+      "subCategory": {
+        "zh": "CloudFront 别名生命周期",
+        "en": "CloudFront Alias Lifecycle"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "CloudFront 使用具体 `d...cloudfront.net` distribution domain 和 alternate domain names；原列表中的 `*.cloudfront.net` 是模式占位符，不是可解析目标。别名添加还要求覆盖域名的有效证书，平台关联状态必须与 DNS 一起核对。",
+          "en": "CloudFront uses concrete d...cloudfront.net distribution domains and alternate domain names; the source's *.cloudfront.net is a pattern placeholder, not a resolvable target. Adding an alias also requires a certificate covering the domain, so platform association state must be reviewed with DNS."
+        },
+        "vulnerability": {
+          "zh": "如果组织保留指向已删除 distribution 的 CNAME，且原账户释放了 alternate domain association、另一个账户又能取得匹配证书并添加别名，则可能托管内容。CloudFront 的别名冲突保护通常会阻止简单复用。",
+          "en": "If an organization retains a CNAME to a deleted distribution, the original account releases the alternate-domain association, and another account can obtain a matching certificate and add the alias, content hosting may be possible. CloudFront alias-conflict protections commonly block simple reuse."
+        },
+        "exploitation": {
+          "zh": "在测试账户/域中建立 distribution、证书和 alias，模拟先移除 alias/distribution 但保留测试 DNS，再尝试从第二测试 distribution 添加精确别名。只有控制平面接受、全球部署完成且域返回一次性标记时确认。",
+          "en": "Create a distribution, certificate, and alias in a test account and domain, simulate removing the alias or distribution while retaining test DNS, then try adding the exact alias to a second test distribution. Confirm only when the control plane accepts it, deployment completes globally, and the domain returns a one-time marker."
+        },
+        "mitigation": {
+          "zh": "先删除 CNAME 再移除 alternate domain/distribution，保留证书与别名资源映射和删除审批。监控指向不存在 distribution 的 DNS，并等待 CDN 失效后再释放证书和资源。",
+          "en": "Delete CNAMEs before removing alternate domains or distributions, maintain certificate and alias resource mappings and deletion approvals, and monitor DNS to missing distributions. Wait for CDN invalidation before releasing certificates and resources."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认具体 distribution 与 alias",
+            "en": "Confirm the concrete distribution and alias"
+          },
+          "description": {
+            "zh": "从 DNS、CloudFront 和 ACM 匹配精确 distribution domain、别名、证书与账户。",
+            "en": "Match the exact distribution domain, alias, certificate, and account across DNS, CloudFront, and ACM."
+          }
+        },
+        {
+          "title": {
+            "zh": "校正原始通配候选",
+            "en": "Correct the source wildcard candidates"
+          },
+          "description": {
+            "zh": "将原始 `*.cloudfront.net` 规则作为工具模式，并替换为权威 DNS 中的具体 distribution 后审计。",
+            "en": "Treat the source *.cloudfront.net strings as tool patterns and audit only after substituting concrete distributions from authoritative DNS."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "在测试 distribution 验证别名",
+            "en": "Verify the alias on a test distribution"
+          },
+          "description": {
+            "zh": "只为自有域配置匹配证书和第二 distribution，添加 alias 后发布唯一标记。",
+            "en": "Configure a matching certificate and second distribution only for the owned domain, add the alias, and publish a unique marker."
+          }
+        },
+        {
+          "title": {
+            "zh": "删除全球分发测试资源",
+            "en": "Delete global distribution test resources"
+          },
+          "description": {
+            "zh": "移除 CNAME/alias，禁用并删除 distribution 与证书，等待部署和缓存失效。",
+            "en": "Remove CNAME and alias, disable and delete the distribution and certificate, and wait for deployment and cache expiry."
+          }
+        }
+      ],
+      "references": [
+        "https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/CNAMEs.html",
+        "https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/distribution-web-delete.html"
+      ],
+      "review": {
+        "decision": "tool",
+        "rationale": "原命令使用不可解析的 `*.cloudfront.net` 占位符，缺少具体 distribution、alias 与证书约束；迁入云/DNS 工具并标记 command override。",
+        "issuesResolved": [
+          "corrected-classification",
+          "rewrote-bilingual-content",
+          "added-observation-and-false-positive-criteria",
+          "preserved-original-command",
+          "added-authoritative-reference",
+          "flagged-command-override-required"
+        ],
+        "targetToolIds": [
+          "dnsx",
+          "cloud-security-tools"
+        ],
+        "commandOverrideRequired": true
+      }
+    },
+    {
+      "id": "ssrf2-cname-fastly",
+      "prerequisites": [
+        {
+          "zh": "从权威 DNS 与 Fastly service/domain 清单确认真实 CNAME target、service ID、域绑定与 TLS subscription。",
+          "en": "Confirm live CNAME targets, service IDs, domain bindings, and TLS subscriptions from authoritative DNS and the Fastly service inventory."
+        },
+        {
+          "zh": "使用自有 Fastly 测试 service、唯一域和测试 backend，记录控制平面事件；不使用通配示例作为实际 DNS。",
+          "en": "Use an owned Fastly test service, unique domain, and test backend with control-plane event logging; do not use wildcard examples as actual DNS."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性工具证据要求组织 CNAME 指向已退役/解绑的 Fastly service target，域不再被原 service 占用，且自有测试 service 可按当前流程添加精确 domain、完成 TLS 要求并返回唯一标记。`*.fastly.net` 字符串、Fastly 错误页、unknown domain、DNS 解析、service 不存在、domain conflict 或 TLS 未就绪均是假阳性。",
+        "en": "Positive tool evidence requires an organizational CNAME to a retired or unbound Fastly service target, the domain no longer associated with the original service, and an owned test service to add the exact domain through the current flow, satisfy TLS requirements, and return a unique marker. A *.fastly.net string, Fastly error page, unknown domain, DNS resolution, missing service, domain conflict, or incomplete TLS is a false positive."
+      },
+      "opsecTips": [
+        {
+          "zh": "一个自有测试域在 Fastly service 返回标记后停止，不添加真实客户域或改变生产 backend。",
+          "en": "Stop after one owned test domain returns the marker from the Fastly service; do not add real customer domains or alter production backends."
+        },
+        {
+          "zh": "删除测试 domain/service/version 与 TLS subscription，移除 CNAME，purge 缓存并撤销 API token。",
+          "en": "Delete the test domain, service version, and TLS subscription, remove the CNAME, purge caches, and revoke the API token."
+        }
+      ],
+      "name": {
+        "zh": "Fastly service domain 悬空审计",
+        "en": "Fastly Service-Domain Dangling Audit"
+      },
+      "description": {
+        "zh": "关联 Fastly domain/service/TLS 与组织 CNAME 生命周期，使用自有测试 service 的唯一标记验证，而非通配后缀或错误页。",
+        "en": "Correlates Fastly domain, service, TLS, and organizational CNAME lifecycle and validates with a unique marker on an owned test service rather than wildcard suffixes or error pages."
+      },
+      "category": {
+        "zh": "子域与 CDN 托管安全",
+        "en": "Subdomain and CDN Hosting Security"
+      },
+      "subCategory": {
+        "zh": "Fastly domain 生命周期",
+        "en": "Fastly Domain Lifecycle"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "Fastly 自定义域属于具体 service/version，并可能需要 TLS subscription；原命令的 `*.fastly.net` 只是抽象模式。审校需要确定权威 CNAME、服务归属、域冲突检查和当前平台验证流程。",
+          "en": "Fastly custom domains belong to concrete services and versions and may require a TLS subscription; the source's *.fastly.net is only an abstract pattern. Review must determine authoritative CNAMEs, service ownership, domain-conflict checks, and current platform validation."
+        },
+        "vulnerability": {
+          "zh": "风险来自删除 Fastly service/domain 配置但保留组织 CNAME，且另一个账户能够添加该精确域。平台域唯一性、TLS 控制、账户支持流程与旧服务保留通常会改变或阻止可利用性。",
+          "en": "Risk arises when a Fastly service or domain configuration is removed while the organizational CNAME remains and another account can add that exact domain. Platform domain uniqueness, TLS controls, support workflows, and retained services usually affect or block exploitability."
+        },
+        "exploitation": {
+          "zh": "在测试 service/域中建立正常绑定和 marker，模拟移除 domain 但保留测试 CNAME，再尝试由第二测试 service 添加精确域并激活版本。只有平台接受、TLS/HTTP 生效且 marker 经该域返回时确认；随后立即撤销。",
+          "en": "Create a normal binding and marker on a test service and domain, simulate removing the domain while retaining the test CNAME, then attempt to add the exact domain to a second test service and activate the version. Confirm only when accepted and TLS or HTTP serves the marker, then revoke immediately."
+        },
+        "mitigation": {
+          "zh": "先删除 DNS，再从 Fastly 移除 domain/service/TLS；用 IaC 关联 service ID、domain、backend 与证书，监控 unknown-domain CNAME 和退役漂移。撤销不再需要的 API token。",
+          "en": "Delete DNS before removing Fastly domains, services, or TLS. Use IaC to link service IDs, domains, backends, and certificates, monitor unknown-domain CNAMEs and decommission drift, and revoke unused API tokens."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "匹配 Fastly service 与域",
+            "en": "Match the Fastly service and domain"
+          },
+          "description": {
+            "zh": "从权威 DNS 和 Fastly 控制面确认具体 target、service/version、domain 与 TLS。",
+            "en": "Confirm the concrete target, service and version, domain, and TLS across authoritative DNS and Fastly control plane."
+          }
+        },
+        {
+          "title": {
+            "zh": "导入并校正通配规则",
+            "en": "Import and correct wildcard rules"
+          },
+          "description": {
+            "zh": "把原始 `*.fastly.net` 作为候选模式，替换为真实 target 后逐项检查，不直接解析星号。",
+            "en": "Use the source *.fastly.net as a candidate pattern, substitute real targets, and inspect individually rather than resolving the wildcard."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "在第二测试 service 绑定",
+            "en": "Bind on a second test service"
+          },
+          "description": {
+            "zh": "只为自有域添加 domain、激活测试版本并通过固定 backend 返回唯一标记。",
+            "en": "Add the domain only for the owned test, activate a test version, and return a unique marker through a fixed backend."
+          }
+        },
+        {
+          "title": {
+            "zh": "撤销 service 与全局缓存",
+            "en": "Revoke service and global cache"
+          },
+          "description": {
+            "zh": "删除 domain/service/TLS，移除 DNS、purge 缓存并撤销测试 API token。",
+            "en": "Delete domain, service, and TLS, remove DNS, purge caches, and revoke the test API token."
+          }
+        }
+      ],
+      "references": [
+        "https://www.fastly.com/documentation/guides/getting-started/domains/working-with-domains/"
+      ],
+      "review": {
+        "decision": "tool",
+        "rationale": "原命令仅含 `*.fastly.net` 通配占位，缺少具体 service/domain/TLS 条件；迁入 CDN/DNS 工具并标记 command override。",
+        "issuesResolved": [
+          "corrected-classification",
+          "rewrote-bilingual-content",
+          "added-observation-and-false-positive-criteria",
+          "preserved-original-command",
+          "added-authoritative-reference",
+          "flagged-command-override-required"
+        ],
+        "targetToolIds": [
+          "dnsx",
+          "dns-attacks"
+        ],
+        "commandOverrideRequired": true
+      }
+    },
+    {
+      "id": "ssrf2-cname-saas",
+      "prerequisites": [
+        {
+          "zh": "从权威 DNS 获取真实 CNAME，并为每个目标后缀识别当前 SaaS 提供商、产品、账户所有者和官方自定义域流程。",
+          "en": "Obtain live CNAMEs from authoritative DNS and identify the current SaaS provider, product, account owner, and official custom-domain flow for every target suffix."
+        },
+        {
+          "zh": "使用自有测试域与各平台测试账户逐服务验证；历史接管指纹、公共错误页和已退役后缀只能作为线索。",
+          "en": "Validate per service with an owned test domain and platform test account; historical takeover fingerprints, public error pages, and retired suffixes are only clues."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性工具证据要求某条真实组织 CNAME 指向已释放 SaaS 资源，并且该平台当前允许自有测试账户绑定精确域、完成所有权要求并返回唯一标记。后缀命中、平台 404、NXDOMAIN、账户/站点不存在、域名可添加但验证失败、服务已停用、公共状态页或历史资料声称可接管均是假阳性。",
+        "en": "Positive tool evidence requires a live organizational CNAME to a released SaaS resource and the platform currently allowing an owned test account to bind the exact domain, satisfy ownership requirements, and return a unique marker. Suffix matches, platform 404, NXDOMAIN, missing account or site, addable but unverifiable domains, retired services, public status pages, or historical takeover claims are false positives."
+      },
+      "opsecTips": [
+        {
+          "zh": "每个平台最多在一个自有测试域完成标记后停止，不注册真实品牌资源、发送内容或接触第三方租户。",
+          "en": "Stop after at most one owned test-domain marker per platform; do not register real-brand resources, publish content, or touch third-party tenants."
+        },
+        {
+          "zh": "逐平台删除域绑定、站点和验证记录，移除 DNS，清理证书/CDN 缓存并撤销测试账户 token。",
+          "en": "Delete domain bindings, sites, and verification records per platform, remove DNS, clear certificate and CDN caches, and revoke test-account tokens."
+        }
+      ],
+      "name": {
+        "zh": "多 SaaS 平台悬空 CNAME 规则审计",
+        "en": "Multi-SaaS Dangling CNAME Rule Audit"
+      },
+      "description": {
+        "zh": "将平台后缀目录用于 DNS 分流，再按每个 SaaS 当前官方绑定规则验证真实悬空域；不把历史后缀或错误页当作接管结论。",
+        "en": "Uses provider-suffix catalogs for DNS triage, then validates live dangling domains against each SaaS platform's current official binding rules instead of treating historical suffixes or error pages as takeover conclusions."
+      },
+      "category": {
+        "zh": "子域与 SaaS 托管安全",
+        "en": "Subdomain and SaaS Hosting Security"
+      },
+      "subCategory": {
+        "zh": "跨平台自定义域生命周期",
+        "en": "Cross-Platform Custom-Domain Lifecycle"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "该记录汇总多个不同 SaaS 后缀，平台的自定义域、资源命名、验证、保留期和退役规则完全不同。它适合作为工具规则集，但不能共享一个可利用性判断；还需定期移除已退役或更名的 provider pattern。",
+          "en": "This record aggregates many SaaS suffixes whose custom-domain, resource naming, verification, retention, and decommissioning rules differ completely. It is suitable as a tool rule set but cannot share one exploitability decision, and retired or renamed provider patterns require periodic removal."
+        },
+        "vulnerability": {
+          "zh": "通用根因是外部 SaaS 资源删除后组织 CNAME 未同步删除，且平台允许另一账户取得原资源标识或绑定域。平台所有权验证、域唯一性、账户保留和 DNS 验证通常可阻止接管，因此必须逐服务确认。",
+          "en": "The common root cause is deleting an external SaaS resource without removing the organizational CNAME while the platform lets another account acquire the identifier or bind the domain. Platform ownership verification, domain uniqueness, account retention, and DNS validation often prevent takeover and must be checked per service."
+        },
+        "exploitation": {
+          "zh": "先用规则匹配真实 CNAME，再查阅该平台当前官方文档；仅在自有测试域/账户模拟释放与重新绑定，发布无脚本一次性文本标记。无法完成验证、后缀已退役或平台拒绝域时记录阴性，不尝试规避所有权控制。",
+          "en": "Match rules against live CNAMEs, then consult the platform's current official documentation. Simulate release and rebinding only with owned test domains and accounts and publish a script-free one-time text marker. Record failed verification, retired suffixes, or platform rejection as negative without bypassing ownership controls."
+        },
+        "mitigation": {
+          "zh": "建立 SaaS 资源、DNS、账户和域验证的统一资产关系；先删 DNS 后释放资源，季度更新 provider rule，监控悬空 CNAME 与平台迁移。对不再支持的服务及时移除规则并保留审计依据。",
+          "en": "Maintain unified relationships among SaaS resources, DNS, accounts, and domain verification. Remove DNS before releasing resources, update provider rules quarterly, and monitor dangling CNAMEs and platform migrations. Remove unsupported-service rules with retained audit evidence."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "解析并识别 SaaS provider",
+            "en": "Resolve and identify the SaaS provider"
+          },
+          "description": {
+            "zh": "只保留权威 DNS 中真实存在的 CNAME，并匹配当前 provider、产品和账户所有者。",
+            "en": "Retain only live CNAMEs from authoritative DNS and match current provider, product, and account owner."
+          }
+        },
+        {
+          "title": {
+            "zh": "导入多平台后缀目录",
+            "en": "Import the multi-platform suffix catalog"
+          },
+          "description": {
+            "zh": "将原始后缀作为工具规则逐项标注有效、过时或需校正，不直接当作可接管目标。",
+            "en": "Use the source suffixes as tool rules and label each valid, outdated, or needing correction rather than treating them as claimable targets."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "按平台验证官方绑定",
+            "en": "Verify official binding per platform"
+          },
+          "description": {
+            "zh": "仅用自有测试域走官方绑定与验证流程，返回唯一标记并保存控制面证据。",
+            "en": "Use only owned test domains through official binding and verification flows, returning a unique marker and retaining control-plane evidence."
+          }
+        },
+        {
+          "title": {
+            "zh": "清理并更新 provider 规则",
+            "en": "Clean up and update provider rules"
+          },
+          "description": {
+            "zh": "撤销所有测试绑定/DNS，清理账户 token，并更新过时后缀和退役 runbook。",
+            "en": "Revoke all test bindings and DNS, clear account tokens, and update outdated suffixes and decommissioning runbooks."
+          }
+        }
+      ],
+      "references": [
+        "https://owasp.org/www-project-web-security-testing-guide/latest/",
+        "https://datatracker.ietf.org/doc/html/rfc1034"
+      ],
+      "review": {
+        "decision": "tool",
+        "rationale": "原命令是跨 16 个 SaaS 平台的后缀目录，包含可能过时/改名的 provider pattern，不能作为单一 Payload；迁入 DNS 接管规则工具并标记周期性 command override。",
+        "issuesResolved": [
+          "corrected-classification",
+          "rewrote-bilingual-content",
+          "added-observation-and-false-positive-criteria",
+          "preserved-original-command",
+          "added-authoritative-reference",
+          "flagged-command-override-required"
+        ],
+        "targetToolIds": [
+          "dnsx",
+          "dns-attacks"
+        ],
+        "commandOverrideRequired": true
+      }
+    },
+    {
+      "id": "ssrf2-ns",
+      "prerequisites": [
+        {
+          "zh": "从父区权威服务器查询真实 NS 委派、glue、SOA 和 DNSSEC，不把 `ns1/ns2` 主机名词典当作已有记录。",
+          "en": "Query live NS delegation, glue, SOA, and DNSSEC from parent authoritative servers rather than treating ns1 or ns2 wordlist names as existing records."
+        },
+        {
+          "zh": "使用自有子区和测试 nameserver 模拟委派生命周期，记录注册域所有权、主机对象与 registrar/registry 状态。",
+          "en": "Use an owned child zone and test nameserver to simulate delegation lifecycle, recording registrable-domain ownership, host objects, and registrar or registry state."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性工具证据要求父区仍把组织子区委派给一个其注册域已过期/可注册或 nameserver 资源已可由他人控制的目标，并在自有测试区通过权威回答唯一 TXT 证明委派控制。NS 主机不解析、SERVFAIL、glue 缺失、一个服务器离线、名称含 `ns`、开放递归、DNSSEC 验证失败或仅能注册相似名称均是假阳性。",
+        "en": "Positive tool evidence requires the parent zone to delegate an organizational child zone to a target whose registrable domain is expired or claimable or whose nameserver resource is otherwise controllable, proven on an owned test zone by an authoritative unique TXT answer. An unresolved NS host, SERVFAIL, missing glue, one offline server, an ns-looking name, open recursion, DNSSEC failure, or registrability of a similar name is a false positive."
+      },
+      "opsecTips": [
+        {
+          "zh": "一个自有测试子区由测试 nameserver 返回唯一 TXT 后停止，不更改真实父区委派或注册第三方 NS 域。",
+          "en": "Stop after one owned test child zone returns a unique TXT from the test nameserver; do not change real parent delegations or register third-party NS domains."
+        },
+        {
+          "zh": "恢复测试父区委派，删除 nameserver/glue 和 TXT，清理 resolver 缓存并撤销 registrar/API token。",
+          "en": "Restore test parent delegation, delete nameserver, glue, and TXT records, clear resolver caches, and revoke registrar or API tokens."
+        }
+      ],
+      "name": {
+        "zh": "NS 委派与 nameserver 生命周期审计",
+        "en": "NS Delegation and Nameserver Lifecycle Audit"
+      },
+      "description": {
+        "zh": "将常见 nameserver 主机名作为 DNS 发现词典，实际按父区委派、注册域控制、glue 和权威回答验证风险；不是 SSRF。",
+        "en": "Uses common nameserver hostnames as a DNS-discovery wordlist and evaluates risk through parent delegation, registrable-domain control, glue, and authoritative answers; it is not SSRF."
+      },
+      "category": {
+        "zh": "域名与 DNS 安全",
+        "en": "Domain and DNS Security"
+      },
+      "subCategory": {
+        "zh": "悬空 NS 委派",
+        "en": "Dangling NS Delegation"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "NS 接管关注父区把子区委派给谁，以及该 nameserver 名称和服务是否仍由组织控制。原列表只是常见标签，需要先查询真实 NS RRset、父区 glue、SOA 和 DNSSEC；单个服务器故障不等于委派可被取得。",
+          "en": "NS takeover concerns who the parent delegates a child zone to and whether the nameserver name and service remain controlled by the organization. The source is only common labels, requiring live NS RRset, parent glue, SOA, and DNSSEC review; one failed server does not make a delegation claimable."
+        },
+        "vulnerability": {
+          "zh": "当父区保留到已过期外部域、已释放托管 DNS zone 或可被他人取得 nameserver 的委派时，攻击者可能为整个子区返回记录。多 NS 容错、注册局 host objects、DNSSEC DS 和 provider 所有权会改变影响。",
+          "en": "When a parent retains delegation to an expired external domain, released hosted DNS zone, or otherwise claimable nameserver, an attacker may answer for the whole child zone. Multiple-NS resilience, registry host objects, DNSSEC DS, and provider ownership alter impact."
+        },
+        "exploitation": {
+          "zh": "在自有父/子测试区配置两个 NS，模拟释放其中一个托管资源或 nameserver 注册域，再由授权测试账户取得并返回唯一 TXT。使用 `dig +trace` 和权威查询证明哪些 resolver 接受该回答；随后立即恢复。",
+          "en": "Configure two NS records in owned parent and child test zones, simulate release of one hosted resource or nameserver registrable domain, then reacquire it through the authorized test account and return a unique TXT. Use trace and authoritative queries to prove which resolvers accept the answer, then restore immediately."
+        },
+        "mitigation": {
+          "zh": "退役子区时先从父区删除 NS/DS，再关闭托管 zone 或 nameserver；监控父区委派、glue、注册域续费与 DNS provider 资产。保持至少两个受控权威服务器和变更审批。",
+          "en": "When decommissioning child zones, remove NS and DS from the parent before closing hosted zones or nameservers. Monitor parent delegations, glue, registrable-domain renewal, and DNS-provider assets, and maintain at least two controlled authoritative servers with change approval."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "查询父区真实委派",
+            "en": "Query real parent delegation"
+          },
+          "description": {
+            "zh": "用 trace、NS、SOA、DS 与 glue 确认子区的实际权威链和所有者。",
+            "en": "Use trace, NS, SOA, DS, and glue to confirm the child zone's actual authority chain and owners."
+          }
+        },
+        {
+          "title": {
+            "zh": "导入 nameserver 名称候选",
+            "en": "Import nameserver-name candidates"
+          },
+          "description": {
+            "zh": "把原始主机名作为发现词典，只对权威 DNS 中真实存在的名称继续生命周期审计。",
+            "en": "Use the source hostnames as a discovery wordlist and continue lifecycle review only for names live in authoritative DNS."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "在测试子区证明权威控制",
+            "en": "Prove authority on a test child zone"
+          },
+          "description": {
+            "zh": "仅在自有区模拟释放与重新取得，由测试 NS 返回唯一 TXT 并关联父区委派。",
+            "en": "Simulate release and reacquisition only in an owned zone and return a unique TXT from the test NS correlated to parent delegation."
+          }
+        },
+        {
+          "title": {
+            "zh": "恢复委派并清理缓存",
+            "en": "Restore delegation and clear caches"
+          },
+          "description": {
+            "zh": "恢复原 NS/DS，删除测试 glue/TXT，等待 TTL 后验证所有 resolver 回到预期权威。",
+            "en": "Restore original NS and DS, delete test glue and TXT, and verify resolvers return to intended authority after TTL expiry."
+          }
+        }
+      ],
+      "references": [
+        "https://datatracker.ietf.org/doc/html/rfc1034",
+        "https://datatracker.ietf.org/doc/html/rfc1912"
+      ],
+      "review": {
+        "decision": "tool",
+        "rationale": "原命令只有常见 nameserver 主机名，没有父区 NS 委派或可控制证据；迁入 DNS 审计工具。",
+        "issuesResolved": [
+          "corrected-classification",
+          "rewrote-bilingual-content",
+          "added-observation-and-false-positive-criteria",
+          "preserved-original-command",
+          "added-authoritative-reference"
+        ],
+        "targetToolIds": [
+          "dnsrecon",
+          "dns-attacks"
+        ]
+      }
+    },
+    {
+      "id": "ssrf2-mx",
+      "prerequisites": [
+        {
+          "zh": "从父/权威 DNS 查询真实 MX RRset、优先级、A/AAAA 和 SPF/DKIM/DMARC，并与组织邮件供应商资产清单匹配。",
+          "en": "Query live MX RRsets, priorities, A or AAAA, SPF, DKIM, and DMARC from authoritative DNS and match them to the organization's mail-provider inventory."
+        },
+        {
+          "zh": "使用自有测试域和隔离邮件接收器模拟供应商迁移或 endpoint 释放；禁止向真实用户投递或接收业务邮件。",
+          "en": "Use an owned test domain and isolated mail receiver to simulate provider migration or endpoint release; never deliver to or receive mail for real users."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性工具证据要求真实 MX 指向已释放且可由其他租户取得的邮件接收资源，并在自有测试域通过当前提供商流程绑定后接收唯一测试信封；还需说明优先级和回退路由。MX 主机暂时不可达、550/5xx、邮件延迟、provider 后缀匹配、DNS 解析、开放 SMTP banner、SPF/DMARC 缺失或 endpoint 可创建但不能接收该域邮件均是假阳性。",
+        "en": "Positive tool evidence requires a live MX to point to a released mail-receiving resource claimable by another tenant and an owned test domain to bind through the provider's current flow and receive a unique test envelope, with priority and fallback routing accounted for. Temporary unreachability, SMTP 550 or 5xx, mail delay, provider suffix matches, DNS resolution, an open SMTP banner, missing SPF or DMARC, or endpoint creation without mail receipt for the domain are false positives."
+      },
+      "opsecTips": [
+        {
+          "zh": "一个自有测试域的唯一空内容邮件被隔离接收器接收后停止，不发送真实地址、附件或凭据重置邮件。",
+          "en": "Stop after the isolated receiver gets one unique empty-content message for the owned test domain; do not send to real addresses or include attachments or reset credentials."
+        },
+        {
+          "zh": "移除测试 MX/provider 绑定，清空邮件队列和日志，删除测试域记录并撤销供应商/API 凭据。",
+          "en": "Remove test MX and provider bindings, clear mail queues and logs, delete test-domain records, and revoke provider or API credentials."
+        }
+      ],
+      "name": {
+        "zh": "MX 路由与邮件供应商生命周期审计",
+        "en": "MX Routing and Mail-Provider Lifecycle Audit"
+      },
+      "description": {
+        "zh": "核对 MX priority、供应商资源绑定和域所有权，使用隔离测试邮件确认真实接收控制；不把供应商后缀或 SMTP 错误当作接管。",
+        "en": "Reviews MX priority, provider-resource binding, and domain ownership, using isolated test mail to confirm real receiving control rather than treating provider suffixes or SMTP errors as takeover."
+      },
+      "category": {
+        "zh": "邮件与 DNS 安全",
+        "en": "Mail and DNS Security"
+      },
+      "subCategory": {
+        "zh": "悬空 MX 与接收路由",
+        "en": "Dangling MX and Receiving Routes"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "MX 记录选择邮件接收器，并按 priority 和 A/AAAA 解析传递。原命令是 Microsoft 365、Google 和 Amazon SES 风格的示例映射，不含真实域或租户绑定；需要按供应商当前域验证和接收配置审计。",
+          "en": "MX records select mail exchangers by priority and resolve them through A or AAAA. The source contains Microsoft 365, Google, and Amazon SES-style example mappings without live domains or tenant bindings, so current provider domain verification and receiving configuration must be audited."
+        },
+        "vulnerability": {
+          "zh": "风险来自组织保留到已释放邮件供应商资源的 MX，且另一租户能够验证/取得该域接收配置，从而接收原本发往组织的邮件。多数供应商需要 DNS 验证，错误配置更常造成不可达而非可接管。",
+          "en": "Risk arises when an organization retains MX to a released mail-provider resource that another tenant can verify or acquire for the domain, allowing receipt of organizational mail. Most providers require DNS verification, so misconfiguration more often causes nondelivery than takeover."
+        },
+        "exploitation": {
+          "zh": "在自有测试域创建正常 MX 和供应商接收配置，模拟删除供应商资源但暂时保留 MX，再尝试通过第二测试租户重新验证并接收带唯一 envelope token 的空邮件。只有实际 SMTP 交付到隔离收件箱时确认，随后立即撤销。",
+          "en": "Create normal MX and provider receiving configuration on an owned test domain, simulate deleting the provider resource while temporarily retaining MX, then try verification in a second test tenant and receive an empty message with a unique envelope token. Confirm only upon actual SMTP delivery to the isolated mailbox, then revoke immediately."
+        },
+        "mitigation": {
+          "zh": "迁移邮件供应商时先建立新路由并验证，再删除旧 MX/资源；维护域验证、MX priority、回退和 Null MX 策略，监控指向未归属供应商资源的记录。退役域应明确拒收邮件。",
+          "en": "During mail-provider migration, establish and verify new routing before removing old MX or resources. Maintain domain verification, MX priority, fallback, and Null MX policy, monitor records to unowned provider resources, and explicitly reject mail for retired domains."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "解析完整邮件路由",
+            "en": "Resolve the complete mail route"
+          },
+          "description": {
+            "zh": "查询 MX priority、目标地址和邮件验证记录，并映射供应商租户/资源所有者。",
+            "en": "Query MX priority, target addresses, and mail-verification records and map provider tenant or resource owners."
+          }
+        },
+        {
+          "title": {
+            "zh": "导入供应商示例候选",
+            "en": "Import provider example candidates"
+          },
+          "description": {
+            "zh": "把原始映射作为 MX 审计规则，只对真实权威记录核对域验证和接收资源。",
+            "en": "Use the source mappings as MX-audit rules and review domain verification and receiving resources only for live authoritative records."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "在测试域确认接收控制",
+            "en": "Confirm receiving control on a test domain"
+          },
+          "description": {
+            "zh": "由第二测试租户绑定后发送一封唯一空邮件，关联 DNS、SMTP 和隔离收件日志。",
+            "en": "After binding from a second test tenant, send one unique empty message and correlate DNS, SMTP, and isolated mailbox logs."
+          }
+        },
+        {
+          "title": {
+            "zh": "恢复 MX 并清空队列",
+            "en": "Restore MX and drain queues"
+          },
+          "description": {
+            "zh": "移除第二绑定，恢复原测试路由，清空队列/日志并验证 priority 与拒收策略。",
+            "en": "Remove the second binding, restore the original test route, drain queues and logs, and verify priority and rejection policy."
+          }
+        }
+      ],
+      "references": [
+        "https://datatracker.ietf.org/doc/html/rfc5321",
+        "https://datatracker.ietf.org/doc/html/rfc7505"
+      ],
+      "review": {
+        "decision": "tool",
+        "rationale": "原命令是 MX 供应商示例映射，没有真实 RRset、租户域验证或邮件接收证据；迁入 DNS/邮件配置审计工具。",
+        "issuesResolved": [
+          "corrected-classification",
+          "rewrote-bilingual-content",
+          "added-observation-and-false-positive-criteria",
+          "preserved-original-command",
+          "added-authoritative-reference"
+        ],
+        "targetToolIds": [
+          "dnsrecon",
+          "dns-attacks"
+        ]
+      }
+    },
+    {
+      "id": "ssrf2-hsts",
+      "prerequisites": [
+        {
+          "zh": "从真实 HTTPS 最终响应采集 Strict-Transport-Security，记录重定向链、主机、端口、浏览器和中间 CDN/代理。",
+          "en": "Collect Strict-Transport-Security from the final real HTTPS response, recording redirect chain, host, port, browser, and intermediary CDN or proxy."
+        },
+        {
+          "zh": "为 apex 与一个受控子域准备 HTTP/HTTPS 基线，记录 max-age 持久状态、includeSubDomains 继承和 preload 列表状态。",
+          "en": "Prepare HTTP and HTTPS baselines for the apex and one controlled subdomain, recording persisted max-age state, includeSubDomains inheritance, and preload-list status."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性工具发现是目标 HTTPS 响应缺少/包含无效或意外弱化的 HSTS，真实浏览器在清空状态后仍可首次通过 HTTP 到达，或 includeSubDomains/preload 声明与实际覆盖不一致。目录中的推荐字符串、Header 出现在请求/文档、仅 301 跳转、浏览器已有 preload 状态、`preload` token 存在但未入列表、非 HTTPS 响应里的 HSTS 或 max-age=0 的计划下线均是假阳性。",
+        "en": "Positive tool evidence is a missing, invalid, or unexpectedly weakened HSTS policy on the real HTTPS response, a fresh browser still reaching the site first over HTTP, or includeSubDomains or preload claims differing from actual coverage. Recommended catalog strings, headers in requests or docs, HTTP 301 alone, preexisting browser preload state, a preload token without list inclusion, HSTS on non-HTTPS responses, or planned max-age=0 removal are false positives."
+      },
+      "opsecTips": [
+        {
+          "zh": "确认一个测试主机的实际 HSTS 差异后停止，不向生产域写入长 max-age、includeSubDomains 或 preload。",
+          "en": "Stop after confirming the actual HSTS differential for one test host; do not set long max-age, includeSubDomains, or preload on a production domain."
+        },
+        {
+          "zh": "清除测试浏览器 HSTS 状态和 profile，恢复测试 Header/CDN 配置，删除捕获并验证 apex/子域回归。",
+          "en": "Clear the test browser's HSTS state and profile, restore test headers and CDN configuration, delete captures, and verify apex and subdomain regression."
+        }
+      ],
+      "name": {
+        "zh": "HSTS 响应策略审计目录",
+        "en": "HSTS Response-Policy Audit Catalog"
+      },
+      "description": {
+        "zh": "把常见 HSTS 值作为配置对照，检查真实 HTTPS 响应、浏览器持久状态、子域继承和 preload；它不是 SSRF Payload。",
+        "en": "Uses common HSTS values as configuration controls to review real HTTPS responses, browser persistence, subdomain inheritance, and preload; it is not an SSRF payload."
+      },
+      "category": {
+        "zh": "Web 安全配置",
+        "en": "Web Security Configuration"
+      },
+      "subCategory": {
+        "zh": "HTTP Strict Transport Security",
+        "en": "HTTP Strict Transport Security"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "HSTS 只在安全传输收到后生效，并由浏览器按 host 保存。max-age、includeSubDomains 和 preload 具有不同生命周期；原命令是常见响应值目录，不能作为请求载荷，也不能仅凭推荐值存在断言已正确部署。",
+          "en": "HSTS takes effect only when received over secure transport and is stored by browsers per host. max-age, includeSubDomains, and preload have different lifecycles. The source is a catalog of common response values, not request payloads, and the presence of a recommended string does not prove correct deployment."
+        },
+        "vulnerability": {
+          "zh": "缺少或过短 HSTS 可能允许首次访问降级；错误使用 includeSubDomains 可能中断仍依赖 HTTP 的子域，而 preload 的撤销周期更长。风险评估必须覆盖重定向、证书、所有子域和浏览器缓存状态。",
+          "en": "Missing or short HSTS may permit first-visit downgrade. Incorrect includeSubDomains can break HTTP-dependent subdomains, while preload removal has a longer lifecycle. Risk assessment must cover redirects, certificates, all subdomains, and browser cache state."
+        },
+        "exploitation": {
+          "zh": "在全新浏览器 profile 请求 apex/子域的 HTTP 与 HTTPS，保存最终响应 Header 和网络链，比较配置前后首次访问与后续访问。对 preload 使用官方查询而非仅检查 token；所有更改只在测试域进行。",
+          "en": "Using a fresh browser profile, request HTTP and HTTPS for apex and subdomain and save final headers and network chains, comparing first and subsequent visits before and after configuration. Use the official query for preload rather than checking only the token, and make changes only on a test domain."
+        },
+        "mitigation": {
+          "zh": "在确认所有子域支持 HTTPS 后分阶段提高 max-age，再考虑 includeSubDomains 和 preload；确保 HTTPS 证书、重定向和 CDN/源站 Header 一致。建立失效与 preload 撤销 runbook，并监控 Header 漂移。",
+          "en": "Increase max-age in stages after confirming every subdomain supports HTTPS, then consider includeSubDomains and preload. Keep certificates, redirects, CDN, and origin headers consistent, maintain expiry and preload-removal runbooks, and monitor policy drift."
+        },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "采集真实 HTTPS 策略",
+            "en": "Collect the real HTTPS policy"
+          },
+          "description": {
+            "zh": "从最终安全响应记录 HSTS、重定向、证书和中间层，不读取请求端伪造值。",
+            "en": "Record HSTS, redirects, certificates, and intermediaries from the final secure response without relying on client-forged values."
+          }
+        },
+        {
+          "title": {
+            "zh": "将目录值作为配置对照",
+            "en": "Use catalog values as configuration controls"
+          },
+          "description": {
+            "zh": "把原始 Header 行导入安全头工具比较语法和预期，不直接发送到业务请求。",
+            "en": "Import the source header lines into a security-header tool for syntax and expectation comparison rather than sending them to business requests."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "验证浏览器状态与子域",
+            "en": "Verify browser state and subdomains"
+          },
+          "description": {
+            "zh": "用全新 profile 验证首次 HTTP、后续升级、子域继承和官方 preload 状态。",
+            "en": "Use a fresh profile to verify first HTTP access, later upgrades, subdomain inheritance, and official preload status."
+          }
+        },
+        {
+          "title": {
+            "zh": "清理测试策略并回归",
+            "en": "Clean test policy and regress"
+          },
+          "description": {
+            "zh": "清除浏览器状态、恢复测试 Header，并确认 apex/子域 HTTPS 与业务可用性。",
+            "en": "Clear browser state, restore test headers, and confirm HTTPS and business availability for apex and subdomains."
+          }
+        }
+      ],
+      "references": [
+        "https://datatracker.ietf.org/doc/html/rfc6797",
+        "https://hstspreload.org/"
+      ],
+      "review": {
+        "decision": "tool",
+        "rationale": "原命令是 HSTS 响应配置值目录，不能作为 SSRF 或业务请求 Payload；迁入 HTTP 安全头审计工具。",
+        "issuesResolved": [
+          "corrected-classification",
+          "rewrote-bilingual-content",
+          "added-observation-and-false-positive-criteria",
+          "preserved-original-command",
+          "added-authoritative-reference"
+        ],
+        "targetToolIds": [
+          "web-security-headers"
+        ]
+      }
+    },
+    {
+      "id": "ssrf2-https",
+      "prerequisites": [
+        {
+          "zh": "采集真实最终响应的完整 CSP、X-Content-Type-Options、X-Frame-Options、Referrer-Policy 与 Permissions-Policy，区分 Header 和文档示例。",
+          "en": "Collect complete CSP, X-Content-Type-Options, X-Frame-Options, Referrer-Policy, and Permissions-Policy from final real responses, distinguishing headers from documentation examples."
+        },
+        {
+          "zh": "在隔离浏览器中为 mixed content、framing、MIME、referrer 和权限功能分别建立无敏感 canary；旧 X-XSS-Protection 只记录兼容性。",
+          "en": "Build separate nonsensitive browser canaries for mixed content, framing, MIME, referrer, and permissions in isolation; record legacy X-XSS-Protection only for compatibility."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性工具发现必须绑定具体控制：真实策略缺失/无效，并由浏览器 canary 证明对应危险行为，例如混合资源加载、跨源 framing、MIME sniff 或过量 Referer；每项单独评级。目录中有推荐字符串、Header 被请求端发送、扫描器只按存在性报警、旧 `X-XSS-Protection` 值、CSP token 语法正确但不适用、公开页面可 framing 或浏览器正确阻止均是假阳性。",
+        "en": "Positive tool findings must bind to a specific control: the real policy is missing or invalid and a browser canary proves the corresponding behavior, such as mixed-resource loading, cross-origin framing, MIME sniffing, or excessive Referer, with each rated separately. Recommended catalog strings, request-sent headers, presence-only scanner alerts, legacy X-XSS-Protection values, syntactically valid but irrelevant CSP tokens, framing of public pages, or correct browser blocking are false positives."
+      },
+      "opsecTips": [
+        {
+          "zh": "一个具体安全头的浏览器 canary 结果确认后停止，不一次修改整套生产策略或把旧 Header 当作修复。",
+          "en": "Stop after confirming the browser-canary result for one specific security header; do not change the entire production policy at once or use legacy headers as remediation."
+        },
+        {
+          "zh": "删除测试页面和浏览器 profile，清除 CDN/代理 Header 缓存与 report，恢复分项策略并完成正常功能回归。",
+          "en": "Delete test pages and browser profiles, clear CDN or proxy header caches and reports, restore per-control policies, and complete normal-function regression."
+        }
+      ],
+      "name": {
+        "zh": "HTTPS 相关响应安全头审计目录",
+        "en": "HTTPS-Related Response Security-Header Audit Catalog"
+      },
+      "description": {
+        "zh": "将 CSP、MIME、framing、Referrer 与 Permissions Policy 配置片段交给安全头工具，并用真实浏览器逐控制验证；不是 SSRF Payload。",
+        "en": "Feeds CSP, MIME, framing, Referrer, and Permissions Policy fragments into security-header tooling and verifies each control in a real browser; it is not an SSRF payload."
+      },
+      "category": {
+        "zh": "Web 安全配置",
+        "en": "Web Security Configuration"
+      },
+      "subCategory": {
+        "zh": "响应安全头组合审计",
+        "en": "Composite Response Security-Header Audit"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "原记录错误命名为 HTTPS 配置并混合多个相互独立的响应策略，包括已废弃的 X-XSS-Protection。每个 Header 的适用资源、浏览器执行模型和证据不同，应作为工具目录分项审计而非一条攻击链或推荐配置模板。",
+          "en": "The source is mislabeled as HTTPS configuration and mixes independent response policies, including deprecated X-XSS-Protection. Each header has different resource scope, browser behavior, and evidence and must be audited as separate tool rules rather than one attack chain or recommended template."
+        },
+        "vulnerability": {
+          "zh": "安全头缺失或配置错误可能导致 mixed content、MIME sniffing、点击劫持、Referer 泄露或浏览器功能滥用，但 Header 只是纵深控制，不能替代输出编码、授权和安全内容。冲突的 CDN/源站 Header 也可能使生效策略与配置不同。",
+          "en": "Missing or incorrect headers can enable mixed content, MIME sniffing, clickjacking, Referer leakage, or browser-feature abuse, but headers are defense in depth and do not replace output encoding, authorization, or safe content. Conflicting CDN and origin headers can also make effective policy differ from configuration."
+        },
+        "exploitation": {
+          "zh": "从最终响应解析生效策略，为每个 Header 单独建立合法与异常浏览器 canary：混合资源、iframe、错误 MIME、跨源导航和权限 API。关联 console、网络、DOM 和 Header；不得仅复制目录值或用请求 Header 模拟响应策略。",
+          "en": "Parse effective policies from final responses and build separate legitimate and abnormal browser canaries for each header: mixed resources, iframes, wrong MIME, cross-origin navigation, and permission APIs. Correlate console, network, DOM, and headers; do not merely copy catalog values or simulate response policy with request headers."
+        },
+        "mitigation": {
+          "zh": "按资源和业务需要部署最小明确策略：CSP 控制 mixed content，nosniff 固定 MIME，frame-ancestors/XFO 限制 framing，Referrer-Policy 减少泄露，Permissions-Policy 限制功能；移除 X-XSS-Protection 依赖并统一 CDN/源站配置。",
+          "en": "Deploy minimal explicit policies per resource and business need: CSP for mixed content, nosniff for MIME, frame-ancestors or XFO for framing, Referrer-Policy for leakage, and Permissions-Policy for features. Remove reliance on X-XSS-Protection and align CDN and origin configuration."
+        },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "采集最终生效 Header",
+            "en": "Collect final effective headers"
+          },
+          "description": {
+            "zh": "跨重定向、CDN 和源站保存完整响应策略，识别重复、冲突和 Report-Only。",
+            "en": "Save complete response policies across redirects, CDN, and origin and identify duplicates, conflicts, and Report-Only values."
+          }
+        },
+        {
+          "title": {
+            "zh": "按策略导入配置目录",
+            "en": "Import the catalog by policy"
+          },
+          "description": {
+            "zh": "将原始行分配到 CSP、MIME、framing、referrer、permissions 与 legacy 兼容检查。",
+            "en": "Assign source lines to CSP, MIME, framing, referrer, permissions, and legacy compatibility checks."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "逐项运行浏览器 canary",
+            "en": "Run browser canaries individually"
+          },
+          "description": {
+            "zh": "每次只验证一个对应行为，记录网络、console、DOM 和策略生效结果，排除存在性误报。",
+            "en": "Verify one corresponding behavior at a time and record network, console, DOM, and effective-policy results to exclude presence-only false positives."
+          }
+        },
+        {
+          "title": {
+            "zh": "分阶段修复并回归",
+            "en": "Remediate in stages and regress"
+          },
+          "description": {
+            "zh": "逐 Header 修复 CDN/源站配置，删除测试页面/状态，并确认正常资源、framing 和权限流程。",
+            "en": "Fix CDN and origin configuration one header at a time, delete test pages and state, and confirm normal resources, framing, and permission flows."
+          }
+        }
+      ],
+      "references": [
+        "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy",
+        "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Referrer-Policy"
+      ],
+      "review": {
+        "decision": "tool",
+        "rationale": "原命令混合多个响应安全头且含已废弃的 X-XSS-Protection，不能作为 SSRF/HTTPS Payload；迁入安全头工具并标记 command override 分组及 legacy 注释。",
+        "issuesResolved": [
+          "corrected-classification",
+          "rewrote-bilingual-content",
+          "added-observation-and-false-positive-criteria",
+          "preserved-original-command",
+          "added-authoritative-reference",
+          "flagged-command-override-required"
+        ],
+        "targetToolIds": [
+          "web-security-headers"
+        ],
+        "commandOverrideRequired": true
+      }
+    }
+  ]
+}

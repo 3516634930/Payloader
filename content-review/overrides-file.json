@@ -1,0 +1,1140 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "sourcePrefix": "file",
+  "entries": [
+    {
+      "id": "file-competition",
+      "name": {
+        "zh": "文件上传竞态测试工作流",
+        "en": "File-Upload Race Testing Workflows"
+      },
+      "description": {
+        "zh": "原条目由 curl、Python 线程和原始 socket 驱动的连续竞态流程组成，并混合临时文件窗口、可执行上传、.htaccess 与分块传输，不是可直接投递的单一 Payload。",
+        "en": "The source consists of continuous race workflows driven by curl, Python threads, and raw sockets and combines temporary-file windows, executable uploads, .htaccess, and chunked transfer rather than one directly deliverable payload."
+      },
+      "category": {
+        "zh": "文件漏洞",
+        "en": "File Vulnerabilities"
+      },
+      "subCategory": {
+        "zh": "上传竞态工具工作流",
+        "en": "Upload-Race Tool Workflows"
+      },
+      "prerequisites": [
+        {
+          "zh": "仅在隔离上传服务中使用不可执行的随机 marker 文件，服务端能够记录临时文件创建、扫描、移动、删除和读取的纳秒级时间线。",
+          "en": "Use only non-executable random marker files in an isolated upload service, with nanosecond-level server timelines for temporary-file creation, scanning, move, delete, and read events."
+        },
+        {
+          "zh": "预先批准最大请求数、并发度和持续时间，并准备无扫描延迟与有固定扫描延迟的两组对照。",
+          "en": "Preapprove maximum requests, concurrency, and duration and prepare controls with no scan delay and with a fixed scan delay."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性证据是同一上传任务的 marker 在策略判定或原子移动完成前，被独立读取请求从临时可访问位置取回，并由文件生命周期日志和请求 ID 关联。响应较慢、上传返回 200、偶尔 404、线程打印成功、页面出现任意正文或 .htaccess 被接受，都不能证明竞态窗口可利用。",
+        "en": "Positive evidence requires the same upload job marker to be retrieved from a temporarily reachable location before policy decision or atomic move completes, correlated through file-lifecycle logs and request IDs. Slow responses, HTTP 200 uploads, occasional 404s, a thread printing success, arbitrary response text, or accepted .htaccess do not prove an exploitable race."
+      },
+      "opsecTips": [
+        {
+          "zh": "并发从 1 开始逐级增加，达到首次可重复 marker 读取、错误率升高、队列积压或 worker 抖动时立即停止。",
+          "en": "Increase concurrency from one in small steps and stop at the first reproducible marker read, elevated error rate, queue buildup, or worker instability."
+        },
+        {
+          "zh": "删除 marker、临时上传、测试路由和日志 token，排空队列并确认没有线程、socket、.htaccess 或可执行文件残留。",
+          "en": "Delete markers, temporary uploads, test routes, and log tokens, drain queues, and verify no threads, sockets, .htaccess files, or executable uploads remain."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "竞态测试需要同时驱动上传与读取并关联服务端文件状态，因此属于工具工作流。源条目把计时探测、无限 shell 循环、高并发 Python、.htaccess 解析切换和慢速分块上传混为一体，必须按受控测试工具重写。",
+          "en": "Race testing must drive upload and read operations while correlating server-side file state, so it is a tool workflow. The source mixes timing probes, infinite shell loops, high-concurrency Python, .htaccess parser changes, and slow chunked uploads and must be rewritten as controlled test tooling."
+        },
+        "vulnerability": {
+          "zh": "根因通常是先把不可信文件写入 Web 可达位置，再异步检查或删除，而发布与策略判定不是同一个原子操作。.htaccess 和分块传输属于不同前提，不能由普通上传延迟推断。",
+          "en": "The root cause is usually writing an untrusted file to a web-reachable location before asynchronous inspection or deletion, with publication and policy decision not performed atomically. .htaccess and chunked transfer require different prerequisites and cannot be inferred from ordinary upload latency."
+        },
+        "exploitation": {
+          "zh": "使用只返回随机文本的 marker，先测量正常上传生命周期，再以 1、2、4 个并发请求交错上传和只读获取；每轮记录任务 ID、临时路径、扫描状态与读取时间。不要运行 PHP、命令、无限循环或 100 线程样例。",
+          "en": "Use a marker that returns only random text, baseline the normal upload lifecycle, then interleave upload and read-only retrieval at concurrency 1, 2, and 4. Record job ID, temporary path, scan state, and read time for each run. Do not run PHP, commands, infinite loops, or the 100-thread samples."
+        },
+        "mitigation": {
+          "zh": "文件先写入 Web 根之外的不可执行随机名目录，完成内容验证后原子发布；禁用上传目录脚本和 .htaccess 覆盖，统一同步/分块路径，并限制并发与临时文件生命周期。",
+          "en": "Write files first to a non-executable randomly named directory outside the web root and publish atomically after content validation. Disable script execution and .htaccess overrides in upload locations, unify normal and chunked paths, and limit concurrency and temporary-file lifetime."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "记录上传生命周期基线",
+            "en": "Record the upload-lifecycle baseline"
+          },
+          "description": {
+            "zh": "用普通 marker 建立创建、检查、发布和删除事件顺序。",
+            "en": "Use an ordinary marker to establish the order of create, inspect, publish, and delete events."
+          }
+        },
+        {
+          "title": {
+            "zh": "审查源计时流程",
+            "en": "Review the source timing workflow"
+          },
+          "description": {
+            "zh": "原执行区仅用于命令来源与工具路由；重写后才可运行受限并发版本。",
+            "en": "The source execution block is retained only for provenance and tool routing; run only a rewritten bounded-concurrency version."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "关联并发读取证据",
+            "en": "Correlate concurrent-read evidence"
+          },
+          "description": {
+            "zh": "要求读取事件发生在同一任务的策略完成前，并匹配随机 marker。",
+            "en": "Require the read event before policy completion for the same job and match the random marker."
+          }
+        },
+        {
+          "title": {
+            "zh": "原子发布后回归",
+            "en": "Regress after atomic publication"
+          },
+          "description": {
+            "zh": "修复后重放受限并发，确认 marker 只在批准发布后可读。",
+            "en": "Replay bounded concurrency after remediation and confirm the marker is readable only after approved publication."
+          }
+        }
+      ],
+      "references": [
+        "https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html",
+        "https://portswigger.net/web-security/file-upload/lab-file-upload-web-shell-upload-via-race-condition"
+      ],
+      "review": {
+        "decision": "tool",
+        "rationale": "七个区块全部是连续请求、并发脚本或原始 socket 流程；没有可脱离驱动器单独投递的载荷，应迁入受限文件上传测试工具。",
+        "issuesResolved": [
+          "reclassified-as-tool-workflow",
+          "defined-bounded-concurrency",
+          "removed-rce-as-success-criterion",
+          "added-server-timeline-evidence",
+          "added-stop-and-cleanup-guidance"
+        ],
+        "targetToolIds": [
+          "file-upload-attacks",
+          "python-pentest-scripts"
+        ],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 -> file-upload-attacks as a bounded timing and lifecycle probe",
+          "execution 1-2 -> python-pentest-scripts after replacing webshell execution and unbounded loops with marker-only bounded concurrency",
+          "execution 3 -> file-upload-attacks as an Apache-specific .htaccess publication-race workflow after safe fixture replacement",
+          "wafBypass 0 -> python-pentest-scripts as the marker-only upload/read harness",
+          "wafBypass 1 -> file-upload-attacks as an Apache-specific configuration race, not a generic bypass",
+          "wafBypass 2 -> python-pentest-scripts after constructing a valid multipart chunked request and enforcing a byte/time budget"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "execution 1 uses infinite loops and treats command execution output as the success condition",
+          "execution 2 creates 30 continuously looping threads for 60 seconds, suppresses all exceptions, and uploads executable PHP",
+          "execution 3 and wafBypass 1 change .htaccess handler configuration and must use a non-executable dedicated Apache fixture",
+          "wafBypass 2 sends an incomplete multipart body whose chunk data does not match the declared boundary and cannot validate upload behavior"
+        ],
+        "reviewNotes": [
+          {
+            "zh": "响应时间差只能帮助定位检查阶段，不能证明临时文件曾对外可读。",
+            "en": "Response-time differences can locate an inspection stage but cannot prove that a temporary file was externally readable."
+          },
+          {
+            "zh": "竞态阳性必须由同一任务的文件生命周期和 marker 读取闭环确认，不能以 uid=、任意非空响应或线程日志代替。",
+            "en": "A race positive requires a closed evidence chain between one job lifecycle and marker retrieval; uid=, arbitrary nonempty responses, or thread logs are not substitutes."
+          }
+        ]
+      }
+    },
+    {
+      "id": "file-download",
+      "name": {
+        "zh": "文件下载路径、协议与探测工作流混合集",
+        "en": "Mixed File-Download Paths, Schemes, and Discovery Workflows"
+      },
+      "description": {
+        "zh": "原条目混合下载接口枚举、路径规范化输入、file/php wrapper、旧式空字节与路径截断、批量下载及凭证 grep，需要拆成单一 Payload 与只读工具流程。",
+        "en": "The source mixes download-endpoint discovery, path-normalization inputs, file and PHP wrappers, legacy null-byte and path truncation, bulk download, and credential grep and must be split into single payloads and read-only tool workflows."
+      },
+      "category": {
+        "zh": "文件漏洞",
+        "en": "File Vulnerabilities"
+      },
+      "subCategory": {
+        "zh": "下载路径边界拆分",
+        "en": "Download-Path Boundary Split"
+      },
+      "prerequisites": [
+        {
+          "zh": "准备一个允许下载的 marker 文件和一个同名但位于批准根目录外的 marker 文件，服务端能够记录原始参数、解码次数、规范路径与最终打开对象。",
+          "en": "Prepare one allowed marker file and one same-named marker outside the approved root, with server logs for raw parameters, decode count, canonical path, and final opened object."
+        },
+        {
+          "zh": "测试身份只允许读取合成目录，禁止访问系统、配置、凭证、源码或真实用户附件。",
+          "en": "The test identity may read only a synthetic directory and is prohibited from system, configuration, credential, source-code, or real-user attachments."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性是同一下载入口在只改变路径输入后打开批准根之外的 marker，且规范路径、文件 ID、响应哈希和请求日志一致。HTTP 200、非零长度、路径被回显、错误变化、file/php 字样被接受或批量脚本保存了文件，都不能证明越界读取。",
+        "en": "A positive requires the same download entry to open the marker outside the approved root after only the path input changes, with canonical path, file ID, response hash, and request logs aligned. HTTP 200, nonzero length, reflected paths, changed errors, accepted file or PHP text, or a batch script saving a file does not prove an out-of-root read."
+      },
+      "opsecTips": [
+        {
+          "zh": "每个分支只读取一个无敏感 marker，禁止批量字典、凭证正则、系统路径和真实附件。",
+          "en": "Read one nonsensitive marker per branch and prohibit bulk dictionaries, credential regexes, system paths, and real attachments."
+        },
+        {
+          "zh": "删除下载副本、marker、测试对象与请求日志 token，清空客户端缓存并确认没有生成 loot 文件。",
+          "en": "Delete downloaded copies, markers, test objects, and request-log tokens, clear client caches, and verify no loot files were created."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "下载漏洞需要区分对象 ID 授权、路径规范化、URI scheme 解析与自动化探测。原命令同时包含 curl 工作流和裸参数值，不能作为一个 Payload 卡解释。",
+          "en": "Download flaws require separating object-ID authorization, path normalization, URI-scheme resolution, and automated discovery. The source commands combine curl workflows with bare parameter values and cannot be interpreted as one payload card."
+        },
+        "vulnerability": {
+          "zh": "根因是把用户路径直接拼到目录、在解码和规范化前做前缀检查、允许 file/php wrapper，或按文件名而不是授权对象 ID 取件。不同平台和旧运行时对空字节、斜杠与长路径处理不同。",
+          "en": "Root causes include concatenating user paths, checking prefixes before decode and canonicalization, allowing file or PHP wrappers, or fetching by filename instead of an authorized object ID. Platforms and legacy runtimes differ in null-byte, separator, and long-path handling."
+        },
+        "exploitation": {
+          "zh": "先下载批准 marker 建立状态、MIME 与哈希基线，再逐类提交一个规范化变体，并从服务端记录最终 canonical path。wrapper 和旧式截断必须在明确支持该运行时的独立夹具测试；不运行批量下载或凭证提取。",
+          "en": "Download the approved marker first to baseline status, MIME, and hash, then submit one normalization variant per class and record the final canonical path server-side. Test wrappers and legacy truncation only in fixtures known to support them; do not run bulk downloads or credential extraction."
+        },
+        "mitigation": {
+          "zh": "下载 API 使用不可猜测对象 ID 并逐对象授权；一次解码后使用真实路径/句柄做根目录包含检查，拒绝绝对路径、未知 scheme、NUL 与平台保留形式，并以最小文件权限运行。",
+          "en": "Use opaque object IDs and per-object authorization for downloads. Decode once, enforce root containment on a real path or handle, reject absolute paths, unknown schemes, NULs, and platform-reserved forms, and run with minimal filesystem permission."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "固定下载对象与身份",
+            "en": "Fix the download object and identity"
+          },
+          "description": {
+            "zh": "记录批准 marker、越界 marker 和未授权身份的正常结果。",
+            "en": "Record normal results for the approved marker, out-of-root marker, and unauthorized identity."
+          }
+        },
+        {
+          "title": {
+            "zh": "审查路径规范化变体",
+            "en": "Review path-normalization variants"
+          },
+          "description": {
+            "zh": "从裸参数组逐次选择一个变体，不运行批量下载工作流。",
+            "en": "Select one variant at a time from the bare-parameter group and do not run bulk-download workflows."
+          },
+          "payloadRef": {
+            "area": "wafBypass",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "关联最终打开对象",
+            "en": "Correlate the final opened object"
+          },
+          "description": {
+            "zh": "匹配原始值、解码值、canonical path、文件哈希与请求 ID。",
+            "en": "Match raw value, decoded value, canonical path, file hash, and request ID."
+          }
+        },
+        {
+          "title": {
+            "zh": "对象化下载并回归",
+            "en": "Move to object-based downloads and regress"
+          },
+          "description": {
+            "zh": "修复后合法对象仍可下载，所有越界、wrapper 与旧式截断输入在打开前拒绝。",
+            "en": "After remediation preserve authorized downloads and reject out-of-root, wrapper, and legacy-truncation inputs before open."
+          }
+        }
+      ],
+      "references": [
+        "https://portswigger.net/web-security/file-path-traversal",
+        "https://cwe.mitre.org/data/definitions/22.html",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "原条目跨路径规范化、stream wrapper、旧式终止符和批量下载工具流程，前提、证据与风险不同。",
+        "issuesResolved": [
+          "separated-normalization-and-wrapper-boundaries",
+          "reclassified-bulk-download-as-tooling",
+          "defined-canonical-path-evidence",
+          "removed-sensitive-file-success-criteria",
+          "added-bilingual-operational-guidance"
+        ],
+        "targetPayloadIds": [
+          "file-download-path-normalization",
+          "file-download-stream-wrapper-boundary",
+          "file-download-legacy-terminator"
+        ],
+        "targetToolIds": [
+          "lfi-rfi-tools",
+          "web-enumeration-tools"
+        ],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 -> web-enumeration-tools as endpoint and parameter discovery",
+          "execution 1 -> file-download-path-normalization after extracting individual POSIX, Windows, and encoded path inputs",
+          "execution 2-3 -> lfi-rfi-tools after replacing sensitive-file download, credential grep, bulk dictionaries, and loot writes with one marker",
+          "wafBypass 0 -> file-download-path-normalization",
+          "wafBypass 1 path-parameter lines -> file-download-path-normalization; file:// and php:// lines -> file-download-stream-wrapper-boundary",
+          "wafBypass 2 -> file-download-legacy-terminator with version-pinned null-byte, truncation, and platform controls"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "execution 1 contains malformed Windows examples with separators removed and targets real system or application files",
+          "execution 2 downloads configuration files and runs a credential-oriented grep across local outputs",
+          "execution 3 performs bulk sensitive-path enumeration and writes loot files based only on status and size",
+          "wafBypass 0 includes obsolete overlong UTF-8 encodings whose behavior must be tied to a specific decoder",
+          "wafBypass 2 mixes PHP null-byte history, Windows path limits, and parser-specific semicolon forms"
+        ],
+        "reviewNotes": [
+          {
+            "zh": "HTTP 200 与非零响应长度不是任意文件下载证据，必须校验固定 marker 哈希和最终 canonical path。",
+            "en": "HTTP 200 and nonzero response length are not arbitrary-file-download evidence; verify the fixed marker hash and final canonical path."
+          },
+          {
+            "zh": "路径遍历与对象级越权是不同根因：即使路径被安全规范化，也必须对附件对象执行授权。",
+            "en": "Path traversal and object-level authorization are different root causes; attachment authorization is still required even when paths are safely canonicalized."
+          }
+        ]
+      }
+    },
+    {
+      "id": "file-mime",
+      "name": {
+        "zh": "上传类型声明、文件签名与下游解析混合集",
+        "en": "Mixed Upload Type Declarations, Signatures, and Downstream Parsing"
+      },
+      "description": {
+        "zh": "原条目混合 multipart MIME 声明、扩展名解析、magic bytes、polyglot 构造、重复 Content-Type、EXIF/XMP/ICC 下游解释与可执行文件验证，必须拆分。",
+        "en": "The source mixes multipart MIME declarations, extension parsing, magic bytes, polyglot construction, duplicate Content-Type, EXIF, XMP, and ICC downstream interpretation, and executable-file validation and must be split."
+      },
+      "category": {
+        "zh": "文件漏洞",
+        "en": "File Vulnerabilities"
+      },
+      "subCategory": {
+        "zh": "上传类型与解析器差异拆分",
+        "en": "Upload-Type and Parser-Differential Split"
+      },
+      "prerequisites": [
+        {
+          "zh": "准备一组无可执行内容的最小 JPEG、PNG、GIF 与普通文本 marker，记录客户端声明、服务端嗅探类型、扩展名、解码结果和最终存储策略。",
+          "en": "Prepare minimal non-executable JPEG, PNG, GIF, and plain-text markers and record client declarations, server-sniffed type, extension, decode result, and final storage policy."
+        },
+        {
+          "zh": "上传目录不可执行且不在 Web 根；若测试元数据，只使用固定随机字符串并明确实际消费 EXIF、XMP 或 ICC 的下游组件。",
+          "en": "The upload directory is non-executable and outside the web root; metadata tests use fixed random strings and identify the downstream component that actually consumes EXIF, XMP, or ICC."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性必须对应一个明确边界：声明型 MIME 绕过要求服务器仅因伪造声明接受并错误发布不批准内容；签名/polyglot 要求危险尾部进入实际下游解释器；元数据要由目标消费者解释。上传成功、扩展名保留、魔数匹配、文件可下载、exiftool 写入成功或 URL 返回 200 都不能证明代码执行。",
+        "en": "A positive must map to one boundary: declared-MIME bypass requires the server to accept and incorrectly publish disallowed content because of the forged declaration; signature or polyglot findings require dangerous trailing data to reach an actual downstream interpreter; metadata must be interpreted by the target consumer. Upload success, preserved extension, matching magic bytes, downloadable files, successful exiftool writes, or HTTP 200 does not prove execution."
+      },
+      "opsecTips": [
+        {
+          "zh": "只上传不可执行 marker，禁止 PHP、脚本、命令和真实 Web 根路径；首次出现下游解析异常、资源增长或主动内容解释时停止。",
+          "en": "Upload only non-executable markers and prohibit PHP, scripts, commands, and real web-root paths; stop on the first downstream parse anomaly, resource growth, or active-content interpretation."
+        },
+        {
+          "zh": "删除上传对象、缩略图、转码产物、元数据副本和缓存，恢复类型允许列表并确认上传目录无执行映射。",
+          "en": "Delete uploaded objects, thumbnails, transcoded artifacts, metadata copies, and caches, restore the type allowlist, and verify no execution mapping exists on the upload directory."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "文件类型不是一个字段：multipart 声明、文件名扩展、magic bytes、完整解码和下游元数据解释由不同组件处理。源条目把这些边界和 WebShell 验证混在一起。",
+          "en": "File type is not one field: multipart declarations, filename extensions, magic bytes, full decoding, and downstream metadata interpretation are handled by different components. The source combines these boundaries with web-shell verification."
+        },
+        "vulnerability": {
+          "zh": "根因是信任客户端 Content-Type、只检查前几个字节、允许多扩展名映射、把上传目录交给脚本处理器，或让下游模板/图片库解释未净化元数据。重复头和 boundary 差异还取决于代理与应用解析顺序。",
+          "en": "Root causes include trusting client Content-Type, checking only initial bytes, allowing multi-extension mappings, exposing uploads to script handlers, or letting downstream templates or image libraries interpret unsanitized metadata. Duplicate headers and boundary differences also depend on proxy and application parsing order."
+        },
+        "exploitation": {
+          "zh": "对同一安全 marker 每次只改变声明、扩展、签名或一个元数据字段，并记录各层解析值。polyglot 使用不可执行尾部随机值，重复头使用完整可解析请求；不运行源 PHP、id 或读取系统文件。",
+          "en": "For the same safe marker, change only the declaration, extension, signature, or one metadata field and record each layer’s parsed value. Polyglots use a non-executable random trailer and duplicate-header tests use complete parseable requests; do not run source PHP, id, or read system files."
+        },
+        "mitigation": {
+          "zh": "按业务允许列表同时校验规范扩展、服务端 MIME 与完整解码，重编码图片并剥离非必要元数据；随机重命名并在不可执行独立域存储，统一代理/应用 multipart 解析并拒绝歧义头。",
+          "en": "Validate canonical extension, server-derived MIME, and full decoding against a business allowlist, re-encode images, and strip unnecessary metadata. Randomly rename and store on a non-executable separate origin, align proxy and application multipart parsing, and reject ambiguous headers."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "建立类型判定矩阵",
+            "en": "Build the type-decision matrix"
+          },
+          "description": {
+            "zh": "记录声明、扩展、magic、完整解码与下游消费者的正常基线。",
+            "en": "Record normal baselines for declaration, extension, magic bytes, full decoding, and downstream consumers."
+          }
+        },
+        {
+          "title": {
+            "zh": "单变量审查上传流程",
+            "en": "Review the upload flow one variable at a time"
+          },
+          "description": {
+            "zh": "源执行区只用于来源和路由；重写为无执行 marker 后逐边界测试。",
+            "en": "The source execution block is retained for provenance and routing; test each boundary only after rewriting it to a non-executable marker."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "关联最终解释器",
+            "en": "Correlate the final interpreter"
+          },
+          "description": {
+            "zh": "确认错误接受的内容是否真正到达脚本、图像或元数据消费者。",
+            "en": "Determine whether incorrectly accepted content actually reaches a script, image, or metadata consumer."
+          }
+        },
+        {
+          "title": {
+            "zh": "重编码与隔离后回归",
+            "en": "Regress after re-encoding and isolation"
+          },
+          "description": {
+            "zh": "修复后合法图片保留，歧义声明和危险尾部在存储或解释前拒绝。",
+            "en": "After remediation preserve valid images and reject ambiguous declarations and dangerous trailers before storage or interpretation."
+          }
+        }
+      ],
+      "references": [
+        "https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html",
+        "https://cwe.mitre.org/data/definitions/434.html",
+        "https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/MIME_types"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "原条目跨 MIME 声明、文件签名、扩展名、multipart 解析和元数据消费者，并混入构造与 RCE 验证工具流程。",
+        "issuesResolved": [
+          "separated-type-validation-layers",
+          "separated-metadata-consumers",
+          "removed-webshell-success-criterion",
+          "added-parser-differential-evidence",
+          "added-safe-marker-controls"
+        ],
+        "targetPayloadIds": [
+          "file-upload-declared-type-mismatch",
+          "file-upload-signature-content-mismatch",
+          "file-upload-filename-parser-differential",
+          "file-upload-multipart-content-type-differential",
+          "file-metadata-downstream-parser-boundary"
+        ],
+        "targetToolIds": [
+          "file-upload-attacks",
+          "burpsuite",
+          "file-analysis-toolkit"
+        ],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 -> file-upload-attacks as a four-control type-validation workflow; individual declared-type and signature inputs feed their matching payload targets",
+          "execution 1 -> file-upload-declared-type-mismatch and file-upload-filename-parser-differential; access verification remains a rewritten tool workflow",
+          "execution 2 -> file-upload-attacks after replacing corrupt literal headers and PHP content with generated valid marker files",
+          "execution 3 -> file-upload-attacks after replacing command execution and path guessing with one marker retrieval",
+          "wafBypass 0 -> file-analysis-toolkit and file-upload-signature-content-mismatch as safe polyglot construction and inspection",
+          "wafBypass 1 -> burpsuite and file-upload-multipart-content-type-differential as complete raw-request parser controls",
+          "wafBypass 2 -> file-analysis-toolkit and file-metadata-downstream-parser-boundary, separated by EXIF, XMP, and ICC consumer"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "execution 0-2 embed executable PHP and shell double-quoted $_GET expressions that can be expanded or corrupted by the local shell",
+          "execution 2 stores raw JPEG, PNG, NUL, and control bytes as text; the PNG literal is split across lines and is not a reliable binary fixture",
+          "execution 3 executes id and reads /etc/passwd across guessed paths instead of validating one marker object",
+          "wafBypass 1 is not a complete multipart request and duplicate Content-Type lines alone cannot test proxy/application disagreement",
+          "wafBypass 2 mixes PHP, browser XSS, ICC metadata, and a later file-inclusion workflow under one metadata label"
+        ],
+        "reviewNotes": [
+          {
+            "zh": "服务端接受 image/jpeg 声明只证明客户端字段被接收，必须检查实际解码结果、存储策略和下游解释器。",
+            "en": "Server acceptance of an image/jpeg declaration proves only that a client field was accepted; inspect actual decoding, storage policy, and the downstream interpreter."
+          },
+          {
+            "zh": "polyglot 或元数据中存在脚本文本不等于执行；阳性需要目标消费者解释该字段并产生受控 marker 效果。",
+            "en": "Script text in a polyglot or metadata does not equal execution; a positive requires the target consumer to interpret the field and produce a controlled marker effect."
+          }
+        ]
+      }
+    },
+    {
+      "id": "file-null-byte",
+      "name": {
+        "zh": "NUL 终止、路径截断与 Windows 名称规范化混合集",
+        "en": "Mixed NUL Termination, Path Truncation, and Windows Name Normalization"
+      },
+      "description": {
+        "zh": "原条目把旧 PHP/Java/Python NUL 行为、上传文件名、文件包含、超长路径、尾随点空格、NTFS ADS、短文件名与多种字面编码混合，需要按运行时与规范化阶段拆分。",
+        "en": "The source mixes legacy PHP, Java, and Python NUL behavior, upload filenames, file inclusion, overlong paths, trailing dots and spaces, NTFS ADS, short names, and multiple literal encodings and must be split by runtime and normalization stage."
+      },
+      "category": {
+        "zh": "文件漏洞",
+        "en": "File Vulnerabilities"
+      },
+      "subCategory": {
+        "zh": "终止符与文件名规范化拆分",
+        "en": "Terminator and Filename-Normalization Split"
+      },
+      "prerequisites": [
+        {
+          "zh": "仅在明确记录运行时、版本、操作系统、文件 API 和解码顺序的隔离夹具中测试；现代默认环境不假设支持 NUL 截断。",
+          "en": "Test only in an isolated fixture with recorded runtime, version, operating system, file API, and decode order; do not assume modern environments support NUL truncation."
+        },
+        {
+          "zh": "目标文件均为工作目录随机 marker，上传目录不可执行，并可观察原始字节、框架字符串、系统调用路径与最终文件名。",
+          "en": "All target files are random working-directory markers, the upload directory is non-executable, and raw bytes, framework strings, syscall paths, and final filenames are observable."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性必须是版本固定的解析链把 NUL 或平台规范化差异传给文件 API，导致最终打开/保存对象与校验对象不同，并由原始字节、规范路径和 marker 证明。版本头、phpinfo 页面、字符串中出现 %00、上传成功、文件名显示变化、404/500 或路径过长错误都不是截断证据。",
+        "en": "A positive requires a version-pinned parsing chain to pass a NUL or platform normalization difference to the file API so the final opened or saved object differs from the validated object, proven by raw bytes, canonical path, and marker. Version headers, phpinfo pages, %00 in a string, upload success, displayed filename changes, 404 or 500 responses, or path-too-long errors are not truncation evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "禁止上传可执行文件、包含系统路径或写入 ADS；每个变体只使用不可执行 marker，并在首次最终路径差异后停止。",
+          "en": "Prohibit executable uploads, system-path inclusion, or ADS writes; use a non-executable marker for each variant and stop after the first final-path difference."
+        },
+        {
+          "zh": "删除原始字节样例、上传对象、marker、ADS/短名夹具和日志 token，恢复默认文件名策略与测试运行时。",
+          "en": "Delete raw-byte samples, uploads, markers, ADS or short-name fixtures, and log tokens and restore default filename policy and the test runtime."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "NUL 截断是历史运行时与底层 C API 的边界问题，不能和 Windows 尾随字符、ADS、8.3 名称或超长路径归为同一行为。源条目还把版本探测和 Burp/Python 操作混入 Payload。",
+          "en": "NUL truncation is a boundary issue between legacy runtimes and underlying C APIs and is not the same as Windows trailing characters, ADS, 8.3 names, or overlong paths. The source also mixes version discovery and Burp or Python operations into payload data."
+        },
+        "vulnerability": {
+          "zh": "漏洞发生在安全检查使用一种长度或规范化规则，而最终文件 API 使用另一种规则。NUL 可能截断 C 字符串；Windows 可能折叠尾随点空格或解析 ADS；路径长度行为取决于具体 API 和前缀。",
+          "en": "The flaw occurs when security validation uses one length or normalization rule and the final file API uses another. NUL can terminate C strings, Windows can fold trailing dots and spaces or resolve ADS, and path-length behavior depends on the exact API and prefix."
+        },
+        "exploitation": {
+          "zh": "用十六进制可审计客户端发送单个字节序列，记录接收字节、框架值与系统调用。分别在旧运行时夹具、Windows 文件名夹具和路径长度夹具测试；不从 HTTP 头推断版本，也不组合多个变体。",
+          "en": "Use a hex-auditable client to send one byte sequence and record received bytes, framework value, and syscall. Test legacy-runtime, Windows-filename, and path-length fixtures separately; do not infer versions from HTTP headers or combine variants."
+        },
+        "mitigation": {
+          "zh": "升级受支持运行时，在入口拒绝 NUL 和控制字符，先解码再按目标平台规范化并比较 canonical 路径；随机生成服务端文件名，拒绝 ADS/保留名，并使用现代长路径安全 API。",
+          "en": "Upgrade to supported runtimes, reject NUL and control characters at entry, decode once and canonicalize for the target platform before comparison, generate server-side names, reject ADS and reserved forms, and use modern long-path-safe APIs."
+        },
+        "difficulty": "expert"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "冻结运行时与字节链",
+            "en": "Freeze the runtime and byte path"
+          },
+          "description": {
+            "zh": "记录版本、操作系统、解码器、框架字符串和最终文件 API。",
+            "en": "Record version, operating system, decoder, framework string, and final file API."
+          }
+        },
+        {
+          "title": {
+            "zh": "审查上传 NUL 样例",
+            "en": "Review the upload NUL sample"
+          },
+          "description": {
+            "zh": "源区块仅作逐字节来源；需改为不可执行 marker 和十六进制客户端。",
+            "en": "The source block is provenance only and must be rewritten with a non-executable marker and hex-auditable client."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 1
+          }
+        },
+        {
+          "title": {
+            "zh": "比较校验与最终对象",
+            "en": "Compare validation and final objects"
+          },
+          "description": {
+            "zh": "匹配接收字节、规范名称、系统调用路径和 marker 哈希。",
+            "en": "Match received bytes, canonical name, syscall path, and marker hash."
+          }
+        },
+        {
+          "title": {
+            "zh": "统一规范化后回归",
+            "en": "Regress after unified normalization"
+          },
+          "description": {
+            "zh": "修复后正常文件保留，NUL、ADS、尾随字符和超长形式在文件 API 前拒绝。",
+            "en": "After remediation preserve normal files and reject NUL, ADS, trailing characters, and overlong forms before the file API."
+          }
+        }
+      ],
+      "references": [
+        "https://cwe.mitre.org/data/definitions/158.html",
+        "https://portswigger.net/web-security/file-path-traversal",
+        "https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "原条目混合旧运行时 NUL、上传与包含、路径长度、Windows 尾随字符、ADS 和短文件名，不能共享一个前提或证据。",
+        "issuesResolved": [
+          "version-pinned-null-boundary",
+          "separated-windows-normalization",
+          "separated-upload-and-include-contexts",
+          "added-byte-level-evidence",
+          "flagged-obsolete-and-literal-encoding-claims"
+        ],
+        "targetPayloadIds": [
+          "file-upload-null-byte-filename",
+          "file-include-null-byte-path",
+          "file-path-length-truncation",
+          "file-windows-trailing-name-normalization",
+          "file-ntfs-ads-name-boundary"
+        ],
+        "targetToolIds": [
+          "file-upload-attacks",
+          "lfi-rfi-tools",
+          "burpsuite"
+        ],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 -> file-upload-attacks and burpsuite as environment and byte-path discovery after removing phpinfo probing",
+          "execution 1 -> file-upload-null-byte-filename plus a rewritten hex-auditable client workflow",
+          "execution 2 -> file-include-null-byte-path; php://filter line routes separately to lfi-rfi-tools",
+          "execution 3 path-length line -> file-path-length-truncation; trailing dot/space -> file-windows-trailing-name-normalization; ADS -> file-ntfs-ads-name-boundary; case-only line -> upload policy workflow",
+          "wafBypass 0 -> file-path-length-truncation and file-windows-trailing-name-normalization",
+          "wafBypass 1 -> file-ntfs-ads-name-boundary and Windows-specific filename policy; null-byte and IIS semicolon forms remain version-specific",
+          "wafBypass 2 -> split among NUL, CR/LF/control-character, and decoder-specific terminator tests after byte-exact correction"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "execution 0 infers vulnerable versions from server headers or phpinfo and includes broad unverified claims about Java and Python",
+          "execution 1 contains literal NUL bytes and executable shell.php and relies on multipart libraries whose NUL handling varies before transmission",
+          "execution 2 mixes legacy include truncation, path traversal, log inclusion, and php://filter",
+          "execution 3 uses JavaScript-style string repetition in a shell command block and combines unrelated Windows, ADS, path-length, and case behaviors",
+          "wafBypass 2 conflates literal backslash sequences with actual NUL bytes and groups CR, LF, EOF, URL, and UTF-16 decoding"
+        ],
+        "reviewNotes": [
+          {
+            "zh": "`%00` 只有在解码为真实 NUL 且后续 API 仍按 C 字符串处理时才可能截断；参数中出现文本 `%00` 不算阳性。",
+            "en": "%00 can truncate only when decoded to a real NUL and a later API still uses C-string semantics; literal %00 text in a parameter is not positive."
+          },
+          {
+            "zh": "Windows 尾随点/空格与 NTFS ADS 是不同文件名语义，应分别观察最终名称和打开的流。",
+            "en": "Windows trailing-dot or space handling and NTFS ADS are different filename semantics and require separate observation of the final name and opened stream."
+          }
+        ]
+      }
+    },
+    {
+      "id": "file-traversal",
+      "name": {
+        "zh": "跨平台路径规范化、UNC 与文件包含混合集",
+        "en": "Mixed Cross-Platform Path Normalization, UNC, and File Inclusion"
+      },
+      "description": {
+        "zh": "原条目混合 POSIX/Windows 遍历、编码与双重解码、UNC 网络路径、旧式 NUL/截断、PHP 日志/会话包含和 stream wrapper，还包含深度枚举工具流程。",
+        "en": "The source mixes POSIX and Windows traversal, encoding and double decoding, UNC network paths, legacy NUL or truncation, PHP log and session inclusion, stream wrappers, and depth-enumeration tooling."
+      },
+      "category": {
+        "zh": "文件漏洞",
+        "en": "File Vulnerabilities"
+      },
+      "subCategory": {
+        "zh": "路径规范化与包含边界拆分",
+        "en": "Path-Normalization and Inclusion Boundary Split"
+      },
+      "prerequisites": [
+        {
+          "zh": "为 POSIX、Windows、UNC 和 PHP 包含分别准备隔离夹具，只包含批准根内 marker 与根外 marker；记录每一层解码和 canonical path。",
+          "en": "Prepare separate isolated fixtures for POSIX, Windows, UNC, and PHP inclusion with markers inside and outside the approved root and record each decode layer and canonical path."
+        },
+        {
+          "zh": "禁用真实 SMB、系统日志、会话、配置和源码访问；UNC 使用无凭证捕获器，PHP 使用无执行纯文本 marker。",
+          "en": "Disable real SMB, system-log, session, configuration, and source access; use a credential-free UNC capture service and a non-executable plaintext marker for PHP."
+        }
+      ],
+      "analysis": {
+        "zh": "路径遍历阳性要求最终 canonical path 或打开句柄越出批准根并读取根外 marker。UNC 分支只证明服务端发起受控网络文件请求；PHP 包含还需目标解释器包含 marker。状态码、响应长度、路径文本、DNS、错误、WAF 告警或手工在本地打开文件都不能跨分支证明漏洞。",
+        "en": "A path-traversal positive requires the final canonical path or opened handle to leave the approved root and read the external marker. The UNC branch proves only a controlled server-side network-file request; PHP inclusion additionally requires the target interpreter to include the marker. Status, body length, path text, DNS, errors, WAF alerts, or opening a file locally cannot prove findings across branches."
+      },
+      "opsecTips": [
+        {
+          "zh": "每次只读取一个根外 marker，UNC 端点不接受认证且立即关闭；禁止日志投毒、系统文件、会话文件和真实凭证。",
+          "en": "Read one out-of-root marker per run; the UNC endpoint accepts no authentication and closes immediately. Prohibit log poisoning, system files, session files, and real credentials."
+        },
+        {
+          "zh": "删除 marker、临时日志/会话夹具、抓包和下载副本，关闭 UNC 捕获器并恢复路径允许列表。",
+          "en": "Delete markers, temporary log or session fixtures, captures, and downloaded copies, close the UNC collector, and restore the path allowlist."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "路径遍历不是所有 `../` 字符串的统称。解码次数、分隔符、平台 canonicalization、Web 服务器路径折叠、UNC 网络解析和 PHP include wrapper 属于不同组件。",
+          "en": "Path traversal is not a label for every ../ string. Decode count, separators, platform canonicalization, web-server path folding, UNC network resolution, and PHP include wrappers belong to different components."
+        },
+        "vulnerability": {
+          "zh": "根因是对原始字符串做过滤后再解码/规范化、只做字符串前缀判断、在 Windows 和 POSIX 间混用规则，或把用户路径交给 include、日志或网络文件 API。",
+          "en": "Root causes include filtering raw text before decoding or canonicalization, using string-prefix checks, mixing Windows and POSIX rules, or passing user paths to include, log, or network-file APIs."
+        },
+        "exploitation": {
+          "zh": "先用批准 marker 建立基线，逐层记录代理、框架和文件 API 的路径值。每轮只提交一个平台和编码变体；UNC、PHP wrapper 与旧式终止符在独立夹具运行，不使用日志投毒或批量深度循环。",
+          "en": "Baseline an approved marker and record path values at proxy, framework, and file API layers. Submit one platform and encoding variant per run; exercise UNC, PHP wrappers, and legacy terminators in separate fixtures without log poisoning or bulk depth loops."
+        },
+        "mitigation": {
+          "zh": "只接受对象 ID 或规范相对路径；一次解码后基于真实路径/打开句柄验证根目录包含关系，拒绝绝对/UNC/未知 scheme 与控制字符，并为 include 使用固定模板映射。",
+          "en": "Accept only object IDs or canonical relative paths. Decode once, enforce root containment on real paths or opened handles, reject absolute paths, UNC, unknown schemes, and control characters, and map include targets to fixed templates."
+        },
+        "difficulty": "expert"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "分离平台与解释器",
+            "en": "Separate platform and interpreter"
+          },
+          "description": {
+            "zh": "固定 POSIX、Windows、UNC 或 PHP 其中一个夹具与 marker。",
+            "en": "Fix one POSIX, Windows, UNC, or PHP fixture and marker."
+          }
+        },
+        {
+          "title": {
+            "zh": "审查单一遍历输入",
+            "en": "Review one traversal input"
+          },
+          "description": {
+            "zh": "从编码输入组选择一个变体，并保留各层规范化记录。",
+            "en": "Choose one variant from the encoding-input group and preserve each normalization stage."
+          },
+          "payloadRef": {
+            "area": "wafBypass",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "验证最终资源边界",
+            "en": "Verify the final resource boundary"
+          },
+          "description": {
+            "zh": "关联 canonical path、打开句柄、marker 哈希和同一请求 ID。",
+            "en": "Correlate canonical path, opened handle, marker hash, and the same request ID."
+          }
+        },
+        {
+          "title": {
+            "zh": "统一路径策略并回归",
+            "en": "Unify path policy and regress"
+          },
+          "description": {
+            "zh": "修复后合法相对路径保留，所有越界、UNC、wrapper 和终止符在资源访问前拒绝。",
+            "en": "After remediation preserve valid relative paths and reject traversal, UNC, wrappers, and terminators before resource access."
+          }
+        }
+      ],
+      "references": [
+        "https://portswigger.net/web-security/file-path-traversal",
+        "https://cwe.mitre.org/data/definitions/22.html",
+        "https://owasp.org/www-community/attacks/Path_Traversal"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "原条目跨平台路径规范化、网络 UNC、旧式终止符、PHP include/wrapper 和自动化枚举，证据边界不同。",
+        "issuesResolved": [
+          "separated-platform-normalization",
+          "separated-unc-network-path",
+          "separated-php-include-runtime",
+          "defined-canonical-path-evidence",
+          "removed-log-poisoning-and-sensitive-targets"
+        ],
+        "targetPayloadIds": [
+          "file-traversal-posix-normalization",
+          "file-traversal-windows-normalization",
+          "file-traversal-unc-path-resolution",
+          "file-traversal-legacy-terminator",
+          "file-inclusion-php-runtime"
+        ],
+        "targetToolIds": [
+          "lfi-rfi-tools",
+          "web-enumeration-tools",
+          "burpsuite"
+        ],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 -> web-enumeration-tools as a bounded depth-discovery workflow; individual relative paths -> file-traversal-posix-normalization",
+          "execution 1 -> split across POSIX normalization, Windows normalization, and legacy terminator targets after decoder-specific correction",
+          "execution 2 UNC line -> file-traversal-unc-path-resolution; local Windows paths -> file-traversal-windows-normalization",
+          "execution 3 -> lfi-rfi-tools and file-inclusion-php-runtime after replacing log poisoning, process environment, sessions, and config.php with plaintext markers",
+          "wafBypass 0 -> file-traversal-posix-normalization with explicit decoder assumptions",
+          "wafBypass 1 -> POSIX and Windows normalization targets, split by proxy, Java/Tomcat, Nginx, and filesystem layer",
+          "wafBypass 2 -> file-traversal-legacy-terminator plus Windows-specific normalization and path-length controls"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "execution 0 performs an unbounded-by-budget depth loop and treats status and size as its only signal",
+          "execution 1 includes obsolete overlong UTF-8 forms and malformed Windows examples with separators removed",
+          "execution 2 contains a corrupted UNC string where backslashes became escapes and targets SAM, private keys, and configuration files",
+          "execution 3 performs PHP log poisoning and command execution and mixes four independent runtime mechanisms",
+          "wafBypass 0-2 contain raw fragments, version-specific terminators, platform-specific separators, and long-path claims that need executable request fixtures"
+        ],
+        "reviewNotes": [
+          {
+            "zh": "规范化必须使用最终文件 API 看到的路径或句柄；字符串包含 `../` 或过滤器删除字符不等于越界。",
+            "en": "Canonicalization must use the path or handle seen by the final file API; ../ text or filter character removal does not equal an escape."
+          },
+          {
+            "zh": "UNC 请求可能泄露认证或形成 SSRF，应只用无凭证隔离捕获器，并与本地路径遍历分开判定。",
+            "en": "UNC requests may leak authentication or form SSRF and must use a credential-free isolated collector and be assessed separately from local path traversal."
+          }
+        ]
+      }
+    },
+    {
+      "id": "file-upload-bypass",
+      "name": {
+        "zh": "上传扩展、文件名、MIME、ADS 与 Wrapper 混合集",
+        "en": "Mixed Upload Extensions, Filenames, MIME, ADS, and Wrappers"
+      },
+      "description": {
+        "zh": "原条目把扩展名、Content-Type、Windows 尾随字符、IIS 分号、NTFS ADS、双写过滤、图片拼接、multipart 字段、zip/phar wrapper 与竞态说明混在一起。",
+        "en": "The source combines extensions, Content-Type, Windows trailing characters, IIS semicolons, NTFS ADS, double-write filters, image concatenation, multipart fields, zip and phar wrappers, and race prose."
+      },
+      "category": {
+        "zh": "文件漏洞",
+        "en": "File Vulnerabilities"
+      },
+      "subCategory": {
+        "zh": "上传文件名与解释器边界拆分",
+        "en": "Upload Filename and Interpreter-Boundary Split"
+      },
+      "prerequisites": [
+        {
+          "zh": "上传服务使用不可执行隔离目录与随机服务端文件名，能够记录原始 multipart filename、一次解码值、平台规范名、存储名和下游 handler。",
+          "en": "The upload service uses a non-executable isolated directory and random server-side names and records raw multipart filename, once-decoded value, platform-canonical name, stored name, and downstream handler."
+        },
+        {
+          "zh": "分别准备 Linux、Windows/NTFS、IIS 与 PHP wrapper 夹具，所有内容为不可执行 marker，禁止跨平台推断。",
+          "en": "Prepare separate Linux, Windows or NTFS, IIS, and PHP-wrapper fixtures, all with non-executable marker content, and prohibit cross-platform inference."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性按分支判断：扩展/尾随字符/ADS/双写需要最终存储名或 stream 与策略检查对象不同；MIME 需要错误接受并发布不批准类型；wrapper 需要实际 resolver 处理。上传成功、文件名回显、下载可达、::$DATA 文本、双写注释或 wrapper URI 被存储都不等于执行。",
+        "en": "Positives are branch-specific: extension, trailing-character, ADS, and double-write cases require the final stored name or stream to differ from the object checked by policy; MIME requires incorrect acceptance and publication of a disallowed type; wrappers require actual resolver handling. Upload success, reflected filenames, downloadable content, ::$DATA text, double-write comments, or stored wrapper URIs do not equal execution."
+      },
+      "opsecTips": [
+        {
+          "zh": "所有上传体仅含随机文本 marker，禁止 WebShell、脚本映射、真实 ADS、phar 反序列化或可执行图片尾部。",
+          "en": "Every upload body contains only a random text marker; prohibit web shells, script mappings, real ADS, phar deserialization, or executable image trailers."
+        },
+        {
+          "zh": "删除上传对象、临时流、wrapper 夹具、缩略图和缓存，恢复随机命名及不可执行存储策略。",
+          "en": "Delete uploaded objects, temporary streams, wrapper fixtures, thumbnails, and caches and restore random naming and non-executable storage policy."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "上传绕过包含多个解析阶段：multipart filename、URL/字符解码、平台文件名规范化、扩展/MIME 策略、存储名和 Web/运行时 handler。每个阶段需要单变量对照。",
+          "en": "Upload bypass spans multiple parsing stages: multipart filename, URL or character decoding, platform filename canonicalization, extension and MIME policy, stored name, and web or runtime handler. Each stage needs a single-variable control."
+        },
+        "vulnerability": {
+          "zh": "根因是检查与保存使用不同名称、只删除一次黑名单后缀、信任客户端 MIME、保留用户文件名、允许 ADS/保留形式，或让上传路径被 zip/phar 等 resolver 再解释。",
+          "en": "Root causes include checking and saving different names, deleting a blacklisted suffix only once, trusting client MIME, preserving user filenames, allowing ADS or reserved forms, or letting zip or phar resolvers reinterpret upload paths."
+        },
+        "exploitation": {
+          "zh": "对一个纯文本 marker 每轮只改变一个 filename 或 header，记录原始/解码/规范/存储值。ADS、IIS、双写与 wrapper 在各自固定夹具验证；不上传 PHP，不访问命令 URL，也不把 Burp 操作说明当命令。",
+          "en": "For one plaintext marker, change one filename or header per run and record raw, decoded, canonical, and stored values. Validate ADS, IIS, double-write, and wrappers only in fixed matching fixtures; do not upload PHP, access command URLs, or treat Burp instructions as commands."
+        },
+        "mitigation": {
+          "zh": "服务端生成文件名并按允许列表验证规范扩展、实际类型和完整解码；上传目录不可执行且独立域提供；拒绝控制字符、尾随点空格、ADS、保留名和未知 wrapper，避免黑名单替换。",
+          "en": "Generate filenames server-side and validate canonical extension, actual type, and full decoding against an allowlist. Serve uploads from a non-executable separate origin, reject control characters, trailing dots and spaces, ADS, reserved names, and unknown wrappers, and avoid blacklist replacement."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "记录文件名处理链",
+            "en": "Record the filename-processing chain"
+          },
+          "description": {
+            "zh": "保存 raw filename、解码值、规范值、存储名与 handler 基线。",
+            "en": "Preserve raw filename, decoded value, canonical value, stored name, and handler baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "审查扩展名输入组",
+            "en": "Review the extension-input group"
+          },
+          "description": {
+            "zh": "源执行区只用于来源；每次以纯文本 marker 测一个扩展变体。",
+            "en": "The source execution block is provenance only; test one extension variant at a time with a plaintext marker."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "关联最终存储语义",
+            "en": "Correlate final storage semantics"
+          },
+          "description": {
+            "zh": "匹配策略检查对象、最终文件/stream、响应对象 ID 和读取结果。",
+            "en": "Match policy-checked object, final file or stream, response object ID, and retrieval result."
+          }
+        },
+        {
+          "title": {
+            "zh": "随机命名与允许列表回归",
+            "en": "Regress random naming and allowlisting"
+          },
+          "description": {
+            "zh": "修复后合法上传保留，歧义 filename、ADS、wrapper 与双写形式在存储前拒绝。",
+            "en": "After remediation preserve valid uploads and reject ambiguous filenames, ADS, wrappers, and double-write forms before storage."
+          }
+        }
+      ],
+      "references": [
+        "https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html",
+        "https://cwe.mitre.org/data/definitions/434.html",
+        "https://learn.microsoft.com/en-us/windows/win32/fileio/file-streams"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "原条目跨扩展/MIME、Windows/IIS 文件名、NTFS ADS、黑名单双写、图片拼接、wrapper 与竞态，不能作为单一上传 Payload。",
+        "issuesResolved": [
+          "separated-filename-stages",
+          "separated-ntfs-and-iis-semantics",
+          "separated-wrapper-resolution",
+          "defined-final-stored-name-evidence",
+          "removed-executable-upload-guidance"
+        ],
+        "targetPayloadIds": [
+          "file-upload-extension-normalization",
+          "file-upload-content-type-declaration",
+          "file-upload-windows-trailing-name",
+          "file-upload-ntfs-ads-name",
+          "file-upload-double-write-extension",
+          "file-upload-wrapper-reference"
+        ],
+        "targetToolIds": [
+          "file-upload-attacks",
+          "burpsuite"
+        ],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 -> file-upload-extension-normalization after replacing executable names with inert markers",
+          "execution 1 -> file-upload-content-type-declaration",
+          "execution 2 -> file-upload-attacks as a corrected binary concatenation workflow",
+          "execution 3-4 -> split across file-upload-windows-trailing-name, legacy NUL handling, and IIS-specific filename parsing; Burp prose -> burpsuite",
+          "execution 5 -> file-upload-ntfs-ads-name plus burpsuite workflow",
+          "execution 6 -> file-upload-double-write-extension",
+          "wafBypass 0 -> extension, Windows trailing-name, ADS, IIS, and legacy NUL targets by platform",
+          "wafBypass 1 multipart lines -> burpsuite; zip:// and phar:// -> file-upload-wrapper-reference; chunked and race prose -> separate tool workflows"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "execution 0 and wafBypass 0 include literal NUL bytes and mix extension values with obsolete null-byte handling",
+          "execution 2 uses an incorrect or ambiguous Windows copy syntax and assumes executable image content",
+          "execution 3-5 contain Chinese Burp instructions and platform claims inside command blocks",
+          "execution 4 splits one quoted filename across a newline and combines Windows, IIS, NTFS, and HTTP verification",
+          "wafBypass 1 repeats an identical Content-Disposition line, lacks a complete multipart request, and mixes wrappers, chunked transfer, and race prose"
+        ],
+        "reviewNotes": [
+          {
+            "zh": "上传文件能被下载不等于会被脚本处理；必须记录最终 handler 或证明上传域不可执行。",
+            "en": "A downloadable upload does not imply script handling; record the final handler or prove the upload origin is non-executable."
+          },
+          {
+            "zh": "NTFS ADS、IIS 分号、Windows 尾随字符和 PHP wrapper 都是运行时特定边界，不能在 Linux 普通文件系统结果上外推。",
+            "en": "NTFS ADS, IIS semicolons, Windows trailing characters, and PHP wrappers are runtime-specific boundaries and cannot be inferred from ordinary Linux filesystem results."
+          }
+        ]
+      }
+    },
+    {
+      "id": "file-zip-slip",
+      "name": {
+        "zh": "归档成员路径、符号链接与构造工作流混合集",
+        "en": "Mixed Archive Member Paths, Symlinks, and Construction Workflows"
+      },
+      "description": {
+        "zh": "原条目全部以 zipfile、tarfile、7z、cpio、jar 和 curl 构造或上传归档，但同时混合成员路径遍历、符号链接跟随、文件名编码及破坏性 Web 根/cron 写入，需要拆成 Payload 语义与安全工具流程。",
+        "en": "The source uses zipfile, tarfile, 7z, cpio, jar, and curl to build or upload archives while mixing member-path traversal, symlink following, filename encoding, and destructive web-root or cron writes and must be split into payload semantics and safe tool workflows."
+      },
+      "category": {
+        "zh": "文件漏洞",
+        "en": "File Vulnerabilities"
+      },
+      "subCategory": {
+        "zh": "归档解压边界拆分",
+        "en": "Archive-Extraction Boundary Split"
+      },
+      "prerequisites": [
+        {
+          "zh": "隔离解压服务只看到专用输入、提取根和同级 marker 目录，系统目录与 Web 根未挂载；可记录每个成员名、规范目标、链接目标和文件创建。",
+          "en": "The isolated extraction service sees only a dedicated input, extraction root, and sibling marker directory, with no system or web-root mounts, and logs every member name, canonical destination, link target, and file creation."
+        },
+        {
+          "zh": "归档仅包含随机文本 marker，设置成员数、展开字节、嵌套深度和符号链接预算，并准备正常归档与越界归档对照。",
+          "en": "Archives contain only random text markers, with budgets for member count, expanded bytes, nesting depth, and symlinks and controls for normal and out-of-root archives."
+        }
+      ],
+      "analysis": {
+        "zh": "路径型阳性要求解压器在提取根外创建当前 marker；符号链接型阳性要求写入通过归档内链接落到根外 marker 目标；编码型阳性要求检查与最终解码得到不同目标。归档上传成功、成员名含 `../`、infolist 输出、解压报错、Web URL 200 或预先存在文件都不能证明 Zip Slip。",
+        "en": "A path positive requires the extractor to create the current marker outside the extraction root; a symlink positive requires a write through an archive link to an out-of-root marker target; an encoding positive requires validation and final decoding to produce different destinations. Successful archive upload, ../ in member names, infolist output, extraction errors, HTTP 200 URLs, or preexisting files do not prove Zip Slip."
+      },
+      "opsecTips": [
+        {
+          "zh": "只写入自动清理的同级 marker 目录，禁止 WebShell、cron、/etc、Web 根、绝对链接和真实应用覆盖；首次越界创建后停止。",
+          "en": "Write only to an automatically cleaned sibling marker directory and prohibit web shells, cron, /etc, web roots, absolute links, and real application overwrites; stop after the first out-of-root creation."
+        },
+        {
+          "zh": "删除归档、提取根、同级 marker、符号链接和日志 token，卸载测试目录并确认无后台安装/导入任务残留。",
+          "en": "Delete archives, extraction roots, sibling markers, symlinks, and log tokens, unmount the test directory, and verify no installation or import jobs remain."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "Zip Slip 的可投递内容是归档成员名和链接元数据，但源条目以构造脚本和上传流程承载它们。ZIP/TAR 路径遍历、符号链接与编码差异由不同提取 API 处理。",
+          "en": "The deliverable elements in Zip Slip are archive member names and link metadata, while the source carries them inside construction scripts and upload workflows. ZIP or TAR traversal, symlinks, and encoding differences are handled by different extraction APIs."
+        },
+        "vulnerability": {
+          "zh": "根因是在规范化前拼接提取根、仅做字符串前缀检查、跟随归档链接，或中央目录与本地头/平台分隔符解码不一致。安全性必须在每个成员打开时验证，而非只扫描文件名。",
+          "en": "Root causes include joining extraction roots before canonicalization, using string-prefix checks, following archive links, or decoding central-directory, local-header, or platform separators inconsistently. Safety must be enforced when each member is opened, not only by scanning names."
+        },
+        "exploitation": {
+          "zh": "用 Python 或目标支持的归档工具构造只含普通文件与一个随机 marker 成员的最小归档，目标仅为提取根的同级临时目录。符号链接和编码变体分开运行，并关联成员、canonical destination 与文件审计。",
+          "en": "Use Python or a supported archive tool to create a minimal archive with one normal file and one random marker member targeting only a temporary sibling of the extraction root. Run symlink and encoding variants separately and correlate members, canonical destinations, and file audit."
+        },
+        "mitigation": {
+          "zh": "逐成员解码和规范化后验证目标位于提取根，使用安全的目录句柄/无跟随打开方式，拒绝绝对路径、驱动器/UNC、`..`、链接与特殊文件，并限制展开资源。",
+          "en": "Decode and canonicalize every member and verify its destination remains under the extraction root, use directory-handle or no-follow opening, reject absolute paths, drives or UNC, dot-dot, links, and special files, and limit expanded resources."
+        },
+        "difficulty": "expert"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "建立隔离提取根",
+            "en": "Establish an isolated extraction root"
+          },
+          "description": {
+            "zh": "记录正常归档的成员、canonical destination 与创建事件。",
+            "en": "Record members, canonical destinations, and creation events for a normal archive."
+          }
+        },
+        {
+          "title": {
+            "zh": "审查归档构造脚本",
+            "en": "Review the archive-construction script"
+          },
+          "description": {
+            "zh": "源脚本仅用于来源和路由；重写后只生成同级目录 marker。",
+            "en": "The source script is retained only for provenance and routing; rewrite it to generate only a sibling-directory marker."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 1
+          }
+        },
+        {
+          "title": {
+            "zh": "关联成员与越界创建",
+            "en": "Correlate member and out-of-root creation"
+          },
+          "description": {
+            "zh": "匹配原始成员名、解码值、最终路径、文件哈希和提取任务。",
+            "en": "Match raw member name, decoded value, final path, file hash, and extraction job."
+          }
+        },
+        {
+          "title": {
+            "zh": "安全逐成员打开并回归",
+            "en": "Regress safe per-member opening"
+          },
+          "description": {
+            "zh": "修复后正常归档保留，路径、链接与编码变体在创建文件前拒绝。",
+            "en": "After remediation preserve normal archives and reject path, link, and encoding variants before file creation."
+          }
+        }
+      ],
+      "references": [
+        "https://github.com/snyk/zip-slip-vulnerability",
+        "https://cwe.mitre.org/data/definitions/22.html",
+        "https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "原条目全是归档构造/上传工具流程，但其中承载三类独立 Payload 语义：成员路径、符号链接和文件名编码；同时包含破坏性写入，需拆分。",
+        "issuesResolved": [
+          "separated-archive-member-semantics",
+          "separated-symlink-boundary",
+          "defined-canonical-destination-evidence",
+          "removed-webshell-cron-and-system-overwrites",
+          "added-resource-budgets"
+        ],
+        "targetPayloadIds": [
+          "file-archive-member-path-normalization",
+          "file-archive-symlink-target",
+          "file-archive-filename-encoding-differential"
+        ],
+        "targetToolIds": [
+          "file-upload-attacks",
+          "python-pentest-scripts",
+          "file-analysis-toolkit"
+        ],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 -> file-upload-attacks as normal archive upload and extraction-baseline workflow",
+          "execution 1 member-name lines -> file-archive-member-path-normalization; Python builder -> python-pentest-scripts after replacing web-root and cron writes with sibling marker",
+          "execution 2 -> file-upload-attacks after replacing webshell execution and WAR deployment with marker retrieval",
+          "execution 3 path member -> file-archive-member-path-normalization; symlink sequence -> file-archive-symlink-target; builders -> python-pentest-scripts",
+          "wafBypass 0 -> member-path payload plus file-upload-attacks for format-specific builders; 7z/cpio commands require safe source-tree fixtures",
+          "wafBypass 1 -> file-archive-symlink-target and python-pentest-scripts after replacing /etc and host symlink creation",
+          "wafBypass 2 -> file-archive-filename-encoding-differential and file-analysis-toolkit after completing a valid crafted-archive fixture"
+        ],
+        "needsCommandOverride": true,
+        "commandOverrideNotes": [
+          "execution 1 writes PHP to a web root and a cron file that calls an external host",
+          "execution 2 validates by executing uploaded web shells and introduces WAR or JSP deployment without a complete archive fixture",
+          "execution 3 attempts to overwrite /etc/passwd through a symlink and combines traversal and symlink mechanisms",
+          "wafBypass 0 invokes 7z with a traversal path from the local filesystem rather than constructing a controlled archive member safely",
+          "wafBypass 1 creates a real /tmp symlink to /etc/passwd and zipfile.write may dereference it depending on platform and API",
+          "wafBypass 2 opens an undefined crafted.zip and never writes the modified data back, so it is not an executable encoding test"
+        ],
+        "reviewNotes": [
+          {
+            "zh": "归档中出现 `../` 只证明输入存在；必须观察目标解压器的 canonical destination 与根外 marker 创建。",
+            "en": "The presence of ../ in an archive proves only the input; observe the target extractor’s canonical destination and out-of-root marker creation."
+          },
+          {
+            "zh": "路径遍历与符号链接跟随应分开测试，检查必须在实际打开每个成员时执行，以避免检查后替换或链接竞态。",
+            "en": "Path traversal and symlink following require separate tests, and checks must occur when each member is actually opened to avoid post-check replacement or link races."
+          }
+        ]
+      }
+    }
+  ]
+}

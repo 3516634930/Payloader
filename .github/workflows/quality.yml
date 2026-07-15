@@ -1,0 +1,109 @@
+name: Quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run release quality gate
+        run: npm run check
+
+  container-smoke:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build production image
+        run: docker build --build-arg PAYLOADER_COMMIT_SHA="${{ github.sha }}" --tag payloader:ci .
+      - name: Reject missing production credentials
+        run: |
+          if docker run --rm payloader:ci; then
+            echo 'Container unexpectedly accepted missing production credentials.'
+            exit 1
+          fi
+      - name: Start read-only production container
+        run: |
+          docker run --detach --name payloader-ci \
+            --publish 127.0.0.1:18081:8081 \
+            --read-only \
+            --tmpfs /tmp:rw,exec,mode=1777,size=2g \
+            --tmpfs /app/data:rw,uid=1000,gid=1000,mode=0700,size=2g \
+            --env PAYLOADER_ADMIN_USER=smoke-admin \
+            --env PAYLOADER_ADMIN_PASSWORD=Smoke-Admin-2026! \
+            payloader:ci
+      - name: Probe production routes
+        env:
+          PAYLOADER_SMOKE_BASE_URL: http://127.0.0.1:18081
+          PAYLOADER_SMOKE_ADMIN_USER: smoke-admin
+          PAYLOADER_SMOKE_ADMIN_PASSWORD: Smoke-Admin-2026!
+        run: node scripts/smoke-running-server.mjs
+      - name: Build Linux x64 client
+        if: github.event_name != 'pull_request'
+        env:
+          PAYLOADER_SMOKE_BASE_URL: http://127.0.0.1:18081
+          PAYLOADER_SMOKE_ADMIN_USER: smoke-admin
+          PAYLOADER_SMOKE_ADMIN_PASSWORD: Smoke-Admin-2026!
+          PAYLOADER_SMOKE_CLIENT_TARGET: linux-x64-appimage
+          PAYLOADER_SMOKE_TIMEOUT_MS: '1200000'
+        run: node scripts/smoke-running-server.mjs
+      - name: Show container logs
+        if: always()
+        run: docker logs payloader-ci || true
+      - name: Remove test container
+        if: always()
+        run: docker rm --force payloader-ci || true
+
+  client-performance:
+    name: Client performance (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      PAYLOADER_CLIENT_PERF_PROFILE: shared-runner
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Verify native client performance (Windows/macOS)
+        if: runner.os != 'Linux'
+        run: npm run verify:client-performance
+      - name: Verify native client performance (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum npm run verify:client-performance

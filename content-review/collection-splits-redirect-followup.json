@@ -1,0 +1,148 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "collectionSplits": [
+    {
+      "sourceId": "redirect-ssrf",
+      "targetPayloadIds": [
+        "redirect-ssrf-hop-boundary"
+      ],
+      "replacements": [
+        {
+          "id": "redirect-ssrf-hop-boundary",
+          "tags": [
+            "ssrf",
+            "redirect",
+            "url-policy",
+            "loopback-lab",
+            "per-hop-validation"
+          ],
+          "execution": [
+            {
+              "title": {
+                "zh": "一跳回环阻断样例",
+                "en": "One-Hop Loopback Blocking Sample"
+              },
+              "command": "curl --fail-with-body --silent --show-error --max-time 5 -G \"http://127.0.0.1:18080/lab/fetch\" --data-urlencode \"url=http://127.0.0.1:18080/lab/redirect?next=http://127.0.0.1:18081/lab/internal/canary\" -H \"X-Request-ID: redirect-ssrf-a1\" | jq -e '.request_id == \"redirect-ssrf-a1\" and .redirect_count == 1 and .final_address == \"127.0.0.1\" and .blocked == true'",
+              "description": {
+                "zh": "让本地取回器处理一跳重定向到独立回环 canary，并断言最终地址被重新校验和阻断。",
+                "en": "Have the local fetcher process one redirect to an independent loopback canary and assert that the final address is revalidated and blocked."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "IPv4-Mapped IPv6 阻断样例",
+                "en": "IPv4-Mapped IPv6 Blocking Sample"
+              },
+              "command": "curl --silent --show-error --max-time 5 -G \"http://127.0.0.1:18080/lab/fetch\" --data-urlencode \"url=http://127.0.0.1:18080/lab/redirect?next=http://[::ffff:127.0.0.1]:18081/lab/internal/canary\" -H \"X-Request-ID: redirect-ssrf-b2\" | jq -e '.blocked == true and .normalized_address'",
+              "description": {
+                "zh": "把内部目标写成 IPv4-mapped IPv6，验证规范化后仍按回环地址阻断。",
+                "en": "Represent the internal target as IPv4-mapped IPv6 and verify that normalization still blocks it as loopback."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            },
+            {
+              "title": {
+                "zh": "替代 IP 文本规范化样例",
+                "en": "Alternative IP-Text Normalization Sample"
+              },
+              "command": "for value in 2130706433 0177.0.0.1 0x7f.0.0.1 127.1 \"[::1]\" \"[::ffff:7f00:1]\"; do curl --silent --show-error --max-time 5 -G \"http://127.0.0.1:18080/lab/url-policy\" --data-urlencode \"url=http://$value:18081/lab/internal/canary\" | jq -c '{input,normalized_address,blocked}'; done",
+              "description": {
+                "zh": "逐个提交登记的替代 IP 文本并输出规范地址与阻断结果，不连接内部服务。",
+                "en": "Submit registered alternative IP text forms and output normalized addresses plus blocking results without connecting to internal services."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ]
+        }
+      ],
+      "toolTargets": [
+        {
+          "targetToolId": "redirect-follow-policy-audit",
+          "targetName": {
+            "zh": "重定向逐跳策略审计",
+            "en": "Per-Hop Redirect Policy Audit"
+          },
+          "targetDescription": {
+            "zh": "对本地取回器执行固定重定向端点矩阵、策略配置导出、两项有界对照和本地解析器结果比较，用于证明每跳 URL 与地址都重新校验。",
+            "en": "Audit a local fetcher with a fixed redirect-endpoint matrix, policy export, two bounded controls, and local resolver comparison to prove that every hop URL and address is revalidated."
+          },
+          "targetCategory": {
+            "zh": "Web 安全测试工具",
+            "en": "Web Security Testing Tools"
+          },
+          "targetReferences": [
+            "https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html",
+            "https://datatracker.ietf.org/doc/html/rfc9110"
+          ],
+          "navRootId": "web-tools",
+          "navId": "redirect-follow-policy-audit",
+          "navName": {
+            "zh": "重定向逐跳策略审计",
+            "en": "Redirect Follow Policy Audit"
+          },
+          "commands": [
+            {
+              "name": {
+                "zh": "采集固定重定向端点矩阵",
+                "en": "Capture the Fixed Redirect-Endpoint Matrix"
+              },
+              "command": "for path in redirect login goto; do curl --silent --show-error --max-time 5 -o /dev/null -D - \"http://127.0.0.1:18080/lab/$path?next=https://redirect-canary.invalid/$path\" | grep -Ei \"^(HTTP/|Location:)\"; done",
+              "description": {
+                "zh": "检查三个本地登记路径的状态与 Location，确认端点行为而不自动跟随。",
+                "en": "Inspect status and Location for three registered local paths to establish endpoint behavior without automatic following."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "导出取回器重定向策略",
+                "en": "Export Fetcher Redirect Policy"
+              },
+              "command": "curl --silent --show-error --max-time 5 \"http://127.0.0.1:18080/lab/redirect-policy\" | jq -e '.max_redirects == 0 and .revalidate_each_hop == true and .block_private_ranges == true'",
+              "description": {
+                "zh": "读取本地策略 Fixture 并断言默认不跟随、每跳复验和私网阻断均已启用。",
+                "en": "Read the local policy fixture and assert that no-follow by default, per-hop revalidation, and private-range blocking are enabled."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "运行两项有界取回对照",
+                "en": "Run Two Bounded Fetch Controls"
+              },
+              "command": "python -c \"import requests; urls=['http://127.0.0.1:18080/lab/public-canary','http://127.0.0.1:18080/lab/redirect?next=http://127.0.0.1:18081/lab/internal/canary']; s=requests.Session(); s.max_redirects=2; [print({'url':u,'status':s.get('http://127.0.0.1:18080/lab/fetch',params={'url':u},timeout=3).status_code}) for u in urls]\"",
+              "description": {
+                "zh": "只比较一个公共 canary 和一个内部重定向 canary，每项三秒超时且不枚举地址。",
+                "en": "Compare only one public canary and one redirected internal canary with a three-second timeout and no address enumeration."
+              },
+              "platform": "all"
+            },
+            {
+              "name": {
+                "zh": "比较本地解析器答案",
+                "en": "Compare Local Resolver Answers"
+              },
+              "command": "for host in public-a.lab.test rebound-a.lab.test; do curl --silent --show-error --max-time 5 \"http://127.0.0.1:18080/lab/resolver?host=$host\" | jq -c '{host,answers,ttl,allowed}'; done",
+              "description": {
+                "zh": "查询两个实验域名的本地解析结果、TTL 与策略判定，用于检查 DNS TOCTOU 防护。",
+                "en": "Query local answers, TTL, and policy decisions for two fixture hostnames to inspect DNS TOCTOU controls."
+              },
+              "platform": "all"
+            }
+          ]
+        }
+      ],
+      "retiredCommands": []
+    }
+  ]
+}

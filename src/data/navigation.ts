@@ -1,4 +1,4 @@
-import type { NavItem } from '../types';
+﻿import type { NavItem } from '../types';
 
 export const navigationData: NavItem[] = [
   {
@@ -75,7 +75,6 @@ export const navigationData: NavItem[] = [
           { id: 'rce-deserialize', name: { zh: '反序列化漏洞', en: 'Deserialization Vulnerability' }, payloadId: 'rce-deserialize' },
           { id: 'rce-deserialize-php', name: { zh: 'PHP反序列化', en: 'PHP Deserialization' }, payloadId: 'rce-deserialize-php' },
           { id: 'rce-deserialize-java', name: { zh: 'Java反序列化', en: 'Java Deserialization' }, payloadId: 'rce-deserialize-java' },
-          { id: 'rce-upload', name: { zh: '文件上传漏洞', en: 'File Upload Vulnerability' }, payloadId: 'rce-file-upload' },
           { id: 'rce-include', name: { zh: '文件包含RCE', en: 'File Inclusion RCE' }, payloadId: 'rce-include' },
           { id: 'rce-log-poison', name: { zh: '日志投毒RCE', en: 'Log Poisoning RCE' }, payloadId: 'rce-log-poison' },
           { id: 'rce-image', name: { zh: '图片马RCE', en: 'Image Webshell RCE' }, payloadId: 'rce-image' },
@@ -141,6 +140,7 @@ export const navigationData: NavItem[] = [
           { id: 'csrf-samesite', name: { zh: 'SameSite绕过', en: 'SameSite Bypass' }, payloadId: 'csrf-samesite' },
           { id: 'csrf-token-bypass', name: { zh: 'Token绕过', en: 'Token Bypass' }, payloadId: 'csrf-token-bypass' },
           { id: 'csrf-referer-bypass', name: { zh: 'Referer绕过', en: 'Referer Bypass' }, payloadId: 'csrf-referer-bypass' },
+          { id: 'csrf-flash', name: { zh: 'Flash CSRF', en: 'Flash CSRF' }, payloadId: 'csrf-flash' },
           { id: 'csrf-cors', name: { zh: 'CORS配置错误', en: 'CORS Misconfiguration' }, payloadId: 'csrf-cors' }
         ]
       },
@@ -152,9 +152,6 @@ export const navigationData: NavItem[] = [
           { id: 'graphql-introspection', name: { zh: 'GraphQL内省', en: 'GraphQL Introspection' }, payloadId: 'graphql-introspection' },
           { id: 'graphql-batching', name: { zh: 'GraphQL批量查询', en: 'GraphQL Batching' }, payloadId: 'graphql-batching' },
           { id: 'rest-api', name: { zh: 'REST API安全', en: 'REST API Security' }, payloadId: 'rest-api-security' },
-          { id: 'jwt', name: { zh: 'JWT安全', en: 'JWT Security' }, payloadId: 'jwt-security' },
-          { id: 'jwt-none-alg', name: { zh: 'JWT None算法', en: 'JWT None Algorithm' }, payloadId: 'jwt-none-alg' },
-          { id: 'jwt-key-confusion', name: { zh: 'JWT密钥混淆', en: 'JWT Key Confusion' }, payloadId: 'jwt-key-confusion' },
           { id: 'api-idor', name: { zh: 'IDOR漏洞', en: 'IDOR Vulnerability' }, payloadId: 'api-idor' },
           { id: 'api-rate-limit', name: { zh: '速率限制绕过', en: 'Rate Limit Bypass' }, payloadId: 'api-rate-limit' },
           { id: 'api-mass-assignment', name: { zh: '批量赋值', en: 'Mass Assignment' }, payloadId: 'api-mass-assignment' },
@@ -206,8 +203,8 @@ export const navigationData: NavItem[] = [
         id: 'file-vulns',
         name: { zh: '文件漏洞', en: 'File Vulnerabilities' },
         children: [
-          { id: 'file-upload', name: { zh: '文件上传基础', en: 'File Upload Basics' }, payloadId: 'file-upload-bypass' },
-          { id: 'file-upload-bypass', name: { zh: '上传绕过技术', en: 'Upload Bypass Techniques' }, payloadId: 'file-upload-bypass' },
+          { id: 'file-upload', name: { zh: '文件上传', en: 'File Upload' }, payloadId: 'file-upload-bypass' },
+          { id: 'file-upload-rce', name: { zh: '文件上传代码执行', en: 'File Upload RCE' }, payloadId: 'rce-file-upload' },
           { id: 'file-download', name: { zh: '任意文件下载', en: 'Arbitrary File Download' }, payloadId: 'file-download' },
           { id: 'file-competition', name: { zh: '条件竞争', en: 'Race Condition' }, payloadId: 'file-competition' },
           { id: 'file-traversal', name: { zh: '路径遍历', en: 'Path Traversal' }, payloadId: 'file-traversal' },
@@ -260,17 +257,20 @@ export const navigationData: NavItem[] = [
           { id: 'biz-race-condition-nav', name: { zh: '竞态条件攻击', en: 'Race Condition Attack' }, payloadId: 'biz-race-condition' },
           { id: 'biz-price-tamper-nav', name: { zh: '价格篡改', en: 'Price Tampering' }, payloadId: 'biz-price-tamper' },
           { id: 'biz-flow-bypass-nav', name: { zh: '流程绕过', en: 'Flow Bypass' }, payloadId: 'biz-flow-bypass' },
-          { id: 'biz-coupon-abuse-nav', name: { zh: '优惠券滥用', en: 'Coupon Abuse' }, payloadId: 'biz-coupon-abuse' }
+          { id: 'biz-coupon-abuse-nav', name: { zh: '优惠券滥用', en: 'Coupon Abuse' }, payloadId: 'biz-coupon-abuse' },
+          { id: 'biz-password-reset-nav', name: { zh: '密码重置逻辑缺陷', en: 'Password Reset Logic Flaws' }, payloadId: 'biz-password-reset' },
+          { id: 'biz-captcha-bypass-nav', name: { zh: '验证码绕过技术', en: 'CAPTCHA Bypass Techniques' }, payloadId: 'biz-captcha-bypass' }
         ]
       },
       {
         id: 'jwt-security',
         name: { zh: 'JWT安全', en: 'JWT Security' },
         children: [
-          { id: 'jwt-none-algo-nav', name: { zh: 'None算法攻击', en: 'None Algorithm Attack' }, payloadId: 'jwt-none-algo' },
-          { id: 'jwt-weak-secret-nav', name: { zh: '弱密钥爆破', en: 'Weak Secret Brute Force' }, payloadId: 'jwt-weak-secret' },
-          { id: 'jwt-kid-injection-nav', name: { zh: 'KID注入攻击', en: 'KID Injection Attack' }, payloadId: 'jwt-kid-injection' },
-          { id: 'jwt-jku-spoofing-nav', name: { zh: 'JKU欺骗攻击', en: 'JKU Spoofing Attack' }, payloadId: 'jwt-jku-spoofing' }
+          { id: 'jwt-basics-nav', name: { zh: 'JWT基础与声明篡改', en: 'JWT basics and claim tampering' }, payloadId: 'jwt-security' },
+          { id: 'jwt-none-algo-nav', name: { zh: 'None算法攻击', en: 'None algorithm attack' }, payloadId: 'jwt-none-attack' },
+          { id: 'jwt-weak-secret-nav', name: { zh: '弱密钥爆破', en: 'Weak secret brute force' }, payloadId: 'jwt-secret-bruteforce' },
+          { id: 'jwt-kid-injection-nav', name: { zh: 'KID注入/密钥混淆', en: 'KID injection and key confusion' }, payloadId: 'jwt-key-confusion' },
+          { id: 'jwt-jku-spoofing-nav', name: { zh: 'JKU/X5U远程密钥', en: 'JKU/X5U remote key injection' }, payloadId: 'jwt-jku-x5u-injection' }
         ]
       },
       {
@@ -298,7 +298,9 @@ export const navigationData: NavItem[] = [
           { id: 'cloud-ssrf-metadata-nav', name: { zh: 'SSRF元数据攻击', en: 'SSRF Metadata Attack' }, payloadId: 'cloud-ssrf-metadata' },
           { id: 'cloud-s3-misconfig-nav', name: { zh: 'S3存储桶错配', en: 'S3 Bucket Misconfiguration' }, payloadId: 'cloud-s3-misconfig' },
           { id: 'cloud-iam-escalation-nav', name: { zh: 'IAM权限提升', en: 'IAM Privilege Escalation' }, payloadId: 'cloud-iam-escalation' },
-          { id: 'cloud-k8s-escape-nav', name: { zh: 'K8s容器逃逸', en: 'K8s Container Escape' }, payloadId: 'cloud-k8s-escape' }
+          { id: 'cloud-k8s-escape-nav', name: { zh: 'K8s容器逃逸', en: 'K8s Container Escape' }, payloadId: 'cloud-k8s-escape' },
+      { id: 'aws-advanced-attacks', name: { zh: 'AWS高级攻击', en: 'AWS Advanced Attacks' }, toolId: 'aws-advanced-attacks' },
+      { id: 'cloud-misc-tools', name: { zh: '云平台杂项工具', en: 'Cloud Misc Tools' }, toolId: 'cloud-misc-tools' }
         ]
       },
       {
@@ -475,27 +477,7 @@ export const navigationData: NavItem[] = [
           { id: 'domain-cross-trust-nav', name: { zh: '跨域信任攻击', en: 'Cross-Domain Trust Attack' }, payloadId: 'domain-cross-trust' }
         ]
       },
-      {
-        id: 'evasion',
-        name: { zh: '免杀与规避', en: 'Evasion & AV Bypass' },
-        children: [
-          { id: 'amsi-bypass', name: { zh: 'AMSI绕过', en: 'AMSI Bypass' }, payloadId: 'amsi-bypass' },
-          { id: 'etw-patch', name: 'ETW Patch', payloadId: 'etw-patch' },
-          { id: 'blockdlls', name: 'BlockDLLs', payloadId: 'evasion-blockdlls' },
-          { id: 'unhooking', name: 'API Unhooking', payloadId: 'api-unhooking' },
-          { id: 'shellcode-encrypt', name: { zh: 'Shellcode加密', en: 'Shellcode Encryption' }, payloadId: 'evasion-shellcode-encrypt' },
-          { id: 'process-masq', name: { zh: '进程伪装', en: 'Process Masquerading' }, payloadId: 'evasion-process-masq' },
-          { id: 'ppid-spoofing', name: { zh: 'PPID欺骗', en: 'PPID Spoofing' }, payloadId: 'evasion-ppid-spoof' },
-          { id: 'dll-side-loading', name: { zh: 'DLL侧加载', en: 'DLL Side-Loading' }, payloadId: 'evasion-dll-sideloading' },
-          { id: 'process-injection', name: { zh: '进程注入', en: 'Process Injection' }, payloadId: 'process-injection' },
-          { id: 'argument-spoof', name: { zh: '参数欺骗', en: 'Argument Spoofing' }, payloadId: 'evasion-arg-spoofing' },
-          { id: 'signed-binary', name: { zh: '签名二进制利用', en: 'Signed Binary Abuse' }, payloadId: 'evasion-signed-binary' },
-          { id: 'clr-injection', name: { zh: 'CLR注入', en: 'CLR Injection' }, payloadId: 'evasion-clr-injection' },
-          { id: 'applocker-bypass', name: { zh: 'AppLocker绕过', en: 'AppLocker Bypass' }, payloadId: 'applocker-bypass' },
-          { id: 'evasion-powershell-nav', name: { zh: 'PowerShell免杀', en: 'PowerShell Evasion' }, payloadId: 'evasion-powershell' }
-        ]
-      },
-      {
+            {
         id: 'exchange-attack',
         name: { zh: 'Exchange攻击', en: 'Exchange Attacks' },
         children: [
@@ -515,7 +497,7 @@ export const navigationData: NavItem[] = [
         ]
       }
     ]
-  }
+  },
 ];
 
 export const toolNavigationData: NavItem[] = [
@@ -532,8 +514,16 @@ export const toolNavigationData: NavItem[] = [
       { id: 'massdns', name: 'MassDNS', toolId: 'massdns' },
       { id: 'amass', name: 'Amass', toolId: 'amass' },
       { id: 'subfinder', name: 'Subfinder', toolId: 'subfinder' },
+      { id: 'assetfinder', name: 'Assetfinder', toolId: 'assetfinder' },
+      { id: 'dnsx', name: 'dnsx', toolId: 'dnsx' },
       { id: 'httpx', name: 'HTTPX', toolId: 'httpx' },
+      { id: 'tlsx', name: 'tlsx', toolId: 'tlsx' },
+      { id: 'naabu', name: 'Naabu', toolId: 'naabu' },
       { id: 'nuclei', name: 'Nuclei', toolId: 'nuclei' },
+      { id: 'katana', name: 'Katana', toolId: 'katana' },
+      { id: 'gau', name: 'gau', toolId: 'gau' },
+      { id: 'hakrawler', name: 'Hakrawler', toolId: 'hakrawler' },
+      { id: 'subdomainizer', name: 'SubDomainizer', toolId: 'subdomainizer' },
       { id: 'whatweb', name: 'WhatWeb', toolId: 'whatweb' },
       { id: 'wafw00f', name: 'WAFW00F', toolId: 'wafw00f' },
       { id: 'dnsrecon', name: 'DNSRecon', toolId: 'dnsrecon' },
@@ -630,7 +620,77 @@ export const toolNavigationData: NavItem[] = [
       { id: 'dsquery', name: { zh: 'DSQuery命令', en: 'DSQuery Commands' }, toolId: 'dsquery' },
       { id: 'adexplorer', name: 'AD Explorer', toolId: 'adexplorer' },
       { id: 'ldeep', name: 'ldeep', toolId: 'ldeep' },
-      { id: 'bloodhound-cypher', name: 'BloodHound Cypher', toolId: 'bloodhound-cypher' }
+      { id: 'bloodhound-cypher', name: 'BloodHound Cypher', toolId: 'bloodhound-cypher' },
+      {
+        id: 'powershell-full-command-index-group',
+        name: { zh: 'PowerShell 全命令索引', en: 'PowerShell Full Command Index' },
+        children: [
+          { id: 'powershell-command-discovery', name: { zh: 'PowerShell 全命令动态枚举', en: 'PowerShell Full Command Discovery' }, toolId: 'powershell-command-discovery' },
+          { id: 'powershell-all-cmdlets-index', name: { zh: 'PowerShell 全 Cmdlet 索引', en: 'PowerShell All Cmdlets Index' }, toolId: 'powershell-all-cmdlets-index' },
+          { id: 'powershell-all-functions-index', name: { zh: 'PowerShell 全 Function 索引', en: 'PowerShell All Functions Index' }, toolId: 'powershell-all-functions-index' },
+          { id: 'powershell-all-aliases-index', name: { zh: 'PowerShell 全 Alias 索引', en: 'PowerShell All Aliases Index' }, toolId: 'powershell-all-aliases-index' },
+      { id: 'macos-commands', name: { zh: 'macOS系统命令', en: 'macOS Commands' }, toolId: 'macos-commands' },
+      { id: 'macos-security-deep', name: { zh: 'macOS深度安全', en: 'macOS Deep Security' }, toolId: 'macos-security-deep' },
+      { id: 'freebsd-solaris-commands', name: { zh: 'FreeBSD/Solaris命令', en: 'FreeBSD/Solaris Commands' }, toolId: 'freebsd-solaris-commands' },
+      { id: 'windows-cmd-advanced', name: { zh: 'Windows CMD高级', en: 'Windows CMD Advanced' }, toolId: 'windows-cmd-advanced' },
+      { id: 'windows-commands-advanced', name: { zh: 'Windows高级命令', en: 'Windows Advanced Commands' }, toolId: 'windows-commands-advanced' },
+      { id: 'windows-lolbas', name: 'LOLBins', toolId: 'windows-lolbas' },
+      { id: 'windows-pentest-advanced', name: { zh: 'Windows高级渗透', en: 'Windows Pentest Advanced' }, toolId: 'windows-pentest-advanced' },
+      { id: 'windows-registry', name: { zh: 'Windows注册表', en: 'Windows Registry' }, toolId: 'windows-registry' },
+      { id: 'windows-system-commands', name: { zh: 'Windows系统命令全览', en: 'Windows System Commands' }, toolId: 'windows-system-commands' },
+      { id: 'linux-commands-advanced', name: { zh: 'Linux高级命令', en: 'Linux Advanced Commands' }, toolId: 'linux-commands-advanced' },
+      { id: 'linux-command-tricks', name: { zh: 'Linux命令技巧', en: 'Linux Command Tricks' }, toolId: 'linux-command-tricks' },
+      { id: 'linux-networking-commands', name: { zh: 'Linux网络命令', en: 'Linux Networking Commands' }, toolId: 'linux-networking-commands' },
+      { id: 'powershell-remoting', name: { zh: 'PowerShell远程管理', en: 'PowerShell Remoting' }, toolId: 'powershell-remoting' },
+      { id: 'nmap-advanced', name: { zh: 'Nmap高级用法', en: 'Nmap Advanced' }, toolId: 'nmap-advanced' },
+      { id: 'advanced-nmap-scripts', name: { zh: 'Nmap NSE脚本', en: 'Nmap NSE Scripts' }, toolId: 'advanced-nmap-scripts' }
+        ]
+      },
+      {
+        id: 'linux-full-command-index-group',
+        name: { zh: 'Linux 全命令索引', en: 'Linux Full Command Index' },
+        children: [
+          { id: 'linux-all-command-discovery', name: { zh: 'Linux 全命令动态枚举', en: 'Linux Full Command Discovery' }, toolId: 'linux-all-command-discovery' },
+          { id: 'linux-shell-builtins-index', name: { zh: 'Linux Shell Builtins 索引', en: 'Linux Shell Builtins Index' }, toolId: 'linux-shell-builtins-index' },
+          { id: 'linux-posix-gnu-command-index', name: { zh: 'Linux POSIX/GNU 命令索引', en: 'Linux POSIX/GNU Command Index' }, toolId: 'linux-posix-gnu-command-index' },
+          { id: 'linux-admin-daemon-command-index', name: { zh: 'Linux 系统管理命令索引', en: 'Linux Administration Command Index' }, toolId: 'linux-admin-daemon-command-index' },
+          { id: 'linux-network-storage-command-index', name: { zh: 'Linux 网络与存储命令索引', en: 'Linux Network & Storage Command Index' }, toolId: 'linux-network-storage-command-index' },
+          { id: 'linux-package-dev-container-command-index', name: { zh: 'Linux 包管理/开发/容器命令索引', en: 'Linux Package, Dev & Container Command Index' }, toolId: 'linux-package-dev-container-command-index' }
+        ]
+      },
+      {
+        id: 'linux-command-reference-group',
+        name: { zh: 'Linux 命令参考', en: 'Linux Command Reference' },
+        children: [
+          { id: 'linux-command-reference', name: { zh: 'Linux 常用命令总览', en: 'Linux Command Reference' }, toolId: 'linux-command-reference' },
+          { id: 'linux-text-processing-reference', name: { zh: 'Linux 文本处理命令', en: 'Linux Text Processing Commands' }, toolId: 'linux-text-processing-reference' },
+          { id: 'linux-process-service-reference', name: { zh: 'Linux 进程与服务排查', en: 'Linux Process & Service Diagnostics' }, toolId: 'linux-process-service-reference' },
+          { id: 'linux-network-reference', name: { zh: 'Linux 网络与防火墙排查', en: 'Linux Network & Firewall Diagnostics' }, toolId: 'linux-network-reference' },
+          { id: 'linux-package-container-reference', name: { zh: 'Linux 包管理与容器命令', en: 'Linux Package & Container Commands' }, toolId: 'linux-package-container-reference' },
+          { id: 'linux-security-baseline-reference', name: { zh: 'Linux 安全基线查询', en: 'Linux Security Baseline Queries' }, toolId: 'linux-security-baseline-reference' }
+        ]
+      },
+      {
+        id: 'windows-command-reference-group',
+        name: { zh: 'Windows 命令参考', en: 'Windows Command Reference' },
+        children: [
+          { id: 'windows-cmd-reference', name: { zh: 'Windows CMD 命令总览', en: 'Windows CMD Command Reference' }, toolId: 'windows-cmd-reference' },
+          { id: 'powershell-admin-reference', name: { zh: 'PowerShell 管理命令', en: 'PowerShell Administration Commands' }, toolId: 'powershell-admin-reference' },
+          { id: 'windows-event-network-reference', name: { zh: 'Windows 日志、网络与防火墙查询', en: 'Windows Event, Network & Firewall Queries' }, toolId: 'windows-event-network-reference' },
+          { id: 'windows-sysinternals-reference', name: { zh: 'Windows Sysinternals 工具', en: 'Windows Sysinternals Tools' }, toolId: 'windows-sysinternals-reference' },
+          { id: 'windows-security-baseline-reference', name: { zh: 'Windows 安全基线查询', en: 'Windows Security Baseline Queries' }, toolId: 'windows-security-baseline-reference' }
+        ]
+      },
+      {
+        id: 'diagnostic-toolkit-group',
+        name: { zh: '诊断与取证工具箱', en: 'Diagnostics & DFIR Toolkits' },
+        children: [
+          { id: 'modern-cli-toolkit', name: { zh: '跨平台效率命令工具', en: 'Modern Cross-platform CLI Toolkit' }, toolId: 'modern-cli-toolkit' },
+          { id: 'network-diagnostics-toolkit', name: { zh: '网络诊断工具箱', en: 'Network Diagnostics Toolkit' }, toolId: 'network-diagnostics-toolkit' },
+          { id: 'dfir-toolkit-reference', name: { zh: '蓝队取证工具箱', en: 'Blue Team DFIR Toolkit' }, toolId: 'dfir-toolkit-reference' },
+          { id: 'file-analysis-toolkit', name: { zh: '文件分析与取证工具', en: 'File Analysis & Forensics Tools' }, toolId: 'file-analysis-toolkit' }
+        ]
+      }
     ]
   },
   {
@@ -662,7 +722,273 @@ export const toolNavigationData: NavItem[] = [
       { id: 'unicode-encode', name: { zh: 'Unicode编码', en: 'Unicode Encoding' }, toolId: 'unicode-encode' },
       { id: 'jwt-decode', name: { zh: 'JWT解码', en: 'JWT Decoding' }, toolId: 'jwt-decode' }
     ]
+  },
+
+  {
+    id: 'ctf-tools',
+    name: { zh: '🏴 CTF工具', en: '🏴 CTF Tools' },
+    children: [
+      { id: 'pwntools', name: 'Pwntools', toolId: 'pwntools' },
+      { id: 'gdb-enhanced', name: { zh: 'GDB增强插件', en: 'GDB Enhanced' }, toolId: 'gdb-enhanced' },
+      { id: 'ghidra', name: 'Ghidra', toolId: 'ghidra' },
+      { id: 'radare2', name: 'Radare2', toolId: 'radare2' },
+      { id: 'angr', name: 'angr', toolId: 'angr' },
+      { id: 'binwalk', name: 'Binwalk', toolId: 'binwalk' },
+      { id: 'volatility3', name: 'Volatility3', toolId: 'volatility3' },
+      { id: 'steganography-tools', name: { zh: '隐写术工具集', en: 'Steganography Toolkit' }, toolId: 'steganography-tools' },
+      { id: 'ctf-crypto-tools', name: { zh: 'CTF密码学工具', en: 'CTF Crypto Tools' }, toolId: 'ctf-crypto-tools' },
+      { id: 'rsactftool', name: 'RsaCtfTool', toolId: 'rsactftool' },
+      { id: 'scapy', name: 'Scapy', toolId: 'scapy' },
+      { id: 'wireshark-tshark', name: 'Wireshark / tshark', toolId: 'wireshark-tshark' },
+      { id: 'ecc-lattice-attacks', name: { zh: 'ECC/格密码攻击', en: 'ECC & Lattice Attacks' }, toolId: 'ecc-lattice-attacks' },
+      { id: 'ctf-blockchain', name: { zh: 'CTF区块链', en: 'CTF Blockchain' }, toolId: 'ctf-blockchain' },
+      { id: 'ctf-web-tools', name: { zh: 'CTF Web工具', en: 'CTF Web Tools' }, toolId: 'ctf-web-tools' },
+      { id: 'ctf-pwn-techniques', name: { zh: 'CTF PWN技术', en: 'CTF PWN Techniques' }, toolId: 'ctf-pwn-techniques' },
+      { id: 'ctf-pwn-heap', name: { zh: '堆漏洞利用', en: 'CTF Heap Exploitation' }, toolId: 'ctf-pwn-heap' },
+      { id: 'ctf-rev-tools', name: { zh: 'CTF逆向工具', en: 'CTF Reverse Tools' }, toolId: 'ctf-rev-tools' },
+      { id: 'ctf-forensics-tools', name: { zh: 'CTF取证工具', en: 'CTF Forensics Tools' }, toolId: 'ctf-forensics-tools' },
+      { id: 'ctf-forensics-advanced', name: { zh: 'CTF取证高级', en: 'CTF Forensics Advanced' }, toolId: 'ctf-forensics-advanced' },
+      { id: 'ctf-misc-tools', name: { zh: 'CTF Misc工具', en: 'CTF Misc Tools' }, toolId: 'ctf-misc-tools' },
+      { id: 'ctf-network-tools', name: { zh: 'CTF网络题工具', en: 'CTF Network Tools' }, toolId: 'ctf-network-tools' },
+      { id: 'ctf-cryptography', name: { zh: 'CTF密码学速查', en: 'CTF Cryptography' }, toolId: 'ctf-cryptography' },
+      { id: 'ctf-tools-linux', name: { zh: 'CTF Linux工具', en: 'CTF Linux Tools' }, toolId: 'ctf-tools-linux' },
+      { id: 'ctf-web-advanced', name: { zh: 'CTF Web高级', en: 'CTF Web Advanced' }, toolId: 'ctf-web-advanced' },
+      { id: 'decompilers', name: { zh: '反编译工具', en: 'Decompilers' }, toolId: 'decompilers' },
+      { id: 'reverse-engineering-tricks', name: { zh: '逆向工程技巧', en: 'RE Tricks' }, toolId: 'reverse-engineering-tricks' },
+      { id: 'exploit-dev-tools', name: { zh: '漏洞开发辅助', en: 'Exploit Dev Tools' }, toolId: 'exploit-dev-tools' }
+    ]
+  },
+  {
+    id: 'cloud-security',
+    name: { zh: '☁️ 云安全工具', en: '☁️ Cloud Security Tools' },
+    children: [
+      { id: 'cloud-aws-pentest', name: { zh: 'AWS安全测试', en: 'AWS Security Testing' }, toolId: 'cloud-aws-pentest' },
+      { id: 'pacu', name: 'Pacu', toolId: 'pacu' },
+      { id: 'cloud-azure-pentest', name: { zh: 'Azure安全测试', en: 'Azure Security Testing' }, toolId: 'cloud-azure-pentest' },
+      { id: 'azure-ad-attacks', name: { zh: 'Azure AD攻击', en: 'Azure AD Attacks' }, toolId: 'azure-ad-attacks' },
+      { id: 'cloud-gcp-pentest', name: { zh: 'GCP安全测试', en: 'GCP Security Testing' }, toolId: 'cloud-gcp-pentest' },
+      { id: 'aliyun-tencent-cloud', name: { zh: '阿里云/腾讯云', en: 'Alibaba/Tencent Cloud' }, toolId: 'aliyun-tencent-cloud' },
+      { id: 'cloud-security-tools', name: { zh: '云安全工具集', en: 'Cloud Security Toolkit' }, toolId: 'cloud-security-tools' },
+      { id: 'docker-security', name: { zh: 'Docker安全', en: 'Docker Security' }, toolId: 'docker-security' },
+      { id: 'kubernetes-security', name: { zh: 'Kubernetes安全', en: 'Kubernetes Security' }, toolId: 'kubernetes-security' },
+      { id: 'container-escape', name: { zh: '容器逃逸', en: 'Container Escape' }, toolId: 'container-escape' },
+      { id: 'container-orchestration-attacks', name: { zh: '容器编排攻击', en: 'Container Orchestration' }, toolId: 'container-orchestration-attacks' },
+      { id: 'kubernetes-advanced', name: { zh: 'Kubernetes高级', en: 'Kubernetes Advanced' }, toolId: 'kubernetes-advanced' }
+    ]
+  },
+  {
+    id: 'mobile-security',
+    name: { zh: '📱 移动安全工具', en: '📱 Mobile Security Tools' },
+    children: [
+      { id: 'adb-commands', name: 'ADB', toolId: 'adb-commands' },
+      { id: 'ios-pentest', name: { zh: 'iOS安全测试', en: 'iOS Security Testing' }, toolId: 'ios-pentest' },
+      { id: 'mobile-pentest-tools', name: { zh: '移动端测试工具集', en: 'Mobile Pentest Toolkit' }, toolId: 'mobile-pentest-tools' }
+    ]
+  },
+  {
+    id: 'special-attack-tools',
+    name: { zh: '🎯 专项攻击工具', en: '🎯 Specialized Attack Tools' },
+    children: [
+      { id: 'voip-sip-security', name: { zh: 'VoIP/SIP安全', en: 'VoIP/SIP Security' }, toolId: 'voip-sip-security' },
+      { id: 'ics-scada-security', name: { zh: 'ICS/SCADA工控安全', en: 'ICS/SCADA Security' }, toolId: 'ics-scada-security' },
+      { id: 'bluetooth-security', name: { zh: '蓝牙安全', en: 'Bluetooth Security' }, toolId: 'bluetooth-security' },
+      { id: 'sdr-wireless', name: { zh: 'SDR无线电安全', en: 'SDR Wireless Security' }, toolId: 'sdr-wireless' },
+      { id: 'wifiphisher-attacks', name: { zh: 'Wi-Fi钓鱼攻击', en: 'Wi-Fi Phishing Attacks' }, toolId: 'wifiphisher-attacks' },
+      { id: 'iot-security', name: { zh: 'IoT设备安全', en: 'IoT Device Security' }, toolId: 'iot-security' },
+      { id: 'hardware-security', name: { zh: '硬件安全测试', en: 'Hardware Security Testing' }, toolId: 'hardware-security' },
+      { id: 'social-engineering-tools', name: { zh: '社会工程学工具', en: 'Social Engineering Tools' }, toolId: 'social-engineering-tools' }
+    ]
+  },
+  {
+    id: 'blue-team-tools',
+    name: { zh: '🛡️ 蓝队取证工具', en: '🛡️ Blue Team & DFIR' },
+    children: [
+      { id: 'linux-forensics', name: { zh: 'Linux取证', en: 'Linux Forensics' }, toolId: 'linux-forensics' },
+      { id: 'windows-forensics', name: { zh: 'Windows取证', en: 'Windows Forensics' }, toolId: 'windows-forensics' },
+      { id: 'threat-hunting', name: { zh: '威胁狩猎', en: 'Threat Hunting' }, toolId: 'threat-hunting' },
+      { id: 'network-forensics-advanced', name: { zh: '网络取证分析', en: 'Network Forensics' }, toolId: 'network-forensics-advanced' },
+      { id: 'threat-intel-tools', name: { zh: '威胁情报工具', en: 'Threat Intel Tools' }, toolId: 'threat-intel-tools' },
+      { id: 'endpoint-security', name: { zh: '端点安全检测', en: 'Endpoint Security' }, toolId: 'endpoint-security' },
+      { id: 'linux-system-hardening-check', name: { zh: 'Linux安全基线', en: 'Linux Security Baseline' }, toolId: 'linux-system-hardening-check' },
+      { id: 'windows-security-check', name: { zh: 'Windows安全基线', en: 'Windows Security Baseline' }, toolId: 'windows-security-check' },
+      { id: 'macro-analysis', name: { zh: '恶意宏分析', en: 'Malicious Macro Analysis' }, toolId: 'macro-analysis' },
+      { id: 'pentest-reporting', name: { zh: '渗透报告工具', en: 'Pentest Reporting' }, toolId: 'pentest-reporting' }
+    ]
+  },
+  {
+    id: 'post-exploit-tools',
+    name: { zh: '⚡ 后渗透工具', en: '⚡ Post-Exploitation' },
+    children: [
+      { id: 'post-exploitation-linux', name: { zh: 'Linux后渗透', en: 'Linux Post-Exploitation' }, toolId: 'post-exploitation-linux' },
+      { id: 'post-exploitation-windows', name: { zh: 'Windows后渗透', en: 'Windows Post-Exploitation' }, toolId: 'post-exploitation-windows' },
+      { id: 'linux-privesc-techniques', name: { zh: 'Linux提权技术', en: 'Linux Privesc Techniques' }, toolId: 'linux-privesc-techniques' },
+      { id: 'windows-privesc-techniques', name: { zh: 'Windows提权技术', en: 'Windows Privesc Techniques' }, toolId: 'windows-privesc-techniques' },
+      { id: 'linux-privesc-gtfobins', name: 'GTFOBins', toolId: 'linux-privesc-gtfobins' },
+      { id: 'linux-priv-esc-check', name: { zh: 'Linux提权检测', en: 'Linux Privesc Checklist' }, toolId: 'linux-priv-esc-check' },
+      { id: 'privilege-escalation-tools', name: { zh: '提权辅助工具集', en: 'Privesc Toolkit' }, toolId: 'privilege-escalation-tools' },
+      { id: 'kernel-exploits', name: { zh: 'Linux内核漏洞', en: 'Linux Kernel Exploits' }, toolId: 'kernel-exploits' },
+      { id: 'kernel-exploitation', name: { zh: '内核漏洞利用', en: 'Kernel Exploitation' }, toolId: 'kernel-exploitation' },
+      { id: 'post-exploitation-tools', name: { zh: '后渗透框架', en: 'Post-Exploit Frameworks' }, toolId: 'post-exploitation-tools' },
+      { id: 'evasion-techniques', name: { zh: 'AV/EDR绕过', en: 'AV/EDR Evasion' }, toolId: 'evasion-techniques' },
+      { id: 'anti-av-techniques', name: { zh: '免杀技术', en: 'AV Evasion Techniques' }, toolId: 'anti-av-techniques' },
+      { id: 'fileless-antiforensics', name: { zh: '无文件攻击', en: 'Fileless Attacks' }, toolId: 'fileless-antiforensics' },
+      { id: 'windows-av-bypass-advanced', name: { zh: 'Windows AV高级绕过', en: 'Advanced AV Bypass' }, toolId: 'windows-av-bypass-advanced' },
+      { id: 'persistence-techniques', name: { zh: '持久化技术速查', en: 'Persistence Techniques' }, toolId: 'persistence-techniques' },
+      { id: 'linux-forensics-advanced', name: { zh: 'Linux取证高级', en: 'Linux Forensics Advanced' }, toolId: 'linux-forensics-advanced' }
+    ]
+  },
+  {
+    id: 'domain-pentest-tools',
+    name: { zh: '🏛️ 域渗透工具', en: '🏛️ Domain Pentest Tools' },
+    children: [
+      { id: 'powerview-adrecon', name: 'PowerView', toolId: 'powerview-adrecon' },
+      { id: 'windows-lateral-commands', name: { zh: 'Windows横向移动', en: 'Windows Lateral Movement' }, toolId: 'windows-lateral-commands' },
+      { id: 'ad-persistence', name: { zh: 'AD持久化', en: 'AD Persistence' }, toolId: 'ad-persistence' },
+      { id: 'active-directory-attacks', name: { zh: 'AD攻击速查', en: 'AD Attack Reference' }, toolId: 'active-directory-attacks' },
+      { id: 'active-directory-enumeration', name: { zh: 'AD域内枚举', en: 'AD Enumeration' }, toolId: 'active-directory-enumeration' },
+      { id: 'active-directory-tools', name: { zh: 'AD工具集', en: 'AD Toolkit' }, toolId: 'active-directory-tools' },
+      { id: 'bloodhound-queries', name: { zh: 'BloodHound查询', en: 'BloodHound Queries' }, toolId: 'bloodhound-queries' },
+      { id: 'exchange-m365-attacks', name: { zh: 'Exchange/M365攻击', en: 'Exchange/M365 Attacks' }, toolId: 'exchange-m365-attacks' },
+      { id: 'donpapi-tool', name: 'DonPAPI', toolId: 'donpapi-tool' },
+      { id: 'kerbrute-tool', name: 'Kerbrute', toolId: 'kerbrute-tool' },
+      { id: 'powersploit-tool', name: 'PowerSploit', toolId: 'powersploit-tool' },
+      { id: 'sharpsmbclient-tool', name: 'SharpSMBClient', toolId: 'sharpsmbclient-tool' }
+    ]
+  },
+  {
+    id: 'tunneling-tools',
+    name: { zh: '🔗 隧道代理工具', en: '🔗 Tunneling & Pivoting' },
+    children: [
+      { id: 'frp-tunnel', name: 'FRP', toolId: 'frp-tunnel' },
+      { id: 'regeorg', name: 'Neo-reGeorg', toolId: 'regeorg' },
+      { id: 'network-pivoting', name: { zh: '网络枢转技术', en: 'Network Pivoting' }, toolId: 'network-pivoting' },
+      { id: 'pivoting-techniques', name: { zh: '枢转技术速查', en: 'Pivoting Techniques' }, toolId: 'pivoting-techniques' },
+      { id: 'pivoting-tools', name: { zh: '内网枢转工具', en: 'Pivoting Tools' }, toolId: 'pivoting-tools' },
+      { id: 'network-pivoting-tools', name: { zh: '代理工具对比', en: 'Proxy Tools Reference' }, toolId: 'network-pivoting-tools' },
+      { id: 'ssh-tunneling-advanced', name: { zh: 'SSH隧道高级', en: 'SSH Tunneling Advanced' }, toolId: 'ssh-tunneling-advanced' },
+      { id: 'ssh-pentest', name: { zh: 'SSH渗透测试', en: 'SSH Pentest' }, toolId: 'ssh-pentest' },
+      { id: 'smb-pentest', name: { zh: 'SMB渗透测试', en: 'SMB Pentest' }, toolId: 'smb-pentest' },
+      { id: 'internal-recon', name: { zh: '内网侦察命令集', en: 'Internal Recon Commands' }, toolId: 'internal-recon' },
+      { id: 'linux-exploit-suggester', name: 'Linux Exploit Suggester', toolId: 'linux-exploit-suggester' },
+      { id: 'pspy', name: 'pspy', toolId: 'pspy' }
+    ]
+  },
+  {
+    id: 'web-extended-tools',
+    name: { zh: '🔍 Web扩展工具', en: '🔍 Web Extended Tools' },
+    children: [
+      { id: 'gobuster-advanced', name: { zh: 'Gobuster高级', en: 'Gobuster Advanced' }, toolId: 'gobuster-advanced' },
+      { id: 'nuclei-advanced', name: { zh: 'Nuclei高级', en: 'Nuclei Advanced' }, toolId: 'nuclei-advanced' },
+      { id: 'burpsuite-advanced', name: { zh: 'Burp Suite高级', en: 'Burp Suite Advanced' }, toolId: 'burpsuite-advanced' },
+      { id: 'sqlmap-advanced', name: { zh: 'SQLMap高级', en: 'SQLMap Advanced' }, toolId: 'sqlmap-advanced' },
+      { id: 'shodan-advanced', name: { zh: 'Shodan高级', en: 'Shodan Advanced' }, toolId: 'shodan-advanced' },
+      { id: 'shodan-fofa-tools', name: { zh: '空间测绘工具', en: 'Cyberspace Mapping' }, toolId: 'shodan-fofa-tools' },
+      { id: 'web-recon-tools', name: { zh: 'Web侦察工具集', en: 'Web Recon Toolkit' }, toolId: 'web-recon-tools' },
+      { id: 'web-enum-tools', name: { zh: 'Web枚举工具', en: 'Web Enum Tools' }, toolId: 'web-enum-tools' },
+      { id: 'git-pentest', name: { zh: 'Git信息泄露', en: 'Git Info Disclosure' }, toolId: 'git-pentest' },
+      { id: 'interactsh', name: 'Interactsh', toolId: 'interactsh' },
+      { id: 'osint-tools', name: { zh: 'OSINT工具集', en: 'OSINT Toolkit' }, toolId: 'osint-tools' },
+      { id: 'social-media-osint', name: { zh: '社交媒体OSINT', en: 'Social Media OSINT' }, toolId: 'social-media-osint' },
+      { id: 'information-gathering-passive', name: { zh: '被动信息收集', en: 'Passive Recon' }, toolId: 'information-gathering-passive' },
+      { id: 'active-recon-tools', name: { zh: '主动侦察工具', en: 'Active Recon Tools' }, toolId: 'active-recon-tools' },
+      { id: 'bug-bounty-tools', name: { zh: 'Bug Bounty工具链', en: 'Bug Bounty Toolkit' }, toolId: 'bug-bounty-tools' },
+      { id: 'web-recon-advanced', name: { zh: 'Web侦察高级', en: 'Web Recon Advanced' }, toolId: 'web-recon-advanced' },
+      { id: 'web-enumeration-tools', name: { zh: 'Web枚举工具', en: 'Web Enum Tools' }, toolId: 'web-enumeration-tools' },
+      { id: 'web-fuzzing-wordlists', name: { zh: 'Web字典资源', en: 'Web Fuzzing Wordlists' }, toolId: 'web-fuzzing-wordlists' }
+    ]
+  },
+  {
+    id: 'web-attack-techniques',
+    name: { zh: '💉 Web攻击技术', en: '💉 Web Attack Techniques' },
+    children: [
+      { id: 'lfi-rfi-tools', name: { zh: 'LFI/RFI工具', en: 'LFI/RFI Tools' }, toolId: 'lfi-rfi-tools' },
+      { id: 'xss-tools', name: { zh: 'XSS利用工具', en: 'XSS Tools' }, toolId: 'xss-tools' },
+      { id: 'jwt-attacks', name: { zh: 'JWT攻击工具', en: 'JWT Attack Tools' }, toolId: 'jwt-attacks' },
+      { id: 'file-upload-attacks', name: { zh: '文件上传攻击', en: 'File Upload Attacks' }, toolId: 'file-upload-attacks' },
+      { id: 'ssrf-exploitation', name: { zh: 'SSRF利用', en: 'SSRF Exploitation' }, toolId: 'ssrf-exploitation' },
+      { id: 'xxe-tools', name: { zh: 'XXE攻击工具', en: 'XXE Attack Tools' }, toolId: 'xxe-tools' },
+      { id: 'web-cache-tools', name: { zh: 'Web缓存攻击', en: 'Web Cache Attacks' }, toolId: 'web-cache-tools' },
+      { id: 'command-injection-advanced', name: { zh: '命令注入高级', en: 'Command Injection Adv' }, toolId: 'command-injection-advanced' },
+      { id: 'web-authentication-bypass', name: { zh: '认证绕过技术', en: 'Auth Bypass Techniques' }, toolId: 'web-authentication-bypass' },
+      { id: 'web-cms-attacks', name: { zh: 'CMS攻击速查', en: 'CMS Attack Reference' }, toolId: 'web-cms-attacks' },
+      { id: 'web-deserialization', name: { zh: '反序列化攻击', en: 'Deserialization Attacks' }, toolId: 'web-deserialization' },
+      { id: 'php-attacks', name: { zh: 'PHP安全攻击', en: 'PHP Security Attacks' }, toolId: 'php-attacks' },
+      { id: 'java-pentest', name: { zh: 'Java应用渗透', en: 'Java App Pentest' }, toolId: 'java-pentest' },
+      { id: 'sql-injection-advanced', name: { zh: 'SQL注入高级', en: 'SQL Injection Advanced' }, toolId: 'sql-injection-advanced' },
+      { id: 'oauth-oidc-attacks', name: { zh: 'OAuth/OIDC攻击', en: 'OAuth/OIDC Attacks' }, toolId: 'oauth-oidc-attacks' },
+      { id: 'api-security-tools', name: { zh: 'API安全测试', en: 'API Security Testing' }, toolId: 'api-security-tools' },
+      { id: 'grpc-websocket-security', name: { zh: 'gRPC/WebSocket安全', en: 'gRPC/WebSocket Security' }, toolId: 'grpc-websocket-security' },
+      { id: 'web-advanced-attacks', name: { zh: 'Web高级攻击', en: 'Web Advanced Attacks' }, toolId: 'web-advanced-attacks' },
+      { id: 'web-api-testing', name: { zh: 'Web API安全测试', en: 'Web API Testing' }, toolId: 'web-api-testing' },
+      { id: 'web-cache-attacks', name: { zh: 'Web缓存攻击', en: 'Web Cache Attacks' }, toolId: 'web-cache-attacks' },
+      { id: 'web-security-headers', name: { zh: 'HTTP安全头测试', en: 'Security Headers Testing' }, toolId: 'web-security-headers' }
+    ]
+  },
+  {
+    id: 'red-team-ops',
+    name: { zh: '🔴 红队工具', en: '🔴 Red Team Tools' },
+    children: [
+      { id: 'red-team-operations', name: { zh: '红队行动速查', en: 'Red Team Operations' }, toolId: 'red-team-operations' },
+      { id: 'red-team-infrastrucutre', name: { zh: '红队基础设施', en: 'Red Team Infrastructure' }, toolId: 'red-team-infrastrucutre' },
+      { id: 'process-injection', name: { zh: '进程注入技术', en: 'Process Injection' }, toolId: 'process-injection' },
+      { id: 'atomic-red-team', name: 'Atomic Red Team', toolId: 'atomic-red-team' },
+      { id: 'pentest-automation-frameworks', name: { zh: '渗透自动化框架', en: 'Pentest Automation' }, toolId: 'pentest-automation-frameworks' }
+    ]
+  },
+  {
+    id: 'misc-pentest-tools',
+    name: { zh: '🔧 其他渗透工具', en: '🔧 Misc Pentest Tools' },
+    children: [
+      { id: 'netcat-advanced', name: { zh: 'Netcat高级', en: 'Netcat Advanced' }, toolId: 'netcat-advanced' },
+      { id: 'metasploit-advanced', name: { zh: 'Metasploit高级', en: 'Metasploit Advanced' }, toolId: 'metasploit-advanced' },
+      { id: 'impacket-advanced', name: { zh: 'Impacket高级', en: 'Impacket Advanced' }, toolId: 'impacket-advanced' },
+      { id: 'john-enhanced', name: { zh: 'John高级用法', en: 'John Advanced' }, toolId: 'john-enhanced' },
+      { id: 'hash-cracking', name: { zh: '哈希破解速查', en: 'Hash Cracking Reference' }, toolId: 'hash-cracking' },
+      { id: 'password-spraying', name: { zh: '密码喷洒工具', en: 'Password Spraying' }, toolId: 'password-spraying' },
+      { id: 'proxy-tools', name: { zh: '代理工具速查', en: 'Proxy Tools Reference' }, toolId: 'proxy-tools' },
+      { id: 'file-transfer-techniques', name: { zh: '文件传输技术', en: 'File Transfer Techniques' }, toolId: 'file-transfer-techniques' },
+      { id: 'exfiltration-techniques', name: { zh: '数据外带技术', en: 'Data Exfiltration' }, toolId: 'exfiltration-techniques' },
+      { id: 'web-shells', name: { zh: 'WebShell工具', en: 'WebShell Tools' }, toolId: 'web-shells' },
+      { id: 'web-shell-payloads', name: { zh: 'WebShell集合', en: 'WebShell Collection' }, toolId: 'web-shell-payloads' },
+      { id: 'exploit-db-search', name: { zh: 'Exploit搜索速查', en: 'Exploit Search' }, toolId: 'exploit-db-search' },
+      { id: 'vulnerability-research', name: { zh: '漏洞研究工具', en: 'Vuln Research Tools' }, toolId: 'vulnerability-research' },
+      { id: 'exploit-development', name: { zh: '漏洞利用开发', en: 'Exploit Development' }, toolId: 'exploit-development' },
+      { id: 'network-enum-tools', name: { zh: '网络枚举工具', en: 'Network Enum Tools' }, toolId: 'network-enum-tools' },
+      { id: 'database-pentest-tools', name: { zh: '数据库渗透工具', en: 'Database Pentest' }, toolId: 'database-pentest-tools' },
+      { id: 'mysql-pentest', name: { zh: 'MySQL渗透', en: 'MySQL Pentest' }, toolId: 'mysql-pentest' },
+      { id: 'redis-pentest', name: { zh: 'Redis渗透', en: 'Redis Pentest' }, toolId: 'redis-pentest' },
+      { id: 'mssql-pentest', name: { zh: 'MSSQL渗透', en: 'MSSQL Pentest' }, toolId: 'mssql-pentest' },
+      { id: 'secure-coding-flaws', name: { zh: '代码审计速查', en: 'Code Audit Reference' }, toolId: 'secure-coding-flaws' },
+      { id: 'misc-useful-commands', name: { zh: '实用命令集', en: 'Useful Commands' }, toolId: 'misc-useful-commands' },
+      { id: 'supply-chain-security', name: { zh: '供应链安全', en: 'Supply Chain Security' }, toolId: 'supply-chain-security' },
+      { id: 'semgrep', name: 'Semgrep', toolId: 'semgrep' },
+      { id: 'gitleaks', name: 'Gitleaks', toolId: 'gitleaks' },
+      { id: 'trufflehog', name: 'TruffleHog', toolId: 'trufflehog' },
+      { id: 'trivy', name: 'Trivy', toolId: 'trivy' },
+      { id: 'syft', name: 'Syft', toolId: 'syft' },
+      { id: 'grype', name: 'Grype', toolId: 'grype' },
+      { id: 'osv-scanner', name: 'OSV-Scanner', toolId: 'osv-scanner' },
+      { id: 'checkov', name: 'Checkov', toolId: 'checkov' },
+      { id: 'tfsec', name: 'tfsec', toolId: 'tfsec' },
+      { id: 'prowler', name: 'Prowler', toolId: 'prowler' },
+      { id: 'cloud-misc-tools', name: { zh: '云平台杂项工具', en: 'Cloud Misc Tools' }, toolId: 'cloud-misc-tools' },
+      { id: 'aws-advanced-attacks', name: { zh: 'AWS高级攻击', en: 'AWS Advanced Attacks' }, toolId: 'aws-advanced-attacks' },
+      { id: 'enumeration-automation', name: { zh: '枚举自动化', en: 'Enum Automation' }, toolId: 'enumeration-automation' },
+      { id: 'exploit-frameworks', name: { zh: '漏洞利用框架', en: 'Exploit Frameworks' }, toolId: 'exploit-frameworks' },
+      { id: 'git-operations', name: { zh: 'Git安全操作', en: 'Git Security Ops' }, toolId: 'git-operations' },
+      { id: 'network-protocols', name: { zh: '网络协议渗透', en: 'Network Protocol Pentest' }, toolId: 'network-protocols' },
+      { id: 'network-scanning-advanced', name: { zh: '高级网络扫描', en: 'Advanced Network Scanning' }, toolId: 'network-scanning-advanced' },
+      { id: 'openvas-vulnerability-scan', name: 'OpenVAS', toolId: 'openvas-vulnerability-scan' },
+      { id: 'python-pentest-scripts', name: { zh: 'Python渗透脚本', en: 'Python Pentest Scripts' }, toolId: 'python-pentest-scripts' },
+      { id: 'wfuzz-tool', name: 'WFuzz', toolId: 'wfuzz-tool' },
+      { id: 'searchsploit-tool', name: 'SearchSploit', toolId: 'searchsploit-tool' },
+      { id: 'wireless-attacks', name: { zh: 'Wi-Fi安全测试', en: 'Wi-Fi Security Testing' }, toolId: 'wireless-attacks' },
+      { id: 'network-attacks', name: { zh: '网络层攻击', en: 'Network Layer Attacks' }, toolId: 'network-attacks' },
+      { id: 'dns-attacks', name: { zh: 'DNS攻击技术', en: 'DNS Attack Techniques' }, toolId: 'dns-attacks' },
+      { id: 'docker-commands', name: { zh: 'Docker管理命令', en: 'Docker Management' }, toolId: 'docker-commands' }
+    ]
   }
+
 ];
 
 export default navigationData;

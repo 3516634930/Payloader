@@ -1,0 +1,1058 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "toolMigrations": [
+    {
+      "sourceId": "jwt-none-attack",
+      "targets": [
+        {
+          "targetToolId": "jwt-decode",
+          "commandIndexes": [
+            0
+          ]
+        },
+        {
+          "targetToolId": "jwt-attacks",
+          "commandIndexes": [
+            1,
+            3
+          ],
+          "wafBypassIndexes": [
+            0
+          ]
+        },
+        {
+          "targetToolId": "jwt-tool",
+          "commandIndexes": [
+            2
+          ]
+        }
+      ],
+      "review": {
+        "rationale": "与 jwt-none-alg 重复，不再保留第二张同名 Payload；全部本地工作流按 command index 迁入工具。",
+        "commandDisposition": "duplicate-theme-routed-to-tools"
+      }
+    },
+    {
+      "sourceId": "jwt-key-confusion-157",
+      "targets": [
+        {
+          "targetToolId": "jwt-attacks",
+          "commandIndexes": [
+            0,
+            1,
+            3
+          ],
+          "wafBypassIndexes": [
+            0
+          ]
+        },
+        {
+          "targetToolId": "jwt-tool",
+          "commandIndexes": [
+            2
+          ]
+        }
+      ],
+      "review": {
+        "rationale": "与 jwt-key-confusion 重复，key fixture、算法混淆和格式检查迁入工具，不创建重复 Payload。",
+        "commandDisposition": "duplicate-theme-routed-to-tools"
+      }
+    },
+    {
+      "sourceId": "jwt-secret-bruteforce",
+      "targets": [
+        {
+          "targetToolId": "jwt-decode",
+          "commandIndexes": [
+            0
+          ]
+        },
+        {
+          "targetToolId": "hashcat",
+          "commandIndexes": [
+            1
+          ],
+          "wafBypassIndexes": [
+            0
+          ]
+        },
+        {
+          "targetToolId": "jwt-tool",
+          "commandIndexes": [
+            2
+          ]
+        },
+        {
+          "targetToolId": "jwt-attacks",
+          "commandIndexes": [
+            3
+          ]
+        }
+      ],
+      "review": {
+        "rationale": "算法识别、三候选字典核验、hashcat/jwt_tool 和本地签名验证均为工具工作流。",
+        "commandDisposition": "bounded-key-audit-routed-to-tools"
+      }
+    }
+  ],
+  "collectionSplits": [
+    {
+      "sourceId": "jwt-security",
+      "replacements": [
+        {
+          "id": "jwt-claim-profile-validation",
+          "name": {
+            "zh": "JWT Claim Profile 验证",
+            "en": "JWT Claim Profile Validation"
+          },
+          "description": {
+            "zh": "分别验证 issuer、audience、expiration 与显式 token type，只有完全匹配的短期测试 token 可以访问只读标记。",
+            "en": "Validates issuer, audience, expiration, and explicit token type independently so only a fully matching short-lived test token reaches the read-only marker."
+          },
+          "subCategory": {
+            "zh": "JWT Claim Profile 验证",
+            "en": "JWT Claim Profile Validation"
+          },
+          "tags": [
+            "jwt",
+            "jws",
+            "claim",
+            "profile",
+            "validation"
+          ],
+          "execution": [
+            {
+              "title": {
+                "zh": "JWT Claim Profile 验证对照 1",
+                "en": "JWT Claim Profile Validation Control 1"
+              },
+              "command": "python3 - <<'PY'\nimport base64, hashlib, hmac, json, time, urllib.error, urllib.request\nencode = lambda value: base64.urlsafe_b64encode(json.dumps(value, separators=(\",\", \":\")).encode()).rstrip(b\"=\").decode()\nsecret = b\"PAYLOADER_TEST_HS256_SECRET_32_BYTES\"\nnow = int(time.time())\ncases = {\n    \"valid\": {\"sub\":\"payloader-user\",\"iss\":\"payloader-test\",\"aud\":\"payloader-api\",\"iat\":now,\"exp\":now+60},\n    \"wrong-issuer\": {\"sub\":\"payloader-user\",\"iss\":\"payloader-other\",\"aud\":\"payloader-api\",\"iat\":now,\"exp\":now+60},\n    \"wrong-audience\": {\"sub\":\"payloader-user\",\"iss\":\"payloader-test\",\"aud\":\"payloader-other\",\"iat\":now,\"exp\":now+60},\n    \"expired\": {\"sub\":\"payloader-user\",\"iss\":\"payloader-test\",\"aud\":\"payloader-api\",\"iat\":now-120,\"exp\":now-60},\n}\nfor name, claims in cases.items():\n    header = encode({\"alg\":\"HS256\",\"typ\":\"payloader+jwt\",\"kid\":\"PAYLOADER_TEST_KEY\"})\n    payload = encode(claims)\n    signature = base64.urlsafe_b64encode(hmac.new(secret, (header+\".\"+payload).encode(), hashlib.sha256).digest()).rstrip(b\"=\").decode()\n    request = urllib.request.Request(\"http://127.0.0.1:8080/api/marker\", headers={\"Authorization\":\"Bearer \"+header+\".\"+payload+\".\"+signature})\n    try:\n        status = urllib.request.urlopen(request, timeout=5).status\n    except urllib.error.HTTPError as error:\n        status = error.code\n    print(name, status)\nPY\n# Only the valid profile reaches the read-only marker; issuer, audience, and expiration failures are independent.",
+              "description": {
+                "zh": "在隔离环境执行该JWT Claim Profile 验证对照，只访问 localhost 只读标记，并记录服务端算法、key 与 claim 决策。",
+                "en": "Run this JWT Claim Profile Validation control in isolation, access only the localhost read-only marker, and record server-side algorithm, key, and claim decisions."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": [],
+          "attackChain": [
+            {
+              "title": {
+                "zh": "建立JWT Claim Profile 验证基线",
+                "en": "Baseline JWT Claim Profile Validation"
+              },
+              "description": {
+                "zh": "用测试 issuer 签发短期有效 token，记录算法、key ID、issuer、audience、type、主体和标记访问。",
+                "en": "Issue a short-lived valid token from the test issuer and record algorithm, key ID, issuer, audience, type, principal, and marker access."
+              }
+            },
+            {
+              "title": {
+                "zh": "提交JWT Claim Profile 验证阴性对照",
+                "en": "Submit the JWT Claim Profile Validation Negative Control"
+              },
+              "description": {
+                "zh": "只提交当前验证卡的第一条对照，并保持 issuer、主体和只读目标不变。",
+                "en": "Submit only the first control in this validation card while keeping issuer, principal, and read-only target unchanged."
+              },
+              "payloadRef": {
+                "area": "execution",
+                "index": 0
+              }
+            },
+            {
+              "title": {
+                "zh": "确认验证器拒绝分支",
+                "en": "Confirm the Verifier Rejection Branch"
+              },
+              "description": {
+                "zh": "关联算法选择、key resolver、claim 校验、HTTP 状态和最终主体，排除仅能生成或解码 token 的假阳性。",
+                "en": "Correlate algorithm selection, key resolver, claim validation, HTTP status, and final principal, excluding token generation or decoding as false positives."
+              }
+            },
+            {
+              "title": {
+                "zh": "撤销 fixture 并回归",
+                "en": "Remove Fixtures and Regress"
+              },
+              "description": {
+                "zh": "删除本地 token、key、证书和缓存，重放有效基线与全部固定阴性对照。",
+                "en": "Delete local tokens, keys, certificates, and caches, then replay the valid baseline and every fixed negative control."
+              }
+            }
+          ]
+        },
+        {
+          "id": "jwt-embedded-jwk-trust-validation",
+          "name": {
+            "zh": "JWT 内嵌 JWK 信任验证",
+            "en": "JWT Embedded JWK Trust Validation"
+          },
+          "description": {
+            "zh": "验证服务端不会直接信任 token 自带的 jwk，而只使用 issuer 配置中固定的 key 来源。",
+            "en": "Verifies that the server does not trust a token-supplied jwk and uses only key sources pinned in issuer configuration."
+          },
+          "subCategory": {
+            "zh": "JWT 内嵌 JWK 信任验证",
+            "en": "JWT Embedded JWK Trust Validation"
+          },
+          "tags": [
+            "jwt",
+            "jws",
+            "embedded",
+            "jwk",
+            "trust",
+            "validation"
+          ],
+          "execution": [
+            {
+              "title": {
+                "zh": "JWT 内嵌 JWK 信任验证对照 1",
+                "en": "JWT Embedded JWK Trust Validation Control 1"
+              },
+              "command": "python3 - <<'PY'\nimport base64, hashlib, hmac, json, time, urllib.error, urllib.request\nencode = lambda value: base64.urlsafe_b64encode(json.dumps(value, separators=(\",\", \":\")).encode()).rstrip(b\"=\").decode()\nheader = encode({\"alg\":\"HS256\",\"typ\":\"payloader+jwt\",\"jwk\":{\"kty\":\"oct\",\"kid\":\"PAYLOADER_UNTRUSTED\",\"k\":\"UEFZTE9BREVSX1VOVFJVU1RFRA\"}})\npayload = encode({\"sub\":\"payloader-negative\",\"iss\":\"payloader-test\",\"aud\":\"payloader-api\",\"iat\":int(time.time()),\"exp\":int(time.time())+60})\nsignature = base64.urlsafe_b64encode(hmac.new(b\"PAYLOADER_UNTRUSTED\", (header+\".\"+payload).encode(), hashlib.sha256).digest()).rstrip(b\"=\").decode()\nrequest = urllib.request.Request(\"http://127.0.0.1:8080/api/marker\", headers={\"Authorization\":\"Bearer \"+header+\".\"+payload+\".\"+signature})\ntry:\n    print(urllib.request.urlopen(request, timeout=5).status)\nexcept urllib.error.HTTPError as error:\n    print(error.code)\nPY\n# Expected: the token-supplied JWK is ignored and the token is rejected because no configured key matches.",
+              "description": {
+                "zh": "在隔离环境执行该JWT 内嵌 JWK 信任验证对照，只访问 localhost 只读标记，并记录服务端算法、key 与 claim 决策。",
+                "en": "Run this JWT Embedded JWK Trust Validation control in isolation, access only the localhost read-only marker, and record server-side algorithm, key, and claim decisions."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": [],
+          "attackChain": [
+            {
+              "title": {
+                "zh": "建立JWT 内嵌 JWK 信任验证基线",
+                "en": "Baseline JWT Embedded JWK Trust Validation"
+              },
+              "description": {
+                "zh": "用测试 issuer 签发短期有效 token，记录算法、key ID、issuer、audience、type、主体和标记访问。",
+                "en": "Issue a short-lived valid token from the test issuer and record algorithm, key ID, issuer, audience, type, principal, and marker access."
+              }
+            },
+            {
+              "title": {
+                "zh": "提交JWT 内嵌 JWK 信任验证阴性对照",
+                "en": "Submit the JWT Embedded JWK Trust Validation Negative Control"
+              },
+              "description": {
+                "zh": "只提交当前验证卡的第一条对照，并保持 issuer、主体和只读目标不变。",
+                "en": "Submit only the first control in this validation card while keeping issuer, principal, and read-only target unchanged."
+              },
+              "payloadRef": {
+                "area": "execution",
+                "index": 0
+              }
+            },
+            {
+              "title": {
+                "zh": "确认验证器拒绝分支",
+                "en": "Confirm the Verifier Rejection Branch"
+              },
+              "description": {
+                "zh": "关联算法选择、key resolver、claim 校验、HTTP 状态和最终主体，排除仅能生成或解码 token 的假阳性。",
+                "en": "Correlate algorithm selection, key resolver, claim validation, HTTP status, and final principal, excluding token generation or decoding as false positives."
+              }
+            },
+            {
+              "title": {
+                "zh": "撤销 fixture 并回归",
+                "en": "Remove Fixtures and Regress"
+              },
+              "description": {
+                "zh": "删除本地 token、key、证书和缓存，重放有效基线与全部固定阴性对照。",
+                "en": "Delete local tokens, keys, certificates, and caches, then replay the valid baseline and every fixed negative control."
+              }
+            }
+          ]
+        },
+        {
+          "id": "jwt-x5c-chain-validation",
+          "name": {
+            "zh": "JWT X5C 证书链信任验证",
+            "en": "JWT X5C Certificate Chain Trust Validation"
+          },
+          "description": {
+            "zh": "使用本地自签测试证书构造签名正确的阴性 token，确认验证器仍执行完整证书链和 issuer 信任校验。",
+            "en": "Uses a locally self-signed test certificate to create a correctly signed negative token and confirms that the verifier still validates the certificate chain and issuer trust."
+          },
+          "subCategory": {
+            "zh": "JWT X5C 证书链信任验证",
+            "en": "JWT X5C Certificate Chain Trust Validation"
+          },
+          "tags": [
+            "jwt",
+            "jws",
+            "x5c",
+            "chain",
+            "validation"
+          ],
+          "execution": [
+            {
+              "title": {
+                "zh": "JWT X5C 证书链信任验证对照 1",
+                "en": "JWT X5C Certificate Chain Trust Validation Control 1"
+              },
+              "command": "work_dir=\"$(mktemp -d)\"\ntrap 'rm -rf \"$work_dir\"' EXIT\nopenssl req -x509 -nodes -newkey rsa:2048 -keyout \"$work_dir/key.pem\" -out \"$work_dir/cert.pem\" -days 1 -subj \"/CN=payloader-untrusted\"\npython3 - \"$work_dir/key.pem\" \"$work_dir/cert.pem\" <<'PY'\nimport base64, json, subprocess, sys, time, urllib.error, urllib.request\nencode = lambda raw: base64.urlsafe_b64encode(raw).rstrip(b\"=\").decode()\ncertificate = subprocess.check_output([\"openssl\",\"x509\",\"-in\",sys.argv[2],\"-outform\",\"DER\"])\nheader = encode(json.dumps({\"alg\":\"RS256\",\"typ\":\"payloader+jwt\",\"x5c\":[base64.b64encode(certificate).decode()]}, separators=(\",\",\":\")).encode())\npayload = encode(json.dumps({\"sub\":\"payloader-negative\",\"iss\":\"payloader-test\",\"aud\":\"payloader-api\",\"iat\":int(time.time()),\"exp\":int(time.time())+60}, separators=(\",\",\":\")).encode())\nsigning_input = (header+\".\"+payload).encode()\nsignature = subprocess.check_output([\"openssl\",\"dgst\",\"-sha256\",\"-sign\",sys.argv[1]], input=signing_input)\ntoken = header+\".\"+payload+\".\"+encode(signature)\nrequest = urllib.request.Request(\"http://127.0.0.1:8080/api/marker\", headers={\"Authorization\":\"Bearer \"+token})\ntry:\n    print(urllib.request.urlopen(request, timeout=5).status)\nexcept urllib.error.HTTPError as error:\n    print(error.code)\nPY\n# Expected: a correctly signed token with an untrusted self-signed x5c chain is rejected.",
+              "description": {
+                "zh": "在隔离环境执行该JWT X5C 证书链信任验证对照，只访问 localhost 只读标记，并记录服务端算法、key 与 claim 决策。",
+                "en": "Run this JWT X5C Certificate Chain Trust Validation control in isolation, access only the localhost read-only marker, and record server-side algorithm, key, and claim decisions."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": [],
+          "attackChain": [
+            {
+              "title": {
+                "zh": "建立JWT X5C 证书链信任验证基线",
+                "en": "Baseline JWT X5C Certificate Chain Trust Validation"
+              },
+              "description": {
+                "zh": "用测试 issuer 签发短期有效 token，记录算法、key ID、issuer、audience、type、主体和标记访问。",
+                "en": "Issue a short-lived valid token from the test issuer and record algorithm, key ID, issuer, audience, type, principal, and marker access."
+              }
+            },
+            {
+              "title": {
+                "zh": "提交JWT X5C 证书链信任验证阴性对照",
+                "en": "Submit the JWT X5C Certificate Chain Trust Validation Negative Control"
+              },
+              "description": {
+                "zh": "只提交当前验证卡的第一条对照，并保持 issuer、主体和只读目标不变。",
+                "en": "Submit only the first control in this validation card while keeping issuer, principal, and read-only target unchanged."
+              },
+              "payloadRef": {
+                "area": "execution",
+                "index": 0
+              }
+            },
+            {
+              "title": {
+                "zh": "确认验证器拒绝分支",
+                "en": "Confirm the Verifier Rejection Branch"
+              },
+              "description": {
+                "zh": "关联算法选择、key resolver、claim 校验、HTTP 状态和最终主体，排除仅能生成或解码 token 的假阳性。",
+                "en": "Correlate algorithm selection, key resolver, claim validation, HTTP status, and final principal, excluding token generation or decoding as false positives."
+              }
+            },
+            {
+              "title": {
+                "zh": "撤销 fixture 并回归",
+                "en": "Remove Fixtures and Regress"
+              },
+              "description": {
+                "zh": "删除本地 token、key、证书和缓存，重放有效基线与全部固定阴性对照。",
+                "en": "Delete local tokens, keys, certificates, and caches, then replay the valid baseline and every fixed negative control."
+              }
+            }
+          ]
+        }
+      ],
+      "toolTargets": [
+        {
+          "targetToolId": "jwt-decode",
+          "commands": [
+            {
+              "title": {
+                "zh": "本地 JWT 工具工作流 1",
+                "en": "Local JWT Tool Workflow 1"
+              },
+              "command": "python3 - <<'PY'\nimport base64, json\ntoken = \"eyJhbGciOiJIUzI1NiIsInR5cCI6InBheWxvYWRlcitqd3QifQ.eyJzdWIiOiJwYXlsb2FkZXItdXNlciIsImlzcyI6InBheWxvYWRlci10ZXN0IiwiYXVkIjoicGF5bG9hZGVyLWFwaSJ9.PAYLOADER_TEST_SIGNATURE\"\nfor label, segment in zip((\"header\", \"payload\"), token.split(\".\")[:2]):\n    decoded = base64.urlsafe_b64decode(segment + \"=\" * (-len(segment) % 4))\n    print(label, json.loads(decoded))\nPY\n# Structure inspection does not verify the signature, issuer, audience, time, or token type.",
+              "description": {
+                "zh": "仅在本地测试 token、固定测试 key 与 localhost 服务上执行该工作流，并保留算法、key 来源和验证器日志。",
+                "en": "Run this workflow only with local test tokens, fixed test keys, and localhost services while preserving algorithm, key-source, and verifier logs."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ]
+        },
+        {
+          "targetToolId": "jwt-attacks",
+          "commands": [
+            {
+              "title": {
+                "zh": "本地 JWT 工具工作流 1",
+                "en": "Local JWT Tool Workflow 1"
+              },
+              "command": "python3 - <<'PY'\nimport base64, json, time\nencode = lambda value: base64.urlsafe_b64encode(json.dumps(value, separators=(\",\", \":\")).encode()).rstrip(b\"=\").decode()\nheader = {\"alg\": \"none\", \"typ\": \"payloader+jwt\"}\nclaims = {\"sub\": \"payloader-negative\", \"iss\": \"payloader-test\", \"aud\": \"payloader-api\", \"iat\": int(time.time()), \"exp\": int(time.time()) + 60}\nprint(encode(header) + \".\" + encode(claims) + \".\")\nPY\n# Expected: generation succeeds locally; every configured verifier rejects the unsigned token.",
+              "description": {
+                "zh": "仅在本地测试 token、固定测试 key 与 localhost 服务上执行该工作流，并保留算法、key 来源和验证器日志。",
+                "en": "Run this workflow only with local test tokens, fixed test keys, and localhost services while preserving algorithm, key-source, and verifier logs."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            },
+            {
+              "title": {
+                "zh": "本地 JWT 工具工作流 2",
+                "en": "Local JWT Tool Workflow 2"
+              },
+              "command": "work_dir=\"$(mktemp -d)\"\ntrap 'rm -rf \"$work_dir\"' EXIT\nopenssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out \"$work_dir/test-private.pem\"\nopenssl pkey -in \"$work_dir/test-private.pem\" -pubout -out \"$work_dir/test-public.pem\"\npython3 - \"$work_dir/test-public.pem\" <<'PY'\nimport base64, hashlib, hmac, json, sys, time\nencode = lambda value: base64.urlsafe_b64encode(json.dumps(value, separators=(\",\", \":\")).encode()).rstrip(b\"=\").decode()\npublic_key = open(sys.argv[1], \"rb\").read()\nheader = encode({\"alg\": \"HS256\", \"typ\": \"payloader+jwt\", \"kid\": \"PAYLOADER_RSA_TEST_KEY\"})\nclaims = encode({\"sub\": \"payloader-negative\", \"iss\": \"payloader-test\", \"aud\": \"payloader-api\", \"iat\": int(time.time()), \"exp\": int(time.time()) + 60})\nsignature = base64.urlsafe_b64encode(hmac.new(public_key, (header + \".\" + claims).encode(), hashlib.sha256).digest()).rstrip(b\"=\").decode()\nprint(header + \".\" + claims + \".\" + signature)\nPY\n# This historical confusion token is generated only from a temporary local public key; a modern verifier rejects it.",
+              "description": {
+                "zh": "仅在本地测试 token、固定测试 key 与 localhost 服务上执行该工作流，并保留算法、key 来源和验证器日志。",
+                "en": "Run this workflow only with local test tokens, fixed test keys, and localhost services while preserving algorithm, key-source, and verifier logs."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ]
+        },
+        {
+          "targetToolId": "hashcat",
+          "commands": [
+            {
+              "title": {
+                "zh": "本地 JWT 工具工作流 1",
+                "en": "Local JWT Tool Workflow 1"
+              },
+              "command": "python3 - <<'PY'\nimport base64, hashlib, hmac\nmessage = b\"PAYLOADER_TEST_HEADER.PAYLOADER_TEST_PAYLOAD\"\napproved_secret = b\"PAYLOADER_TEST_HS256_SECRET_32_BYTES\"\nsignature = hmac.new(approved_secret, message, hashlib.sha256).digest()\ncandidates = [b\"PAYLOADER_WRONG_A\", b\"PAYLOADER_WRONG_B\", approved_secret]\nmatches = [candidate.decode() for candidate in candidates if hmac.compare_digest(hmac.new(candidate, message, hashlib.sha256).digest(), signature)]\nprint({\"candidate_count\": len(candidates), \"matches\": matches})\nPY\n# Fixed three-candidate owned-token audit; no masks, general wordlists, or production material.",
+              "description": {
+                "zh": "仅在本地测试 token、固定测试 key 与 localhost 服务上执行该工作流，并保留算法、key 来源和验证器日志。",
+                "en": "Run this workflow only with local test tokens, fixed test keys, and localhost services while preserving algorithm, key-source, and verifier logs."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "sourceId": "jwt-none-alg",
+      "replacements": [
+        {
+          "id": "jwt-none-algorithm-rejection",
+          "name": {
+            "zh": "JWT None 与未签名令牌拒绝",
+            "en": "JWT None and Unsigned Token Rejection"
+          },
+          "description": {
+            "zh": "用固定数量的 none 大小写、缺失算法以及空、任意或缺失签名对照，确认验证器在使用 claim 前拒绝未签名 JWS。",
+            "en": "Uses a fixed set of none case variants, missing algorithms, and empty, arbitrary, or missing signatures to confirm rejection before claims are used."
+          },
+          "subCategory": {
+            "zh": "JWT None 与未签名令牌拒绝",
+            "en": "JWT None and Unsigned Token Rejection"
+          },
+          "tags": [
+            "jwt",
+            "jws",
+            "none",
+            "algorithm",
+            "rejection"
+          ],
+          "execution": [
+            {
+              "title": {
+                "zh": "JWT None 与未签名令牌拒绝对照 1",
+                "en": "JWT None and Unsigned Token Rejection Control 1"
+              },
+              "command": "python3 - <<'PY'\nimport base64, json, time\nencode = lambda value: base64.urlsafe_b64encode(json.dumps(value, separators=(\",\", \":\")).encode()).rstrip(b\"=\").decode()\nheader = {\"alg\": \"none\", \"typ\": \"payloader+jwt\"}\nclaims = {\"sub\": \"payloader-negative\", \"iss\": \"payloader-test\", \"aud\": \"payloader-api\", \"iat\": int(time.time()), \"exp\": int(time.time()) + 60}\nprint(encode(header) + \".\" + encode(claims) + \".\")\nPY\n# Expected: generation succeeds locally; every configured verifier rejects the unsigned token.",
+              "description": {
+                "zh": "在隔离环境执行该JWT None 与未签名令牌拒绝对照，只访问 localhost 只读标记，并记录服务端算法、key 与 claim 决策。",
+                "en": "Run this JWT None and Unsigned Token Rejection control in isolation, access only the localhost read-only marker, and record server-side algorithm, key, and claim decisions."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            },
+            {
+              "title": {
+                "zh": "JWT None 与未签名令牌拒绝对照 2",
+                "en": "JWT None and Unsigned Token Rejection Control 2"
+              },
+              "command": "python3 - <<'PY'\nimport base64, json, time\nencode = lambda value: base64.urlsafe_b64encode(json.dumps(value, separators=(\",\", \":\")).encode()).rstrip(b\"=\").decode()\nfor subject in (\"payloader-user\", \"payloader-negative\"):\n    claims = {\"sub\":subject,\"iss\":\"payloader-test\",\"aud\":\"payloader-api\",\"iat\":int(time.time()),\"exp\":int(time.time())+60}\n    print(encode({\"alg\":\"none\",\"typ\":\"payloader+jwt\"})+\".\"+encode(claims)+\".\")\nPY\n# Claim changes do not matter because every unsigned token is rejected before authorization.",
+              "description": {
+                "zh": "在隔离环境执行该JWT None 与未签名令牌拒绝对照，只访问 localhost 只读标记，并记录服务端算法、key 与 claim 决策。",
+                "en": "Run this JWT None and Unsigned Token Rejection control in isolation, access only the localhost read-only marker, and record server-side algorithm, key, and claim decisions."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            },
+            {
+              "title": {
+                "zh": "JWT None 与未签名令牌拒绝对照 3",
+                "en": "JWT None and Unsigned Token Rejection Control 3"
+              },
+              "command": "python3 - <<'PY'\nimport base64, json, time, urllib.error, urllib.request\nencode = lambda value: base64.urlsafe_b64encode(json.dumps(value, separators=(\",\", \":\")).encode()).rstrip(b\"=\").decode()\ntoken = encode({\"alg\": \"none\", \"typ\": \"payloader+jwt\"}) + \".\" + encode({\"sub\": \"payloader-negative\", \"iss\": \"payloader-test\", \"aud\": \"payloader-api\", \"iat\": int(time.time()), \"exp\": int(time.time()) + 60}) + \".\"\nrequest = urllib.request.Request(\"http://127.0.0.1:8080/api/marker\", headers={\"Authorization\": \"Bearer \" + token})\ntry:\n    print(urllib.request.urlopen(request, timeout=5).status)\nexcept urllib.error.HTTPError as error:\n    print(error.code)\nPY\n# Expected: 401 or 403 and no authenticated principal.",
+              "description": {
+                "zh": "在隔离环境执行该JWT None 与未签名令牌拒绝对照，只访问 localhost 只读标记，并记录服务端算法、key 与 claim 决策。",
+                "en": "Run this JWT None and Unsigned Token Rejection control in isolation, access only the localhost read-only marker, and record server-side algorithm, key, and claim decisions."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            },
+            {
+              "title": {
+                "zh": "JWT None 与未签名令牌拒绝对照 4",
+                "en": "JWT None and Unsigned Token Rejection Control 4"
+              },
+              "command": "python3 - <<'PY'\nimport base64, json, time, urllib.error, urllib.request\nencode = lambda value: base64.urlsafe_b64encode(json.dumps(value, separators=(\",\", \":\")).encode()).rstrip(b\"=\").decode()\nclaims = encode({\"sub\": \"payloader-negative\", \"iss\": \"payloader-test\", \"aud\": \"payloader-api\", \"iat\": int(time.time()), \"exp\": int(time.time()) + 60})\nfor algorithm in (\"none\", \"None\", \"NONE\", \"\"):\n    token = encode({\"alg\": algorithm, \"typ\": \"payloader+jwt\"}) + \".\" + claims + \".\"\n    request = urllib.request.Request(\"http://127.0.0.1:8080/api/marker\", headers={\"Authorization\": \"Bearer \" + token})\n    try:\n        status = urllib.request.urlopen(request, timeout=5).status\n    except urllib.error.HTTPError as error:\n        status = error.code\n    print(repr(algorithm), status)\nPY\n# Fixed four-case budget; every unsigned or unapproved algorithm is rejected.",
+              "description": {
+                "zh": "在隔离环境执行该JWT None 与未签名令牌拒绝对照，只访问 localhost 只读标记，并记录服务端算法、key 与 claim 决策。",
+                "en": "Run this JWT None and Unsigned Token Rejection control in isolation, access only the localhost read-only marker, and record server-side algorithm, key, and claim decisions."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            },
+            {
+              "title": {
+                "zh": "JWT None 与未签名令牌拒绝对照 5",
+                "en": "JWT None and Unsigned Token Rejection Control 5"
+              },
+              "command": "python3 - <<'PY'\nimport urllib.error, urllib.request\ntokens = (\n    \"PAYLOADER_HEADER.PAYLOADER_PAYLOAD.\",\n    \"PAYLOADER_HEADER.PAYLOADER_PAYLOAD.PAYLOADER_ARBITRARY\",\n    \"PAYLOADER_HEADER.PAYLOADER_PAYLOAD\",\n)\nfor token in tokens:\n    request = urllib.request.Request(\"http://127.0.0.1:8080/api/marker\", headers={\"Authorization\": \"Bearer \" + token})\n    try:\n        status = urllib.request.urlopen(request, timeout=5).status\n    except urllib.error.HTTPError as error:\n        status = error.code\n    print(status)\nPY\n# Empty, arbitrary, and missing signature segments are all rejected before claim use.",
+              "description": {
+                "zh": "在隔离环境执行该JWT None 与未签名令牌拒绝对照，只访问 localhost 只读标记，并记录服务端算法、key 与 claim 决策。",
+                "en": "Run this JWT None and Unsigned Token Rejection control in isolation, access only the localhost read-only marker, and record server-side algorithm, key, and claim decisions."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": [],
+          "attackChain": [
+            {
+              "title": {
+                "zh": "建立JWT None 与未签名令牌拒绝基线",
+                "en": "Baseline JWT None and Unsigned Token Rejection"
+              },
+              "description": {
+                "zh": "用测试 issuer 签发短期有效 token，记录算法、key ID、issuer、audience、type、主体和标记访问。",
+                "en": "Issue a short-lived valid token from the test issuer and record algorithm, key ID, issuer, audience, type, principal, and marker access."
+              }
+            },
+            {
+              "title": {
+                "zh": "提交JWT None 与未签名令牌拒绝阴性对照",
+                "en": "Submit the JWT None and Unsigned Token Rejection Negative Control"
+              },
+              "description": {
+                "zh": "只提交当前验证卡的第一条对照，并保持 issuer、主体和只读目标不变。",
+                "en": "Submit only the first control in this validation card while keeping issuer, principal, and read-only target unchanged."
+              },
+              "payloadRef": {
+                "area": "execution",
+                "index": 0
+              }
+            },
+            {
+              "title": {
+                "zh": "确认验证器拒绝分支",
+                "en": "Confirm the Verifier Rejection Branch"
+              },
+              "description": {
+                "zh": "关联算法选择、key resolver、claim 校验、HTTP 状态和最终主体，排除仅能生成或解码 token 的假阳性。",
+                "en": "Correlate algorithm selection, key resolver, claim validation, HTTP status, and final principal, excluding token generation or decoding as false positives."
+              }
+            },
+            {
+              "title": {
+                "zh": "撤销 fixture 并回归",
+                "en": "Remove Fixtures and Regress"
+              },
+              "description": {
+                "zh": "删除本地 token、key、证书和缓存，重放有效基线与全部固定阴性对照。",
+                "en": "Delete local tokens, keys, certificates, and caches, then replay the valid baseline and every fixed negative control."
+              }
+            }
+          ]
+        }
+      ],
+      "toolTargets": [
+        {
+          "targetToolId": "jwt-decode",
+          "commands": [
+            {
+              "title": {
+                "zh": "本地 JWT 工具工作流 1",
+                "en": "Local JWT Tool Workflow 1"
+              },
+              "command": "python3 - <<'PY'\nimport base64, json\ntoken = \"eyJhbGciOiJIUzI1NiIsInR5cCI6InBheWxvYWRlcitqd3QifQ.eyJzdWIiOiJwYXlsb2FkZXItdXNlciIsImlzcyI6InBheWxvYWRlci10ZXN0IiwiYXVkIjoicGF5bG9hZGVyLWFwaSJ9.PAYLOADER_TEST_SIGNATURE\"\nfor label, segment in zip((\"header\", \"payload\"), token.split(\".\")[:2]):\n    decoded = base64.urlsafe_b64decode(segment + \"=\" * (-len(segment) % 4))\n    print(label, json.loads(decoded))\nPY\n# Structure inspection does not verify the signature, issuer, audience, time, or token type.",
+              "description": {
+                "zh": "仅在本地测试 token、固定测试 key 与 localhost 服务上执行该工作流，并保留算法、key 来源和验证器日志。",
+                "en": "Run this workflow only with local test tokens, fixed test keys, and localhost services while preserving algorithm, key-source, and verifier logs."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "sourceId": "jwt-key-confusion",
+      "replacements": [
+        {
+          "id": "jwt-algorithm-key-type-binding",
+          "name": {
+            "zh": "JWT 算法与 Key 类型绑定",
+            "en": "JWT Algorithm and Key-Type Binding"
+          },
+          "description": {
+            "zh": "使用临时本地 RSA public key 构造历史 RS256 到 HS256 混淆对照，确认验证器固定算法且不把 public key 当 HMAC secret。",
+            "en": "Builds a historical RS256-to-HS256 confusion control from a temporary local RSA public key and confirms that the verifier pins algorithms and never treats the public key as an HMAC secret."
+          },
+          "subCategory": {
+            "zh": "JWT 算法与 Key 类型绑定",
+            "en": "JWT Algorithm and Key-Type Binding"
+          },
+          "tags": [
+            "jwt",
+            "jws",
+            "algorithm",
+            "key",
+            "type",
+            "binding"
+          ],
+          "execution": [
+            {
+              "title": {
+                "zh": "JWT 算法与 Key 类型绑定对照 1",
+                "en": "JWT Algorithm and Key-Type Binding Control 1"
+              },
+              "command": "work_dir=\"$(mktemp -d)\"\ntrap 'rm -rf \"$work_dir\"' EXIT\nopenssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out \"$work_dir/test-private.pem\"\nopenssl pkey -in \"$work_dir/test-private.pem\" -pubout -out \"$work_dir/test-public.pem\"\npython3 - \"$work_dir/test-public.pem\" <<'PY'\nimport base64, hashlib, hmac, json, sys, time\nencode = lambda value: base64.urlsafe_b64encode(json.dumps(value, separators=(\",\", \":\")).encode()).rstrip(b\"=\").decode()\npublic_key = open(sys.argv[1], \"rb\").read()\nheader = encode({\"alg\": \"HS256\", \"typ\": \"payloader+jwt\", \"kid\": \"PAYLOADER_RSA_TEST_KEY\"})\nclaims = encode({\"sub\": \"payloader-negative\", \"iss\": \"payloader-test\", \"aud\": \"payloader-api\", \"iat\": int(time.time()), \"exp\": int(time.time()) + 60})\nsignature = base64.urlsafe_b64encode(hmac.new(public_key, (header + \".\" + claims).encode(), hashlib.sha256).digest()).rstrip(b\"=\").decode()\nprint(header + \".\" + claims + \".\" + signature)\nPY\n# This historical confusion token is generated only from a temporary local public key; a modern verifier rejects it.",
+              "description": {
+                "zh": "在隔离环境执行该JWT 算法与 Key 类型绑定对照，只访问 localhost 只读标记，并记录服务端算法、key 与 claim 决策。",
+                "en": "Run this JWT Algorithm and Key-Type Binding control in isolation, access only the localhost read-only marker, and record server-side algorithm, key, and claim decisions."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            },
+            {
+              "title": {
+                "zh": "JWT 算法与 Key 类型绑定对照 2",
+                "en": "JWT Algorithm and Key-Type Binding Control 2"
+              },
+              "command": "curl -sS --max-time 5 -o /dev/null -w \"%{http_code}\\n\" -H \"Authorization: Bearer PAYLOADER_ALG_CONFUSION_TEST_TOKEN\" http://127.0.0.1:8080/api/marker\n# Expected: 401 or 403 because the verifier pins RS256 and refuses an RSA public key as an HMAC secret.",
+              "description": {
+                "zh": "在隔离环境执行该JWT 算法与 Key 类型绑定对照，只访问 localhost 只读标记，并记录服务端算法、key 与 claim 决策。",
+                "en": "Run this JWT Algorithm and Key-Type Binding control in isolation, access only the localhost read-only marker, and record server-side algorithm, key, and claim decisions."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": [],
+          "attackChain": [
+            {
+              "title": {
+                "zh": "建立JWT 算法与 Key 类型绑定基线",
+                "en": "Baseline JWT Algorithm and Key-Type Binding"
+              },
+              "description": {
+                "zh": "用测试 issuer 签发短期有效 token，记录算法、key ID、issuer、audience、type、主体和标记访问。",
+                "en": "Issue a short-lived valid token from the test issuer and record algorithm, key ID, issuer, audience, type, principal, and marker access."
+              }
+            },
+            {
+              "title": {
+                "zh": "提交JWT 算法与 Key 类型绑定阴性对照",
+                "en": "Submit the JWT Algorithm and Key-Type Binding Negative Control"
+              },
+              "description": {
+                "zh": "只提交当前验证卡的第一条对照，并保持 issuer、主体和只读目标不变。",
+                "en": "Submit only the first control in this validation card while keeping issuer, principal, and read-only target unchanged."
+              },
+              "payloadRef": {
+                "area": "execution",
+                "index": 0
+              }
+            },
+            {
+              "title": {
+                "zh": "确认验证器拒绝分支",
+                "en": "Confirm the Verifier Rejection Branch"
+              },
+              "description": {
+                "zh": "关联算法选择、key resolver、claim 校验、HTTP 状态和最终主体，排除仅能生成或解码 token 的假阳性。",
+                "en": "Correlate algorithm selection, key resolver, claim validation, HTTP status, and final principal, excluding token generation or decoding as false positives."
+              }
+            },
+            {
+              "title": {
+                "zh": "撤销 fixture 并回归",
+                "en": "Remove Fixtures and Regress"
+              },
+              "description": {
+                "zh": "删除本地 token、key、证书和缓存，重放有效基线与全部固定阴性对照。",
+                "en": "Delete local tokens, keys, certificates, and caches, then replay the valid baseline and every fixed negative control."
+              }
+            }
+          ]
+        },
+        {
+          "id": "jwt-kid-lookup-validation",
+          "name": {
+            "zh": "JWT KID 允许列表与查找边界",
+            "en": "JWT KID Allowlist and Lookup Boundary"
+          },
+          "description": {
+          "zh": "用已知、未知、禁用和超长的合成 kid 检查 key resolver，仅允许配置中的不透明标识进入签名验证。",
+          "en": "Checks the key resolver with known, unknown, disabled, and overlong synthetic kid values so only configured opaque identifiers reach signature verification."
+          },
+          "subCategory": {
+            "zh": "JWT KID 允许列表与查找边界",
+            "en": "JWT KID Allowlist and Lookup Boundary"
+          },
+          "tags": [
+            "jwt",
+            "jws",
+            "kid",
+            "lookup",
+            "validation"
+          ],
+          "execution": [
+            {
+              "title": {
+                "zh": "JWT KID 允许列表与查找边界对照 1",
+                "en": "JWT KID Allowlist and Lookup Boundary Control 1"
+              },
+              "command": "python3 - <<'PY'\nimport base64, hashlib, hmac, json, time, urllib.error, urllib.request\nencode = lambda value: base64.urlsafe_b64encode(json.dumps(value, separators=(\",\", \":\")).encode()).rstrip(b\"=\").decode()\nsecret = b\"PAYLOADER_TEST_HS256_SECRET_32_BYTES\"\nkids = (\"PAYLOADER_TEST_KEY\", \"PAYLOADER_UNKNOWN_KEY\", \"PAYLOADER_DISABLED_KEY\", \"PAYLOADER_KEY_\" + \"X\" * 80)\nfor kid in kids:\n    header = encode({\"alg\": \"HS256\", \"typ\": \"payloader+jwt\", \"kid\": kid})\n    claims = encode({\"sub\": \"payloader-user\", \"iss\": \"payloader-test\", \"aud\": \"payloader-api\", \"iat\": int(time.time()), \"exp\": int(time.time()) + 60})\n    signature = base64.urlsafe_b64encode(hmac.new(secret, (header + \".\" + claims).encode(), hashlib.sha256).digest()).rstrip(b\"=\").decode()\n    request = urllib.request.Request(\"http://127.0.0.1:8080/api/marker\", headers={\"Authorization\": \"Bearer \" + header + \".\" + claims + \".\" + signature})\n    try:\n        status = urllib.request.urlopen(request, timeout=5).status\n    except urllib.error.HTTPError as error:\n        status = error.code\n    print(kid[:32], status)\nPY\n# Only the configured opaque key ID may reach signature verification; unknown, disabled, and overlong identifiers are rejected.",
+              "description": {
+                "zh": "在隔离环境执行该JWT KID 允许列表与查找边界对照，只访问 localhost 只读标记，并记录服务端算法、key 与 claim 决策。",
+                "en": "Run this JWT KID Allowlist and Lookup Boundary control in isolation, access only the localhost read-only marker, and record server-side algorithm, key, and claim decisions."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": [],
+          "attackChain": [
+            {
+              "title": {
+                "zh": "建立JWT KID 允许列表与查找边界基线",
+                "en": "Baseline JWT KID Allowlist and Lookup Boundary"
+              },
+              "description": {
+                "zh": "用测试 issuer 签发短期有效 token，记录算法、key ID、issuer、audience、type、主体和标记访问。",
+                "en": "Issue a short-lived valid token from the test issuer and record algorithm, key ID, issuer, audience, type, principal, and marker access."
+              }
+            },
+            {
+              "title": {
+                "zh": "提交JWT KID 允许列表与查找边界阴性对照",
+                "en": "Submit the JWT KID Allowlist and Lookup Boundary Negative Control"
+              },
+              "description": {
+                "zh": "只提交当前验证卡的第一条对照，并保持 issuer、主体和只读目标不变。",
+                "en": "Submit only the first control in this validation card while keeping issuer, principal, and read-only target unchanged."
+              },
+              "payloadRef": {
+                "area": "execution",
+                "index": 0
+              }
+            },
+            {
+              "title": {
+                "zh": "确认验证器拒绝分支",
+                "en": "Confirm the Verifier Rejection Branch"
+              },
+              "description": {
+                "zh": "关联算法选择、key resolver、claim 校验、HTTP 状态和最终主体，排除仅能生成或解码 token 的假阳性。",
+                "en": "Correlate algorithm selection, key resolver, claim validation, HTTP status, and final principal, excluding token generation or decoding as false positives."
+              }
+            },
+            {
+              "title": {
+                "zh": "撤销 fixture 并回归",
+                "en": "Remove Fixtures and Regress"
+              },
+              "description": {
+                "zh": "删除本地 token、key、证书和缓存，重放有效基线与全部固定阴性对照。",
+                "en": "Delete local tokens, keys, certificates, and caches, then replay the valid baseline and every fixed negative control."
+              }
+            }
+          ]
+        }
+      ],
+      "toolTargets": [
+        {
+          "targetToolId": "jwt-attacks",
+          "commands": [
+            {
+              "title": {
+                "zh": "本地 JWT 工具工作流 1",
+                "en": "Local JWT Tool Workflow 1"
+              },
+              "command": "fixture_dir=\".payloader-jwt-fixture\"\nmkdir -p \"$fixture_dir\"\nopenssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out \"$fixture_dir/private.pem\"\nopenssl pkey -in \"$fixture_dir/private.pem\" -pubout -out \"$fixture_dir/public.pem\"\nopenssl pkey -pubin -in \"$fixture_dir/public.pem\" -outform DER | openssl dgst -sha256\n# Disposable local fixture only; remove the directory after the batch.",
+              "description": {
+                "zh": "仅在本地测试 token、固定测试 key 与 localhost 服务上执行该工作流，并保留算法、key 来源和验证器日志。",
+                "en": "Run this workflow only with local test tokens, fixed test keys, and localhost services while preserving algorithm, key-source, and verifier logs."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            },
+            {
+              "title": {
+                "zh": "本地 JWT 工具工作流 2",
+                "en": "Local JWT Tool Workflow 2"
+              },
+              "command": "{\"alg\":\"RS256\",\"typ\":\"payloader+jwt\",\"jku\":\"http://127.0.0.1:18080/jwks.json\",\"kid\":\"PAYLOADER_UNTRUSTED\"}\n{\"alg\":\"RS256\",\"typ\":\"payloader+jwt\",\"x5u\":\"http://127.0.0.1:18080/test-cert.pem\",\"kid\":\"PAYLOADER_UNTRUSTED\"}\n{\"alg\":\"RS256\",\"typ\":\"payloader+jwt\",\"jku\":\"https://keys.example.invalid/jwks.json\",\"kid\":\"PAYLOADER_UNTRUSTED\"}\n# Expected: the verifier follows no token-supplied URL unless it exactly matches the configured local fixture allowlist.",
+              "description": {
+                "zh": "仅在本地测试 token、固定测试 key 与 localhost 服务上执行该工作流，并保留算法、key 来源和验证器日志。",
+                "en": "Run this workflow only with local test tokens, fixed test keys, and localhost services while preserving algorithm, key-source, and verifier logs."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "sourceId": "jwt-jku-x5u-injection",
+      "replacements": [
+        {
+          "id": "jwt-jku-key-source-validation",
+          "name": {
+            "zh": "JWT JKU Key 来源允许列表",
+            "en": "JWT JKU Key Source Allowlisting"
+          },
+          "description": {
+            "zh": "使用仅监听 localhost 的 JWK Set fixture，确认 token 自带 jku 只有在与测试 issuer 的预配置 URL 完全匹配时才可能被解析。",
+            "en": "Uses a localhost-only JWK Set fixture to confirm that token-supplied jku is considered only when it exactly matches the URL preconfigured for the test issuer."
+          },
+          "subCategory": {
+            "zh": "JWT JKU Key 来源允许列表",
+            "en": "JWT JKU Key Source Allowlisting"
+          },
+          "tags": [
+            "jwt",
+            "jws",
+            "jku",
+            "key",
+            "source",
+            "validation"
+          ],
+          "execution": [
+            {
+              "title": {
+                "zh": "JWT JKU Key 来源允许列表对照 1",
+                "en": "JWT JKU Key Source Allowlisting Control 1"
+              },
+              "command": "python3 - <<'PY'\nimport jwt, time, urllib.error, urllib.request\nprivate_key = open(\".payloader-jwt-fixture/private.pem\", \"rb\").read()\ntoken = jwt.encode(\n    {\"sub\":\"payloader-negative\",\"iss\":\"payloader-test\",\"aud\":\"payloader-api\",\"iat\":int(time.time()),\"exp\":int(time.time())+60},\n    private_key,\n    algorithm=\"RS256\",\n    headers={\"typ\":\"payloader+jwt\",\"kid\":\"PAYLOADER_LOCAL_KEY\",\"jku\":\"http://127.0.0.1:18080/jwks.json\"},\n)\nrequest = urllib.request.Request(\"http://127.0.0.1:8080/api/marker\", headers={\"Authorization\":\"Bearer \"+token})\ntry:\n    print(urllib.request.urlopen(request, timeout=5).status)\nexcept urllib.error.HTTPError as error:\n    print(error.code)\nPY\n# Expected: reject unless the exact localhost JKU is preconfigured for the test issuer; arbitrary token-supplied URLs are never followed.",
+              "description": {
+                "zh": "在隔离环境执行该JWT JKU Key 来源允许列表对照，只访问 localhost 只读标记，并记录服务端算法、key 与 claim 决策。",
+                "en": "Run this JWT JKU Key Source Allowlisting control in isolation, access only the localhost read-only marker, and record server-side algorithm, key, and claim decisions."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": [],
+          "attackChain": [
+            {
+              "title": {
+                "zh": "建立JWT JKU Key 来源允许列表基线",
+                "en": "Baseline JWT JKU Key Source Allowlisting"
+              },
+              "description": {
+                "zh": "用测试 issuer 签发短期有效 token，记录算法、key ID、issuer、audience、type、主体和标记访问。",
+                "en": "Issue a short-lived valid token from the test issuer and record algorithm, key ID, issuer, audience, type, principal, and marker access."
+              }
+            },
+            {
+              "title": {
+                "zh": "提交JWT JKU Key 来源允许列表阴性对照",
+                "en": "Submit the JWT JKU Key Source Allowlisting Negative Control"
+              },
+              "description": {
+                "zh": "只提交当前验证卡的第一条对照，并保持 issuer、主体和只读目标不变。",
+                "en": "Submit only the first control in this validation card while keeping issuer, principal, and read-only target unchanged."
+              },
+              "payloadRef": {
+                "area": "execution",
+                "index": 0
+              }
+            },
+            {
+              "title": {
+                "zh": "确认验证器拒绝分支",
+                "en": "Confirm the Verifier Rejection Branch"
+              },
+              "description": {
+                "zh": "关联算法选择、key resolver、claim 校验、HTTP 状态和最终主体，排除仅能生成或解码 token 的假阳性。",
+                "en": "Correlate algorithm selection, key resolver, claim validation, HTTP status, and final principal, excluding token generation or decoding as false positives."
+              }
+            },
+            {
+              "title": {
+                "zh": "撤销 fixture 并回归",
+                "en": "Remove Fixtures and Regress"
+              },
+              "description": {
+                "zh": "删除本地 token、key、证书和缓存，重放有效基线与全部固定阴性对照。",
+                "en": "Delete local tokens, keys, certificates, and caches, then replay the valid baseline and every fixed negative control."
+              }
+            }
+          ]
+        },
+        {
+          "id": "jwt-x5u-certificate-source-validation",
+          "name": {
+            "zh": "JWT X5U 证书来源允许列表",
+            "en": "JWT X5U Certificate Source Allowlisting"
+          },
+          "description": {
+            "zh": "使用 localhost 证书 fixture 检查 x5u URL 和证书链信任，验证器不得跟随任意 token 提供的证书位置。",
+            "en": "Uses a localhost certificate fixture to check x5u URL and certificate-chain trust so the verifier never follows arbitrary token-provided certificate locations."
+          },
+          "subCategory": {
+            "zh": "JWT X5U 证书来源允许列表",
+            "en": "JWT X5U Certificate Source Allowlisting"
+          },
+          "tags": [
+            "jwt",
+            "jws",
+            "x5u",
+            "certificate",
+            "source",
+            "validation"
+          ],
+          "execution": [
+            {
+              "title": {
+                "zh": "JWT X5U 证书来源允许列表对照 1",
+                "en": "JWT X5U Certificate Source Allowlisting Control 1"
+              },
+              "command": "python3 - <<'PY'\nimport base64, subprocess, time, urllib.error, urllib.request\nimport jwt\nsubprocess.run([\"openssl\",\"req\",\"-x509\",\"-new\",\"-key\",\".payloader-jwt-fixture/private.pem\",\"-out\",\".payloader-jwt-fixture/test-cert.pem\",\"-days\",\"1\",\"-subj\",\"/CN=payloader-local\"], check=True)\nprivate_key = open(\".payloader-jwt-fixture/private.pem\", \"rb\").read()\ntoken = jwt.encode(\n    {\"sub\":\"payloader-negative\",\"iss\":\"payloader-test\",\"aud\":\"payloader-api\",\"iat\":int(time.time()),\"exp\":int(time.time())+60},\n    private_key,\n    algorithm=\"RS256\",\n    headers={\"typ\":\"payloader+jwt\",\"kid\":\"PAYLOADER_LOCAL_KEY\",\"x5u\":\"http://127.0.0.1:18080/test-cert.pem\"},\n)\nrequest = urllib.request.Request(\"http://127.0.0.1:8080/api/marker\", headers={\"Authorization\":\"Bearer \"+token})\ntry:\n    print(urllib.request.urlopen(request, timeout=5).status)\nexcept urllib.error.HTTPError as error:\n    print(error.code)\nPY\n# Expected: reject unless the exact local X5U and certificate chain are preconfigured and trusted for the issuer.",
+              "description": {
+                "zh": "在隔离环境执行该JWT X5U 证书来源允许列表对照，只访问 localhost 只读标记，并记录服务端算法、key 与 claim 决策。",
+                "en": "Run this JWT X5U Certificate Source Allowlisting control in isolation, access only the localhost read-only marker, and record server-side algorithm, key, and claim decisions."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": [],
+          "attackChain": [
+            {
+              "title": {
+                "zh": "建立JWT X5U 证书来源允许列表基线",
+                "en": "Baseline JWT X5U Certificate Source Allowlisting"
+              },
+              "description": {
+                "zh": "用测试 issuer 签发短期有效 token，记录算法、key ID、issuer、audience、type、主体和标记访问。",
+                "en": "Issue a short-lived valid token from the test issuer and record algorithm, key ID, issuer, audience, type, principal, and marker access."
+              }
+            },
+            {
+              "title": {
+                "zh": "提交JWT X5U 证书来源允许列表阴性对照",
+                "en": "Submit the JWT X5U Certificate Source Allowlisting Negative Control"
+              },
+              "description": {
+                "zh": "只提交当前验证卡的第一条对照，并保持 issuer、主体和只读目标不变。",
+                "en": "Submit only the first control in this validation card while keeping issuer, principal, and read-only target unchanged."
+              },
+              "payloadRef": {
+                "area": "execution",
+                "index": 0
+              }
+            },
+            {
+              "title": {
+                "zh": "确认验证器拒绝分支",
+                "en": "Confirm the Verifier Rejection Branch"
+              },
+              "description": {
+                "zh": "关联算法选择、key resolver、claim 校验、HTTP 状态和最终主体，排除仅能生成或解码 token 的假阳性。",
+                "en": "Correlate algorithm selection, key resolver, claim validation, HTTP status, and final principal, excluding token generation or decoding as false positives."
+              }
+            },
+            {
+              "title": {
+                "zh": "撤销 fixture 并回归",
+                "en": "Remove Fixtures and Regress"
+              },
+              "description": {
+                "zh": "删除本地 token、key、证书和缓存，重放有效基线与全部固定阴性对照。",
+                "en": "Delete local tokens, keys, certificates, and caches, then replay the valid baseline and every fixed negative control."
+              }
+            }
+          ]
+        }
+      ],
+      "toolTargets": [
+        {
+          "targetToolId": "jwt-decode",
+          "commands": [
+            {
+              "title": {
+                "zh": "本地 JWT 工具工作流 1",
+                "en": "Local JWT Tool Workflow 1"
+              },
+              "command": "python3 - <<'PY'\nimport base64, json\ntoken = \"eyJhbGciOiJIUzI1NiIsInR5cCI6InBheWxvYWRlcitqd3QifQ.eyJzdWIiOiJwYXlsb2FkZXItdXNlciIsImlzcyI6InBheWxvYWRlci10ZXN0IiwiYXVkIjoicGF5bG9hZGVyLWFwaSJ9.PAYLOADER_TEST_SIGNATURE\"\nfor label, segment in zip((\"header\", \"payload\"), token.split(\".\")[:2]):\n    decoded = base64.urlsafe_b64decode(segment + \"=\" * (-len(segment) % 4))\n    print(label, json.loads(decoded))\nPY\n# Structure inspection does not verify the signature, issuer, audience, time, or token type.",
+              "description": {
+                "zh": "仅在本地测试 token、固定测试 key 与 localhost 服务上执行该工作流，并保留算法、key 来源和验证器日志。",
+                "en": "Run this workflow only with local test tokens, fixed test keys, and localhost services while preserving algorithm, key-source, and verifier logs."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ]
+        },
+        {
+          "targetToolId": "jwt-attacks",
+          "commands": [
+            {
+              "title": {
+                "zh": "本地 JWT 工具工作流 1",
+                "en": "Local JWT Tool Workflow 1"
+              },
+              "command": "fixture_dir=\".payloader-jwt-fixture\"\nmkdir -p \"$fixture_dir\"\nopenssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out \"$fixture_dir/private.pem\"\nopenssl pkey -in \"$fixture_dir/private.pem\" -pubout -out \"$fixture_dir/public.pem\"\nopenssl pkey -pubin -in \"$fixture_dir/public.pem\" -outform DER | openssl dgst -sha256\n# Disposable local fixture only; remove the directory after the batch.",
+              "description": {
+                "zh": "仅在本地测试 token、固定测试 key 与 localhost 服务上执行该工作流，并保留算法、key 来源和验证器日志。",
+                "en": "Run this workflow only with local test tokens, fixed test keys, and localhost services while preserving algorithm, key-source, and verifier logs."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            },
+            {
+              "title": {
+                "zh": "本地 JWT 工具工作流 2",
+                "en": "Local JWT Tool Workflow 2"
+              },
+              "command": "python3 - <<'PY'\nimport base64, json\nfrom cryptography.hazmat.primitives import serialization\nkey = serialization.load_pem_public_key(open(\".payloader-jwt-fixture/public.pem\", \"rb\").read())\nnumbers = key.public_numbers()\nencode = lambda value: base64.urlsafe_b64encode(value).rstrip(b\"=\").decode()\nsize = (numbers.n.bit_length() + 7) // 8\njwk = {\"kty\":\"RSA\",\"use\":\"sig\",\"alg\":\"RS256\",\"kid\":\"PAYLOADER_LOCAL_KEY\",\"n\":encode(numbers.n.to_bytes(size,\"big\")),\"e\":encode(numbers.e.to_bytes((numbers.e.bit_length()+7)//8,\"big\"))}\nopen(\".payloader-jwt-fixture/jwks.json\",\"w\",encoding=\"utf-8\").write(json.dumps({\"keys\":[jwk]}))\nprint(jwk[\"kid\"])\nPY\n# Builds a localhost-only JWK Set from the disposable public key.\npython3 -m http.server 18080 --bind 127.0.0.1 --directory .payloader-jwt-fixture > .payloader-jwt-fixture/server.log 2>&1 &\nserver_pid=$!\ntrap 'kill \"$server_pid\" 2>/dev/null' EXIT\ncurl -sS --max-time 5 http://127.0.0.1:18080/jwks.json\nkill \"$server_pid\"\nwait \"$server_pid\" 2>/dev/null || true\ntrap - EXIT\n# One bounded localhost fetch proves the fixture; no remote key URL is contacted.",
+              "description": {
+                "zh": "仅在本地测试 token、固定测试 key 与 localhost 服务上执行该工作流，并保留算法、key 来源和验证器日志。",
+                "en": "Run this workflow only with local test tokens, fixed test keys, and localhost services while preserving algorithm, key-source, and verifier logs."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

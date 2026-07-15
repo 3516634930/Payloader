@@ -1,0 +1,285 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "sourceIds": [
+    "redirect-basic",
+    "redirect-ssrf"
+  ],
+  "entries": [
+    {
+      "id": "redirect-basic",
+      "name": {
+        "zh": "基础开放重定向目标解析",
+        "en": "Basic Open-Redirect Destination Parsing"
+      },
+      "description": {
+        "zh": "使用本地 Fixture 和 `.invalid` 保留域名验证绝对 URL、userinfo、协议相对形式、百分号编码与反斜杠规范化后的最终目标。",
+        "en": "Use a local fixture and the reserved .invalid domain to validate final destinations after parsing absolute URLs, userinfo, protocol-relative forms, percent encoding, and backslashes."
+      },
+      "category": {
+        "zh": "开放重定向",
+        "en": "Open Redirect"
+      },
+      "subCategory": {
+        "zh": "基础目标校验",
+        "en": "Basic Destination Validation"
+      },
+      "prerequisites": [
+        {
+          "zh": "使用 127.0.0.1 重定向 Fixture，并关闭客户端自动跟随以便保存原始 Location。",
+          "en": "Use the 127.0.0.1 redirect fixture and disable automatic following so the original Location is preserved."
+        },
+        {
+          "zh": "外部目标仅使用 redirect-canary.invalid，测试域名不解析也不承载任何服务。",
+          "en": "Use only redirect-canary.invalid as the external destination; the test domain does not resolve or host a service."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "基础开放重定向测试应覆盖最常见的五种 URL 解释：完整绝对 URL、userinfo 分隔、协议相对 URL、百分号编码和反斜杠规范化。每个样例只改变一个组成部分，并记录服务端解析结果与 Location，而不是把多个技巧堆叠在一个字符串里。",
+          "en": "Basic open-redirect testing should cover five common URL interpretations: absolute URLs, userinfo separators, protocol-relative URLs, percent encoding, and backslash normalization. Each sample changes one component and records server parsing plus Location rather than stacking multiple tricks in one string."
+        },
+        "vulnerability": {
+          "zh": "当应用允许用户控制 Location，或用 startsWith、endsWith、contains 等字符串判断代替标准 URL 解析与精确允许列表时，最终 host 可能离开批准源。只有规范化后的 Location 或浏览器目标指向保留外域时才确认问题；输入看起来像 URL 或响应为 3xx 都不是充分证据。",
+          "en": "When an application lets users control Location or replaces standard URL parsing and exact allowlists with startsWith, endsWith, or contains checks, the final host may leave the approved origin. Confirm only when the normalized Location or browser destination points to the reserved external domain; URL-looking input or a 3xx response is insufficient."
+        },
+        "exploitation": {
+          "zh": "先用同源相对路径建立基线，再依次提交五个样例。对每次请求保存原始 next 参数、一次解码后的值、URL 解析器输出、允许列表判定和 Location Header；不使用 curl -L。若目标被拒绝、替换为固定路由或规范化到同源，应作为有效阻断记录。",
+          "en": "Establish a baseline with a same-origin relative path, then submit the five samples in order. Preserve the raw next parameter, value after one decode, URL-parser output, allowlist decision, and Location header without curl -L. Rejection, replacement with a fixed route, or same-origin canonicalization is valid blocking evidence."
+        },
+        "mitigation": {
+          "zh": "优先使用服务端定义的路由标识符或相对路径映射，不接收任意绝对 URL。确需外部跳转时，执行一次明确解码并使用标准 URL 解析器，拒绝 userinfo、控制字符和非 HTTP(S) Scheme，再对规范化的 scheme、host 与 port 做精确允许列表比较。",
+          "en": "Prefer server-defined route identifiers or relative-path mappings and do not accept arbitrary absolute URLs. If external redirects are required, perform one explicit decode with a standard URL parser, reject userinfo, control characters, and non-HTTP(S) schemes, then compare normalized scheme, host, and port against an exact allowlist."
+        },
+        "difficulty": "beginner"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "建立同源基线",
+            "en": "Establish a same-origin baseline"
+          },
+          "description": {
+            "zh": "使用固定相对路径记录正常状态码与 Location，确认重定向端点的预期行为。",
+            "en": "Use a fixed relative path to record normal status and Location and confirm expected endpoint behavior."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
+        },
+        {
+          "title": {
+            "zh": "逐项提交目标变体",
+            "en": "Submit destination variants one at a time"
+          },
+          "description": {
+            "zh": "依次改变 userinfo、协议相对形式、编码和反斜杠，保持端点与身份不变。",
+            "en": "Change userinfo, protocol-relative form, encoding, and backslashes separately while holding endpoint and identity constant."
+          }
+        },
+        {
+          "title": {
+            "zh": "比较最终解析主机",
+            "en": "Compare the final parsed host"
+          },
+          "description": {
+            "zh": "对照应用日志、Location 与浏览器解析，确认最终 scheme、host 和 port 是否仍受批准。",
+            "en": "Compare application logs, Location, and browser parsing to confirm that final scheme, host, and port remain approved."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复并重放矩阵",
+            "en": "Remediate and replay the matrix"
+          },
+          "description": {
+            "zh": "修复后重放五个样例，要求外域全部拒绝或转换为批准的同源路径。",
+            "en": "Replay all five samples after remediation and require every external destination to be rejected or mapped to an approved same-origin path."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "阳性证据是最终解析的 scheme、host 或 port 离开明确允许列表，并由 Location 或浏览器导航确认。参数中出现外域、应用返回重定向状态或日志记录告警都只能作为线索。",
+        "en": "Positive evidence is a final parsed scheme, host, or port outside the explicit allowlist, confirmed by Location or browser navigation. An external domain in the parameter, a redirect status, or a log warning is only a lead."
+      },
+      "opsecTips": [
+        {
+          "zh": "所有外部目标使用 `.invalid` 保留域名，关闭自动跟随并避免第三方网络流量。",
+          "en": "Use the reserved .invalid domain for every external destination, disable automatic following, and avoid third-party network traffic."
+        },
+        {
+          "zh": "每次只改变一个 URL 变量并保存原始字节，防止代理、框架或浏览器二次编码造成误判。",
+          "en": "Change one URL variable per request and preserve raw bytes to avoid misattributing proxy, framework, or browser re-encoding."
+        }
+      ],
+      "references": [
+        "https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html",
+        "https://url.spec.whatwg.org/",
+        "https://datatracker.ietf.org/doc/html/rfc3986"
+      ],
+      "review": {
+        "decision": "payload",
+        "targetPayloadIds": [
+          "redirect-basic"
+        ],
+        "targetToolIds": [],
+        "rationale": "旧条目属于有效 URL Payload，但使用真实外域、重复样例并混入 data URI 与 CRLF；改为五个本地单变量解析样例。",
+        "issuesResolved": [
+          "removed-live-targets",
+          "deduplicated-basic-variants",
+          "removed-unrelated-content-injection",
+          "added-final-host-evidence"
+        ],
+        "retainedCommandIndexes": [
+          0,
+          1,
+          2
+        ],
+        "lineDisposition": [
+          "execution 0-2 -> basic destination variants",
+          "wafBypass 0-1 -> encoded and backslash variants"
+        ],
+        "needsCommandOverride": true
+      }
+    },
+    {
+      "id": "redirect-ssrf",
+      "name": {
+        "zh": "重定向逐跳 SSRF 策略验证",
+        "en": "Per-Hop Redirect SSRF Policy Validation"
+      },
+      "description": {
+        "zh": "验证服务端取回器是否在每一次重定向后重新解析目标、规范化地址并阻止回环、私网、链路本地与其他非批准地址。",
+        "en": "Validate whether a server-side fetcher reparses every redirect target, normalizes addresses, and blocks loopback, private, link-local, and other unapproved destinations at each hop."
+      },
+      "category": {
+        "zh": "开放重定向",
+        "en": "Open Redirect"
+      },
+      "subCategory": {
+        "zh": "SSRF 重定向跟随边界",
+        "en": "SSRF Redirect-Follow Boundary"
+      },
+      "prerequisites": [
+        {
+          "zh": "所有服务运行在 127.0.0.1 实验网络：18080 为取回器与重定向器，18081 为只返回 marker 的内部 Fixture。",
+          "en": "Run every service in the 127.0.0.1 lab network: port 18080 hosts the fetcher and redirector, while 18081 hosts a marker-only internal fixture."
+        },
+        {
+          "zh": "取回器日志能够记录每跳 URL、解析地址、重定向次数、策略结果和 request_id，且不允许访问云元数据。",
+          "en": "Fetcher logs record each-hop URL, resolved address, redirect count, policy result, and request_id, with cloud metadata access disabled."
+        }
+      ],
+      "tutorial": {
+        "overview": {
+          "zh": "SSRF 防护不能只校验初始 URL；HTTP 重定向会产生新的 scheme、host、port 和 DNS 解析结果，必须在每一跳重复相同的目标策略。本条目用双端口本地 Fixture 验证阻断行为，并把端点矩阵、策略导出、有限对照和解析器检查迁入工具区。",
+          "en": "SSRF defenses cannot validate only the initial URL. HTTP redirects create a new scheme, host, port, and DNS result that require the same destination policy at every hop. This entry uses a two-port local fixture to validate blocking and moves endpoint matrices, policy export, bounded controls, and resolver inspection into tools."
+        },
+        "vulnerability": {
+          "zh": "如果取回器只允许初始域名，却自动跟随到回环、私网或链路本地地址，攻击者可能跨越网络信任边界。确认问题必须由同一 request_id 证明初始 URL 通过策略、后续 Location 被跟随、最终地址属于禁止范围且内部 marker 被读取；只看到 3xx 或超时并不足够。",
+          "en": "If a fetcher allowlists only the initial host but automatically follows a redirect to loopback, private, or link-local space, an attacker may cross a network trust boundary. Confirmation requires one request_id proving that the initial URL passed policy, a later Location was followed, the final address was prohibited, and an internal marker was read. A 3xx response or timeout alone is insufficient."
+        },
+        "exploitation": {
+          "zh": "先请求正常公共 marker 建立基线，再把本地重定向 URL 作为 fetch 参数，目标指向 18081 的内部 canary。随后分别验证 IPv4-mapped IPv6 和替代 IP 文本形式，要求策略在建立连接前阻断。每次最多允许一跳并保存解析日志，不探测端口、不读取元数据也不枚举路径。",
+          "en": "First request a normal public marker baseline, then pass the local redirect URL to the fetcher with the target set to the internal canary on port 18081. Validate IPv4-mapped IPv6 and alternative IP text forms separately and require blocking before connection. Allow at most one hop and preserve resolver logs without scanning ports, reading metadata, or enumerating paths."
+        },
+        "mitigation": {
+          "zh": "默认禁用自动重定向；必须跟随时限制跳数，并在每一跳重新解析和验证 scheme、规范化 host、port 与所有 DNS 地址。连接前后防止 DNS TOCTOU，拒绝回环、私网、链路本地、保留和 Unix Socket 等目标，通过受控代理与网络出口策略形成第二道边界。",
+          "en": "Disable automatic redirects by default. When following is required, cap hop count and revalidate scheme, normalized host, port, and every DNS address at each hop. Prevent DNS TOCTOU around connection, reject loopback, private, link-local, reserved, and Unix-socket destinations, and add controlled proxy plus network-egress policy as a second boundary."
+        },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        {
+          "title": {
+            "zh": "固定取回器与解析基线",
+            "en": "Fix the fetcher and resolver baseline"
+          },
+          "description": {
+            "zh": "记录正常 marker 的初始 URL、解析地址、状态和零重定向结果。",
+            "en": "Record initial URL, resolved address, status, and zero-redirect result for the normal marker."
+          }
+        },
+        {
+          "title": {
+            "zh": "提交本地一跳重定向",
+            "en": "Submit a local one-hop redirect"
+          },
+          "description": {
+            "zh": "把重定向器作为允许入口并指向内部 canary，观察每跳策略是否在连接前执行。",
+            "en": "Use the redirector as the allowed entry and target the internal canary, observing whether per-hop policy runs before connection."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 1
+          }
+        },
+        {
+          "title": {
+            "zh": "复核地址规范化",
+            "en": "Verify address normalization"
+          },
+          "description": {
+            "zh": "分别提交 IPv4-mapped IPv6 和替代 IP 文本，要求规范化后仍命中禁止地址集合。",
+            "en": "Submit IPv4-mapped IPv6 and alternative IP text forms separately and require normalized addresses to remain blocked."
+          }
+        },
+        {
+          "title": {
+            "zh": "修复后关联日志回归",
+            "en": "Correlate logs after remediation"
+          },
+          "description": {
+            "zh": "修复后重放全部样例，要求日志显示每跳重新校验且内部 Fixture 没有请求记录。",
+            "en": "Replay every sample after remediation and require logs to show per-hop revalidation with no request at the internal fixture."
+          }
+        }
+      ],
+      "analysis": {
+        "zh": "阳性必须证明最终禁止地址实际收到请求或内部 marker 被取回，并由同一 request_id 关联每跳日志。Location 指向内网、策略输出 blocked、解析器显示特殊地址或请求超时都不能单独证明边界已被穿透。",
+        "en": "A positive requires the prohibited final address to receive a request or return the internal marker, correlated across every hop with one request_id. A Location pointing inward, a blocked policy result, a special resolver output, or a timeout alone does not prove boundary crossing."
+      },
+      "opsecTips": [
+        {
+          "zh": "只使用两个登记的回环端口和固定 canary 路径，禁止扫描端口、云元数据、宿主服务或企业网段。",
+          "en": "Use only the two registered loopback ports and fixed canary path; do not scan ports, cloud metadata, host services, or enterprise ranges."
+        },
+        {
+          "zh": "每次请求限制一跳和五秒超时，完成后清理解析缓存与 marker 日志并确认内部 Fixture 没有残留连接。",
+          "en": "Limit each request to one hop and five seconds, then clear resolver caches and marker logs and confirm no residual internal-fixture connections."
+        }
+      ],
+      "references": [
+        "https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html",
+        "https://datatracker.ietf.org/doc/html/rfc9110",
+        "https://url.spec.whatwg.org/"
+      ],
+      "review": {
+        "decision": "split",
+        "targetPayloadIds": [
+          "redirect-ssrf-hop-boundary"
+        ],
+        "targetToolIds": [
+          "redirect-follow-policy-audit"
+        ],
+        "rationale": "旧条目混合公网短链、元数据访问、DNS 重绑定服务和内网批量扫描；改为双端口本地 canary，并将策略与解析诊断迁入工具区。",
+        "issuesResolved": [
+          "removed-cloud-metadata-access",
+          "removed-network-scanning",
+          "removed-public-redirect-services",
+          "added-per-hop-policy-evidence",
+          "split-tools-from-payloads"
+        ],
+        "retainedCommandIndexes": [
+          1
+        ],
+        "lineDisposition": [
+          "execution 1 and wafBypass 0,2 -> redirect-ssrf-hop-boundary",
+          "execution 0,2,3 and wafBypass 1 -> redirect-follow-policy-audit"
+        ],
+        "needsCommandOverride": true
+      }
+    }
+  ]
+}

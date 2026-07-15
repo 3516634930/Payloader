@@ -1,621 +1,414 @@
 <div align="center">
 
-# ⚡ Payloader — 渗透测试辅助平台
+# Payloader
 
-[![React](https://img.shields.io/badge/React-19.2-61DAFB?logo=react&logoColor=white)](https://react.dev)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org)
-[![Vite](https://img.shields.io/badge/Vite-8.0-646CFF?logo=vite&logoColor=white)](https://vite.dev)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Bilingual](https://img.shields.io/badge/i18n-中文%20%7C%20English-orange)](https://github.com/3516634930/Payloader)
+面向授权安全测试、攻防演练与安全研究的自托管知识工作台。
+
+统一管理 Payload、工具命令、变量、编解码流程和离线桌面客户端。
+
+[![Release](https://img.shields.io/github/v/release/3516634930/Payloader?display_name=tag)](https://github.com/3516634930/Payloader/releases)
+[![Quality](https://github.com/3516634930/Payloader/actions/workflows/quality.yml/badge.svg)](https://github.com/3516634930/Payloader/actions/workflows/quality.yml)
+![Node.js](https://img.shields.io/badge/Node.js-%3E%3D22.13-339933?logo=node.js&logoColor=white)
+![React](https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white)
+![Electron](https://img.shields.io/badge/Electron-42-47848F?logo=electron&logoColor=white)
+[![License](https://img.shields.io/badge/license-AGPL--3.0--only-0F766E)](LICENSE)
+
+[下载 v2.0.0](https://github.com/3516634930/Payloader/releases/tag/v2.0.0) · [快速部署](#快速开始) · [客户端生成](#客户端与后台生成)
 
 </div>
 
----
+## 项目概览
 
-## 📸 功能预览
+Payloader 将安全测试资料、操作模板和日常编码工具整理为一套可检索、可维护、可离线分发的系统：
 
-### 主界面 — 攻击分类导航
-> 左侧树形导航覆盖 23 类 Web 攻击 + 11 类内网渗透，右侧快速提示引导上手
+- 前台用于检索 Payload 和工具命令，替换变量，查看语法、攻击链、教程与参考资料。
+- 后台用于维护内容、导航、站点配置、自定义文本、备份恢复、版本状态和客户端制品。
+- Node.js 服务负责 SQLite 数据、Bearer JWT 鉴权、公共数据快照、系统更新检查和客户端构建。
+- Electron 客户端只携带公开内容，可在 Windows、Linux 和 macOS 离线使用。
+- GitHub Actions 在三个原生系统 Runner 上构建并校验正式客户端。
 
-![主界面](screenshots/1-home.png)
+系统默认面向单实例、自托管部署，不要求 MySQL、Redis 或外部对象存储。
 
-### 🔗 攻击链可视化 — 从侦察到利用的完整路径
-> **核心亮点**：每条 Payload 都配有可视化攻击链，以节点流程图展示从「探测注入点 → 确定列数 → 确定回显位 → 提取数据」的完整攻击步骤，新手也能一步步跟着打
+## 界面预览
 
-![攻击链可视化](screenshots/3-attack-chain.png)
+| 安全知识工作台 | Payload 详情 |
+| --- | --- |
+| ![工作台搜索与导航](screenshots/readme/01-workspace-search.png) | ![Payload 详情与命令](screenshots/readme/02-payload-detail.png) |
 
-### 🎓 详细教学 — 漏洞原理 + 利用方法 + 防御方案
-> 每条 Payload 都附带完整教程：**概述 → 漏洞原理 → 利用方法 → 防御措施**，不只是给你命令，更教你为什么这么打
+| 编解码工作台 | 后台内容管理 |
+| --- | --- |
+| ![编解码工作台](screenshots/readme/03-encoding-workbench.png) | ![后台内容管理](screenshots/readme/04-admin-content.png) |
 
-![详细教学](screenshots/2-tutorial.png)
+| 自定义内容 |
+| --- |
+| ![自定义内容目标选择](screenshots/readme/05-custom-content.png) |
 
-### 💻 执行命令 — 分步骤 + 语法解析 + 一键复制
-> 每个步骤都有独立命令块，支持**语法高亮解析**（19 种颜色标注）和**一键复制**，直接拿去用
+| 客户端生成 | 系统更新 |
+| --- | --- |
+| ![后台客户端生成](screenshots/readme/06-client-builder.png) | ![后台系统更新](screenshots/readme/07-system-update.png) |
 
-![执行命令](screenshots/4-commands.png)
+| 客户端下载 |
+| --- |
+| ![客户端制品下载](screenshots/readme/08-client-downloads.png) |
 
-### 🛠️ 工具命令集 — 渗透工具速查手册
-> 内置 Nmap、SQLMap、Burp Suite、Metasploit 等 114 条常用命令，每条都有中文说明和语法解析
+## 内容规模
 
-![工具命令](screenshots/5-tools.png)
+当前默认安装首次运行包含：
 
-### 🔐 编解码工具 — URL / Base64 / Hex / HTML / Unicode / JWT
-> 内置智能编解码器，渗透过程中随时调用，支持 6 种编码格式互转
+| 内容 | 数量 |
+| --- | ---: |
+| Payload | 790 |
+| 工具条目 | 379 |
+| Payload 执行项 | 1,275 |
+| WAF 变体 | 205 |
+| 攻击链步骤 | 3,003 |
+| 工具命令 | 4,845 |
+| 带教程的 Payload | 790 |
+| 编解码操作 | 144 |
+| 全局变量 | 198 |
 
-![编解码工具](screenshots/6-encoder.png)
+部署者可以在后台继续增删、导入、导出和重排内容。`server/default-seed.sqlite` 只用于首次初始化与恢复默认数据，运行中的权威数据位于 `data/payloader.sqlite`，一致性备份保存在 `data/backups/`。
 
----
+## 功能
 
-# 🇨🇳 中文文档
+### Payload 与工具工作台
 
-## 项目简介
+- Payload、工具命令双工作区和独立树形导航。
+- 对名称、描述、分类、标签和命令内容建立共享搜索索引。
+- Payload 页面支持命令内搜索、普通/WAF 模式、单条复制和当前结果批量复制。
+- 全局变量集中编辑，展示与复制时统一替换并高亮命中位置。
+- 展示平台、权限、难度、前置条件、语法解析、攻击链、教程、防御说明和参考资料。
+- 工具页面提供安装命令、平台标签、示例、语法和引用来源。
+- 深色/浅色主题、键盘导航和移动端响应式布局。
 
-**Payloader** 是一个中英双语的交互式安全载荷参考平台，面向安全研究人员、渗透测试工程师和红队成员。
+### 编解码工作台
 
-项目汇集了 **300+ 条精心编排的攻防载荷**，涵盖 Web 应用安全与内网渗透两大领域，每条载荷均包含完整的攻击链步骤、语法高亮解析、WAF/EDR 绕过方案和学习教程。
+7 类 144 项操作覆盖：
 
-> ⚠️ **免责声明**：本项目仅用于合法授权的安全测试、学习研究和防御加固。使用者须遵守当地法律法规，任何未经授权的攻击行为均与本项目无关。
+- 智能多层编码识别。
+- URL、HTML、Unicode、字符串转义与 Base 系列。
+- Hash、HMAC、现代对称密码、国密算法和经典密码。
+- JWT、OTP、Basic Auth、PEM、ASN.1、JWK/JWE。
+- CBOR、MessagePack、Protobuf Wire 和 BSON。
+- GZip、Deflate、Data URL 和常见二进制表示。
 
-## 功能特性
+编解码计算在本地前端完成，不会把输入提交到第三方服务。
 
-### 核心能力
+### 管理后台
 
-| 功能 | 说明 |
-|------|------|
-| **178 条 Web 载荷** | 23 个分类 — 从经典 SQL 注入到 AI 安全 |
-| **129 条内网载荷** | 11 个分类 — 信息搜集、凭据窃取、横向移动、域攻击 |
-| **114 条工具命令** | Nmap、SQLMap、Burp Suite、Metasploit 等 |
-| **完整攻击链** | 每条载荷包含侦察→识别→利用→后渗透步骤（3步以上） |
-| **WAF/EDR 绕过** | 176 条 Web 载荷包含专用绕过变体 |
-| **语法高亮解析** | 4,700+ 条语法分解条目，19 种颜色标注类型 |
-| **学习教程** | 177 条载荷含完整教程（概述/漏洞原理/利用方式/防御方案） |
+| 模块 | 主要能力 |
+| --- | --- |
+| 站点设置 | 标题、副标题、浏览器标题和 Logo |
+| Payload | 新增、编辑、删除、筛选、分页和内容校验 |
+| 工具命令 | 安装命令、示例、语法、参考资料和平台信息 |
+| 导航树 | 分别维护 Payload 与工具分类、顺序和绑定关系 |
+| 客户端生成 | 选择系统、架构和格式，查看任务、日志、SHA-256 与制品 |
+| 系统更新 | 检查稳定版本、默认分支提交和 API 限额 |
+| 账号安全 | 修改管理员账号和密码，撤销旧会话 |
+| 自定义内容 | 将文本放入 Payload 或工具命令栏目，并可跨目标移动 |
 
-### 交互功能
+内容维护支持 JSON 模板、20 MiB 导入预览、合并或覆盖导入、完整导出、重置影响预览，以及创建一致性备份后恢复默认数据。自定义内容以纯文本展示，可归入 Payload 或工具命令栏目。
 
-| 功能 | 说明 |
-|------|------|
-| 🌐 **中英双语切换** | 一键切换中文/英文界面，默认中文 |
-| 🌓 **暗黑/明亮模式** | 用户级主题偏好，自动保存 |
-| 🔗 **攻击链可视化** | 节点式攻击步骤流程图 |
-| 📋 **一键复制** | 复制单步或全部命令，支持变量替换 |
-| 🔍 **全局搜索** | 按名称/描述/标签/分类实时模糊搜索 |
-| 🔄 **全局变量替换** | 定义 TARGET_IP、DOMAIN 等变量，全平台自动替换 |
+### 系统更新
 
-## 本地使用
+更新中心只读检查固定官方仓库，不会自动下载、覆盖或执行远端代码：
 
-### 环境要求
+- 稳定版本依次检查最新 Release、稳定语义化标签和远端 `package.json`。
+- 源码通道比较当前部署提交与默认分支，区分同步、远端领先、本地领先和分叉。
+- 使用 ETag 条件请求，默认每 6 小时检查一次，并支持后台手动检查。
+- GitHub 暂时不可用或达到限额时保留上一次成功结果。
 
-- **Node.js** >= 18.0
-- **npm** >= 8.0（或 pnpm / yarn）
+## 2.0.0 相比 1.0.0
 
-### 安装与启动
+> 2.0.0 在 1.0.0 首发版本基础上持续演进。[查看 1.0.0 首次发布介绍](https://mp.weixin.qq.com/s/iRGZFihwerukDJcJF_2DBw)。
+
+| 能力 | 1.0.0 | 2.0.0 |
+| --- | --- | --- |
+| 运行架构 | React/Vite 纯静态站点 | React + Node.js + SQLite + Electron |
+| Payload 与工具命令 | 300+ Payload、114 个工具命令 | 790 个 Payload、379 个工具条目、4,845 条工具命令 |
+| 初始内容质量 | 静态内容库与 177 条教程 | 790/790 内容完成编辑审查，引用、分类、教程和命令通过自动质量门禁 |
+| 数据维护 | 修改 TypeScript 后重新构建 | 后台 CRUD、导航、导入导出、排序、备份和恢复 |
+| 管理后台 | 无 | 8 个管理模块和独立鉴权边界 |
+| 自定义内容 | 无 | 可选择进入 Payload 或工具命令栏目 |
+| 编解码 | 6 项基础操作 | 7 类 144 项操作与智能多层识别 |
+| 客户端生成 | 无 | 后台 14 项目标矩阵、9 个官方壳和当前部署内容注入 |
+| 直接客户端 | 无 | Windows EXE、Linux AppImage、macOS DMG 原生 Runner 构建 |
+| 版本控制 | 无 | Release、标签、远端版本和源码提交双通道检查 |
+| 生产部署 | 静态文件托管 | Node 服务、Docker、健康/就绪检查和优雅关闭 |
+| 管理鉴权 | 无 | scrypt 凭据、Bearer JWT、服务端撤销和来源限速 |
+| 质量门禁 | 基础构建与 lint | 类型、lint、内容、测试、构建、容器和客户端烟测 |
+
+1.0.0 已经具备搜索、主题、变量替换、攻击链、教程和基础编解码。2.0.0 在保留这些能力的基础上，新增后台管理、扩展编解码工具、丰富 Payload 与工具命令、系统化提升初始内容质量，并补齐客户端生成和版本控制。
+
+## 系统架构
+
+```mermaid
+flowchart LR
+    W["浏览器前台"] --> N["Node.js 服务"]
+    A["管理后台"] -->|"Bearer JWT"| N
+    N --> P["公开数据 API"]
+    N --> M["管理 API"]
+    N --> U["版本检查"]
+    N --> C["客户端构建"]
+    M --> DB["SQLite 运行库"]
+    DB --> BK["一致性备份"]
+    C --> S["官方客户端壳缓存"]
+    C --> D["deployment.payloader"]
+    S --> O["跨平台便携制品"]
+    D --> O
+    CI["GitHub Actions 原生 Runner"] --> S
+```
+
+关键边界：
+
+- 管理员凭据、JWT 密钥、SQLite、备份和私有上传不会进入客户端。
+- Electron 使用 `payloader://app` 加载本地资源，渲染器默认断网。
+- 官方壳清单 `payloader-client-shells.json` 绑定应用版本、构建契约、文件大小和 SHA-256。
+- 服务端安全检查并重组壳文件，只替换公开数据目录，不修改或重新签名官方二进制。
+
+## 快速开始
+
+### Node.js
+
+需要 Node.js 22.13 或更高版本、npm 10 或更高版本。
+
+#### Linux / macOS
 
 ```bash
-# 1. 克隆项目
 git clone https://github.com/3516634930/Payloader.git
 cd Payloader
-
-# 2. 安装依赖
-npm install
-
-# 3. 启动开发服务器
-npm run dev
-```
-
-启动后在浏览器打开 `http://localhost:5173` 即可使用。
-
-### 构建生产版本
-
-```bash
+npm ci
 npm run build
+npm start
 ```
 
-构建产物在 `dist/` 目录下，是纯静态文件（HTML + CSS + JS），可以直接用浏览器打开 `dist/index.html` 使用。
+#### Windows PowerShell
 
-## 服务器部署
-
-Payloader 构建后是纯静态站点，不需要后端服务，任何能托管静态文件的方式都可以。
-
-### 方式一：Nginx 部署（推荐）
-
-```bash
-# 1. 在本地构建
-npm run build
-
-# 2. 将 dist/ 目录上传到服务器
-scp -r dist/ user@your-server:/var/www/payloader
-
-# 3. 配置 Nginx
-```
-
-Nginx 配置示例：
-
-```nginx
-server {
-    listen 80;
-    server_name your-domain.com;
-
-    root /var/www/payloader;
-    index index.html;
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    # 静态资源缓存
-    location /assets/ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-
-    # 开启 gzip 压缩
-    gzip on;
-    gzip_types text/plain text/css application/json application/javascript text/xml;
-}
-```
-
-```bash
-# 4. 重载 Nginx
-sudo nginx -t && sudo nginx -s reload
-```
-
-### 方式二：Docker 部署
-
-在项目根目录创建 `Dockerfile`：
-
-```dockerfile
-FROM node:18-alpine AS builder
-WORKDIR /app
-COPY package*.json ./
-RUN npm install
-COPY . .
-RUN npm run build
-
-FROM nginx:alpine
-COPY --from=builder /app/dist /usr/share/nginx/html
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
-```
-
-然后运行：
-
-```bash
-# 构建镜像
-docker build -t payloader .
-
-# 启动容器
-docker run -d -p 8080:80 --name payloader payloader
-```
-
-访问 `http://your-server:8080` 即可。
-
-### 方式三：直接用 Node.js 预览
-
-```bash
-# 在服务器上构建并预览
-npm run build
-npm run preview -- --host 0.0.0.0 --port 8080
-```
-
-> 注意：`vite preview` 不适合生产环境高并发，仅用于快速预览或内网使用。
-
-### 方式四：GitHub Pages / Vercel / Netlify
-
-直接将仓库导入这些平台，设置构建命令为 `npm run build`，输出目录为 `dist`，即可自动部署。
-
-## 数据统计
-
-### Web 应用安全 — 23 个分类，178 条载荷
-
-| 分类 | 载荷数 |
-|------|--------|
-| SQL/NoSQL 注入（MySQL/MSSQL/Oracle/PostgreSQL/SQLite/MongoDB/Redis） | 17 |
-| XSS 跨站脚本（反射型/存储型/DOM/mXSS/CSP绕过） | 12 |
-| SSRF 服务端请求伪造（AWS/GCP/Azure 元数据、DNS 重绑定） | 12 |
-| RCE 远程代码执行（PHP/命令注入/反序列化/文件上传） | 12 |
-| XXE XML 外部实体注入（盲注/OOB/文件读取/XLSX/DOCX） | 9 |
-| SSTI 模板注入（Jinja2/FreeMarker/Velocity/Thymeleaf 等 10 种引擎） | 10 |
-| LFI/RFI 文件包含（Wrappers/日志投毒/Phar 反序列化） | 12 |
-| CSRF 跨站请求伪造（JSON/SameSite绕过/Token绕过） | 7 |
-| API 安全（GraphQL/REST/JWT/IDOR/BOLA/批量赋值） | 12 |
-| 框架漏洞（Spring/Struts2/WebLogic/ThinkPHP/Fastjson/Log4j/Shiro） | 18 |
-| 认证漏洞（绕过/爆破/OAuth/SAML/2FA） | 10 |
-| 文件漏洞（上传绕过/任意下载/竞态条件/Zip Slip） | 8 |
-| 缓存与CDN安全（缓存投毒/缓存欺骗/CDN绕过） | 3 |
-| HTTP 请求走私（CL-CL/CL-TE/TE-CL/TE-TE） | 4 |
-| 开放重定向（基础/绕过/重定向到SSRF） | 3 |
-| 点击劫持（基础/结合XSS） | 2 |
-| 业务逻辑漏洞（IDOR/竞态条件/价格篡改/流程绕过） | 5 |
-| JWT 安全（None算法/弱密钥/KID注入/JKU伪造） | 4 |
-| 供应链攻击（仿冒包/CI-CD投毒/依赖混淆） | 3 |
-| 原型链污染（服务端RCE/客户端XSS/NoSQL注入） | 3 |
-| 云安全（SSRF元数据/S3配置错误/IAM提权/K8s逃逸） | 4 |
-| WebSocket安全（劫持/走私/认证绕过） | 3 |
-| AI安全（提示注入/模型窃取/对抗样本/RAG投毒） | 4 |
-
-### 内网渗透 — 11 个分类，129 条载荷
-
-| 分类 | 说明 |
-|------|------|
-| 信息搜集 | BloodHound/SPN扫描/端口扫描/域信息/ACL枚举 |
-| 凭据窃取 | Mimikatz/Kerberoasting/AS-REP Roasting/SAM&NTDS/DPAPI |
-| 横向移动 | PsExec/WMI/Pass-the-Hash/NTLM Relay/WinRM/DCOM/RDP |
-| 权限提升 | Token窃取/UAC绕过/DLL劫持/Potato/SUID/Sudo/内核 |
-| 权限维持 | 注册表/计划任务/WMI事件/黄金票据/白银票据/万能钥匙 |
-| 隧道与代理 | FRP/Chisel/SSH/DNS/ICMP/Ligolo/EW |
-| 域攻击 | Zerologon/PrintNightmare/PetitPotam/DCSync/DCShadow/ADCS |
-| ADCS攻击 | ESC1-ESC8 全攻击链 |
-| 免杀绕过 | AMSI绕过/ETW补丁/API脱钩/进程注入/DLL侧加载 |
-| Exchange攻击 | ProxyLogon/ProxyShell/ProxyToken/邮箱访问 |
-| SharePoint攻击 | 枚举/文件访问 |
-
-### 工具命令 — 8 个分类，114 条命令
-
-侦察（Nmap/Masscan/Gobuster/Amass）、Web渗透（SQLMap/Burp/Nikto）、漏洞利用（Metasploit/ysoserial）、密码攻击（Hydra/Hashcat/John）、内网（CrackMapExec/Impacket/Rubeus）、系统命令、反弹Shell（12种语言）、编码解码。
-
-## 使用指南
-
-### 浏览载荷
-
-1. 从左侧导航栏选择 **Web应用** 或 **内网渗透**
-2. 展开分类树，点击载荷查看详情
-3. 详情包含：执行步骤、WAF绕过、攻击链可视化、教程
-
-### 语言切换
-
-点击顶栏 **中文/EN** 按钮，一键切换中英文界面。偏好自动保存。
-
-### 全局搜索
-
-在顶部搜索栏输入关键词（如 `SQL注入`、`Mimikatz`、`SSRF`），侧边栏实时过滤匹配结果。
-
-### 全局变量替换
-
-1. 点击顶栏 **🔧 变量** 按钮打开变量面板
-2. 设置变量，如 `TARGET_IP` = `192.168.1.100`
-3. 所有载荷中的 `{{TARGET_IP}}` 占位符会自动高亮替换
-4. 复制的命令已包含变量替换
-
-内置默认变量：
-
-| 变量名 | 默认值 | 用途 |
-|--------|--------|------|
-| `TARGET_IP` | `192.168.1.100` | 目标IP |
-| `TARGET_DOMAIN` | `target.com` | 目标域名 |
-| `ATTACKER_IP` | `10.10.14.1` | 攻击者IP |
-| `LPORT` | `4444` | 监听端口 |
-
-## 项目结构
-
-```
-Payloader/
-├── public/                        # 静态资源
-├── src/
-│   ├── App.tsx                    # 入口 & 全局状态
-│   ├── main.tsx                   # React 挂载点
-│   ├── i18n/
-│   │   └── index.ts               # 国际化系统 (中/英)
-│   ├── components/
-│   │   ├── Header.tsx             # 顶栏（主题/搜索/语言/变量）
-│   │   ├── Sidebar.tsx            # 侧边导航（树形/搜索过滤）
-│   │   ├── MainContent.tsx        # 主内容路由
-│   │   ├── PayloadDetail.tsx      # 载荷详情（攻击链/复制/高亮）
-│   │   ├── ToolDetail.tsx         # 工具命令详情
-│   │   ├── SyntaxModal.tsx        # 语法分解弹窗（19种颜色）
-│   │   └── EncodingTools.tsx      # 编解码工具
-│   ├── data/
-│   │   ├── webPayloads.ts         # Web载荷数据（18,700+行）
-│   │   ├── intranetPayloads.ts    # 内网载荷数据（5,900+行）
-│   │   ├── toolCommands.ts        # 工具命令数据（3,800+行）
-│   │   └── navigation.ts         # 导航树定义
-│   ├── types/
-│   │   └── index.ts               # TypeScript 类型定义
-│   └── styles/
-│       └── global.css             # 全局样式（暗/亮主题变量）
-├── index.html
-├── vite.config.ts
-├── tsconfig.json
-└── package.json
-```
-
-## 技术栈
-
-| 技术 | 版本 | 用途 |
-|------|------|------|
-| [React](https://react.dev) | 19.2 | UI 框架 |
-| [TypeScript](https://www.typescriptlang.org) | 5.9 | 类型安全 |
-| [Vite](https://vite.dev) | 8.0 (beta) | 构建工具 |
-| 自研 i18n | - | 双语系统 |
-| CSS Variables | - | 主题系统 |
-| localStorage | - | 用户偏好持久化 |
-
-**零外部 UI 依赖** — 无任何 UI 库，纯手写 CSS，极致轻量。
-
-
-# 🇬🇧 English Documentation
-
-## Screenshots
-
-> See [📸 功能预览](#-功能预览) above for full screenshots — Attack Chain Visualization, Step-by-step Tutorials, Tool Commands, and Encoding Tools.
-
-## About
-
-**Payloader** is a bilingual (Chinese/English) interactive security payload reference platform for security researchers, penetration testers, and red teamers.
-
-It features **300+ curated payloads** across Web application security and intranet penetration, each with complete attack chain steps, syntax-highlighted breakdowns, WAF/EDR bypass variants, and learning tutorials.
-
-> ⚠️ **Disclaimer**: This project is for authorized security testing, learning, and defense hardening only. Users must comply with local laws. Any unauthorized attacks are unrelated to this project.
-
-## Features
-
-### Core
-
-| Feature | Description |
-|---------|-------------|
-| **178 Web Payloads** | 23 categories — from classic SQL injection to AI security |
-| **129 Intranet Payloads** | 11 categories — recon, credential theft, lateral movement, domain attacks |
-| **114 Tool Commands** | Nmap, SQLMap, Burp Suite, Metasploit and more |
-| **Full Attack Chains** | Each payload has recon → identify → exploit → post-exploit steps (3+) |
-| **WAF/EDR Bypass** | 176 Web payloads include dedicated WAF bypass variants |
-| **Syntax Highlighting** | 4,700+ syntax breakdown entries with 19 color-coded types |
-| **Tutorials** | 177 payloads with full tutorials (overview / vulnerability / exploitation / defense) |
-
-### Interactive
-
-| Feature | Description |
-|---------|-------------|
-| 🌐 **Bilingual i18n** | Full Chinese ↔ English toggle, default Chinese |
-| 🌓 **Dark / Light Mode** | Per-user theme with auto-saved preference |
-| 🔗 **Attack Chain Visualization** | Node-based visual flow of attack steps |
-| 📋 **One-click Copy** | Copy single step or all commands with variable substitution |
-| 🔍 **Global Search** | Real-time fuzzy search by name / description / tag / category |
-| 🔄 **Global Variables** | Define TARGET_IP, DOMAIN, etc. — auto-replace in all payloads |
-
-## Local Usage
-
-### Requirements
-
-- **Node.js** >= 18.0
-- **npm** >= 8.0 (or pnpm / yarn)
-
-### Install & Run
-
-```bash
-# 1. Clone the repository
+```powershell
 git clone https://github.com/3516634930/Payloader.git
-cd Payloader
-
-# 2. Install dependencies
-npm install
-
-# 3. Start dev server
-npm run dev
-```
-
-Open `http://localhost:5173` in your browser.
-
-### Build for Production
-
-```bash
+Set-Location -LiteralPath 'Payloader'
+npm ci
 npm run build
+npm start
 ```
 
-Output goes to `dist/` — pure static files (HTML + CSS + JS). You can open `dist/index.html` directly in a browser.
+访问地址：
 
-## Server Deployment
+- 前台：`http://127.0.0.1:8081/`
+- 管理后台：`http://127.0.0.1:8081/admin/`
+- 存活检查：`GET /api/health`
+- 就绪检查：`GET /api/ready`
 
-Payloader builds into a pure static site — no backend required. Any static file hosting works.
+本地回环地址的非生产首次启动提供固定试用凭据：
 
-### Option 1: Nginx (Recommended)
+```text
+账号：admin
+密码：payloader-admin!
+```
+
+这组默认凭据只适用于 `127.0.0.1`、`localhost` 或 `::1` 的非生产实例。设置 `NODE_ENV=production` 或监听非回环地址时，服务会拒绝公开默认密码，必须通过 `PAYLOADER_ADMIN_USER` 和 `PAYLOADER_ADMIN_PASSWORD` 提供新的强凭据。
+
+公开部署前，设置独立的管理员密码并监听所需地址。
+
+Linux / macOS：
 
 ```bash
-# 1. Build locally
-npm run build
-
-# 2. Upload dist/ to your server
-scp -r dist/ user@your-server:/var/www/payloader
-
-# 3. Configure Nginx (see below)
+export PAYLOADER_ADMIN_USER=admin
+export PAYLOADER_ADMIN_PASSWORD="Pw-$(node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))")"
+export PAYLOADER_HOST=0.0.0.0
+npm start
 ```
 
-Nginx config example:
+Windows PowerShell：
 
-```nginx
-server {
-    listen 80;
-    server_name your-domain.com;
-
-    root /var/www/payloader;
-    index index.html;
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    # Cache static assets
-    location /assets/ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-
-    # Enable gzip
-    gzip on;
-    gzip_types text/plain text/css application/json application/javascript text/xml;
-}
+```powershell
+$bytes = [byte[]]::new(32)
+$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
+$env:PAYLOADER_ADMIN_USER = 'admin'
+$env:PAYLOADER_ADMIN_PASSWORD = "Pw!$([Convert]::ToBase64String($bytes))"
+$env:PAYLOADER_HOST = '0.0.0.0'
+npm start
 ```
+
+首次启动会将管理员密码以 scrypt 派生值写入数据库。环境变量不会覆盖已经初始化的强凭据；后续可在“账号安全”中修改。
+
+### Docker
+
+Linux / macOS：
 
 ```bash
-# 4. Reload Nginx
-sudo nginx -t && sudo nginx -s reload
+export PAYLOADER_ADMIN_PASSWORD="Pw-$(node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))")"
+docker build --build-arg "PAYLOADER_COMMIT_SHA=$(git rev-parse HEAD)" --tag payloader:local .
+docker volume create payloader-data
+docker run --detach --name payloader \
+  --publish 8081:8081 \
+  --mount source=payloader-data,target=/app/data \
+  --env PAYLOADER_ADMIN_USER=admin \
+  --env "PAYLOADER_ADMIN_PASSWORD=$PAYLOADER_ADMIN_PASSWORD" \
+  payloader:local
 ```
 
-### Option 2: Docker
+Windows PowerShell：
 
-Create a `Dockerfile` in the project root:
+```powershell
+$bytes = [byte[]]::new(32)
+$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
+$env:PAYLOADER_ADMIN_PASSWORD = "Pw!$([Convert]::ToBase64String($bytes))"
+$commit = (git rev-parse HEAD).Trim()
+docker build --build-arg "PAYLOADER_COMMIT_SHA=$commit" --tag payloader:local .
+docker volume create payloader-data
 
-```dockerfile
-FROM node:18-alpine AS builder
-WORKDIR /app
-COPY package*.json ./
-RUN npm install
-COPY . .
-RUN npm run build
-
-FROM nginx:alpine
-COPY --from=builder /app/dist /usr/share/nginx/html
-EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+docker run --detach --name payloader `
+  --publish 8081:8081 `
+  --mount source=payloader-data,target=/app/data `
+  --env PAYLOADER_ADMIN_USER=admin `
+  --env "PAYLOADER_ADMIN_PASSWORD=$env:PAYLOADER_ADMIN_PASSWORD" `
+  payloader:local
 ```
 
-Then run:
+镜像以非 root 用户运行，`/app/data` 必须使用持久卷。生产环境应通过 HTTPS 反向代理暴露服务。
 
-```bash
-# Build image
-docker build -t payloader .
+### 本地开发
 
-# Start container
-docker run -d -p 8080:80 --name payloader payloader
+```powershell
+npm ci
+$env:PAYLOADER_ADMIN_USER = 'admin'
+$env:PAYLOADER_ADMIN_PASSWORD = '<本地生成的高强度密码>'
+npm run admin
 ```
 
-Visit `http://your-server:8080`.
+另开终端运行 `npm run dev`。Vite 默认使用 `http://127.0.0.1:5173`，并将 `/api` 与 `/admin` 代理到 Node 服务。
 
-### Option 3: Node.js Preview Server
+## 常用配置
 
-```bash
-# Build and preview on server
-npm run build
-npm run preview -- --host 0.0.0.0 --port 8080
+| 环境变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `PAYLOADER_HOST` | `127.0.0.1` | HTTP 监听地址 |
+| `PAYLOADER_PORT` | `8081` | HTTP 监听端口 |
+| `PAYLOADER_DATA_DIR` | `./data` | SQLite、备份、上传和客户端制品目录 |
+| `PAYLOADER_ADMIN_USER` | 本地试用为 `admin` | 生产或非回环首次启动必须显式设置 |
+| `PAYLOADER_ADMIN_PASSWORD` | 本地试用为 `payloader-admin!` | 生产或非回环首次启动必须使用其他强密码 |
+| `PAYLOADER_JWT_SECRET` | 自动生成 | 管理会话签名密钥，写入数据目录 |
+| `PAYLOADER_ADMIN_SESSION_TTL_MS` | 8 小时 | 管理会话有效期 |
+| `PAYLOADER_TRUSTED_PROXIES` | 空 | 可信反向代理地址；同机代理可使用 `loopback` |
+| `PAYLOADER_GITHUB_TOKEN` | 空 | 服务端只读 GitHub API Token，不进入客户端 |
+| `PAYLOADER_UPDATE_CHECK_INTERVAL_MS` | 6 小时 | 自动版本检查间隔 |
+| `PAYLOADER_UPDATE_CHECK_DISABLED` | `false` | 禁用定时检查，保留后台手动检查 |
+| `PAYLOADER_CLIENT_SHELL_DIR` | 空 | 离线官方壳目录 |
+| `PAYLOADER_CLIENT_SHELLS_REMOTE_DISABLED` | `false` | 禁止远程检查和下载官方壳 |
+| `PAYLOADER_CLIENT_CACHE_DIR` | 数据目录下缓存 | Electron、Builder 和官方壳缓存 |
+
+只有当 TCP 对端确实是可信代理时才配置 `PAYLOADER_TRUSTED_PROXIES`。默认单进程会话和限速状态保存在内存中，多实例部署前需要迁移到共享存储。
+
+## 客户端与后台生成
+
+### Release 直接下载
+
+GitHub Actions 使用以下原生 Runner 构建 9 个直接客户端：
+
+| Runner | 直接客户端 |
+| --- | --- |
+| `windows-latest` | Windows x64、ARM64、ia32 的 NSIS EXE |
+| `ubuntu-latest` | Linux x64、ARM64、ARMv7 的 AppImage |
+| `macos-latest` | macOS Intel、Apple Silicon、Universal 的 DMG |
+
+Windows 三个架构的安装器都使用向导模式，允许选择安装目录，不会安装系统服务、自动启动项或后台更新器。Linux AppImage 是便携客户端，可放在用户选择的任意目录，授予执行权限后直接运行。macOS DMG 打开后可将 `Payloader.app` 拖到 Applications 或其他用户选择的可写目录。
+
+### 后台目标矩阵
+
+后台共有 14 个可选目标：
+
+- Windows：x64、ARM64、ia32。
+- Linux AppImage：x64、ARM64、ARMv7。
+- Linux DEB：x64、ARM64、ARMv7。
+- Linux RPM：x64、ARM64。
+- macOS：Intel、Apple Silicon、Universal。
+
+Linux 部署服务器无需 Wine 或 Xcode。它会按本地应用版本固定请求对应的 `v*` Release，下载完全匹配的 9 个官方壳，校验清单、大小和 SHA-256，然后把本站公开内容写入新的 `deployment.payloader`：
+
+- Windows 官方壳生成便携 ZIP。
+- macOS 官方壳生成便携 TAR.GZ。
+- Linux AppImage 目标在官方壳可用时生成便携 TAR.GZ；禁用或缺失兼容壳时，Linux 主机才回退为原生 AppImage。
+- Linux DEB 和 RPM 没有官方壳目标，始终由兼容的 Linux 主机原生构建。
+
+后台生成的是包含当前部署公开内容的便携包。需要标准安装器时，请从 GitHub Release 下载对应平台的原生客户端。
+
+### 下载与完整性
+
+- 标准客户端从官方 [v2.0.0 Release](https://github.com/3516634930/Payloader/releases/tag/v2.0.0) 下载。
+- `SHA256SUMS.txt` 可用于校验下载文件完整性。
+- 后台只使用应用版本、构建契约、文件大小和 SHA-256 全部匹配的官方壳。
+
+v2.0.0 客户端当前未进行平台代码签名。请从官方 Release 下载，并使用 `SHA256SUMS.txt` 校验文件完整性；Windows 或 macOS 可能显示来源提示。
+
+## 性能与安全
+
+### 性能
+
+- 公共数据快照复用序列化结果并预生成 gzip、brotli 和 ETag。
+- 未变更请求返回 `304 Not Modified`。
+- 前台预计算共享搜索索引，输入防抖并延迟大结果集渲染。
+- Electron 流式读取大型快照和静态资源，使用单实例锁、后台节流和 V8 code cache。
+- 后台只保留当前成功构建引用的客户端制品，失败中间产物会被清理；官方壳缓存只保留当前版本清单引用的哈希文件。
+- CI 在 Windows、Linux、macOS 执行原生性能烟测和客户端启动 smoke。
+
+### 管理边界
+
+- 首次生产启动必须提供显式强凭据。
+- 密码使用 scrypt 和独立随机盐。
+- 管理接口使用 Bearer JWT，不使用 Cookie；浏览器只存入当前标签页 `sessionStorage`。
+- 服务端会话可撤销，并绑定凭据版本和 User-Agent。
+- 登录与管理接口分别限速，只信任显式配置的代理。
+- 请求体、URL、Logo 和导入文件有独立大小上限。
+- 默认启用 CSP、frame 限制、MIME 嗅探阻止和权限策略。
+- 重置数据前必须创建一致性 SQLite 备份，失败时不继续删除。
+
+### 离线客户端
+
+- 启用 sandbox、`contextIsolation` 和 `webSecurity`。
+- 禁用 Node.js integration、WebView、自动更新和持久化钩子。
+- 渲染器网络访问默认阻止。
+- 静态资源和公开数据执行路径、大小与 SHA-256 校验。
+
+更多运行时数据与网络边界见[隐私说明](PRIVACY.md)。
+
+## 质量门禁
+
+```powershell
+npm run check
 ```
 
-> Note: `vite preview` is not suitable for production high-traffic use. Use it for quick preview or internal use only.
+聚合门禁包含：
 
-### Option 4: GitHub Pages / Vercel / Netlify
+1. TypeScript 类型检查。
+2. ESLint。
+3. 144 项编解码回归向量。
+4. SQLite 内容质量和审校清单。
+5. Node 单元、API、鉴权、数据安全与客户端契约测试。
+6. React 生产构建。
+7. 项目归属和构建产物校验。
 
-Import the repository into any of these platforms. Set build command to `npm run build` and output directory to `dist`. Deployment is automatic.
+CI 另外执行只读 Docker 容器 smoke、三系统客户端性能验证、9 个原生壳构建、清单合并和 Release 资产白名单检查。
 
-## Data Stats
+## 目录
 
-### Web Application Security — 23 Categories, 178 Payloads
+| 路径 | 说明 |
+| --- | --- |
+| `src/` | React 前台、编解码和界面逻辑 |
+| `admin/` | 管理后台页面、样式和交互 |
+| `server/` | HTTP、SQLite、鉴权、更新与客户端构建 |
+| `scripts/` | 构建、内容治理、发布和 smoke 工具 |
+| `tests/` | 单元、API、契约、安全和回归测试 |
+| `content-review/` | 默认内容审校输入与可复现覆盖项 |
+| `screenshots/readme/` | 当前版本界面截图 |
+| `.github/workflows/` | 质量检查与跨平台客户端发布 |
 
-| Category | Count |
-|----------|-------|
-| SQL/NoSQL Injection (MySQL/MSSQL/Oracle/PostgreSQL/SQLite/MongoDB/Redis) | 17 |
-| XSS (Reflected/Stored/DOM/mXSS/CSP Bypass) | 12 |
-| SSRF (AWS/GCP/Azure metadata, DNS rebinding) | 12 |
-| RCE (PHP/Command Injection/Deserialization/Upload) | 12 |
-| XXE (Blind/OOB/File Read/XLSX/DOCX) | 9 |
-| SSTI (Jinja2/FreeMarker/Velocity/Thymeleaf + 6 more) | 10 |
-| LFI/RFI (Wrappers/Log Poisoning/Phar Deserialization) | 12 |
-| CSRF (JSON/SameSite bypass/Token bypass) | 7 |
-| API Security (GraphQL/REST/JWT/IDOR/BOLA/Mass Assignment) | 12 |
-| Framework Vulns (Spring/Struts2/WebLogic/ThinkPHP/Fastjson/Log4j/Shiro) | 18 |
-| Auth Vulnerabilities (Bypass/Brute Force/OAuth/SAML/2FA) | 10 |
-| File Vulnerabilities (Upload Bypass/Arbitrary Download/Race Condition/Zip Slip) | 8 |
-| Cache & CDN Security | 3 |
-| HTTP Request Smuggling (CL-CL/CL-TE/TE-CL/TE-TE) | 4 |
-| Open Redirect | 3 |
-| Clickjacking | 2 |
-| Business Logic Vulns (IDOR/Race Condition/Price Tampering) | 5 |
-| JWT Security (None Algorithm/Weak Key/KID Injection/JKU Spoofing) | 4 |
-| Supply Chain Attacks | 3 |
-| Prototype Pollution | 3 |
-| Cloud Security (SSRF Metadata/S3/IAM/K8s) | 4 |
-| WebSocket Security | 3 |
-| AI Security (Prompt Injection/Model Stealing/Adversarial/RAG Poisoning) | 4 |
+## 代码签名
 
-### Intranet Penetration — 11 Categories, 129 Payloads
+Windows 签名发布路径、审批角色、构建来源和撤销流程见 [CODE_SIGNING_POLICY.md](CODE_SIGNING_POLICY.md)。当前 Release 是否签名以 Release 说明、清单和系统签名检查结果为准，不以文件名推断。
 
-Reconnaissance, Credential Theft, Lateral Movement, Privilege Escalation, Persistence, Tunneling & Proxy, Domain Attacks, ADCS Attacks (ESC1-ESC8), Evasion, Exchange Attacks, SharePoint Attacks.
+## 许可证
 
-### Tool Commands — 8 Categories, 114 Commands
-
-Recon (Nmap/Masscan/Gobuster/Amass), Web Pentest (SQLMap/Burp/Nikto), Exploitation (Metasploit/ysoserial), Password Attacks (Hydra/Hashcat/John), Intranet (CrackMapExec/Impacket/Rubeus), System Commands, Reverse Shells (12 languages), Encoding/Decoding.
-
-## Usage Guide
-
-### Browse Payloads
-1. Select **Web Application** or **Intranet Penetration** from the sidebar
-2. Expand the category tree, click a payload to view details
-3. Details include: execution steps, WAF bypass, attack chain visualization, tutorial
-
-### Language Toggle
-Click the **中文/EN** button in the top bar to switch languages. Preference is auto-saved.
-
-### Global Search
-Type keywords in the search bar (e.g. `SQL Injection`, `Mimikatz`, `SSRF`). The sidebar filters in real-time.
-
-### Global Variables
-1. Click **🔧 Variables** in the top bar
-2. Set variables like `TARGET_IP` = `192.168.1.100`
-3. All `{{TARGET_IP}}` placeholders auto-replace with highlights
-4. Copied commands include variable substitution
-
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `TARGET_IP` | `192.168.1.100` | Target IP |
-| `TARGET_DOMAIN` | `target.com` | Target domain |
-| `ATTACKER_IP` | `10.10.14.1` | Attacker IP |
-| `LPORT` | `4444` | Listen port |
-
-## Project Structure
-
-```
-Payloader/
-├── public/                        # Static assets
-├── src/
-│   ├── App.tsx                    # Entry & global state
-│   ├── main.tsx                   # React mount point
-│   ├── i18n/
-│   │   └── index.ts               # i18n system (zh/en)
-│   ├── components/
-│   │   ├── Header.tsx             # Top bar
-│   │   ├── Sidebar.tsx            # Side navigation
-│   │   ├── MainContent.tsx        # Main content router
-│   │   ├── PayloadDetail.tsx      # Payload detail
-│   │   ├── ToolDetail.tsx         # Tool command detail
-│   │   ├── SyntaxModal.tsx        # Syntax breakdown modal
-│   │   └── EncodingTools.tsx      # Encoding/decoding tools
-│   ├── data/
-│   │   ├── webPayloads.ts         # Web payloads (18,700+ lines)
-│   │   ├── intranetPayloads.ts    # Intranet payloads (5,900+ lines)
-│   │   ├── toolCommands.ts        # Tool commands (3,800+ lines)
-│   │   └── navigation.ts         # Navigation tree
-│   ├── types/
-│   │   └── index.ts               # TypeScript types
-│   └── styles/
-│       └── global.css             # Global styles (dark/light)
-├── index.html
-├── vite.config.ts
-├── tsconfig.json
-└── package.json
-```
-
-## Tech Stack
-
-| Tech | Version | Purpose |
-|------|---------|---------|
-| [React](https://react.dev) | 19.2 | UI Framework |
-| [TypeScript](https://www.typescriptlang.org) | 5.9 | Type Safety |
-| [Vite](https://vite.dev) | 8.0 (beta) | Build Tool |
-| Custom i18n | - | Bilingual System |
-| CSS Variables | - | Theme System |
-| localStorage | - | User Preference Persistence |
-
-**Zero external UI dependencies** — no UI library, pure handwritten CSS.
-
-
-## 📄 License
-
-[MIT License](LICENSE)
-
----
-
-<div align="center">
-
-**⭐ 如果这个项目对你有帮助，请给一个 Star！**
-
-**⭐ Star this repo if you find it useful!**
-
-[GitHub](https://github.com/3516634930/Payloader)
-
-</div>
+Payloader 使用 [GNU Affero General Public License v3.0 only](LICENSE)。修改并通过网络向用户提供服务时，应按照 AGPL-3.0 的要求提供对应源代码；第三方依赖分别遵循其自身许可证。

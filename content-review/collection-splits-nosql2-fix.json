@@ -1,0 +1,222 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "collectionSplits": [
+    {
+      "sourceId": "nosql2-ssti",
+      "replacements": [
+        {
+          "id": "nosql2-ssti-template-toolkit-arithmetic",
+          "name": {
+            "zh": "二阶 Template Toolkit 算术求值",
+            "en": "Second-Order Template Toolkit Arithmetic Evaluation"
+          },
+          "description": {
+            "zh": "验证存储值是否在后续任务中被 Template Toolkit 风格的 `[% ... %]` 语法重新编译，并以无副作用算术结果证明服务端求值。",
+            "en": "Tests whether a stored value is later recompiled with Template Toolkit-style [% ... %] syntax and proves server-side evaluation through a side-effect-free arithmetic result."
+          },
+          "subCategory": {
+            "zh": "Template Toolkit 二阶求值",
+            "en": "Template Toolkit Second-Order Evaluation"
+          },
+          "tags": ["ssti", "second-order", "template-toolkit", "arithmetic", "stored-input"],
+          "prerequisites": [
+            {
+              "zh": "已确认后续邮件、报表或任务使用 Template Toolkit 兼容语法重新编译存储字段，而不是把字段作为普通变量输出。",
+              "en": "A later mail, report, or background job is confirmed to recompile the stored field with Template Toolkit-compatible syntax rather than output it as an ordinary variable."
+            },
+            {
+              "zh": "准备合成记录、随机任务标识、纯文本对照和渲染日志，测试表达式只计算常量且不访问对象、文件或网络。",
+              "en": "Prepare a synthetic record, random job identifier, plain-text control, and render logs, with the test expression limited to constant arithmetic and no object, file, or network access."
+            }
+          ],
+          "execution": [
+            {
+              "title": {
+                "zh": "Template Toolkit 常量算术",
+                "en": "Template Toolkit Constant Arithmetic"
+              },
+              "command": "[% 7 * 7 %]",
+              "description": {
+                "zh": "先存储该单一表达式，再触发一次受控渲染任务；只有同一任务的服务端产物出现 49 才计为阳性。",
+                "en": "Store this single expression and trigger one controlled render job; count it as positive only when the same job's server-side artifact contains 49."
+              },
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": [],
+          "tutorial": {
+            "overview": {
+              "zh": "二阶验证把写入与求值分开：写入接口可以只返回成功，真正证据来自后续 Template Toolkit 渲染任务。常量算术用于区分字面回显与模板执行。",
+              "en": "Second-order validation separates storage from evaluation: the write endpoint may only report success, while evidence comes from a later Template Toolkit render job. Constant arithmetic distinguishes literal reflection from template execution."
+            },
+            "vulnerability": {
+              "zh": "应用把数据库字段或消息正文拼成模板源码并再次调用 process/compile，使原本的数据进入模板语法边界。若上下文暴露敏感对象，影响会超过算术求值。",
+              "en": "The application concatenates a database field or message body into template source and invokes processing or compilation again, moving data across the template-syntax boundary. Exposed sensitive objects can increase impact beyond arithmetic evaluation."
+            },
+            "exploitation": {
+              "zh": "先写入随机纯文本并记录任务 ID，再仅写入本条表达式并触发一次相同任务；关联写入记录、队列消息、模板日志与产物中的 49，同时用未渲染字段排除客户端或字面回显。",
+              "en": "Write random plain text and record the job ID, then store only this expression and trigger the same job once. Correlate the record, queue message, template log, and output value 49, using a non-rendered field to exclude client or literal reflection."
+            },
+            "mitigation": {
+              "zh": "固定服务端模板并把存储值作为数据变量传入，禁止动态编译用户字段；最小化上下文、启用沙箱，并为所有异步渲染路径添加字面输出回归测试。",
+              "en": "Use fixed server templates and pass stored values only as data variables, prohibit dynamic compilation of user fields, minimize and sandbox context, and add literal-output regression tests to every asynchronous render path."
+            },
+            "difficulty": "advanced"
+          },
+          "attackChain": [
+            {
+              "title": {"zh": "绑定写入与任务", "en": "Bind the write to the job"},
+              "description": {"zh": "使用随机记录和任务 ID 关联写入、队列与最终产物。", "en": "Use random record and job identifiers to correlate storage, queue processing, and the final artifact."}
+            },
+            {
+              "title": {"zh": "提交单一算术表达式", "en": "Submit one arithmetic expression"},
+              "description": {"zh": "只使用本条执行区输入并触发一次受控渲染。", "en": "Use only this execution input and trigger one controlled render."},
+              "payloadRef": {"area": "execution", "index": 0}
+            },
+            {
+              "title": {"zh": "关联服务端结果", "en": "Correlate the server-side result"},
+              "description": {"zh": "要求同一任务的模板日志与产物共同证明结果 49。", "en": "Require the same job's template log and artifact to jointly prove the value 49."}
+            },
+            {
+              "title": {"zh": "固定模板并回归", "en": "Fix the template and regress"},
+              "description": {"zh": "修复后表达式按文本输出，普通业务变量保持可用。", "en": "After remediation the expression is rendered literally while ordinary business variables remain functional."}
+            }
+          ],
+          "analysis": {
+            "zh": "阳性要求同一存储 token 在后续 Template Toolkit 任务中产生 49，并与服务端编译日志关联；写入成功、字面字符串、浏览器计算或手工复制到模板编辑器都不是二阶求值。",
+            "en": "A positive requires the same stored token to produce 49 in a later Template Toolkit job with correlated server compilation logs; successful storage, a literal string, browser computation, or manual copying into an editor is not second-order evaluation."
+          },
+          "opsecTips": [
+            {"zh": "只运行常量算术，出现对象访问、文件/网络动作、真实邮件发送或 worker 异常时立即停止。", "en": "Run constant arithmetic only and stop on object access, file or network activity, real mail delivery, or worker anomalies."},
+            {"zh": "删除合成记录与生成产物，清空队列和模板缓存，再用普通变量回归。", "en": "Delete synthetic records and generated artifacts, clear queues and template caches, and regress with ordinary variables."}
+          ],
+          "references": [
+            "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/18-Testing_for_Server_Side_Template_Injection",
+            "https://template-toolkit.org/docs/manual/Syntax.html"
+          ]
+        },
+        {
+          "id": "nosql2-ssti-dot-arithmetic",
+          "name": {
+            "zh": "二阶 doT 插值算术求值",
+            "en": "Second-Order doT Interpolation Arithmetic Evaluation"
+          },
+          "description": {
+            "zh": "验证存储值是否被 doT 风格 `{{= ... }}` 插值语法再次编译，以常量算术输出区分模板求值与字面回显。",
+            "en": "Tests whether a stored value is recompiled with doT-style {{= ... }} interpolation syntax, using constant arithmetic output to distinguish template evaluation from literal reflection."
+          },
+          "subCategory": {
+            "zh": "doT 二阶求值",
+            "en": "doT Second-Order Evaluation"
+          },
+          "tags": ["ssti", "second-order", "dot-template", "interpolation", "arithmetic"],
+          "prerequisites": [
+            {"zh": "已通过依赖、构建工件或服务端日志确认后续任务使用 doT 兼容模板，而不是仅看到双花括号文本。", "en": "Dependencies, build artifacts, or server logs confirm that the later job uses a doT-compatible template rather than merely displaying double-brace text."},
+            {"zh": "使用合成记录、单次任务和固定算术，不引用模板对象、函数、文件或网络。", "en": "Use a synthetic record, one job, and fixed arithmetic without referencing template objects, functions, files, or network resources."}
+          ],
+          "execution": [
+            {
+              "title": {"zh": "doT 常量插值", "en": "doT Constant Interpolation"},
+              "command": "{{= 7 * 7 }}",
+              "description": {"zh": "把该表达式存入实验字段并触发一次 doT 渲染；同一任务产物出现 49 才证明求值。", "en": "Store the expression in a lab field and trigger one doT render; only a value of 49 in the same job's artifact proves evaluation."},
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": [],
+          "tutorial": {
+            "overview": {"zh": "doT 的插值标记只有在服务端重新编译存储内容时才构成二阶模板注入，单纯显示双花括号不算。", "en": "doT interpolation becomes second-order template injection only when stored content is recompiled server-side; displaying double braces alone does not count."},
+            "vulnerability": {"zh": "应用把用户控制的数据库字段拼进 doT 模板源码，导致字段从数据参数变为可解析表达式。", "en": "The application concatenates a user-controlled database field into doT template source, turning a data value into a parsed expression."},
+            "exploitation": {"zh": "建立纯文本对照，写入单一算术标记，触发一次后续任务，并关联队列、编译日志和产物中的 49。", "en": "Establish a plain-text control, store one arithmetic marker, trigger one later job, and correlate the queue, compilation log, and output value 49."},
+            "mitigation": {"zh": "使用固定 doT 模板并只传入结构化数据，禁止从持久化字段构造模板源码，限制模板上下文。", "en": "Use fixed doT templates with structured data only, prohibit constructing template source from persisted fields, and restrict template context."},
+            "difficulty": "advanced"
+          },
+          "attackChain": [
+            {"title": {"zh": "确认 doT Sink", "en": "Confirm the doT sink"}, "description": {"zh": "用依赖与任务日志确认服务端 doT 编译位置。", "en": "Confirm the server-side doT compilation point from dependencies and job logs."}},
+            {"title": {"zh": "提交单一插值", "en": "Submit one interpolation"}, "description": {"zh": "只提交本条常量算术并触发一次任务。", "en": "Submit only this constant arithmetic input and trigger one job."}, "payloadRef": {"area": "execution", "index": 0}},
+            {"title": {"zh": "验证任务级证据", "en": "Verify job-level evidence"}, "description": {"zh": "关联同一记录、编译日志和输出 49。", "en": "Correlate the same record, compilation log, and output value 49."}},
+            {"title": {"zh": "按数据变量回归", "en": "Regress as a data variable"}, "description": {"zh": "修复后该字符串按文本出现，正常模板变量继续渲染。", "en": "After remediation the string appears literally while normal template variables continue to render."}}
+          ],
+          "analysis": {"zh": "只有服务器后续任务把该 token 求值为 49 才是阳性；前端 JavaScript、字面回显、错误页或首次请求立即处理均不足。", "en": "Only a later server job evaluating the token to 49 is positive; client JavaScript, literal reflection, an error page, or immediate first-request handling is insufficient."},
+          "opsecTips": [
+            {"zh": "固定一次任务和一个合成字段，不进行对象遍历或函数调用。", "en": "Use one job and one synthetic field without object traversal or function calls."},
+            {"zh": "测试后删除记录、产物与模板缓存，并核对 worker 无残留任务。", "en": "Delete records, artifacts, and template caches afterward and verify that no worker jobs remain."}
+          ],
+          "references": [
+            "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/18-Testing_for_Server_Side_Template_Injection",
+            "https://github.com/olado/doT"
+          ]
+        },
+        {
+          "id": "nosql2-ssti-brace-coercion",
+          "name": {
+            "zh": "二阶花括号类型强制求值",
+            "en": "Second-Order Brace-Template Coercion Evaluation"
+          },
+          "description": {
+            "zh": "使用加、减、乘三个无副作用常量表达式观察目标花括号模板的字符串与数字强制语义，前提是已识别实际服务端引擎。",
+            "en": "Uses three side-effect-free constant expressions to observe string and numeric coercion in the identified server-side brace template engine."
+          },
+          "subCategory": {
+            "zh": "花括号模板类型语义",
+            "en": "Brace-Template Type Semantics"
+          },
+          "tags": ["ssti", "second-order", "brace-template", "type-coercion", "arithmetic"],
+          "prerequisites": [
+            {"zh": "已识别具体服务端花括号模板引擎，并确认这三种表达式在该版本属于模板语法而不是字面文本。", "en": "The exact server-side brace template engine is identified and these expressions are confirmed as template syntax for that version rather than literal text."},
+            {"zh": "先在离线模板夹具记录预期输出，再用合成存储记录和单次异步任务复现。", "en": "Record expected output in an offline template fixture before reproducing it with a synthetic stored record and one asynchronous job."}
+          ],
+          "execution": [
+            {
+              "title": {"zh": "花括号常量类型强制组", "en": "Brace-Template Constant Coercion Set"},
+              "command": "{{7+'7'}}\n{{7-\"7\"}}\n{{7*\"7\"}}",
+              "description": {"zh": "按顺序逐条存储并单独触发任务，比较字符串连接、数值减法和数值乘法的服务端输出；不要批量提交。", "en": "Store each line separately and trigger one job per case to compare string concatenation, numeric subtraction, and numeric multiplication without bulk submission."},
+              "syntaxBreakdown": [],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
+          "wafBypass": [],
+          "tutorial": {
+            "overview": {"zh": "类型强制结果可帮助确认模板引擎，但不同引擎语义不同，必须先离线确认再做二阶关联。", "en": "Coercion results can help identify a template engine, but semantics vary by engine and require offline confirmation before second-order correlation."},
+            "vulnerability": {"zh": "存储字段被重新编译为模板源码，使常量表达式在后续服务端任务中按引擎类型规则求值。", "en": "A stored field is recompiled as template source, causing constant expressions to follow engine type rules in a later server job."},
+            "exploitation": {"zh": "对每一行分别建立记录和任务 ID，关联预期输出与模板日志，并用普通字符串和未渲染字段作为对照。", "en": "Create separate record and job identifiers for each line, correlate expected output with template logs, and use ordinary strings and non-rendered fields as controls."},
+            "mitigation": {"zh": "禁止动态编译存储字段，固定模板、收窄上下文并把用户值编码为普通数据。", "en": "Prohibit dynamic compilation of stored fields, use fixed templates, narrow context, and encode user values as ordinary data."},
+            "difficulty": "advanced"
+          },
+          "attackChain": [
+            {"title": {"zh": "离线确认引擎语义", "en": "Confirm engine semantics offline"}, "description": {"zh": "在同版本模板夹具记录三个表达式的预期输出。", "en": "Record expected output for all three expressions in a same-version template fixture."}},
+            {"title": {"zh": "逐条触发二阶任务", "en": "Trigger second-order jobs one by one"}, "description": {"zh": "每次只选择本执行区的一行并绑定独立任务 ID。", "en": "Select one line from this execution entry per run and bind a unique job identifier."}, "payloadRef": {"area": "execution", "index": 0}},
+            {"title": {"zh": "比较类型输出", "en": "Compare coercion output"}, "description": {"zh": "关联任务日志与连接、减法、乘法结果，排除前端处理。", "en": "Correlate job logs with concatenation, subtraction, and multiplication results while excluding client processing."}},
+            {"title": {"zh": "固定模板并回归", "en": "Fix templates and regress"}, "description": {"zh": "修复后所有表达式按文本输出且业务模板保持正常。", "en": "After remediation every expression is rendered literally while business templates remain functional."}}
+          ],
+          "analysis": {"zh": "阳性要求每个存储 token 在独立后续任务中产生与离线同版本引擎一致的类型强制结果；单次回显、JavaScript 运算或错误消息不能证明。", "en": "A positive requires each stored token to produce the same coercion result as the offline same-version engine in a separate later job; one reflection, JavaScript computation, or error message does not prove it."},
+          "opsecTips": [
+            {"zh": "每轮只测试一行常量表达式并限制一个合成记录，避免队列与缓存互相污染。", "en": "Test one constant expression and one synthetic record per run to avoid queue and cache contamination."},
+            {"zh": "完成后删除三条记录及其产物，清空模板缓存并终止测试 worker。", "en": "Delete all three records and artifacts, clear template caches, and stop the test worker afterward."}
+          ],
+          "references": [
+            "https://owasp.org/www-project-web-security-testing-guide/latest/4-Web_Application_Security_Testing/07-Input_Validation_Testing/18-Testing_for_Server_Side_Template_Injection"
+          ]
+        }
+      ],
+      "retiredCommands": [
+        {"command": "${config}", "reason": {"zh": "该行读取模板上下文配置对象而非无副作用常量，可能暴露敏感配置且无法独立证明具体引擎。", "en": "This line reads a template-context configuration object rather than a side-effect-free constant and may expose sensitive configuration without identifying the engine."}},
+        {"command": "<%= config %>", "reason": {"zh": "该 ERB 风格变量读取依赖未知上下文并可能泄露配置；本批仅保留常量求值证据。", "en": "This ERB-style variable read depends on an unknown context and may disclose configuration, while this batch retains constant-evaluation evidence only."}},
+        {"command": "{{self.__class__.__mro__[1].__subclasses__()}}", "reason": {"zh": "该行遍历 Python 类型层次并枚举运行时类，超出算术验证边界且可能暴露实现细节。", "en": "This line traverses Python type hierarchy and enumerates runtime classes, exceeding arithmetic validation and potentially exposing implementation details."}},
+        {"command": "__${T(java.lang.Runtime).getRuntime().exec('id')}__", "reason": {"zh": "该 SpringEL 形态直接请求创建子进程，具有明显副作用且不属于安全二阶求值基线。", "en": "This SpringEL-shaped line directly requests child-process creation, has clear side effects, and is unsuitable for a safe second-order evaluation baseline."}},
+        {"command": "@(Html.Raw(\"<script>alert(1)</script>\"))", "reason": {"zh": "该 Razor/HTML 行验证的是客户端脚本输出而非服务端模板求值，技术域错误且会污染结果。", "en": "This Razor and HTML line tests client-side script output rather than server-side template evaluation, so it belongs to the wrong technical domain and contaminates results."}},
+        {"command": "[%= 7 * 7 %]", "reason": {"zh": "该变体不是本批采用的标准 Template Toolkit 输出语法，保留会把语法错误误当作引擎证据。", "en": "This variant is not the standard Template Toolkit output syntax used by this batch and could turn a syntax error into false engine evidence."}},
+        {"command": "{{dump(app) }}", "reason": {"zh": "该行请求转储应用对象，可能暴露上下文结构和敏感字段，不适合作为无副作用探针。", "en": "This line requests an application-object dump that may expose context structure and sensitive fields and is not a side-effect-free probe."}},
+        {"command": "{{app.request.server.all | join(',')}}", "reason": {"zh": "该行枚举服务器请求环境，可能泄露头、路径和运行时信息，且与常量求值目标无关。", "en": "This line enumerates the server request environment, potentially exposing headers, paths, and runtime data unrelated to constant evaluation."}},
+        {"command": "{{['cat /etc/passwd']|filter('system')}}", "reason": {"zh": "该行通过模板过滤器请求系统命令与文件读取，具有副作用并依赖特定非标准扩展。", "en": "This line requests a system command and file read through a template filter, has side effects, and depends on a specific nonstandard extension."}},
+        {"command": "{{['cat /etc/passwd']|filter('passthru')}}", "reason": {"zh": "该行通过 passthru 过滤器请求命令执行与文件读取，超出本地常量验证边界。", "en": "This line requests command execution and file reading through a passthru filter and exceeds the local constant-validation boundary."}},
+        {"command": "{%import os%}{{os.popen('cat /etc/passwd').read()}}", "reason": {"zh": "该行导入操作系统模块并创建命令管道读取真实文件，具有高副作用且不应作为默认内容。", "en": "This line imports the operating-system module and opens a command pipe to read a real file, creating high side effects inappropriate for default content."}}
+      ]
+    }
+  ]
+}

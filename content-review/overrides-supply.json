@@ -1,0 +1,161 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "sourceIds": [
+    "supply-ci-poison",
+    "supply-dependency-confusion",
+    "supply-typosquat"
+  ],
+  "entries": [
+    {
+      "id": "supply-ci-poison",
+      "name": { "zh": "CI/CD 工作流安全审计", "en": "CI/CD Workflow Security Audit" },
+      "description": { "zh": "把旧 CI/CD 投毒教程迁移为本地仓库的工作流权限、非可信输入、Action 固定版本与构建产物完整性审计。", "en": "Migrate the legacy CI/CD poisoning tutorial into a local-repository audit of workflow permissions, untrusted inputs, pinned actions, and build-artifact integrity." },
+      "category": { "zh": "供应链安全", "en": "Supply Chain Security" },
+      "subCategory": { "zh": "CI/CD 工作流审计", "en": "CI/CD Workflow Audit" },
+      "prerequisites": [
+        { "zh": "使用自有仓库的只读工作副本，并保留当前分支、提交和工作流文件清单。", "en": "Use a read-only working copy of an owned repository and record the current branch, commit, and workflow-file inventory." },
+        { "zh": "准备 actionlint 和 Git，审计期间不触发部署、不读取 Secret 值也不修改远端工作流。", "en": "Prepare actionlint and Git without triggering deployments, reading secret values, or changing remote workflows during the audit." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "CI/CD 风险审校应从静态配置、权限边界和可复现构建证据出发，而不是构造恶意 Pull Request。该工作流逐项列出触发器、非可信事件字段、第三方 Action 引用、令牌权限和产物摘要。", "en": "CI/CD review should begin with static configuration, permission boundaries, and reproducible build evidence rather than a malicious pull request. The workflow inventories triggers, untrusted event fields, third-party action references, token permissions, and artifact digests." },
+        "vulnerability": { "zh": "主要缺陷包括在高权限事件中检出不受信代码、把事件字段直接插入 Shell、对 GITHUB_TOKEN 授予过宽权限、按可变 Tag 引用第三方 Action，以及构建输出缺少可核对摘要。风险必须由具体数据流和权限配置证明。", "en": "Key weaknesses include checking out untrusted code in privileged events, interpolating event fields into a shell, granting excessive GITHUB_TOKEN permissions, referencing third-party actions by mutable tags, and producing artifacts without verifiable digests. Each risk must be tied to a concrete data flow and permission setting." },
+        "exploitation": { "zh": "在本地副本中运行静态查询和 actionlint，逐个查看命中行的事件来源、Shell 边界、permissions 与 checkout ref。对构建目录生成排序后的 SHA-256 清单并与同一提交的第二次构建比较；不提交攻击样例、不导出环境变量也不访问任何 Secret。", "en": "Run static queries and actionlint against the local copy, then inspect the event source, shell boundary, permissions, and checkout ref for each match. Generate a sorted SHA-256 manifest for build output and compare it with a second build of the same commit without submitting attack samples, exporting environment variables, or accessing secrets." },
+        "mitigation": { "zh": "避免让 pull_request_target 检出并执行 Fork 代码；通过环境变量传递并正确引用非可信文本；显式设置最小 permissions；将第三方 Action 固定到完整提交 SHA；对工作流变更启用审核，并为构建产物生成可验证的来源和摘要。", "en": "Do not check out and execute fork code under pull_request_target; pass untrusted text through correctly quoted environment variables; declare least-privilege permissions; pin third-party actions to full commit SHAs; review workflow changes; and produce verifiable provenance and digests for build artifacts." },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        { "title": { "zh": "记录工作流基线", "en": "Record the workflow baseline" }, "description": { "zh": "固定仓库提交并列出所有 YAML 工作流文件。", "en": "Fix the repository commit and inventory every YAML workflow file." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "审计触发器与输入", "en": "Audit triggers and inputs" }, "description": { "zh": "查找高权限事件和直接进入 run 的事件字段，再人工核对上下文。", "en": "Find privileged events and event fields that enter run blocks, then verify their context manually." } },
+        { "title": { "zh": "核对权限与依赖", "en": "Review permissions and dependencies" }, "description": { "zh": "检查令牌权限、凭据持久化和第三方 Action 是否固定到不可变提交。", "en": "Review token permissions, credential persistence, and whether third-party actions use immutable commits." } },
+        { "title": { "zh": "比较产物完整性", "en": "Compare artifact integrity" }, "description": { "zh": "对相同提交的构建输出生成摘要并记录任何不一致。", "en": "Digest build output from the same commit and record any inconsistency." } }
+      ],
+      "analysis": { "zh": "单独出现 pull_request_target、workflow_dispatch 或 github.event 不等于漏洞。只有非可信数据或代码在更高权限、可访问 Secret 或可发布产物的上下文中被解释执行，且权限和数据流可以定位时，才构成可确认问题。", "en": "The presence of pull_request_target, workflow_dispatch, or github.event alone is not a vulnerability. A finding is confirmed only when untrusted data or code is interpreted in a more privileged context that can access secrets or publish artifacts, with both permissions and data flow identified." },
+      "opsecTips": [
+        { "zh": "只在本地工作副本运行只读查询，禁止触发部署、发布、缓存清理或远端写操作。", "en": "Run read-only queries only in a local working copy; do not trigger deployments, releases, cache deletion, or remote writes." },
+        { "zh": "报告仅记录 Secret 名称和权限路径，不打印值；临时摘要放入独立 artifacts 目录。", "en": "Record only secret names and permission paths, never values, and place temporary digests in a dedicated artifacts directory." }
+      ],
+      "references": [
+        "https://docs.github.com/en/actions/reference/security/secure-use",
+        "https://github.com/rhysd/actionlint",
+        "https://securityscorecards.dev/"
+      ],
+      "review": {
+        "decision": "split",
+        "targetPayloadIds": [],
+        "targetToolIds": ["ci-pipeline-security-audit"],
+        "rationale": "五个旧命令块全部属于仓库与工作流审计流程，不是独立 Payload；外带 Secret、投毒产物和规避审计内容被精确替换后整体迁入工具区。",
+        "issuesResolved": ["reclassified-as-tool", "removed-secret-exfiltration", "removed-artifact-poisoning", "removed-evasion", "localized-to-owned-repository", "added-evidence-boundary"],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 -> local workflow inventory",
+          "execution 1 -> privileged-trigger and checkout audit",
+          "execution 2 -> untrusted-expression static analysis",
+          "execution 3 -> deterministic artifact digest workflow",
+          "wafBypass 0 -> immutable action and explicit-permission audit"
+        ],
+        "needsCommandOverride": true
+      }
+    },
+    {
+      "id": "supply-dependency-confusion",
+      "name": { "zh": "依赖解析边界审计", "en": "Dependency Resolution Boundary Audit" },
+      "description": { "zh": "把公共注册、外连回调和目标探测改写为本地 manifest、Registry Scope、回环 Registry 和锁文件来源的可复现审计。", "en": "Replace public publishing, outbound callbacks, and target discovery with reproducible audits of local manifests, registry scopes, a loopback registry, and lockfile origins." },
+      "category": { "zh": "供应链安全", "en": "Supply Chain Security" },
+      "subCategory": { "zh": "依赖解析与 Registry 边界", "en": "Dependency Resolution and Registry Boundaries" },
+      "prerequisites": [
+        { "zh": "准备不含真实组织名称的 @payloader-lab 合成 Scope，并仅使用 127.0.0.1:4873 实验 Registry。", "en": "Prepare a synthetic @payloader-lab scope unrelated to a real organization and use only the lab registry at 127.0.0.1:4873." },
+        { "zh": "保存 package.json、package-lock.json 和项目级 .npmrc 的副本，禁止向公共 Registry 发布任何测试包。", "en": "Preserve package.json, package-lock.json, and the project .npmrc, and do not publish any test package to a public registry." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "依赖混淆审计关注同一包名在不同 Registry、Scope 和版本范围下如何被解析。安全验证应使用合成包与回环 Registry，比较配置和锁文件中的 resolved、version、integrity，而不是注册真实内部包名或等待外连命中。", "en": "Dependency-confusion review asks how one package name resolves across registries, scopes, and version ranges. Safe validation uses synthetic packages and a loopback registry to compare resolved, version, and integrity fields instead of registering real internal names or waiting for callbacks." },
+        "vulnerability": { "zh": "根因通常是未为私有 Scope 固定 Registry、同一命名空间同时查询公私源、使用宽松版本范围、锁文件来源漂移，或 CI 允许绕过组织代理直连公共源。仅看到私有包名或高版本号并不能证明实际解析错误。", "en": "Root causes include a private scope without a fixed registry, querying public and private sources for one namespace, permissive version ranges, lockfile origin drift, or CI bypassing the organization proxy. Merely observing a private-looking name or a higher version does not prove incorrect resolution." },
+        "exploitation": { "zh": "先读取本地 manifest、锁文件与 Scope 配置，再向回环 Registry 查询合成包版本。在一次性目录中只生成 package-lock.json，并使用 --ignore-scripts 阻止生命周期脚本；最后核对 resolved 主机、版本与 integrity，不安装或执行包代码。", "en": "Inspect local manifests, lockfiles, and scope configuration, then query synthetic package versions from the loopback registry. Generate only package-lock.json in a disposable directory with --ignore-scripts, and verify the resolved host, version, and integrity without installing or executing package code." },
+        "mitigation": { "zh": "为每个私有 Scope 显式固定 Registry，通过组织代理统一上游源，提交并验证锁文件，限制直接出网，并在 CI 中检查 resolved 主机和完整性字段。私有包使用独立命名空间和明确版本策略。", "en": "Pin every private scope to an explicit registry, route upstreams through an organization proxy, commit and verify lockfiles, restrict direct egress, and validate resolved hosts and integrity fields in CI. Use dedicated namespaces and explicit version policy for private packages." },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        { "title": { "zh": "固定解析输入", "en": "Fix resolution inputs" }, "description": { "zh": "记录 manifest、锁文件、npm 版本和项目级 Registry 配置。", "en": "Record manifests, lockfiles, the npm version, and project-level registry configuration." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "查询回环 Registry", "en": "Query the loopback registry" }, "description": { "zh": "只查询合成 Scope 包的版本与 dist-tag。", "en": "Query versions and dist-tags only for a synthetic scoped package." } },
+        { "title": { "zh": "生成无脚本锁文件", "en": "Generate a script-free lockfile" }, "description": { "zh": "在一次性目录中仅解析依赖，不执行生命周期脚本。", "en": "Resolve the dependency in a disposable directory without running lifecycle scripts." } },
+        { "title": { "zh": "核对来源与完整性", "en": "Verify origin and integrity" }, "description": { "zh": "比较 resolved 主机、版本和 integrity 是否满足策略。", "en": "Compare resolved hosts, versions, and integrity values against policy." } }
+      ],
+      "analysis": { "zh": "阳性证据必须显示构建在既定私有 Scope 策略下仍从非批准 Registry 解析同名合成包，并由锁文件 resolved 字段或 Registry 日志确认。公共源存在相似名称、配置缺失但未参与解析、或单纯 npm view 结果都只是风险线索。", "en": "A positive requires the build to resolve the synthetic same-name package from an unapproved registry despite the intended private-scope policy, confirmed by lockfile resolved fields or registry logs. A similar public name, missing configuration that never affects resolution, or npm view output alone is only a lead." },
+      "opsecTips": [
+        { "zh": "不得查询、注册或发布任何真实内部包名；合成 Scope 和包名必须与现实组织无关。", "en": "Do not query, register, or publish any real internal package name; synthetic scopes and names must be unrelated to real organizations." },
+        { "zh": "所有解析都使用回环 Registry 和 --ignore-scripts，测试后删除一次性目录并保留脱敏锁文件证据。", "en": "Use the loopback registry and --ignore-scripts for every resolution, then remove disposable directories while retaining a redacted lockfile as evidence." }
+      ],
+      "references": [
+        "https://docs.npmjs.com/cli/v11/configuring-npm/npmrc/",
+        "https://docs.npmjs.com/cli/v11/configuring-npm/package-lock-json/",
+        "https://docs.npmjs.com/cli/v11/using-npm/scope/"
+      ],
+      "review": {
+        "decision": "split",
+        "targetPayloadIds": [],
+        "targetToolIds": ["dependency-resolution-audit"],
+        "rationale": "五个旧命令块是依赖发现、发布、回调和解析编排；公共发布、OOB 回调与真实目标命名空间被删除，替换为回环 Registry 的工具工作流。",
+        "issuesResolved": ["reclassified-as-tool", "removed-public-publishing", "removed-oob-callbacks", "removed-target-discovery", "added-loopback-registry", "added-lockfile-evidence"],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 -> local manifest and lockfile inventory",
+          "execution 1 -> project registry-scope inspection",
+          "execution 2 -> loopback registry metadata query",
+          "execution 3 -> disposable ignore-scripts resolution",
+          "wafBypass 0 -> lockfile origin and integrity export"
+        ],
+        "needsCommandOverride": true
+      }
+    },
+    {
+      "id": "supply-typosquat",
+      "name": { "zh": "包身份与生命周期脚本审计", "en": "Package Identity and Lifecycle-Script Audit" },
+      "description": { "zh": "把仿冒包名生成、恶意 install Hook 和规避示例改写为本地依赖清单、批准包名、离线 Tarball 与生命周期脚本审计。", "en": "Replace lookalike-name generation, malicious install hooks, and evasion examples with audits of local dependency inventories, approved names, offline tarballs, and lifecycle scripts." },
+      "category": { "zh": "供应链安全", "en": "Supply Chain Security" },
+      "subCategory": { "zh": "包身份与安装行为", "en": "Package Identity and Install Behavior" },
+      "prerequisites": [
+        { "zh": "准备当前项目 manifest、锁文件和一份经过审批的包名清单，不从第三方仓库抓取目标依赖。", "en": "Prepare the current project manifests, lockfile, and an approved package-name list without collecting target dependencies from third-party repositories." },
+        { "zh": "待复核包必须以离线 Tarball 放入 fixtures，检查期间不执行其 install、preinstall 或 postinstall 脚本。", "en": "Place packages under review in fixtures as offline tarballs and do not run their install, preinstall, or postinstall scripts during inspection." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "包身份审计要回答实际锁定的包名、版本、来源和安装行为是否符合批准清单。流程从本地 manifest 生成清单，比较规范化名称，静态查看 Tarball 的 package.json 与文件列表，再检查项目级 ignore-scripts 和生命周期脚本。", "en": "Package-identity review asks whether locked names, versions, origins, and install behavior match an approved inventory. The workflow derives names from local manifests, compares normalized identities, statically inspects a tarball's package.json and file list, and reviews project ignore-scripts and lifecycle hooks." },
+        "vulnerability": { "zh": "风险来自人工输入包名、批准清单缺失、名称相似性未复核、生命周期脚本默认执行，以及 CI 身份拥有超出构建所需的网络和凭据权限。名称看起来相似并不自动证明恶意，必须结合发布者、来源、版本、完整性和代码审查。", "en": "Risk comes from manually entered names, missing approved inventories, unreviewed lookalike identities, lifecycle scripts that execute by default, and CI identities with unnecessary network or credential access. A similar-looking name is not automatically malicious; publisher, origin, version, integrity, and code review are required." },
+        "exploitation": { "zh": "从本地 package.json 导出正式与开发依赖，和 policy/approved-packages.txt 做规范化比较。对 fixtures/package-under-review.tgz 只执行 tar 列表与 package.json 提取；随后以 --ignore-scripts 运行 dry-run 和锁文件审计，不加载包模块。", "en": "Export runtime and development dependencies from local package.json and compare them with policy/approved-packages.txt after normalization. Only list the contents and extract package.json from fixtures/package-under-review.tgz, then run dry-run and lockfile audits with --ignore-scripts without loading the package module." },
+        "mitigation": { "zh": "使用锁文件和批准依赖清单，减少手工输入，验证 Registry、发布者、签名或完整性，并在隔离审查阶段禁用生命周期脚本。CI 使用最小权限、受控出网和可复现安装，异常包名与新增 Hook 必须经过代码审核。", "en": "Use lockfiles and approved dependency inventories, minimize manual package entry, verify registries, publishers, signatures or integrity, and disable lifecycle scripts during isolated review. CI should use least privilege, controlled egress, and reproducible installs, with review required for unusual names and new hooks." },
+        "difficulty": "beginner"
+      },
+      "attackChain": [
+        { "title": { "zh": "导出本地依赖名", "en": "Export local dependency names" }, "description": { "zh": "从当前 manifest 生成排序、去重的依赖清单。", "en": "Generate a sorted and deduplicated dependency inventory from current manifests." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "比较批准身份", "en": "Compare approved identities" }, "description": { "zh": "按大小写和分隔符规范化后标记需要人工复核的差异。", "en": "Normalize case and separators and flag differences for manual review." } },
+        { "title": { "zh": "静态检查 Tarball", "en": "Inspect the tarball statically" }, "description": { "zh": "读取 package.json、bin、scripts 与文件列表，不运行包代码。", "en": "Read package.json, bins, scripts, and the file list without running package code." } },
+        { "title": { "zh": "核对安装策略", "en": "Verify installation policy" }, "description": { "zh": "确认 ignore-scripts、锁文件和新增生命周期 Hook 均纳入审核。", "en": "Confirm that ignore-scripts, lockfiles, and new lifecycle hooks are covered by review." } }
+      ],
+      "analysis": { "zh": "确认恶意或仿冒包需要名称异常之外的证据，例如非批准 Registry、意外发布者、完整性变化、未声明的生命周期脚本或代码行为。下载量、名称距离、单个 npm audit 告警或存在 postinstall 都不能独立完成归因。", "en": "Confirming a malicious or impersonating package requires evidence beyond naming, such as an unapproved registry, unexpected publisher, integrity change, undisclosed lifecycle script, or code behavior. Download counts, name distance, one npm audit alert, or the presence of postinstall cannot establish attribution alone." },
+      "opsecTips": [
+        { "zh": "只检查本地 manifest 和离线 Tarball，不搜索可注册名称、不发布包，也不执行任何生命周期脚本。", "en": "Inspect only local manifests and offline tarballs; do not search for available names, publish packages, or run lifecycle scripts." },
+        { "zh": "审计输出只保留包名、版本、来源和摘要，删除可能包含私有路径或令牌的完整配置。", "en": "Retain only package names, versions, origins, and digests in audit output, removing full configuration that may contain private paths or tokens." }
+      ],
+      "references": [
+        "https://docs.npmjs.com/cli/v11/using-npm/scripts/",
+        "https://docs.npmjs.com/cli/v11/commands/npm-ci/",
+        "https://docs.npmjs.com/cli/v11/commands/npm-pack/"
+      ],
+      "review": {
+        "decision": "split",
+        "targetPayloadIds": [],
+        "targetToolIds": ["package-identity-audit"],
+        "rationale": "五个旧命令块全部是依赖侦察、名称生成、包构造、扫描与规避流程；恶意 Hook、外带和规避内容被精确替换并整体迁入工具区。",
+        "issuesResolved": ["reclassified-as-tool", "removed-malicious-hooks", "removed-exfiltration", "removed-evasion", "added-offline-tarball-review", "added-attribution-boundary"],
+        "retainedCommandIndexes": [],
+        "lineDisposition": [
+          "execution 0 -> local dependency-name inventory",
+          "execution 1 -> approved-name normalization comparison",
+          "execution 2 -> offline package tarball inspection",
+          "execution 3 -> ignore-scripts dry-run and lockfile audit",
+          "wafBypass 0 -> lifecycle-script policy inspection"
+        ],
+        "needsCommandOverride": true
+      }
+    }
+  ]
+}

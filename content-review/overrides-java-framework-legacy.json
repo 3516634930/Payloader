@@ -1,0 +1,498 @@
+{
+  "schemaVersion": 1,
+  "contentStandard": 2,
+  "sourceIds": [
+    "fastjson-rce",
+    "jboss-vuln",
+    "log4j-rce",
+    "shiro-deserialize",
+    "spring-actuator",
+    "spring-cloud",
+    "spring-spel",
+    "struts2-ognl",
+    "struts2-rce",
+    "tomcat-vuln",
+    "weblogic-iiop",
+    "weblogic-rce",
+    "weblogic-t3",
+    "weblogic-xmldecoder"
+  ],
+  "entries": [
+    {
+      "id": "fastjson-rce",
+      "name": { "zh": "Fastjson AutoType 策略边界验证", "en": "Fastjson AutoType Policy Boundary Validation" },
+      "description": { "zh": "在 localhost 解析 Fixture 中使用无副作用 HashMap 类型标记，验证 AutoType、允许类型和外部查找策略，而不加载 gadget 或发起网络请求。", "en": "Validate AutoType, allowed-class, and external-lookup policy in a localhost parsing fixture with a side-effect-free HashMap marker and no gadget loading or network request." },
+      "category": { "zh": "Java框架安全", "en": "Java Framework Security" },
+      "subCategory": { "zh": "JSON 多态类型策略", "en": "JSON Polymorphic-Type Policy" },
+      "prerequisites": [
+        { "zh": "使用隔离 Fastjson Fixture，固定依赖版本并禁用网络出口和类实例化副作用。", "en": "Use an isolated Fastjson fixture with a fixed dependency version, no network egress, and no side-effectful class instantiation." },
+        { "zh": "准备普通 JSON 对照和一个 java.util.HashMap 类型标记，启用类型解析审计日志。", "en": "Prepare a plain JSON control and one java.util.HashMap type marker with type-resolution audit logs enabled." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "该边界只检查解析器是否按预期处理一个无害类型标记，并确认不会触发外部查找。先提交普通对象建立字段基线，再加入 HashMap 类型元数据，比较解析结果、拒绝原因和类型解析日志；不使用 JdbcRowSet、BCEL 或任何远程引用。", "en": "This boundary checks how the parser handles one harmless type marker and confirms that no external lookup occurs. Compare a plain object with a HashMap-marked object using parse results, rejection reasons, and type-resolution logs without JdbcRowSet, BCEL, or remote references." },
+        "vulnerability": { "zh": "风险来自旧版或宽松配置接受客户端控制的多态类型，并在反序列化期间实例化具有危险构造器、Setter 或远程查找行为的类。AutoType 是否开启只是一个条件，只有不受信类型可到达有副作用类路径才形成可利用边界。", "en": "Risk arises when an outdated or permissive configuration accepts client-controlled polymorphic types and instantiates classes with dangerous constructors, setters, or remote-lookup behavior. AutoType alone is only a precondition; exploitability requires an untrusted type to reach a side-effectful class path." },
+        "exploitation": { "zh": "向本地解析端点发送固定 HashMap Canary，并断言返回标记、类型决策和 external_lookup=false。若配置拒绝类型，应记录明确拒绝；若允许，也只能确认策略行为，不能推断远程代码执行。禁止替换为 JNDI、ClassLoader 或字节码类。", "en": "Send the fixed HashMap canary to the local parser and assert the marker, type decision, and external_lookup=false. Rejection should be explicit; acceptance establishes policy behavior only and does not imply code execution. Never substitute JNDI, class loaders, or bytecode-bearing classes." },
+        "mitigation": { "zh": "升级到供应商维护版本，优先避免客户端控制类型元数据，并使用显式 DTO 与类型允许列表。关闭不需要的 AutoType，限制类加载和网络出口，对拒绝类型建立审计，同时用无害允许类、未知类和普通对象做回归。", "en": "Upgrade to a maintained vendor version, avoid client-controlled type metadata, and use explicit DTOs and type allowlists. Disable unnecessary AutoType, restrict class loading and egress, audit rejected types, and regress harmless allowed, unknown, and plain objects." },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        { "title": { "zh": "固定解析器版本和策略", "en": "Fix parser version and policy" }, "description": { "zh": "记录 Fastjson 版本、AutoType 设置、允许类型和网络隔离状态。", "en": "Record Fastjson version, AutoType setting, allowed classes, and network-isolation state." } },
+        { "title": { "zh": "提交无害类型标记", "en": "Submit a harmless type marker" }, "description": { "zh": "向 localhost Fixture 提交 HashMap Canary，并要求返回解析与外部查找状态。", "en": "Submit the HashMap canary to the localhost fixture and require parse and external-lookup status." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "关联类型决策日志", "en": "Correlate type-decision logs" }, "description": { "zh": "按请求 ID 对齐类型解析、拒绝原因和无网络事件，排除普通字段回显。", "en": "Align type resolution, rejection reason, and absence of network events by request ID, excluding ordinary reflection." } },
+        { "title": { "zh": "收紧允许列表并回归", "en": "Tighten the allowlist and regress" }, "description": { "zh": "应用显式 DTO 与类型允许列表后重放普通、允许和未知类型三个对照。", "en": "After explicit DTO and type-allowlist controls, replay plain, allowed, and unknown-type controls." } }
+      ],
+      "analysis": { "zh": "接受无害 HashMap 类型不等于 RCE，拒绝未知类型也不证明所有历史链均不可达。有效结论应限定到确切版本、配置、类路径和解析日志，并确认测试期间没有 DNS、LDAP、RMI 或其他网络活动。", "en": "Accepting a harmless HashMap type is not RCE, and rejecting one unknown type does not prove every historical chain unreachable. Conclusions must be limited to the exact version, configuration, classpath, and parse logs with no DNS, LDAP, RMI, or other network activity." },
+      "opsecTips": [
+        { "zh": "只使用 java.util.HashMap 和合成标记，禁止任何远程引用、gadget 或字节码字段。", "en": "Use only java.util.HashMap and a synthetic marker, with no remote references, gadgets, or bytecode fields." },
+        { "zh": "Fixture 禁用网络出口并设置五秒超时，测试后删除解析日志中的请求正文。", "en": "Disable fixture egress, enforce a five-second timeout, and remove request bodies from parse logs after testing." }
+      ],
+      "references": [
+        "https://raw.githubusercontent.com/wiki/alibaba/fastjson/security_update_20220523.md",
+        "https://cheatsheetseries.owasp.org/cheatsheets/Deserialization_Cheat_Sheet.html"
+      ],
+      "review": { "decision": "split", "targetPayloadIds": ["fastjson-autotype-policy-boundary"], "targetToolIds": ["java-framework-version-audit"], "rationale": "保留无外连 AutoType 策略边界，将 JAR 版本诊断迁工具，JNDI、BCEL 和历史 gadget 链全部退休。", "issuesResolved": ["localhost-fixture", "harmless-type-marker", "no-external-lookup", "migrated-version-audit", "retired-gadgets"] }
+    },
+    {
+      "id": "jboss-vuln",
+      "name": { "zh": "JBoss 管理界面访问边界验证", "en": "JBoss Management-Interface Access Boundary Validation" },
+      "description": { "zh": "验证 localhost JBoss 或 WildFly 实验实例的旧 JMX Console 是否关闭或要求认证，并将 Invoker、版本和管理资源诊断迁入工具卡。", "en": "Validate whether a localhost JBoss or WildFly lab protects or disables the legacy JMX Console while moving Invoker, version, and management-resource diagnostics into a tool card." },
+      "category": { "zh": "Java框架安全", "en": "Java Framework Security" },
+      "subCategory": { "zh": "JBoss 管理面访问控制", "en": "JBoss Management-Plane Access Control" },
+      "prerequisites": [
+        { "zh": "启动无业务数据的 jboss-lab 容器，并只将实验 HTTP 端口绑定到 127.0.0.1。", "en": "Start a data-free jboss-lab container and bind its laboratory HTTP port to 127.0.0.1 only." },
+        { "zh": "记录预期管理路径、认证方式、管理 Realm 和已安装版本。", "en": "Record expected management paths, authentication method, management realm, and installed version." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "本条只验证旧 JMX Console 的访问控制状态。请求不携带凭据、不调用部署操作，仅接受 401、403 或 404 作为安全基线，并通过服务端访问日志确认请求到达正确实例。其他 Invoker 与 CLI 信息属于工具诊断。", "en": "This card validates access control for the legacy JMX Console. It sends no credentials and invokes no deployment operation, accepting 401, 403, or 404 as the secure baseline while correlating the request with server access logs. Invoker and CLI checks belong to diagnostics." },
+        "vulnerability": { "zh": "旧 JBoss 管理与 Invoker 接口若暴露到不受信网络且缺少认证，可能允许管理操作、序列化入口或部署能力。端点存在并不等于可利用，必须确认未认证主体能执行受保护管理动作；版本和模块状态决定具体风险。", "en": "Legacy JBoss management and Invoker interfaces exposed without authentication may provide administrative operations, serialization entry points, or deployment capability. Endpoint presence is not exploitability; an unauthenticated principal must reach a protected operation, and version plus module state determine risk." },
+        "exploitation": { "zh": "向 localhost 的 jmx-console 根路径发送一次无认证 GET，记录状态码、WWW-Authenticate、重定向和访问日志。不要提交序列化对象、调用 MainDeployer、上传 WAR 或执行 BeanShell。若返回 200，也只继续检查静态登录页而不触发操作。", "en": "Send one unauthenticated GET to the localhost jmx-console root and record status, WWW-Authenticate, redirects, and access logs. Do not submit serialized objects, call MainDeployer, upload WAR files, or run BeanShell. A 200 response warrants static-page review only." },
+        "mitigation": { "zh": "升级到受支持 WildFly 或 JBoss EAP，删除不需要的旧 Console 与 Invoker 应用，将管理接口绑定专用地址并启用强认证和角色控制。用防火墙限制管理端口，并在每次升级后回归未认证访问和管理操作授权。", "en": "Upgrade to supported WildFly or JBoss EAP, remove unused legacy Console and Invoker applications, bind management interfaces to dedicated addresses, and enforce strong authentication plus roles. Restrict management ports and regress unauthenticated access after upgrades." },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        { "title": { "zh": "确认管理面实验范围", "en": "Confirm management-plane lab scope" }, "description": { "zh": "记录容器端口、管理 Realm、版本和预期关闭或认证的路径。", "en": "Record container port, management realm, version, and paths expected to be disabled or authenticated." } },
+        { "title": { "zh": "请求 JMX Console 根路径", "en": "Request the JMX Console root" }, "description": { "zh": "无凭据请求 localhost JMX Console，只验证访问策略和状态码。", "en": "Request the localhost JMX Console without credentials and evaluate access policy and status only." }, "payloadRef": { "area": "execution", "index": 1 } },
+        { "title": { "zh": "关联认证和访问日志", "en": "Correlate authentication and access logs" }, "description": { "zh": "用请求 ID 核对 Realm 决策、重定向和实际处理模块，排除代理默认页。", "en": "Use the request ID to correlate realm decisions, redirects, and the serving module, excluding proxy default pages." } },
+        { "title": { "zh": "关闭旧应用后复测", "en": "Retest after disabling legacy apps" }, "description": { "zh": "移除旧 Console 或启用认证后重放请求，确认管理面不再匿名可达。", "en": "After removing the legacy console or enabling authentication, replay the request and confirm anonymous access is unavailable." } }
+      ],
+      "analysis": { "zh": "确认风险需要匿名主体可到达受保护管理操作；端点返回 200、产品指纹或登录页都只是暴露线索。401、403、404 与服务端 Realm 日志一致时属于阴性，不能用部署或命令执行去扩大证明。", "en": "Risk confirmation requires an anonymous principal to reach a protected management operation. Status 200, a product fingerprint, or a login page is only an exposure lead. Consistent 401, 403, or 404 with realm logs is negative and should not be escalated through deployment or command execution." },
+      "opsecTips": [
+        { "zh": "只访问容器根管理路径，不调用任何 deploy、invoke、upload 或脚本接口。", "en": "Access only root management paths and never call deploy, invoke, upload, or scripting interfaces." },
+        { "zh": "容器仅绑定 localhost，使用合成 Realm，测试后删除访问日志中的令牌与 Cookie。", "en": "Bind the container to localhost, use a synthetic realm, and remove tokens and cookies from access logs afterward." }
+      ],
+      "references": [
+        "https://docs.wildfly.org/40/Admin_Guide.html#Default_HTTP_Interface_Security",
+        "https://access.redhat.com/security/security-updates/"
+      ],
+      "review": { "decision": "split", "targetPayloadIds": ["jboss-management-exposure-boundary"], "targetToolIds": ["jboss-management-diagnostics"], "rationale": "保留 JMX Console 匿名访问边界，Invoker、CLI 与路径状态迁工具，序列化、WAR 部署和 BeanShell 执行退休。", "issuesResolved": ["management-access-boundary", "localhost-container", "migrated-diagnostics", "removed-deployment", "removed-process-execution"] }
+    },
+    {
+      "id": "log4j-rce",
+      "name": { "zh": "Log4j 本地消息 Lookup 策略验证", "en": "Log4j Local Message-Lookup Policy Validation" },
+      "description": { "zh": "在无网络出口的本地日志 Fixture 中记录一个 Java 版本 Lookup 形状，验证消息替换策略和 network_lookup=false，不使用 JNDI 或外带。", "en": "Record one Java-version lookup shape in a no-egress local logging fixture to validate message-substitution policy and network_lookup=false without JNDI or exfiltration." },
+      "category": { "zh": "Java框架安全", "en": "Java Framework Security" },
+      "subCategory": { "zh": "Log4j 消息替换策略", "en": "Log4j Message-Substitution Policy" },
+      "prerequisites": [
+        { "zh": "使用固定 Log4j 版本的 localhost Fixture，阻断 DNS、LDAP、RMI 与所有外部网络出口。", "en": "Use a localhost fixture with a fixed Log4j version and block DNS, LDAP, RMI, and all external network egress." },
+        { "zh": "启用应用日志、替换器调试日志和网络否定证据，并准备普通文本对照。", "en": "Enable application logs, substitution diagnostics, and negative network evidence with a plain-text control." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "该 Payload 只观察安全的本地消息 Lookup 是否按配置展开或原样记录，并明确确认没有网络查找。它不包含 jndi 名称、远程 URI、环境变量或命令路径，因此结果用于验证消息替换策略，而不是复现 Log4Shell 利用链。", "en": "This payload observes whether a safe local message lookup is expanded or logged literally and explicitly confirms no network lookup. It contains no jndi name, remote URI, environment variable, or command path, so it validates substitution policy rather than reproducing Log4Shell." },
+        "vulnerability": { "zh": "Log4Shell 风险取决于受影响 Log4j 版本、消息 Lookup、JNDI 组件、Java 运行时、类路径和网络出口。看到带花括号文本被记录或展开不等于远程查找，更不等于代码执行；版本与运行配置必须同时成立。", "en": "Log4Shell risk depends on the affected Log4j version, message lookups, JNDI components, Java runtime, classpath, and egress. Logging or expanding brace-delimited text does not establish a remote lookup or code execution; version and runtime conditions must align." },
+        "exploitation": { "zh": "提交一个带固定请求 ID 的 Java 版本 Lookup 形状，读取 Fixture 返回的 logged_value 和 network_lookup。关联应用日志与阻断网络遥测，确认测试没有产生 DNS、LDAP 或 RMI 请求。禁止换成 jndi、环境属性、反向连接或混淆表达式。", "en": "Submit one Java-version lookup shape with a fixed request ID and inspect logged_value plus network_lookup. Correlate application logs with blocked-network telemetry to confirm no DNS, LDAP, or RMI request occurred. Do not substitute jndi, environment properties, callbacks, or obfuscation." },
+        "mitigation": { "zh": "升级到 Apache 公告认可的安全版本，移除不需要的 JNDI Lookup 能力，限制应用网络出口，并避免记录未经规范化的敏感输入。通过依赖锁文件、运行时 JAR 清单和安全日志持续核对实际加载版本。", "en": "Upgrade to a version recognized as safe by Apache advisories, remove unnecessary JNDI lookup capability, restrict application egress, and avoid logging unnormalized sensitive input. Continuously verify the loaded version through lockfiles, runtime JAR inventories, and security logs." },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        { "title": { "zh": "固定 Log4j 运行条件", "en": "Fix Log4j runtime conditions" }, "description": { "zh": "记录 log4j-core 版本、Java 版本、消息替换配置和网络阻断状态。", "en": "Record log4j-core version, Java version, substitution configuration, and egress-block state." } },
+        { "title": { "zh": "提交本地 Lookup Canary", "en": "Submit the local lookup canary" }, "description": { "zh": "向 localhost 日志 Fixture 提交不含 JNDI 的固定消息，并要求返回网络标志。", "en": "Submit the fixed non-JNDI message to the localhost logging fixture and require a network flag." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "核对日志与网络否定证据", "en": "Check logs and negative network evidence" }, "description": { "zh": "按请求 ID 对齐记录值、替换日志和零 DNS、LDAP、RMI 事件。", "en": "Align logged value, substitution diagnostics, and zero DNS, LDAP, or RMI events by request ID." } },
+        { "title": { "zh": "升级依赖并重放", "en": "Upgrade dependencies and replay" }, "description": { "zh": "升级并关闭不需要的 Lookup 后重放普通文本与 Canary，确认无网络行为。", "en": "After upgrade and disabling unnecessary lookups, replay plain text and the canary to confirm no network behavior." } }
+      ],
+      "analysis": { "zh": "本地 Java Lookup 的展开只能说明消息替换行为，不能证明 JNDI 可达或 RCE。阳性安全结论必须结合确切受影响版本、远程 Lookup 能力与出口；本批刻意不产生远程请求，因此只报告策略与版本证据。", "en": "Expansion of a local Java lookup establishes message-substitution behavior only, not reachable JNDI or RCE. A security conclusion requires an affected version, remote-lookup capability, and egress; this batch intentionally creates no remote request and reports policy plus version evidence only." },
+      "opsecTips": [
+        { "zh": "Fixture 关闭全部网络出口，消息不包含 jndi、环境变量、主机名或远程协议。", "en": "Block all fixture egress and keep jndi, environment variables, hostnames, and remote protocols out of the message." },
+        { "zh": "每次只记录一个固定 Canary，五秒内完成并清理包含运行时版本的测试日志。", "en": "Log one fixed canary per run, finish within five seconds, and remove test logs containing runtime-version details." }
+      ],
+      "references": [
+        "https://logging.apache.org/security.html",
+        "https://logging.apache.org/log4j/2.x/manual/lookups.html"
+      ],
+      "review": { "decision": "split", "targetPayloadIds": ["log4j-message-lookup-policy-boundary"], "targetToolIds": ["java-framework-version-audit"], "rationale": "保留无 JNDI、无外连的本地消息替换边界，JAR 版本迁工具，环境外带、反向连接和混淆绕过全部退休。", "issuesResolved": ["local-only-lookup", "no-jndi", "no-exfiltration", "migrated-version-audit", "retired-evasion"] }
+    },
+    {
+      "id": "shiro-deserialize",
+      "name": { "zh": "Apache Shiro rememberMe 安全归并", "en": "Apache Shiro rememberMe Security Merge" },
+      "description": { "zh": "将旧反序列化利用内容归并到现有 rememberMe 安全边界，只保留无效 Cookie 响应和本地运行配置诊断，不生成序列化 gadget 或爆破密钥。", "en": "Merge legacy deserialization exploitation into the existing rememberMe security boundary while retaining only invalid-cookie response and local runtime-configuration diagnostics without gadgets or key brute force." },
+      "category": { "zh": "身份认证安全", "en": "Authentication Security" },
+      "subCategory": { "zh": "rememberMe 序列化与密钥策略", "en": "rememberMe Serialization and Key Policy" },
+      "prerequisites": [
+        { "zh": "使用 localhost Shiro Fixture、合成账户和随机实验 rememberMe 密钥。", "en": "Use a localhost Shiro fixture, synthetic accounts, and a random laboratory rememberMe key." },
+        { "zh": "启用 Cookie 处理、反序列化拒绝和运行配置日志，但禁用对象 gadget 类路径。", "en": "Enable cookie handling, deserialization rejection, and runtime configuration logs while excluding gadget classes." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "该旧条目不再保留独立 Payload，因为 rememberMe 反序列化已经有统一认证边界。这里只发送一个固定无效 Cookie 观察清除行为，并读取实验配置中的版本、密码模式、密钥来源和过滤策略；deleteMe 响应只能识别框架行为。", "en": "This legacy entry no longer remains as a separate payload because rememberMe deserialization has a unified authentication boundary. It sends one fixed invalid cookie and reads lab version, cipher mode, key source, and filter policy; a deleteMe response identifies behavior only." },
+        "vulnerability": { "zh": "风险需要应用接受攻击者可控的加密 rememberMe 数据、使用弱或默认密钥，并反序列化可达 gadget 类。任何一个条件缺失都会改变可利用性。Cookie 名称、deleteMe 或默认密钥列表本身都不是远程代码执行证据。", "en": "Risk requires attacker-controlled encrypted rememberMe data, a weak or default key, and reachable gadget classes during deserialization. Missing any condition changes exploitability. Cookie names, deleteMe, and default-key lists are not code-execution evidence." },
+        "exploitation": { "zh": "向本地 Fixture 发送固定不可解密 Canary，记录状态、Set-Cookie 和服务端拒绝日志，再读取受控配置文件确认版本与密钥来源。禁止生成 ysoserial、加密 gadget、使用公开默认密钥、批量尝试密钥或调用第三方利用器。", "en": "Send one undecryptable canary to the local fixture, record status, Set-Cookie, and rejection logs, then inspect the controlled configuration for version and key source. Do not generate ysoserial data, encrypt gadgets, use public defaults, brute-force keys, or run exploit tools." },
+        "mitigation": { "zh": "升级 Shiro，使用随机且独立管理的密钥和当前加密模式，避免 Java 原生反序列化保存身份状态，并缩小类路径。为 Cookie 解密失败、反序列化拒绝和密钥轮换建立可观察性与回归。", "en": "Upgrade Shiro, use random independently managed keys and current cipher modes, avoid native Java deserialization for identity state, and minimize the classpath. Add observability and regression for cookie-decryption failures, deserialization rejection, and key rotation." },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        { "title": { "zh": "记录 rememberMe 运行策略", "en": "Record rememberMe runtime policy" }, "description": { "zh": "登记 Shiro 版本、密钥来源、密码模式、序列化格式和过滤器。", "en": "Register Shiro version, key source, cipher mode, serialization format, and filters." } },
+        { "title": { "zh": "发送固定无效 Cookie", "en": "Send a fixed invalid cookie" }, "description": { "zh": "向 localhost 发送不可解密 Canary，只观察状态和 Set-Cookie 行为。", "en": "Send an undecryptable canary to localhost and observe status and Set-Cookie behavior only." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "关联拒绝与配置证据", "en": "Correlate rejection and configuration evidence" }, "description": { "zh": "核对解密失败、未进入对象反序列化及配置中的随机密钥来源。", "en": "Verify decryption failure, absence of object deserialization, and a random key source in configuration." } },
+        { "title": { "zh": "升级与密钥轮换回归", "en": "Regress upgrade and key rotation" }, "description": { "zh": "升级并轮换实验密钥后重放无效与正常 Cookie，确认认证流程稳定。", "en": "After upgrade and lab-key rotation, replay invalid and normal cookies to confirm stable authentication." } }
+      ],
+      "analysis": { "zh": "deleteMe、Cookie 清除或识别 Shiro 都不能证明默认密钥和 gadget 可达。确认必须有受控序列化格式、密钥问题和反序列化副作用证据；本批不生成这些内容，只保留防御配置与拒绝路径验证。", "en": "deleteMe, cookie clearing, or Shiro identification does not prove a default key or reachable gadget. Confirmation requires controlled evidence of serialization format, key weakness, and deserialization side effects; this batch generates none and retains defensive configuration plus rejection checks." },
+      "opsecTips": [
+        { "zh": "只发送一个固定无效 Cookie，不使用密钥列表、加密脚本、gadget JAR 或命令参数。", "en": "Send one fixed invalid cookie without key lists, encryption scripts, gadget JARs, or command arguments." },
+        { "zh": "Fixture 使用随机测试密钥和合成身份，测试后删除 Cookie 与认证日志中的标识。", "en": "Use a random test key and synthetic identity, removing cookie and authentication identifiers after testing." }
+      ],
+      "references": [
+        "https://shiro.apache.org/security-reports.html",
+        "https://shiro.apache.org/web.html#remember_me_services"
+      ],
+      "review": { "decision": "split", "targetPayloadIds": ["auth-shiro-rememberme-deserialization"], "targetToolIds": ["shiro-security-diagnostics"], "rationale": "归并到现有 Shiro rememberMe Payload；无效 Cookie 和配置诊断迁工具，gadget、默认密钥、发送器和爆破全部退休。", "issuesResolved": ["merged-existing-boundary", "invalid-cookie-only", "migrated-config-diagnostics", "retired-gadgets", "retired-key-bruteforce"] }
+    },
+    {
+      "id": "spring-actuator",
+      "name": { "zh": "Spring Boot Actuator 暴露归并", "en": "Spring Boot Actuator Exposure Merge" },
+      "description": { "zh": "将旧综合条目归并到现有 Actuator 暴露边界，只保留 localhost 端点状态与授权链接诊断，退休敏感转储、环境修改和路径规避。", "en": "Merge the legacy aggregate into the existing Actuator exposure boundary while retaining localhost endpoint status and authorized-link diagnostics and retiring sensitive dumps, environment mutation, and path evasion." },
+      "category": { "zh": "Java框架安全", "en": "Java Framework Security" },
+      "subCategory": { "zh": "Spring Boot 管理端点", "en": "Spring Boot Management Endpoints" },
+      "prerequisites": [
+        { "zh": "使用无真实密钥的 Spring Boot Fixture，并固定 management.endpoints.web.exposure 配置。", "en": "Use a Spring Boot fixture without real secrets and fix management.endpoints.web.exposure configuration." },
+        { "zh": "准备匿名与审核者两个实验角色，记录每个端点的预期状态。", "en": "Prepare anonymous and reviewer lab roles and record expected status for each endpoint." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "Actuator 是管理与可观测性功能，不是单一漏洞。审校后以四个固定路径测量暴露状态，并由审核者读取根链接清单；具体信息暴露结果归入现有 Payload，工具卡负责状态矩阵，禁止下载 heapdump 或修改 env。", "en": "Actuator is a management and observability facility rather than one vulnerability. The reviewed workflow measures four fixed paths and lets a reviewer read root links; concrete exposure results merge into the existing payload while diagnostics own the status matrix without heapdump or env mutation." },
+        "vulnerability": { "zh": "风险来自敏感端点暴露给不适当主体、端点返回密钥或配置、或写端点改变运行状态。端点存在、health 可访问或根链接返回都可能是设计行为，必须按角色、暴露列表、详情策略和实际字段判断。", "en": "Risk arises when sensitive endpoints are exposed to inappropriate principals, return secrets or configuration, or allow runtime mutation. Endpoint presence, public health, or root links may be intentional and must be evaluated by role, exposure list, detail policy, and actual fields." },
+        "exploitation": { "zh": "对 localhost 的 actuator、health、env 和 mappings 各发送一次请求，仅记录状态。审核者可读取根链接键名，但不读取 env 值、configprops、heapdump 或写端点。将结果与 Spring Security 决策和配置属性关联，避免把 404 或代理页误判。", "en": "Request actuator, health, env, and mappings once each on localhost and record status only. A reviewer may read root link names but not env values, configprops, heapdump, or write endpoints. Correlate results with Spring Security decisions and properties." },
+        "mitigation": { "zh": "只暴露业务需要的端点，将管理服务绑定独立地址并使用 Spring Security 强制认证和最小角色。禁用或保护 env、configprops、heapdump、mappings 与写端点，清理敏感属性，并为匿名与授权角色建立回归。", "en": "Expose only required endpoints, bind management services to a separate address, and enforce authentication plus least-privilege roles with Spring Security. Disable or protect env, configprops, heapdump, mappings, and write endpoints, redact secrets, and regress anonymous and authorized roles." },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        { "title": { "zh": "登记 Actuator 暴露策略", "en": "Register Actuator exposure policy" }, "description": { "zh": "记录四个固定端点对匿名与审核者角色的预期状态。", "en": "Record expected status for four fixed endpoints across anonymous and reviewer roles." } },
+        { "title": { "zh": "运行有限端点状态矩阵", "en": "Run the bounded endpoint matrix" }, "description": { "zh": "仅请求 actuator、health、env 和 mappings，并输出路径与状态。", "en": "Request only actuator, health, env, and mappings and print path with status." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "核对安全配置与日志", "en": "Check security configuration and logs" }, "description": { "zh": "把状态与 exposure 属性、Spring Security 决策和访问日志关联。", "en": "Correlate status with exposure properties, Spring Security decisions, and access logs." } },
+        { "title": { "zh": "收紧端点后回归", "en": "Regress after endpoint hardening" }, "description": { "zh": "缩小暴露列表后重放匿名与审核者请求，确认可观测性仍可用。", "en": "After reducing exposure, replay anonymous and reviewer requests and confirm required observability remains." } }
+      ],
+      "analysis": { "zh": "端点名称或 HTTP 200 只是暴露信号。有效发现需要不适当主体获得超出策略的敏感字段或写能力；本批只收集状态和链接键，不保存配置值、堆转储或凭据。", "en": "An endpoint name or HTTP 200 is only an exposure signal. A finding requires an inappropriate principal to obtain sensitive fields or write capability beyond policy; this batch records status and link keys only, not configuration values, heap dumps, or credentials." },
+      "opsecTips": [
+        { "zh": "每个固定端点只请求一次，禁止 heapdump、env 写入、restart 和敏感字段搜索。", "en": "Request each fixed endpoint once and never use heapdump, env writes, restart, or sensitive-field searches." },
+        { "zh": "Fixture 不含真实密钥，审核者令牌仅用于本机并在测试后销毁。", "en": "Keep real secrets out of the fixture and destroy the localhost reviewer token after testing." }
+      ],
+      "references": [
+        "https://docs.spring.io/spring-boot/reference/actuator/endpoints.html#actuator.endpoints.exposing",
+        "https://docs.spring.io/spring-boot/reference/actuator/endpoints.html#actuator.endpoints.security"
+      ],
+      "review": { "decision": "split", "targetPayloadIds": ["inject2-spring-boot-actuator-exposure"], "targetToolIds": ["spring-management-diagnostics"], "rationale": "归并到现有 Actuator 暴露卡；有限端点与链接诊断迁工具，heapdump、env RCE、路径和方法规避退休。", "issuesResolved": ["merged-existing-boundary", "bounded-endpoints", "migrated-management-diagnostics", "retired-sensitive-dump", "retired-bypasses"] }
+    },
+    {
+      "id": "spring-cloud",
+      "name": { "zh": "Spring Cloud Gateway 管理端点访问验证", "en": "Spring Cloud Gateway Management-Endpoint Access Validation" },
+      "description": { "zh": "验证低权限实验主体对 localhost Gateway routes 管理端点的访问是否被拒绝或关闭，不创建、刷新或修改路由。", "en": "Validate that a low-privilege lab principal is denied or cannot reach the localhost Gateway routes management endpoint without creating, refreshing, or changing routes." },
+      "category": { "zh": "Java框架安全", "en": "Java Framework Security" },
+      "subCategory": { "zh": "Spring Cloud Gateway 管理面", "en": "Spring Cloud Gateway Management Plane" },
+      "prerequisites": [
+        { "zh": "使用固定 Spring Cloud Gateway 版本的本地 Fixture，并清空真实后端路由。", "en": "Use a local fixture with a fixed Spring Cloud Gateway version and no real backend routes." },
+        { "zh": "准备低权限实验令牌并记录 routes 端点应返回 401、403 或 404。", "en": "Prepare a low-privilege lab token and record that the routes endpoint should return 401, 403, or 404." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "该边界只读取 Gateway routes 管理端点的状态，不发送 routing-expression、SpEL、路由 JSON 或 refresh 请求。它用于验证管理端点是否对低权限主体关闭，版本清单与 Actuator 状态由工具卡维护。", "en": "This boundary reads only the status of the Gateway routes management endpoint and sends no routing expression, SpEL, route JSON, or refresh request. It validates that low-privilege access is denied while version inventory and Actuator status remain in diagnostics." },
+        "vulnerability": { "zh": "Spring Cloud 历史问题通常依赖特定版本、管理端点暴露和危险输入路径。routes 端点存在并不自动等于 RCE；必须有未授权写操作、表达式进入危险求值上下文或其他受影响组件条件。", "en": "Historical Spring Cloud issues depend on specific versions, exposed management endpoints, and dangerous input paths. A routes endpoint does not automatically imply RCE; unauthorized writes, dangerous expression evaluation, or another affected component condition is required." },
+        "exploitation": { "zh": "以低权限令牌对 localhost routes 端点发送一次 GET，只记录状态码和服务端授权日志。安全预期为 401、403 或 404。禁止创建恶意路由、刷新网关、使用 Runtime 表达式、路径遍历或 Eureka 内网地址。", "en": "Send one GET to the localhost routes endpoint with a low-privilege token and record status plus authorization logs. Expect 401, 403, or 404. Do not create routes, refresh the gateway, use Runtime expressions, traverse paths, or submit internal Eureka addresses." },
+        "mitigation": { "zh": "升级 Spring Cloud 受影响组件，只暴露必要 Actuator 端点，并使用 Spring Security 对 Gateway 管理端点执行最小角色授权。关闭不需要的路由写操作，限制表达式上下文与网络出口，并将版本和端点策略纳入 CI。", "en": "Upgrade affected Spring Cloud components, expose only required Actuator endpoints, and enforce least-privilege Spring Security roles for Gateway management. Disable unnecessary route writes, restrict expression contexts and egress, and regress versions plus endpoint policy in CI." },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        { "title": { "zh": "记录 Gateway 版本与端点策略", "en": "Record Gateway version and endpoint policy" }, "description": { "zh": "登记 JAR 版本、routes 暴露配置和低权限角色预期结果。", "en": "Register JAR version, routes exposure configuration, and expected low-privilege outcome." } },
+        { "title": { "zh": "请求只读 routes 状态", "en": "Request read-only routes status" }, "description": { "zh": "向 localhost 发送一次带低权限令牌的 GET，并断言拒绝或关闭。", "en": "Send one low-privilege GET to localhost and assert denial or endpoint absence." }, "payloadRef": { "area": "execution", "index": 1 } },
+        { "title": { "zh": "关联 Spring Security 决策", "en": "Correlate Spring Security decisions" }, "description": { "zh": "将状态码与认证主体、授权规则和访问日志按请求 ID 对齐。", "en": "Align status with principal, authorization rule, and access logs by request ID." } },
+        { "title": { "zh": "升级并收紧暴露后复测", "en": "Retest after upgrade and exposure hardening" }, "description": { "zh": "升级组件并限制管理端点后重放请求，确认业务路由不受影响。", "en": "After component upgrade and management hardening, replay the request and confirm business routing remains available." } }
+      ],
+      "analysis": { "zh": "401、403 或 404 与授权日志一致时为阴性；200 只说明读取暴露，还需确认内容与写权限才能定级。本批不创建路由、不触发 SpEL，也不验证 RCE，因此结论严格限定为管理端点访问策略。", "en": "Consistent 401, 403, or 404 with authorization logs is negative. Status 200 establishes read exposure only and requires content and write-permission analysis. This batch creates no route, triggers no SpEL, and makes no RCE claim." },
+      "opsecTips": [
+        { "zh": "只执行一次 GET，不发送 POST、DELETE、refresh 或任何表达式 Header。", "en": "Perform one GET only, with no POST, DELETE, refresh, or expression headers." },
+        { "zh": "Fixture 不连接真实服务发现和后端路由，令牌仅用于 localhost。", "en": "Keep the fixture disconnected from real service discovery and backend routes, with a localhost-only token." }
+      ],
+      "references": [
+        "https://spring.io/security/",
+        "https://github.com/spring-cloud/spring-cloud-gateway/security/advisories"
+      ],
+      "review": { "decision": "split", "targetPayloadIds": ["spring-cloud-gateway-management-boundary"], "targetToolIds": ["spring-management-diagnostics"], "rationale": "保留只读 Gateway 管理访问边界，版本诊断迁工具，恶意路由、Function SpEL、遍历、SSRF 与编码规避退休。", "issuesResolved": ["read-only-management-boundary", "localhost-only", "migrated-version-diagnostic", "retired-route-rce", "retired-ssrf-traversal"] }
+    },
+    {
+      "id": "spring-spel",
+      "name": { "zh": "Spring SpEL 简单求值边界验证", "en": "Spring SpEL Simple-Evaluation Boundary Validation" },
+      "description": { "zh": "在 localhost SimpleEvaluationContext Fixture 中仅计算固定算术表达式，并断言类型访问和方法调用均关闭。", "en": "Evaluate one fixed arithmetic expression in a localhost SimpleEvaluationContext fixture and assert that type access and method invocation are disabled." },
+      "category": { "zh": "Java框架安全", "en": "Java Framework Security" },
+      "subCategory": { "zh": "表达式求值上下文", "en": "Expression Evaluation Context" },
+      "prerequisites": [
+        { "zh": "使用 SimpleEvaluationContext 或等价最小上下文，关闭类型、方法、Bean 与类加载访问。", "en": "Use SimpleEvaluationContext or an equivalent minimal context with type, method, bean, and class-loading access disabled." },
+        { "zh": "Fixture 只接受固定算术表达式并返回 result 与能力标志。", "en": "Configure the fixture to accept only a fixed arithmetic expression and return the result plus capability flags." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "该 Payload 只证明业务是否在预期的简单上下文中执行算术，不尝试 Runtime、ProcessBuilder、文件、DNS、反射或 ScriptEngine。结果 49 与两个能力标志共同构成配置证据，不能单凭回显数字判断任意 SpEL 注入。", "en": "This payload proves only that arithmetic runs in the intended simple context and never attempts Runtime, ProcessBuilder, files, DNS, reflection, or ScriptEngine. Result 49 plus capability flags provide configuration evidence; a reflected number alone does not establish arbitrary SpEL injection." },
+        "vulnerability": { "zh": "风险源于将不可信表达式放入 StandardEvaluationContext 或开放类型解析、方法调用、Bean 解析与反射能力。表达式语法被识别只是前提，真正影响取决于可用上下文对象与能力，模板插值和 SpEL 也不能混为一谈。", "en": "Risk arises when untrusted expressions enter StandardEvaluationContext or gain type resolution, method invocation, bean resolution, or reflection. Recognized syntax is only a precondition; impact depends on available context objects and capabilities, and template interpolation should not be conflated with SpEL." },
+        "exploitation": { "zh": "向本地 evaluate 端点提交固定 7*7 和 mode=simple，断言 result=49、type_access=false、method_invocation=false，并关联策略文件。禁止改为类引用、构造器、系统命令、文件路径、网络主机或混淆表达式。", "en": "Submit fixed 7*7 with mode=simple and assert result=49, type_access=false, and method_invocation=false while correlating the policy file. Do not substitute class references, constructors, system commands, file paths, hosts, or obfuscated expressions." },
+        "mitigation": { "zh": "避免求值不可信表达式；必须支持表达式时使用 SimpleEvaluationContext、受限属性访问器和明确变量，并禁用类型定位、构造器、方法与 Bean 解析。对表达式长度、复杂度和超时设限并记录拒绝。", "en": "Avoid evaluating untrusted expressions. When expressions are required, use SimpleEvaluationContext, restricted property accessors, and explicit variables while disabling type location, constructors, methods, and bean resolution. Bound length, complexity, and time and log rejection." },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        { "title": { "zh": "确认简单求值能力", "en": "Confirm simple-evaluation capabilities" }, "description": { "zh": "记录上下文类型、属性访问器和所有禁用的高风险能力。", "en": "Record context type, property accessors, and every disabled high-risk capability." } },
+        { "title": { "zh": "提交固定算术表达式", "en": "Submit the fixed arithmetic expression" }, "description": { "zh": "向 localhost Fixture 提交 7*7，并要求返回结果和能力标志。", "en": "Submit 7*7 to the localhost fixture and require the result plus capability flags." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "核对策略与求值日志", "en": "Check policy and evaluation logs" }, "description": { "zh": "将请求与上下文创建、类型拒绝和方法禁用日志关联。", "en": "Correlate the request with context creation, type rejection, and method-disable logs." } },
+        { "title": { "zh": "最小上下文回归", "en": "Regress the minimal context" }, "description": { "zh": "更新策略后重放算术与无效类型引用，确认业务计算保留且危险能力拒绝。", "en": "After policy updates, replay arithmetic and an invalid type reference to preserve business evaluation and deny dangerous capabilities." } }
+      ],
+      "analysis": { "zh": "算术返回 49 只证明存在求值路径。只有不可信输入能访问超出业务需要的类型、方法、Bean 或敏感对象才构成安全问题。本批明确断言高风险能力关闭，并不尝试命令、文件或网络。", "en": "Arithmetic result 49 proves an evaluation path only. A security issue requires untrusted input to access types, methods, beans, or sensitive objects beyond business need. This batch asserts risky capabilities are disabled and attempts no command, file, or network action." },
+      "opsecTips": [
+        { "zh": "表达式固定为纯算术，禁止类名、方法名、路径、主机、反射或脚本引擎。", "en": "Keep the expression purely arithmetic with no class names, methods, paths, hosts, reflection, or script engines." },
+        { "zh": "Fixture 五秒超时、无网络出口，并只保存结果与能力标志。", "en": "Use a five-second no-egress fixture and retain only the result and capability flags." }
+      ],
+      "references": [
+        "https://docs.spring.io/spring-framework/reference/core/expressions/evaluation.html",
+        "https://docs.spring.io/spring-framework/docs/current/javadoc-api/org/springframework/expression/spel/support/SimpleEvaluationContext.html"
+      ],
+      "review": { "decision": "split", "targetPayloadIds": ["spring-spel-evaluation-boundary"], "targetToolIds": ["spring-framework-security-diagnostics"], "rationale": "仅保留 SimpleEvaluationContext 算术边界，策略文件迁工具；命令、文件、DNS、反射和 ScriptEngine 全部退休。", "issuesResolved": ["simple-context-only", "arithmetic-canary", "no-command-file-network", "migrated-policy-diagnostic", "retired-evasion"] }
+    },
+    {
+      "id": "struts2-ognl",
+      "name": { "zh": "Struts2 OGNL 简单求值边界验证", "en": "Struts2 OGNL Simple-Evaluation Boundary Validation" },
+      "description": { "zh": "在 localhost Struts Fixture 中仅提交固定算术 OGNL，验证结果并断言静态方法和进程启动能力关闭。", "en": "Submit one fixed arithmetic OGNL expression to a localhost Struts fixture and validate the result while asserting static-method and process-start capabilities are disabled." },
+      "category": { "zh": "Java框架安全", "en": "Java Framework Security" },
+      "subCategory": { "zh": "OGNL 求值与成员访问", "en": "OGNL Evaluation and Member Access" },
+      "prerequisites": [
+        { "zh": "使用固定 Struts2 版本和受限 OGNL Fixture，不加载文件或命令执行辅助类。", "en": "Use a fixed Struts2 version and restricted OGNL fixture without file or command-execution helper classes." },
+        { "zh": "记录 excludedClasses、excludedPackageNames 与静态方法访问设置。", "en": "Record excludedClasses, excludedPackageNames, and static-method-access settings." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "该 Payload 只测试一个 7*7 算术表达式，并要求服务端报告 static_method_access=false 与 process_start=false。它不清除排除类、不替换 MemberAccess、不调用 Runtime、ProcessBuilder、文件或反射。", "en": "This payload tests one 7*7 arithmetic expression and requires static_method_access=false plus process_start=false. It does not clear exclusions, replace MemberAccess, or invoke Runtime, ProcessBuilder, files, or reflection." },
+        "vulnerability": { "zh": "Struts2 历史 OGNL 问题常由不可信请求值进入表达式求值，加上成员访问或排除策略可被绕过。单纯支持 OGNL 和算术并不等于 RCE；必须证明主体可越过成员访问边界到达危险类型或方法。", "en": "Historical Struts2 OGNL issues combine untrusted request values reaching evaluation with bypassable member-access or exclusion policy. OGNL support and arithmetic alone are not RCE; the principal must cross member-access boundaries into dangerous types or methods." },
+        "exploitation": { "zh": "向本地 evaluate 端点提交固定算术值，记录 result、静态方法能力、进程启动能力和请求 ID。随后核对策略文件中的版本与排除设置。禁止 MemberAccess 重置、Runtime、文件操作、字符编码变体或反射调用。", "en": "Submit the fixed arithmetic value to the local evaluator and record result, static-method capability, process-start capability, and request ID. Check version and exclusions in the policy file without MemberAccess resets, Runtime, file operations, encoding variants, or reflection." },
+        "mitigation": { "zh": "升级到 Apache Struts 公告支持版本，避免把不可信字符串作为 OGNL 求值，保持成员访问限制、排除类与包设置，并使用允许字段的数据绑定。对异常表达式、静态方法请求和求值错误建立审计及回归。", "en": "Upgrade to an Apache-supported Struts version, avoid evaluating untrusted strings as OGNL, preserve member-access restrictions and class/package exclusions, and use allowlisted data binding. Audit and regress anomalous expressions, static-method requests, and evaluation errors." },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        { "title": { "zh": "固定 Struts 与 OGNL 策略", "en": "Fix Struts and OGNL policy" }, "description": { "zh": "记录 Struts 版本、成员访问、排除类和允许绑定字段。", "en": "Record Struts version, member access, excluded classes, and allowed binding fields." } },
+        { "title": { "zh": "提交算术 OGNL Canary", "en": "Submit the arithmetic OGNL canary" }, "description": { "zh": "向 localhost Fixture 提交 7*7，只读取结果与能力标志。", "en": "Submit 7*7 to the localhost fixture and read only the result and capability flags." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "关联成员访问日志", "en": "Correlate member-access logs" }, "description": { "zh": "按请求 ID 核对求值、静态方法拒绝和无进程启动事件。", "en": "Use the request ID to verify evaluation, static-method denial, and absence of process starts." } },
+        { "title": { "zh": "升级并回归绑定边界", "en": "Upgrade and regress binding boundaries" }, "description": { "zh": "升级后重放正常字段和算术值，确认业务绑定保留且高风险能力关闭。", "en": "After upgrade, replay normal fields and arithmetic to preserve business binding while risky capabilities remain disabled." } }
+      ],
+      "analysis": { "zh": "结果 49 仅说明表达式被求值，不证明可访问 Runtime 或文件系统。阳性需要静态方法、成员访问或危险对象边界被突破；本批明确验证这些能力为 false，并退休所有执行与规避内容。", "en": "Result 49 establishes expression evaluation only, not access to Runtime or the filesystem. A positive requires a static-method, member-access, or dangerous-object boundary breach; this batch asserts those capabilities false and retires execution plus evasion material." },
+      "opsecTips": [
+        { "zh": "只使用固定算术表达式，不修改 MemberAccess、排除类、响应流或文件。", "en": "Use one fixed arithmetic expression without changing MemberAccess, exclusions, response streams, or files." },
+        { "zh": "容器无网络出口和业务数据，五秒超时后清理求值日志。", "en": "Keep the container free of egress and business data, enforcing five seconds and clearing evaluation logs." }
+      ],
+      "references": [
+        "https://struts.apache.org/security/",
+        "https://struts.apache.org/tag-developers/ognl"
+      ],
+      "review": { "decision": "split", "targetPayloadIds": ["struts2-ognl-evaluation-boundary"], "targetToolIds": ["struts2-security-diagnostics"], "rationale": "保留无副作用 OGNL 算术边界，版本与成员策略迁工具，命令、文件、反射及编码规避全部退休。", "issuesResolved": ["arithmetic-only", "member-access-evidence", "migrated-policy-diagnostic", "retired-command-file-actions", "retired-evasion"] }
+    },
+    {
+      "id": "struts2-rce",
+      "name": { "zh": "Struts2 历史表达式入口归并", "en": "Struts2 Historical Expression-Entry Merge" },
+      "description": { "zh": "将旧 S2 漏洞利用内容归并到 OGNL 求值边界，只保留 JAR 版本、无害上传 Header 和规范 Action 路径诊断。", "en": "Merge legacy S2 exploit material into the OGNL evaluation boundary while retaining JAR version, harmless upload-header, and canonical Action-path diagnostics." },
+      "category": { "zh": "Java框架安全", "en": "Java Framework Security" },
+      "subCategory": { "zh": "Struts2 安全公告回归", "en": "Struts2 Security-Advisory Regression" },
+      "prerequisites": [
+        { "zh": "使用固定 Struts2 JAR、localhost 上传 Fixture 和无文件写入的 Action。", "en": "Use a fixed Struts2 JAR, localhost upload fixture, and an Action with no file-write behavior." },
+        { "zh": "为 Content-Disposition 与规范 Action 路径记录预期状态和求值日志。", "en": "Record expected status and evaluation logs for Content-Disposition and the canonical Action path." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "旧条目混合多个 CVE 和完整命令执行表达式，无法作为单一卡片。审校后只用一个无害算术文件名观察上传 Header 是否被错误求值，并请求规范 Action 路径建立路由基线；结论归并到统一 OGNL 边界。", "en": "The legacy entry mixed several CVEs with complete command expressions and cannot remain one card. The reviewed workflow uses one harmless arithmetic filename to observe upload-header evaluation and requests a canonical Action path for routing baseline, merging conclusions into the unified OGNL boundary." },
+        "vulnerability": { "zh": "不同 Struts2 公告依赖各自版本、插件、Multipart 解析器、Namespace 与表达式入口。不能把所有 S2 编号当作同一 payload；必须按已安装版本和请求载体确认是否到达 OGNL 求值并突破成员限制。", "en": "Different Struts2 advisories depend on specific versions, plugins, multipart parsers, namespaces, and expression entry points. S2 identifiers are not one payload; installed version and carrier must prove that input reaches OGNL and crosses member restrictions." },
+        "exploitation": { "zh": "读取本地 JAR Manifest，再对上传 Fixture 发送一个算术文件名 Header，并请求一个普通 Action 路径。只记录状态和求值审计，不上传文件、不使用成员访问绕过、不执行命令，也不提交编码 RCE 表单。", "en": "Read the local JAR manifest, send one arithmetic filename header to the upload fixture, and request one ordinary Action path. Record status and evaluation audit only, without uploads, member-access bypass, commands, or encoded RCE forms." },
+        "mitigation": { "zh": "依据 Apache Struts 安全公告升级到已修复版本，删除不需要的插件和旧 Multipart 解析器，保持严格 Namespace 与成员访问策略。对文件名、Header、Action 名和表单字段做类型与长度约束，并在 CI 中按安装版本回归。", "en": "Upgrade according to Apache Struts advisories, remove unnecessary plugins and legacy multipart parsers, and preserve strict namespace plus member-access policy. Constrain filenames, headers, action names, and form fields by type and length and regress by installed version in CI." },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        { "title": { "zh": "识别确切 Struts 版本", "en": "Identify the exact Struts version" }, "description": { "zh": "从本地 JAR Manifest 记录版本并映射到 Apache 安全公告。", "en": "Record the local JAR manifest version and map it to Apache security advisories." } },
+        { "title": { "zh": "提交无害上传 Header", "en": "Submit a harmless upload header" }, "description": { "zh": "向 localhost 上传 Action 发送算术文件名，只观察状态和求值日志。", "en": "Send an arithmetic filename to the localhost upload Action and observe status plus evaluation logs." }, "payloadRef": { "area": "execution", "index": 1 } },
+        { "title": { "zh": "比较规范 Action 路径", "en": "Compare the canonical Action path" }, "description": { "zh": "请求普通 test.action，区分路由配置、404 和表达式处理。", "en": "Request an ordinary test.action to distinguish routing configuration, 404 behavior, and expression handling." } },
+        { "title": { "zh": "升级后按载体回归", "en": "Regress each carrier after upgrade" }, "description": { "zh": "升级后按 Header、Namespace 与表单载体分别重放无害阴性样例。", "en": "After upgrade, replay harmless negative samples separately for headers, namespaces, and forms." } }
+      ],
+      "analysis": { "zh": "Header 中的算术文本或 Action 状态差异只表明输入路径，需要服务端求值日志才能确认表达式入口。由于本批不突破成员访问、不执行命令，不能声称 RCE；所有危险表达式和编码规避均退休。", "en": "Arithmetic text in a header or an Action status difference identifies an input path only and requires server evaluation logs. Because this batch never crosses member access or executes commands, it makes no RCE claim; dangerous expressions and encoding evasions are retired." },
+      "opsecTips": [
+        { "zh": "上传 Fixture 不保存文件，文件名只含固定算术标记，不含类名或方法。", "en": "The upload fixture stores no file, and the filename contains only a fixed arithmetic marker with no class or method." },
+        { "zh": "不提交真实 CVE RCE 表达式、编码载荷或静态方法调用。", "en": "Do not submit real CVE RCE expressions, encoded payloads, or static-method calls." }
+      ],
+      "references": [
+        "https://struts.apache.org/security/",
+        "https://cwiki.apache.org/confluence/display/WW/Security+Bulletins"
+      ],
+      "review": { "decision": "split", "targetPayloadIds": ["struts2-ognl-evaluation-boundary"], "targetToolIds": ["struts2-security-diagnostics"], "rationale": "归并到 OGNL 单一边界；版本、Header 与 Action 诊断迁工具，所有 Runtime、编码和成员访问绕过表达式退休。", "issuesResolved": ["merged-focused-boundary", "version-aware", "harmless-carriers", "migrated-diagnostics", "retired-rce-expressions"] }
+    },
+    {
+      "id": "tomcat-vuln",
+      "name": { "zh": "Tomcat Manager 访问控制边界验证", "en": "Tomcat Manager Access-Control Boundary Validation" },
+      "description": { "zh": "无凭据请求 localhost Tomcat Manager，验证返回 401、403 或 404，并将 AJP 配置和方法策略迁入工具诊断。", "en": "Request the localhost Tomcat Manager without credentials, validate a 401, 403, or 404 response, and move AJP configuration plus method policy into diagnostics." },
+      "category": { "zh": "Java框架安全", "en": "Java Framework Security" },
+      "subCategory": { "zh": "Tomcat 管理与连接器安全", "en": "Tomcat Management and Connector Security" },
+      "prerequisites": [
+        { "zh": "使用仅含合成应用的 tomcat-lab 容器，并将 HTTP 与 AJP 绑定到本机。", "en": "Use a tomcat-lab container with synthetic applications and bind HTTP plus AJP to the local host." },
+        { "zh": "记录 Manager 是否安装、允许来源、认证 Realm 和预期匿名状态。", "en": "Record whether Manager is installed, allowed sources, authentication realm, and expected anonymous status." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "该 Payload 只验证匿名主体是否能进入 Manager 根页面，不尝试用户名、密码、WAR 上传或部署。安全基线为 401、403 或 404，并需与 Realm 和 RemoteAddrValve 日志一致；AJP 与默认 Servlet 方法属于工具诊断。", "en": "This payload validates whether an anonymous principal can reach the Manager root without usernames, passwords, WAR upload, or deployment. The secure baseline is 401, 403, or 404 aligned with realm and RemoteAddrValve logs; AJP and DefaultServlet methods belong to diagnostics." },
+        "vulnerability": { "zh": "Tomcat 风险可能来自 Manager 弱认证、AJP 暴露和错误 secret 配置、或默认 Servlet 写方法开启。它们具有不同根因，不能用一个 WebShell 流程代表。Manager 页面存在也不是漏洞，只有未授权管理能力或弱凭据得到确认才成立。", "en": "Tomcat risks may involve weak Manager authentication, exposed AJP with incorrect secret settings, or writable DefaultServlet methods. These have different causes and cannot be represented by one webshell flow. Manager presence is not a flaw without unauthorized management capability or confirmed weak credentials." },
+        "exploitation": { "zh": "无凭据请求 localhost /manager/html，一次记录状态、认证 Header 和访问日志。不要猜测常见密码、上传 WAR、读取 WEB-INF、发送 PUT 或构造 JSP 文件名。AJP 配置只通过容器内 server.xml 读取。", "en": "Request localhost /manager/html once without credentials and record status, authentication header, and access logs. Do not guess passwords, upload WAR files, read WEB-INF, send PUT, or craft JSP filenames. Inspect AJP through container-local server.xml only." },
+        "mitigation": { "zh": "删除不需要的 Manager，限制到管理网段并使用强认证与最小角色。升级 Tomcat，禁用不需要的 AJP 或绑定回环地址并设置 secretRequired 与随机 secret，保持 DefaultServlet readonly，并按配置回归访问和方法。", "en": "Remove unnecessary Manager, restrict it to management networks, and use strong authentication plus least roles. Upgrade Tomcat, disable unused AJP or bind it to loopback with secretRequired and a random secret, keep DefaultServlet readonly, and regress access plus methods." },
+        "difficulty": "intermediate"
+      },
+      "attackChain": [
+        { "title": { "zh": "记录 Manager 与 Realm 基线", "en": "Record Manager and realm baseline" }, "description": { "zh": "登记 Manager 安装状态、允许地址、Realm 和匿名预期结果。", "en": "Register Manager installation, allowed addresses, realm, and expected anonymous outcome." } },
+        { "title": { "zh": "发送匿名 Manager 请求", "en": "Send the anonymous Manager request" }, "description": { "zh": "只请求 localhost /manager/html，并断言 401、403 或 404。", "en": "Request only localhost /manager/html and assert 401, 403, or 404." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "关联 Realm 与访问日志", "en": "Correlate realm and access logs" }, "description": { "zh": "按请求 ID 核对认证挑战、RemoteAddrValve 和实际 Context。", "en": "Correlate authentication challenge, RemoteAddrValve, and actual Context by request ID." } },
+        { "title": { "zh": "收紧管理面后复测", "en": "Retest after management hardening" }, "description": { "zh": "移除 Manager 或限制来源后重放匿名与授权管理员两个对照。", "en": "After removing Manager or restricting sources, replay anonymous and authorized-admin controls." } }
+      ],
+      "analysis": { "zh": "匿名 200 需要进一步确认是否是真实 Manager 和是否提供管理操作；401、403、404 与日志一致时为阴性。本批不尝试凭据、部署、AJP 文件读取、PUT 写入或文件名规避。", "en": "Anonymous status 200 requires confirmation that the page is the real Manager and exposes management operations; aligned 401, 403, or 404 is negative. This batch attempts no credentials, deployment, AJP file read, PUT write, or filename evasion." },
+      "opsecTips": [
+        { "zh": "不使用用户名、密码、Hydra、WAR、JSP 或 PUT 请求。", "en": "Use no usernames, passwords, Hydra, WAR, JSP, or PUT requests." },
+        { "zh": "容器只含合成应用，AJP 配置只读且端口不暴露到外部网络。", "en": "Keep only synthetic apps in the container, inspect AJP read-only, and expose no AJP port externally." }
+      ],
+      "references": [
+        "https://tomcat.apache.org/tomcat-11.0-doc/security-howto.html",
+        "https://tomcat.apache.org/tomcat-11.0-doc/manager-howto.html"
+      ],
+      "review": { "decision": "split", "targetPayloadIds": ["tomcat-manager-access-boundary"], "targetToolIds": ["tomcat-security-diagnostics"], "rationale": "保留匿名 Manager 访问边界，AJP 与方法策略迁工具，弱口令、WAR/WebShell、文件读取、PUT 与文件名规避退休。", "issuesResolved": ["anonymous-access-boundary", "localhost-container", "migrated-ajp-method-diagnostics", "retired-webshell", "retired-credential-guessing"] }
+    },
+    {
+      "id": "weblogic-iiop",
+      "name": { "zh": "WebLogic IIOP 监听诊断归类", "en": "WebLogic IIOP Listener Diagnostic Reclassification" },
+      "description": { "zh": "将旧 IIOP 利用条目改为 localhost 端口与容器配置诊断，所有 CVE 工具、JRMP、JNDI 和协议切换规避内容退休。", "en": "Reclassify legacy IIOP exploitation as localhost port and container-configuration diagnostics while retiring CVE tools, JRMP, JNDI, and protocol-switching evasion." },
+      "category": { "zh": "Java框架安全", "en": "Java Framework Security" },
+      "subCategory": { "zh": "WebLogic IIOP 监听面", "en": "WebLogic IIOP Listener Surface" },
+      "prerequisites": [
+        { "zh": "使用无业务数据的 weblogic-lab 容器，并只在 127.0.0.1 暴露 17001。", "en": "Use a data-free weblogic-lab container and expose port 17001 on 127.0.0.1 only." },
+        { "zh": "记录域版本、IIOP 是否启用、监听地址和网络访问策略。", "en": "Record domain version, IIOP enabled state, listen address, and network-access policy." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "IIOP 是 WebLogic 可选协议面，不是一个 Payload。该条目只允许对 localhost 端口做轻量服务识别并读取容器配置，用于资产与加固验证；不会构造 CORBA 对象、远程引用、JRMP Listener 或序列化数据。", "en": "IIOP is an optional WebLogic protocol surface rather than one payload. This entry permits light localhost service identification and container configuration review for inventory and hardening, without CORBA objects, remote references, JRMP listeners, or serialized data." },
+        "vulnerability": { "zh": "具体风险依赖 WebLogic 版本、IIOP 监听、类路径、补丁和网络可达性。端口开放或协议 Banner 只说明攻击面存在，不能证明某个 CVE；需要供应商公告与精确版本映射，并且不应通过 gadget 验证。", "en": "Specific risk depends on WebLogic version, IIOP listening, classpath, patches, and reachability. An open port or protocol banner identifies surface only and does not prove a CVE; map exact versions to vendor advisories without gadget validation." },
+        "exploitation": { "zh": "仅对 127.0.0.1:17001 运行版本轻量识别，并在容器内读取 IIOPEnabled 与监听配置。不要克隆 CVE 仓库、启动 JRMP、构造 JNDI URL、切换 T3 规避检测或发送任何对象数据。", "en": "Run light version identification only against 127.0.0.1:17001 and read IIOPEnabled plus listen settings inside the container. Do not clone CVE repositories, start JRMP, construct JNDI URLs, switch to T3 for evasion, or send object data." },
+        "mitigation": { "zh": "应用 Oracle Critical Patch Update，关闭不需要的 IIOP，将监听绑定受控管理地址，并在主机和网络层限制访问。维护域版本和协议配置清单，在每次补丁后通过只读端口与配置检查回归。", "en": "Apply Oracle Critical Patch Updates, disable unnecessary IIOP, bind listeners to controlled management addresses, and restrict access at host and network layers. Maintain domain-version and protocol inventories and regress through read-only port plus configuration checks." },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        { "title": { "zh": "登记 IIOP 配置与版本", "en": "Register IIOP configuration and version" }, "description": { "zh": "记录域版本、IIOPEnabled、监听地址、端口和补丁级别。", "en": "Record domain version, IIOPEnabled, listen address, port, and patch level." } },
+        { "title": { "zh": "运行 localhost 轻量识别", "en": "Run localhost light identification" }, "description": { "zh": "只扫描 127.0.0.1 单端口 17001，并限制为 version-light。", "en": "Scan only localhost port 17001 with version-light intensity." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "关联容器配置", "en": "Correlate container configuration" }, "description": { "zh": "将端口结果与 config.xml 监听和协议设置对齐。", "en": "Align the port result with config.xml listener and protocol settings." } },
+        { "title": { "zh": "关闭或限制协议后复测", "en": "Retest after disabling or restricting protocol" }, "description": { "zh": "关闭不需要的 IIOP 或限制地址后重放单端口检查。", "en": "After disabling unnecessary IIOP or restricting its address, replay the single-port check." } }
+      ],
+      "analysis": { "zh": "Nmap 服务识别和端口开放是资产证据，不是 RCE 或反序列化证据。结论必须限制到监听面、版本和补丁映射；本批不发送 IIOP 对象、JNDI 引用、gadget 或回连。", "en": "Nmap identification and an open port are asset evidence, not RCE or deserialization evidence. Conclusions are limited to listener surface, version, and patch mapping; this batch sends no IIOP object, JNDI reference, gadget, or callback." },
+      "opsecTips": [
+        { "zh": "只扫描 localhost 单端口，不提升脚本强度、不发对象载荷。", "en": "Scan one localhost port only without stronger scripts or object payloads." },
+        { "zh": "容器无业务数据和网络出口，配置读取只读且测试后停止监听。", "en": "Keep the container free of business data and egress, read configuration only, and stop the listener after testing." }
+      ],
+      "references": [
+        "https://docs.oracle.com/en/middleware/standalone/weblogic-server/15.1.1/secmg/ssl_rmi_over_iiop.html",
+        "https://www.oracle.com/security-alerts/"
+      ],
+      "review": { "decision": "split", "targetPayloadIds": [], "targetToolIds": ["weblogic-protocol-diagnostics"], "rationale": "IIOP 属于协议资产与配置诊断，不保留 Payload；单端口检查迁工具，CVE、JRMP、JNDI 与协议规避退休。", "issuesResolved": ["tool-reclassification", "localhost-single-port", "version-config-evidence", "retired-jndi-jrmp", "retired-protocol-evasion"] }
+    },
+    {
+      "id": "weblogic-rce",
+      "name": { "zh": "WebLogic 管理与 WorkContext 边界归并", "en": "WebLogic Management and WorkContext Boundary Merge" },
+      "description": { "zh": "将旧 WebLogic RCE 聚合条目归并到安全 WorkContext 拒绝边界，只保留规范 Console 登录路径诊断，退休 XMLDecoder 和编码绕过。", "en": "Merge the legacy WebLogic RCE aggregate into a safe WorkContext rejection boundary while retaining canonical console-login diagnostics and retiring XMLDecoder plus encoded bypasses." },
+      "category": { "zh": "Java框架安全", "en": "Java Framework Security" },
+      "subCategory": { "zh": "WebLogic 管理端点策略", "en": "WebLogic Management Endpoint Policy" },
+      "prerequisites": [
+        { "zh": "使用固定补丁级别的 weblogic-lab 容器，Console 和 WSAT 仅绑定 localhost。", "en": "Use a weblogic-lab container at a fixed patch level with Console and WSAT bound to localhost only." },
+        { "zh": "记录规范 Console 登录路径和 WorkContext 端点的预期状态与访问日志。", "en": "Record expected status and access logs for the canonical Console login and WorkContext endpoint." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "旧条目混合多个 CVE、XMLDecoder 命令和 Console 编码路径。审校后不保留任何执行内容，只以规范 Console 登录路径检查管理面存在性，并把真正的无害 WorkContext 拒绝请求维护在单一 Payload。", "en": "The legacy entry mixed several CVEs, XMLDecoder commands, and encoded Console paths. The reviewed version keeps no execution content, uses the canonical Console login only for management-surface diagnostics, and maintains a harmless WorkContext rejection request in one focused payload." },
+        "vulnerability": { "zh": "WebLogic 历史问题依赖特定端点、反序列化或 XML 处理路径、版本和补丁。Console 页面存在不等于认证绕过，WSAT 返回也不等于 XMLDecoder 可执行。必须使用 Oracle 公告映射版本，并以拒绝日志和补丁证据判断。", "en": "Historical WebLogic issues depend on specific endpoints, deserialization or XML paths, versions, and patches. Console presence is not authentication bypass, and a WSAT response is not executable XMLDecoder. Map versions through Oracle advisories and judge rejection logs plus patch evidence." },
+        "exploitation": { "zh": "对规范 Console 登录 URL 发送一次 HEAD，记录状态、Location 与认证 Header。禁止使用双重编码路径、MVEL ShellSession、ProcessBuilder XML、Runtime 标签或命令数组。WorkContext 验证只使用无害 marker。", "en": "Send one HEAD to the canonical Console login URL and record status, Location, and authentication headers. Do not use double-encoded paths, MVEL ShellSession, ProcessBuilder XML, Runtime tags, or command arrays. WorkContext validation uses a harmless marker only." },
+        "mitigation": { "zh": "应用最新 Oracle Critical Patch Update，删除或限制不需要的 WSAT 与异步服务，将 Console 绑定管理网络并强制认证。统一代理和应用的路径规范化，阻断危险 XML 类型，并持续核对域补丁和端点清单。", "en": "Apply the latest Oracle Critical Patch Update, remove or restrict unused WSAT and asynchronous services, and bind Console to an authenticated management network. Unify path normalization, block dangerous XML types, and continuously inventory domain patches plus endpoints." },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        { "title": { "zh": "登记域补丁与端点", "en": "Register domain patches and endpoints" }, "description": { "zh": "记录 WebLogic 版本、CPU 补丁、Console 与 WSAT 暴露策略。", "en": "Record WebLogic version, CPU patch, and Console plus WSAT exposure policy." } },
+        { "title": { "zh": "请求规范 Console 登录路径", "en": "Request the canonical Console login path" }, "description": { "zh": "只发送 HEAD 并保留状态、Location 和认证 Header。", "en": "Send HEAD only and retain status, Location, and authentication headers." }, "payloadRef": { "area": "execution", "index": 2 } },
+        { "title": { "zh": "关联管理访问日志", "en": "Correlate management access logs" }, "description": { "zh": "按请求 ID 区分真实 Console、代理跳转和默认错误页。", "en": "Use request ID to distinguish the real Console, proxy redirects, and default error pages." } },
+        { "title": { "zh": "应用 CPU 后回归", "en": "Regress after applying the CPU" }, "description": { "zh": "补丁与端点收紧后重放规范路径和无害 WorkContext 阴性请求。", "en": "After patching and endpoint hardening, replay the canonical path and harmless WorkContext negative request." } }
+      ],
+      "analysis": { "zh": "Console HEAD 或 WSAT 状态只说明端点面，不能确认 CVE、绕过或 RCE。有效结论必须基于精确版本、补丁和服务端拒绝证据。本批所有 XMLDecoder、命令执行和编码路径均退休。", "en": "Console HEAD or WSAT status identifies endpoint surface only and cannot confirm a CVE, bypass, or RCE. Valid conclusions require exact versions, patches, and server rejection evidence. All XMLDecoder, command-execution, and encoded paths are retired." },
+      "opsecTips": [
+        { "zh": "只访问规范路径，不使用 path-as-is、双编码、MVEL、XMLDecoder 或命令标签。", "en": "Use canonical paths only, without path-as-is, double encoding, MVEL, XMLDecoder, or command tags." },
+        { "zh": "容器只绑定 localhost，Console 使用合成 Realm，测试后删除访问 Header。", "en": "Bind the container to localhost, use a synthetic Console realm, and delete captured access headers after testing." }
+      ],
+      "references": [
+        "https://www.oracle.com/security-alerts/",
+        "https://docs.oracle.com/en/middleware/standalone/weblogic-server/15.1.1/secmg/using-secured-production-mode.html"
+      ],
+      "review": { "decision": "split", "targetPayloadIds": ["weblogic-workcontext-rejection-boundary"], "targetToolIds": ["weblogic-management-diagnostics"], "rationale": "归并到无害 WorkContext 边界；规范 Console 诊断迁工具，XMLDecoder、MVEL、编码路径和命令数组退休。", "issuesResolved": ["merged-focused-boundary", "canonical-path-only", "migrated-console-diagnostic", "retired-xmldecoder", "retired-encoded-bypass"] }
+    },
+    {
+      "id": "weblogic-t3",
+      "name": { "zh": "WebLogic T3 监听诊断归类", "en": "WebLogic T3 Listener Diagnostic Reclassification" },
+      "description": { "zh": "将旧 T3 利用条目改为 localhost 最小握手与容器配置诊断，不发送序列化对象、gadget 或命令。", "en": "Reclassify legacy T3 exploitation as a minimal localhost handshake and container-configuration diagnostic without serialized objects, gadgets, or commands." },
+      "category": { "zh": "Java框架安全", "en": "Java Framework Security" },
+      "subCategory": { "zh": "WebLogic T3 监听面", "en": "WebLogic T3 Listener Surface" },
+      "prerequisites": [
+        { "zh": "使用无业务数据的 weblogic-lab 容器并将 17001 仅绑定 127.0.0.1。", "en": "Use a data-free weblogic-lab container and bind port 17001 to 127.0.0.1 only." },
+        { "zh": "记录域版本、DefaultProtocol、监听地址和补丁级别。", "en": "Record domain version, DefaultProtocol, listen address, and patch level." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "T3 是 WebLogic 内部通信协议。审校后只发送公开握手头并读取首行响应，用于确认监听与协议版本提示；不会生成 payload.bin、发送 Java 序列化流、启动 JRMP Listener 或调用扫描利用器。", "en": "T3 is a WebLogic internal communication protocol. The reviewed workflow sends only a public handshake header and reads the first response line to identify listening and protocol hints, without payload.bin, Java serialization streams, JRMP listeners, or exploit scanners." },
+        "vulnerability": { "zh": "T3 端口可达只是攻击面，具体反序列化风险取决于 WebLogic 版本、补丁、类路径和协议配置。握手返回 HELO 不代表 gadget 可达或命令执行；供应商公告和域清单才是版本风险依据。", "en": "A reachable T3 port is attack surface only. Deserialization risk depends on WebLogic version, patches, classpath, and protocol configuration. A HELO response does not establish reachable gadgets or command execution; vendor advisories and domain inventory determine version risk." },
+        "exploitation": { "zh": "向 127.0.0.1:17001 发送最小 T3 握手并读取一行，随后在容器内只读 config.xml 的监听与协议键。禁止发送序列化对象、ysoserial、JRMP、命令参数、外部主机或 gadget 名称。", "en": "Send a minimal T3 handshake to 127.0.0.1:17001 and read one line, then inspect listener and protocol keys read-only in container config.xml. Do not send serialized objects, ysoserial, JRMP, command arguments, external hosts, or gadget names." },
+        "mitigation": { "zh": "应用 Oracle Critical Patch Update，关闭不需要的 T3 外部监听，将端口绑定管理网络并通过防火墙限制。缩小服务器类路径，维护域版本和协议清单，并用最小握手与配置读取做补丁后回归。", "en": "Apply Oracle Critical Patch Updates, disable unnecessary external T3 listening, bind ports to management networks, and restrict them with firewalls. Minimize classpaths, inventory domain versions and protocols, and regress with the minimal handshake plus configuration reads." },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        { "title": { "zh": "登记 T3 监听与补丁", "en": "Register T3 listener and patches" }, "description": { "zh": "记录端口、地址、DefaultProtocol、域版本和 CPU 补丁。", "en": "Record port, address, DefaultProtocol, domain version, and CPU patch." } },
+        { "title": { "zh": "发送最小 T3 握手", "en": "Send the minimal T3 handshake" }, "description": { "zh": "只向 localhost 发送握手头并读取首行，不追加对象数据。", "en": "Send the handshake header to localhost and read one line without object data." }, "payloadRef": { "area": "execution", "index": 0 } },
+        { "title": { "zh": "关联 config.xml 设置", "en": "Correlate config.xml settings" }, "description": { "zh": "将响应与监听地址、端口和默认协议配置对齐。", "en": "Align the response with listen address, port, and default-protocol configuration." } },
+        { "title": { "zh": "限制网络后复测", "en": "Retest after network restriction" }, "description": { "zh": "限制 T3 到管理面后重放 localhost 与非管理来源阴性检查。", "en": "After restricting T3 to management access, replay localhost and non-management negative checks." } }
+      ],
+      "analysis": { "zh": "握手响应只能确认 T3 监听，不能证明反序列化、gadget 或 RCE。结论限定为协议面、版本和网络控制；所有扫描利用器、payload 发送脚本与 gadget 列表均退休。", "en": "A handshake response confirms T3 listening only, not deserialization, gadgets, or RCE. Conclusions are limited to protocol surface, version, and network controls; exploit scanners, payload senders, and gadget lists are retired." },
+      "opsecTips": [
+        { "zh": "握手后立即关闭连接，不发送长度字段、序列化头或对象字节。", "en": "Close immediately after the handshake without length fields, serialization headers, or object bytes." },
+        { "zh": "只连接 127.0.0.1 单端口，容器无网络出口和业务数据。", "en": "Connect to one localhost port only in a no-egress container without business data." }
+      ],
+      "references": [
+        "https://docs.oracle.com/en/middleware/standalone/weblogic-server/15.1.1/cnfgd/network.html#GUID-1899425A-7326-4479-AD9D-9669888F1B06",
+        "https://www.oracle.com/security-alerts/"
+      ],
+      "review": { "decision": "split", "targetPayloadIds": [], "targetToolIds": ["weblogic-protocol-diagnostics"], "rationale": "T3 仅保留最小握手和配置诊断工具，不保留 Payload；利用器、序列化发送器、JRMP 与 gadget 退休。", "issuesResolved": ["minimal-handshake", "tool-reclassification", "no-serialized-object", "migrated-config-diagnostic", "retired-gadgets"] }
+    },
+    {
+      "id": "weblogic-xmldecoder",
+      "name": { "zh": "WebLogic WorkContext 无害输入拒绝验证", "en": "WebLogic Harmless WorkContext Input Rejection Validation" },
+      "description": { "zh": "向 localhost WSAT 端点提交仅含合成 marker 的 SOAP WorkContext，验证补丁后拒绝或安全处理，不包含 java、XMLDecoder、对象或方法标签。", "en": "Submit a SOAP WorkContext containing only a synthetic marker to a localhost WSAT endpoint and validate patched rejection or safe handling without java, XMLDecoder, object, or method tags." },
+      "category": { "zh": "Java框架安全", "en": "Java Framework Security" },
+      "subCategory": { "zh": "WebLogic WorkContext XML 处理", "en": "WebLogic WorkContext XML Handling" },
+      "prerequisites": [
+        { "zh": "使用已知 WebLogic 版本和 CPU 补丁的 localhost 容器，WSAT 无业务事务数据。", "en": "Use a localhost container with known WebLogic version and CPU patch and no business transaction data in WSAT." },
+        { "zh": "启用 XML 解析拒绝、WorkContext 处理和网络出口日志。", "en": "Enable XML parse rejection, WorkContext handling, and network-egress logs." }
+      ],
+      "tutorial": {
+        "overview": { "zh": "该 Payload 只提交标准 SOAP Envelope 和自定义 lab:marker。它刻意不包含 java.beans.XMLDecoder、ProcessBuilder、Runtime、void、object、array 或文件路径，因此只能验证端点对非预期 WorkContext 内容的拒绝与日志行为。", "en": "This payload submits only a standard SOAP envelope and custom lab:marker. It intentionally contains no java.beans.XMLDecoder, ProcessBuilder, Runtime, void, object, array, or file path, so it validates rejection and logging of unexpected WorkContext content only." },
+        "vulnerability": { "zh": "历史 WebLogic XMLDecoder 问题依赖易受影响端点将攻击者 XML 交给可实例化 Java 对象的方法。端点返回、SOAP Fault 或 WorkContext 解析本身不等于对象实例化；版本、补丁和解析日志必须证明危险标签不可达。", "en": "Historical WebLogic XMLDecoder issues depended on vulnerable endpoints passing attacker XML into Java-object instantiation. An endpoint response, SOAP Fault, or WorkContext parsing does not equal object instantiation; version, patch, and parse logs must show dangerous tags are unreachable." },
+        "exploitation": { "zh": "发送一次带固定 marker 的无害 SOAP 请求，记录 HTTP 状态、SOAP Fault、解析拒绝和请求 ID。确认没有类加载、进程、文件写入或网络事件。禁止将 marker 替换为 java、XMLDecoder、ProcessBuilder、命令或 CDATA 混淆。", "en": "Send one harmless SOAP request with a fixed marker and record HTTP status, SOAP Fault, parse rejection, and request ID. Confirm no class loading, process, file write, or network event. Never substitute java, XMLDecoder, ProcessBuilder, commands, or CDATA obfuscation." },
+        "mitigation": { "zh": "应用 Oracle CPU，删除或限制不需要的 WSAT 与 AsyncResponseService，使用严格 XML 解析和元素允许列表，拒绝 Java 对象语义标签。将管理服务绑定受控网络，并对解析错误、类加载和出站连接建立监控。", "en": "Apply Oracle CPUs, remove or restrict unused WSAT and AsyncResponseService, use strict XML parsing and element allowlists, and reject Java-object semantic tags. Bind management services to controlled networks and monitor parse errors, class loading, and egress." },
+        "difficulty": "advanced"
+      },
+      "attackChain": [
+        { "title": { "zh": "固定域版本与 WSAT 策略", "en": "Fix domain version and WSAT policy" }, "description": { "zh": "记录 WebLogic 版本、CPU、WSAT 部署和允许 XML 元素。", "en": "Record WebLogic version, CPU, WSAT deployment, and allowed XML elements." } },
+        { "title": { "zh": "提交无害 WorkContext marker", "en": "Submit the harmless WorkContext marker" }, "description": { "zh": "向 localhost CoordinatorPortType 发送不含 Java 对象语义的 SOAP。", "en": "Send SOAP without Java-object semantics to the localhost CoordinatorPortType." }, "payloadRef": { "area": "execution", "index": 1 } },
+        { "title": { "zh": "核对拒绝与无副作用证据", "en": "Check rejection and no-side-effect evidence" }, "description": { "zh": "按请求 ID 对齐 Fault、解析日志和零类加载、进程、文件及网络事件。", "en": "Align Fault, parse logs, and zero class-load, process, file, or network events by request ID." } },
+        { "title": { "zh": "补丁与元素允许列表回归", "en": "Regress patches and element allowlists" }, "description": { "zh": "应用 CPU 和元素允许列表后重放合法 SOAP 与无害 marker 阴性请求。", "en": "After CPU and element allowlists, replay valid SOAP and the harmless marker negative request." } }
+      ],
+      "analysis": { "zh": "HTTP 响应和 SOAP Fault 只能说明请求到达解析路径。安全结论要求危险 Java 对象标签被拒绝、无类加载和无副作用；本批请求根本不含这些标签，因此只验证补丁后的拒绝与观测边界。", "en": "HTTP responses and SOAP Faults show only that the request reached parsing. Security conclusions require dangerous Java-object tags to be rejected with no class loading or side effects; this request contains none and validates patched rejection plus observability only." },
+      "opsecTips": [
+        { "zh": "XML 仅含标准 Envelope、WorkContext 和合成 marker，不含任何 Java 类或方法标签。", "en": "Keep XML to the standard envelope, WorkContext, and synthetic marker with no Java class or method tags." },
+        { "zh": "容器禁用外部网络与业务事务，单次请求五秒后清理 SOAP 日志。", "en": "Disable external networking and business transactions, send one five-second request, and clear SOAP logs afterward." }
+      ],
+      "references": [
+        "https://www.oracle.com/security-alerts/",
+        "https://www.oracle.com/java/technologies/javase/seccodeguide.html"
+      ],
+      "review": { "decision": "split", "targetPayloadIds": ["weblogic-workcontext-rejection-boundary"], "targetToolIds": ["weblogic-management-diagnostics"], "rationale": "保留不含 Java 对象标签的 WorkContext 拒绝边界，端点诊断迁工具；ProcessBuilder、回连、WebShell、协议与 XML 混淆退休。", "issuesResolved": ["harmless-soap-only", "no-java-object-tags", "migrated-endpoint-diagnostics", "retired-webshell-callback", "retired-protocol-xml-evasion"] }
+    }
+  ]
+}
