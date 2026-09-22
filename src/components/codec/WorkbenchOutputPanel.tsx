@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAppContext } from '../../appContext';
-import { detectFlagFormats } from '../../utils/codec';
-import type { FlagFormatHit } from '../../utils/codec';
+import { findFlagAutoRanges } from '../../utils/codec';
+import type { FlagAutoRange } from '../../utils/codec';
 import { candidateHighlightKey, formatTextStats, parseCandidateLayers } from './outputPanelUtils';
 import { CodecCandidateList } from './CodecCandidates';
 
 // 批次 M 富输出面板：工作台与智能识别 hero 共用。
 // 能力：正则/明文搜索（默认按正则解析，编译失败自动退回字面）+ 命中高亮与 ↑↓ 导航、
-// flag 命中常亮高亮、输入/输出字数与字节统计、输出回灌输入、候选间 ↑↓ 导航、
-// 富文本/原始视图切换；超过 RICH_VIEW_LIMIT 自动退纯文本防卡顿。
+// flag 自动标红（完整格式深红 / flag·ctf·key 关键词红，搜索命中以描边环叠加互不覆盖）、
+// 输入/输出字数与字节统计、输出回灌输入、候选间 ↑↓ 导航、富文本/原始视图切换；
+// 超过 RICH_VIEW_LIMIT 自动退纯文本防卡顿。
 
 const RICH_VIEW_LIMIT = 200_000;
 const MAX_MATCHES = 2000;
@@ -56,45 +57,63 @@ const buildSearchResult = (text: string, query: string): SearchResult => {
   return { matches, mode: 're' };
 };
 
-// flag 常亮区间：复用引擎 detectFlagFormats 的前缀清单，对同一文本重建位置级匹配。
-const buildFlagRanges = (text: string, hits: FlagFormatHit[]): MatchRange[] => {
-  if (!text || !hits.length) return [];
-  let pattern: RegExp;
-  try {
-    pattern = new RegExp(`\\b(?:${hits.map(hit => hit.prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\{[^{}\\n]{4,}\\}`, 'gi');
-  } catch {
-    return [];
-  }
-  return [...text.matchAll(pattern)].map(match => ({ start: match.index, end: match.index + match[0].length }));
-};
+// 自动标红级别（外层，0 = 无）：完整格式（前缀{...}）深红、flag/ctf/key 关键词红；搜索命中是内层叠加。
+const AUTO_KEYWORD = 1;
+const AUTO_FORMAT = 2;
 
-const KIND_PLAIN = 0;
-const KIND_SEARCH = 1;
-const KIND_FLAG = 2;
-// 当前导航目标单独成段：保证 data-current 节点与 hitIndex 一一对应，导航定位不会因相邻命中合并而漂移。
-const KIND_CURRENT = 3;
-
-interface Segment {
-  text: string;
-  kind: number;
+interface HighlightAtom {
+  start: number;
+  end: number;
+  auto: number;
+  search: boolean;
+  current: boolean;
 }
 
-const buildSegments = (text: string, search: SearchResult, flagRanges: MatchRange[], hitIndex: number): Segment[] => {
-  const kinds = new Uint8Array(text.length);
-  for (const range of search.matches) kinds.fill(KIND_SEARCH, range.start, range.end);
-  for (const range of flagRanges) kinds.fill(KIND_FLAG, range.start, range.end);
+// 边界原子分段：按自动标红区间 / 搜索命中 / 当前命中三类边界切分文本，三元组相同的相邻原子合并。
+// 外层（auto）与内层（search/current）分开渲染——红区内的搜索命中画描边环而不是换底色，两层互不覆盖。
+const buildHighlightAtoms = (text: string, autoRanges: FlagAutoRange[], search: SearchResult, hitIndex: number): HighlightAtom[] => {
+  if (!text) return [];
+  const auto = new Uint8Array(text.length);
+  for (const range of autoRanges) auto.fill(range.level === 'format' ? AUTO_FORMAT : AUTO_KEYWORD, range.start, range.end);
+  const searchHit = new Uint8Array(text.length);
+  for (const match of search.matches) searchHit.fill(1, match.start, match.end);
   const currentMatch = search.matches[hitIndex];
-  if (currentMatch) kinds.fill(KIND_CURRENT, currentMatch.start, currentMatch.end);
-  const segments: Segment[] = [];
-  let cursor = 0;
-  while (cursor < text.length) {
-    const kind = kinds[cursor];
-    let end = cursor + 1;
-    while (end < text.length && kinds[end] === kind) end += 1;
-    segments.push({ text: text.slice(cursor, end), kind });
-    cursor = end;
+
+  const bounds = new Set<number>([0, text.length]);
+  for (const range of autoRanges) {
+    bounds.add(range.start);
+    bounds.add(range.end);
   }
-  return segments;
+  for (const match of search.matches) {
+    bounds.add(match.start);
+    bounds.add(match.end);
+  }
+  if (currentMatch) {
+    bounds.add(currentMatch.start);
+    bounds.add(currentMatch.end);
+  }
+  const sorted = [...bounds].sort((a, b) => a - b);
+
+  const atoms: HighlightAtom[] = [];
+  // data-current 只挂在当前命中的第一个原子上：命中与 auto 区间跨界相交时会切成多个原子，
+  // 多个 data-current 会让导航滚动定位与橙环断成两截（复核 P2-1）。
+  let currentAssigned = false;
+  for (let index = 0; index < sorted.length - 1; index += 1) {
+    const start = sorted[index];
+    const end = sorted[index + 1];
+    if (start >= end) continue;
+    const previous = atoms[atoms.length - 1];
+    const autoLevel = auto[start];
+    const inSearch = searchHit[start] === 1;
+    const inCurrent = Boolean(currentMatch && !currentAssigned && start >= currentMatch.start && start < currentMatch.end);
+    if (inCurrent) currentAssigned = true;
+    if (previous && previous.end === start && previous.auto === autoLevel && previous.search === inSearch && previous.current === inCurrent) {
+      previous.end = end;
+      continue;
+    }
+    atoms.push({ start, end, auto: autoLevel, search: inSearch, current: inCurrent });
+  }
+  return atoms;
 };
 
 export interface WorkbenchOutputPanelProps {
@@ -120,12 +139,13 @@ export function WorkbenchOutputPanel({ value, rawOutput, error, running, minHeig
   const candidatesRef = useRef<HTMLDetailsElement | null>(null);
 
   const search = useMemo(() => (error ? { matches: [] as MatchRange[], mode: 'empty' as const } : buildSearchResult(value, query)), [value, query, error]);
-  const flagRanges = useMemo(() => (error ? [] : buildFlagRanges(value, detectFlagFormats(value))), [value, error]);
   const overLimit = value.length > RICH_VIEW_LIMIT;
+  // 超限已退纯文本无标红，跳过标红扫描（复核 P2-2：200K 密集关键词文本实测可到秒级）
+  const autoRanges = useMemo(() => (error || overLimit ? [] : findFlagAutoRanges(value)), [value, error, overLimit]);
   const richRenderable = !rawMode && !error && !overLimit;
   const segments = useMemo(
-    () => (richRenderable && value ? buildSegments(value, search, flagRanges, hitIndex) : null),
-    [richRenderable, value, search, flagRanges, hitIndex],
+    () => (richRenderable && value ? buildHighlightAtoms(value, autoRanges, search, hitIndex) : null),
+    [richRenderable, value, autoRanges, search, hitIndex],
   );
   const searchCount = search.matches.length;
 
@@ -146,7 +166,7 @@ export function WorkbenchOutputPanel({ value, rawOutput, error, running, minHeig
   // 导航滚动：当前命中唯一（data-current），候选展开后定位到对应行；block: nearest 避免整页跳动。
   useEffect(() => {
     if (!searchCount) return;
-    viewRef.current?.querySelector('.wb-out-search-hit[data-current="true"]')?.scrollIntoView({ block: 'nearest' });
+    viewRef.current?.querySelector('[data-current="true"]')?.scrollIntoView({ block: 'nearest' });
   }, [hitIndex, searchCount, segments]);
 
   useEffect(() => {
@@ -253,11 +273,25 @@ export function WorkbenchOutputPanel({ value, rawOutput, error, running, minHeig
           <textarea className="wb-out-raw error" value={error} readOnly aria-label={language === 'zh' ? '错误信息' : 'Error'} />
         ) : segments ? (
           <div className="wb-out-rich" role="document" aria-label={language === 'zh' ? '解码结果' : 'Decoded result'} tabIndex={0}>
-            {segments.map((segment, index) => {
-              if (segment.kind === KIND_PLAIN) return <span key={index}>{segment.text}</span>;
-              if (segment.kind === KIND_FLAG) return <mark key={index} className="wb-out-flag-hit" title={language === 'zh' ? 'flag 格式命中' : 'flag format hit'}>{segment.text}</mark>;
-              if (segment.kind === KIND_CURRENT) return <mark key={index} className="wb-out-search-hit" data-current="true">{segment.text}</mark>;
-              return <mark key={index} className="wb-out-search-hit">{segment.text}</mark>;
+            {segments.map((atom, index) => {
+              const atomText = value.slice(atom.start, atom.end);
+              // 红区外的搜索命中：黄底（当前导航目标橙底）
+              if (!atom.auto) {
+                if (!atom.search) return <span key={index}>{atomText}</span>;
+                return atom.current
+                  ? <mark key={index} className="wb-out-search-hit" data-current="true">{atomText}</mark>
+                  : <mark key={index} className="wb-out-search-hit">{atomText}</mark>;
+              }
+              const outerClass = atom.auto === AUTO_FORMAT ? 'wb-out-flag-hit' : 'wb-out-kw-hit';
+              // 红区内的搜索命中：描边环叠加，不换掉红底（两层共存）
+              if (atom.search) {
+                return (
+                  <mark key={index} className={outerClass}>
+                    <span className="wb-out-search-ring" data-current={atom.current ? 'true' : undefined}>{atomText}</span>
+                  </mark>
+                );
+              }
+              return <mark key={index} className={outerClass}>{atomText}</mark>;
             })}
           </div>
         ) : (
@@ -478,12 +512,31 @@ export function WorkbenchOutputPanel({ value, rawOutput, error, running, minHeig
           box-shadow: 0 0 0 1px rgba(255, 106, 0, 0.7);
         }
 
+        /* 红区内的搜索命中：黄描边环；当前导航目标橙环，红底保留 */
+        .wb-out-search-ring {
+          box-shadow: 0 0 0 1px rgba(255, 214, 0, 0.85);
+          border-radius: 2px;
+        }
+
+        .wb-out-search-ring[data-current="true"] {
+          box-shadow: 0 0 0 2px rgba(255, 106, 0, 0.9);
+        }
+
+        /* flag 自动标红：完整格式（前缀{...}）深红、flag/ctf/key 关键词红 */
         .wb-out-flag-hit {
-          background: rgba(0, 255, 136, 0.16) !important;
-          color: var(--neon-green);
-          box-shadow: 0 0 0 1px rgba(0, 255, 136, 0.45);
+          background: rgba(255, 61, 61, 0.24) !important;
+          color: #ff7b7b;
+          box-shadow: 0 0 0 1px rgba(255, 61, 61, 0.5);
           border-radius: 2px;
           font-weight: 700;
+        }
+
+        .wb-out-kw-hit {
+          background: rgba(255, 61, 61, 0.13) !important;
+          color: #ff9b9b;
+          box-shadow: 0 0 0 1px rgba(255, 61, 61, 0.28);
+          border-radius: 2px;
+          font-weight: 600;
         }
 
         .wb-out-raw {

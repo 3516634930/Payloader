@@ -517,3 +517,22 @@ test('sidebar derives custom entries from the active payload or tool collection'
     /activeTab !== 'payloads' && activeTab !== 'tools'[\s\S]*return allPayloads/,
   );
 });
+
+test('CTF workbench renders the menubar mode while the pentest view stays unchanged', async () => {
+  const [cipher, encoding, workbench, menuBar] = await Promise.all([
+    read('src/components/ctf/CipherWorkspace.tsx'),
+    read('src/components/EncodingTools.tsx'),
+    read('src/components/CodecWorkbench.tsx'),
+    read('src/components/codec/WorkbenchMenuBar.tsx'),
+  ]);
+
+  assert.match(cipher, /mode="ctf"/);
+  assert.doesNotMatch(encoding, /mode=/);
+  assert.match(workbench, /import \{ WorkbenchMenuBar \} from '\.\/codec\/WorkbenchMenuBar'/);
+  assert.match(workbench, /buildCtfMenus\(\)/);
+  assert.match(workbench, /mode \? 'pentest'|mode = 'pentest'/);
+  assert.match(workbench, /ctf-nav-mode/);
+  assert.match(workbench, /【\$\{name\}解密】/);
+  assert.match(workbench, /action-fold/);
+  assert.match(menuBar, /withinPortal/);
+});

@@ -1,6 +1,7 @@
 import { useEffect, useId, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { useAppContext } from '../appContext';
 import {
+  buildCtfMenus,
   cryptoJsBlockCipherOperationIds,
   defaultParams,
   detectInput,
@@ -23,6 +24,8 @@ import type {
   ParamKey,
 } from '../utils/codec';
 import { formatTextStats } from './codec/outputPanelUtils';
+import { WorkbenchMenuBar } from './codec/WorkbenchMenuBar';
+import type { WorkbenchMenuDef, WorkbenchMenuEntry } from './codec/WorkbenchMenuBar';
 import { WorkbenchOutputPanel } from './codec/WorkbenchOutputPanel';
 
 export interface CodecWorkbenchHandle {
@@ -36,9 +39,13 @@ interface CodecWorkbenchProps {
   heading?: { zh: string; en: string };
   description?: { zh: string; en: string };
   registerTestApi?: boolean;
+  // pentest（默认）= 渗透编解码视图（侧栏分类 + 动作网格，保持既有形态）；
+  // ctf = CTF 解题工具箱（顶部菜单栏主导航，动作网格折叠为备选）。
+  mode?: 'pentest' | 'ctf';
 }
 
-// 动作网格的（操作 × 方向）动作项：decode 优先（CTF 主链路），仅支持一侧的操作只出一个按钮。
+// 动作项的（操作 × 方向）标记：随波逐流【xx解密】方括号标记法，decode 优先（CTF 主链路），
+// 仅支持一侧的操作只出一个动作；smart-decode 无方向语义，直接用名称。
 interface WorkbenchAction {
   id: OperationId;
   direction: Direction;
@@ -50,20 +57,24 @@ const actionsOfOperation = (operation: Operation, language: 'zh' | 'en'): Workbe
   const actions: WorkbenchAction[] = [];
   const name = label(operation.name, language);
   if (operation.supportsDecode !== false) {
-    actions.push({ id: operation.id, direction: 'decode', mark: language === 'zh' ? `【${name}·解】` : `[${name} ▸ dec]`, summary: operation.summary });
+    const mark = operation.id === 'smart-decode'
+      ? (language === 'zh' ? '【智能识别】' : '[Smart identify]')
+      : language === 'zh' ? `【${name}解密】` : `[${name} dec]`;
+    actions.push({ id: operation.id, direction: 'decode', mark, summary: operation.summary });
   }
   if (operation.supportsEncode !== false) {
-    actions.push({ id: operation.id, direction: 'encode', mark: language === 'zh' ? `【${name}·编】` : `[${name} ▸ enc]`, summary: operation.summary });
+    actions.push({ id: operation.id, direction: 'encode', mark: language === 'zh' ? `【${name}加密】` : `[${name} enc]`, summary: operation.summary });
   }
   return actions;
 };
 
-function CodecWorkbench({ ref, groups, heading, description, registerTestApi = false }: CodecWorkbenchProps) {
+function CodecWorkbench({ ref, groups, heading, description, registerTestApi = false, mode = 'pentest' }: CodecWorkbenchProps) {
   const { language, globalSecret, setGlobalSecret } = useAppContext();
   const [input, setInput] = useState('');
   const [output, setOutput] = useState('');
   const [activeGroupId, setActiveGroupId] = useState<string>(() => groups[0]?.id ?? '');
   const [activeOperationId, setActiveOperationId] = useState<OperationId | null>(null);
+  const [activeActionKey, setActiveActionKey] = useState<string | null>(null);
   const [params, setParams] = useState<Record<ParamKey, string>>(defaultParams);
   const [error, setError] = useState('');
   const [running, setRunning] = useState(false);
@@ -123,6 +134,7 @@ function CodecWorkbench({ ref, groups, heading, description, registerTestApi = f
   const selectGroup = (groupId: string) => {
     const group = groups.find(item => item.id === groupId);
     setActiveGroupId(groupId);
+    setActiveActionKey(null);
     if (group?.operations[0]) setActiveOperationId(group.operations[0].id);
     setError('');
     setOutput('');
@@ -149,9 +161,13 @@ function CodecWorkbench({ ref, groups, heading, description, registerTestApi = f
     }
   };
 
-  // 动作按钮：一次点击 = 选中操作 + 立即执行（显式传 id，不受 setState 异步影响）。
+  // 动作入口：一次点击 = 选中操作（含所属分类同步）+ 立即执行（显式传 id，不受 setState 异步影响）。
+  // 菜单栏跨分类直达时同步 activeGroupId，保证工具栏下拉/摘要/参数区与当前操作一致。
   const runAction = (action: WorkbenchAction) => {
+    const group = groups.find(item => item.operations.some(candidate => candidate.id === action.id));
+    if (group) setActiveGroupId(group.id);
     setActiveOperationId(action.id);
+    setActiveActionKey(`${action.id}-${action.direction}`);
     void run(action.direction, action.id);
   };
 
@@ -166,6 +182,7 @@ function CodecWorkbench({ ref, groups, heading, description, registerTestApi = f
     if (!group) return;
     setActiveGroupId(group.id);
     setActiveOperationId(operationId);
+    setActiveActionKey(null);
     setError('');
     setOutput('');
   };
@@ -176,6 +193,7 @@ function CodecWorkbench({ ref, groups, heading, description, registerTestApi = f
       if (!group) return;
       setActiveGroupId(group.id);
       setActiveOperationId(id);
+      setActiveActionKey(null);
       if (seedInput !== undefined) setInput(seedInput);
       setError('');
       setOutput('');
@@ -184,6 +202,67 @@ function CodecWorkbench({ ref, groups, heading, description, registerTestApi = f
   }), [groups]);
 
   if (!operation) return null;
+
+  // 顶部菜单栏（CTF 态）：buildCtfMenus 的 9 菜单映射为下拉条目，onSelect 走 runAction 立即执行。
+  // 刻意不 useMemo：runAction 闭包捕获最新 input/effectiveParams，memo 化会让菜单跑旧输入；
+  // 条目对象量级与动作网格按钮相当，每次渲染重建成本可忽略。
+  const isCtfMode = mode === 'ctf';
+  const menuDefs: WorkbenchMenuDef[] = isCtfMode
+    ? buildCtfMenus().map(menu => ({
+      id: menu.id,
+      name: menu.name,
+      groups: menu.sections.map(section => ({
+        label: section.label,
+        entries: section.operations.flatMap(item => actionsOfOperation(item, language)).map(action => ({
+          key: `${action.id}-${action.direction}`,
+          label: action.mark,
+          title: label(action.summary, language),
+          active: activeActionKey === `${action.id}-${action.direction}`,
+          onSelect: () => runAction(action),
+        } satisfies WorkbenchMenuEntry)),
+      })),
+    }))
+    : [];
+
+  // 分类内（操作 × 方向）动作区：CTF 态折叠为备选视图，渗透态保持平铺。
+  const actionPanel = (
+    <div className="action-panel" aria-label={language === 'zh' ? '操作动作列表' : 'Operation actions'}>
+      {activeGroup?.subgroups ? (
+        activeGroup.subgroups.filter(subgroup => subgroup.operations.length).map(subgroup => (
+          <div key={subgroup.name.zh} className="action-section">
+            <div className="action-section-title">{label(subgroup.name, language)}</div>
+            <div className="action-grid">
+              {subgroup.operations.flatMap(item => actionsOfOperation(item, language)).map(action => (
+                <button
+                  key={`${action.id}-${action.direction}`}
+                  type="button"
+                  className={`action-btn ${operation?.id === action.id ? 'active' : ''}`}
+                  onClick={() => runAction(action)}
+                  title={label(action.summary, language)}
+                >
+                  {action.mark}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))
+      ) : (
+        <div className="action-grid">
+          {groupOperations.flatMap(item => actionsOfOperation(item, language)).map(action => (
+            <button
+              key={`${action.id}-${action.direction}`}
+              type="button"
+              className={`action-btn ${operation?.id === action.id ? 'active' : ''}`}
+              onClick={() => runAction(action)}
+              title={label(action.summary, language)}
+            >
+              {action.mark}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="encoding-tools">
@@ -194,34 +273,44 @@ function CodecWorkbench({ ref, groups, heading, description, registerTestApi = f
         </div>
       )}
 
-      <div className="encoding-workbench" ref={workbenchRef}>
-        <aside className="encoding-category-panel" aria-label={language === 'zh' ? '编解码分类' : 'Codec categories'}>
-          <select
-            className="category-select"
-            value={activeGroup?.id ?? ''}
-            onChange={event => selectGroup(event.target.value)}
-            aria-label={language === 'zh' ? '选择分类' : 'Select category'}
-          >
-            {groups.map(group => (
-              <option key={group.id} value={group.id}>{label(group.name, language)}</option>
-            ))}
-          </select>
-          <div className="category-list" role="list">
-            {groups.map(group => (
-              <button
-                key={group.id}
-                type="button"
-                className={`category-row ${activeGroup?.id === group.id ? 'active' : ''}`}
-                onClick={() => selectGroup(group.id)}
-              >
-                <span>{label(group.name, language)}</span>
-                <small>{label(group.note, language)}</small>
-              </button>
-            ))}
-          </div>
-        </aside>
+      <div className={`encoding-workbench ${isCtfMode ? 'ctf-nav-mode' : ''}`} ref={workbenchRef}>
+        {!isCtfMode && (
+          <aside className="encoding-category-panel" aria-label={language === 'zh' ? '编解码分类' : 'Codec categories'}>
+            <select
+              className="category-select"
+              value={activeGroup?.id ?? ''}
+              onChange={event => selectGroup(event.target.value)}
+              aria-label={language === 'zh' ? '选择分类' : 'Select category'}
+            >
+              {groups.map(group => (
+                <option key={group.id} value={group.id}>{label(group.name, language)}</option>
+              ))}
+            </select>
+            <div className="category-list" role="list">
+              {groups.map(group => (
+                <button
+                  key={group.id}
+                  type="button"
+                  className={`category-row ${activeGroup?.id === group.id ? 'active' : ''}`}
+                  onClick={() => selectGroup(group.id)}
+                >
+                  <span>{label(group.name, language)}</span>
+                  <small>{label(group.note, language)}</small>
+                </button>
+              ))}
+            </div>
+          </aside>
+        )}
 
         <section className="encoding-main-panel">
+          {isCtfMode ? (
+            <WorkbenchMenuBar
+              menus={menuDefs}
+              ariaLabel={language === 'zh' ? '解题操作菜单栏' : 'Solver operation menu'}
+              current={label(operation.name, language)}
+            />
+          ) : null}
+
           <div className="codec-toolbar">
             <label className="operation-select-field">
               <span>{language === 'zh' ? '算法 / 场景' : 'Operation'}</span>
@@ -288,42 +377,12 @@ function CodecWorkbench({ ref, groups, heading, description, registerTestApi = f
             />
           </div>
 
-          <div className="action-panel" aria-label={language === 'zh' ? '操作动作列表' : 'Operation actions'}>
-            {activeGroup?.subgroups ? (
-              activeGroup.subgroups.filter(subgroup => subgroup.operations.length).map(subgroup => (
-                <div key={subgroup.name.zh} className="action-section">
-                  <div className="action-section-title">{label(subgroup.name, language)}</div>
-                  <div className="action-grid">
-                    {subgroup.operations.flatMap(item => actionsOfOperation(item, language)).map(action => (
-                      <button
-                        key={`${action.id}-${action.direction}`}
-                        type="button"
-                        className={`action-btn ${operation?.id === action.id ? 'active' : ''}`}
-                        onClick={() => runAction(action)}
-                        title={label(action.summary, language)}
-                      >
-                        {action.mark}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="action-grid">
-                {groupOperations.flatMap(item => actionsOfOperation(item, language)).map(action => (
-                  <button
-                    key={`${action.id}-${action.direction}`}
-                    type="button"
-                    className={`action-btn ${operation?.id === action.id ? 'active' : ''}`}
-                    onClick={() => runAction(action)}
-                    title={label(action.summary, language)}
-                  >
-                    {action.mark}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          {isCtfMode ? (
+            <details className="action-fold">
+              <summary>{language === 'zh' ? '展开全部操作（平铺备选）' : 'All operations (grid fallback)'}</summary>
+              {actionPanel}
+            </details>
+          ) : actionPanel}
 
           <div className="operation-summary">
             <div>
@@ -741,6 +800,33 @@ function CodecWorkbench({ ref, groups, heading, description, registerTestApi = f
           grid-template-columns: 230px minmax(0, 1fr);
           gap: 14px;
           align-items: start;
+        }
+
+        /* CTF 态：菜单栏替代左侧分类栏，主面板占满整行 */
+        .encoding-workbench.ctf-nav-mode {
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        /* CTF 态动作网格折叠备选 */
+        .action-fold {
+          min-width: 0;
+          border: 1px dashed var(--border-color);
+          border-radius: 8px;
+          padding: 8px 10px;
+        }
+
+        .action-fold summary {
+          min-height: 32px;
+          cursor: pointer;
+          color: var(--text-muted);
+          font-size: 12px;
+          font-weight: 700;
+          line-height: 32px;
+          user-select: none;
+        }
+
+        .action-fold[open] summary {
+          margin-bottom: 8px;
         }
 
         .encoding-category-panel,
@@ -1305,6 +1391,11 @@ function CodecWorkbench({ ref, groups, heading, description, registerTestApi = f
 
           .action-btn {
             min-height: 44px;
+          }
+
+          .action-fold summary {
+            min-height: 44px;
+            line-height: 44px;
           }
 
           .action-grid {

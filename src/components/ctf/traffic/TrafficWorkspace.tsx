@@ -3,6 +3,7 @@ import { SegmentedControl } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useAppContext } from '../../../appContext';
 import { MAX_FILE_BYTES, scanSuspiciousContent, type SuspiciousScan } from '../../../utils/ctf/fileDetect';
+import { WorkbenchMenuBar } from '../../codec/WorkbenchMenuBar';
 import { formatBytes, formatDuration, formatTimestamp } from '../../../utils/ctf/pcap/format';
 import { parseCapture } from '../../../utils/ctf/pcap/parser';
 import { buildPacketViews, type PacketView } from '../../../utils/ctf/pcap/protocols';
@@ -40,6 +41,14 @@ const STAT_LABELS: Record<string, { zh: string; en: string }> = {
 };
 
 type ViewKey = 'packets' | 'stats' | 'streams' | 'http' | 'suspicious';
+
+const VIEW_MENU_NAMES: Record<ViewKey, { zh: string; en: string }> = {
+  packets: { zh: '包列表', en: 'Packets' },
+  stats: { zh: '协议统计', en: 'Protocols' },
+  streams: { zh: 'TCP 流', en: 'TCP streams' },
+  http: { zh: 'HTTP 对象', en: 'HTTP objects' },
+  suspicious: { zh: '可疑内容', en: 'Suspicious' },
+};
 
 // 流量分析域工作区（批次 L）：pcap/pcapng 拖入 → 本地解析 → 包列表 / 协议统计 / TCP 流 / HTTP 对象 / 可疑内容。
 // 文件只读解析、不上传、不执行；超过 20MB 直接拒绝；解析限量见 parser.ts（超限显示已解析部分）。
@@ -144,6 +153,27 @@ function TrafficWorkspace({ pendingFile, onFileConsumed }: TrafficWorkspaceProps
     { value: 'suspicious', label: zh ? '可疑内容' : 'Suspicious' },
   ];
 
+  // 顶部菜单栏（域联动）：抓包分析菜单只在流量域展示；未加载文件时条目先打开选择器。
+  const trafficMenus = useMemo(() => [{
+    id: 'traffic-tools',
+    name: { zh: '抓包分析', en: 'Capture' },
+    groups: [{
+      label: null,
+      entries: [
+        { key: 'pick', label: zh ? '【选择抓包文件】' : '[Choose capture]', onSelect: () => inputRef.current?.click() },
+        ...(['packets', 'stats', 'streams', 'http', 'suspicious'] as ViewKey[]).map(key => ({
+          key,
+          label: zh ? `【${VIEW_MENU_NAMES[key].zh}】` : `[${VIEW_MENU_NAMES[key].en}]`,
+          active: Boolean(report) && view === key,
+          onSelect: () => {
+            if (report) setView(key);
+            else inputRef.current?.click();
+          },
+        })),
+      ],
+    }],
+  }], [zh, report, view]);
+
   return (
     <div className="traffic-workspace" onDragOver={event => event.preventDefault()} onDrop={onDrop}>
       <input
@@ -158,6 +188,12 @@ function TrafficWorkspace({ pendingFile, onFileConsumed }: TrafficWorkspaceProps
           if (file) void loadFile(file);
           event.target.value = '';
         }}
+      />
+
+      <WorkbenchMenuBar
+        menus={trafficMenus}
+        ariaLabel={zh ? '抓包分析菜单' : 'Capture analysis menu'}
+        current={report ? VIEW_MENU_NAMES[view][language] : undefined}
       />
 
       {!report ? (

@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { notifications } from '@mantine/notifications';
 import { useAppContext } from '../../appContext';
+import { FlagAutoText } from '../codec/FlagAutoText';
+import { WorkbenchMenuBar } from '../codec/WorkbenchMenuBar';
+import type { WorkbenchMenuDef } from '../codec/WorkbenchMenuBar';
 import {
   MAX_FILE_BYTES,
   detectFileTypes,
@@ -144,6 +147,33 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed }: FileForensicsWo
 
   const openPicker = () => inputRef.current?.click();
 
+  // 顶部菜单栏（域联动）：文件与图片类菜单只在杂项取证域展示（工作区仅在本域挂载，天然满足）。
+  // 未加载文件时一律先打开选择器；目标卡未渲染（该文件没有对应内容）时给出说明。
+  const scrollToCard = useCallback((cardId: string, missingMessage: { zh: string; en: string }) => {
+    if (!analysis) {
+      inputRef.current?.click();
+      return;
+    }
+    const node = document.getElementById(cardId);
+    if (node) node.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    else notifications.show({ message: missingMessage[language] });
+  }, [analysis, language]);
+
+  const fileMenus: WorkbenchMenuDef[] = useMemo(() => [{
+    id: 'file-tools',
+    name: { zh: '文件与图片', en: 'Files & Images' },
+    groups: [{
+      label: null,
+      entries: [
+        { key: 'pick', label: language === 'zh' ? '【选择文件】' : '[Choose file]', onSelect: () => inputRef.current?.click() },
+        { key: 'summary', label: language === 'zh' ? '【文件概要】' : '[Summary]', onSelect: () => scrollToCard('ff-card-summary', { zh: '请先选择文件。', en: 'Choose a file first.' }) },
+        { key: 'suspicious', label: language === 'zh' ? '【可疑内容】' : '[Suspicious]', onSelect: () => scrollToCard('ff-card-suspicious', { zh: '当前文件未发现可疑内容，没有可展示的部分。', en: 'No suspicious content was found in this file.' }) },
+        { key: 'strings', label: language === 'zh' ? '【可读字符串】' : '[Strings]', onSelect: () => scrollToCard('ff-card-strings', { zh: '当前文件没有提取到可读字符串。', en: 'No readable strings were extracted from this file.' }) },
+        { key: 'hexdump', label: language === 'zh' ? '【HEX 转储】' : '[Hexdump]', onSelect: () => scrollToCard('ff-card-hexdump', { zh: '当前文件没有 hexdump 预览。', en: 'No hexdump preview for this file.' }) },
+      ],
+    }],
+  }], [language, scrollToCard]);
+
   useEffect(() => {
     if (!pendingFile || pendingFile.token === lastTokenRef.current) return;
     lastTokenRef.current = pendingFile.token;
@@ -204,12 +234,17 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed }: FileForensicsWo
         aria-hidden="true"
         tabIndex={-1}
         style={{ display: 'none' }}
-        onChange={event => {
-          const file = event.target.files?.[0];
-          if (file) void loadFile(file);
-          event.target.value = '';
-        }}
-      />
+          onChange={event => {
+            const file = event.target.files?.[0];
+            if (file) void loadFile(file);
+            event.target.value = '';
+          }}
+        />
+
+        <WorkbenchMenuBar
+          menus={fileMenus}
+          ariaLabel={language === 'zh' ? '文件与图片菜单' : 'Files and images menu'}
+        />
 
       {!analysis ? (
         <div className="ff-dropzone">
@@ -226,7 +261,7 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed }: FileForensicsWo
         </div>
       ) : (
         <div className="ff-layout">
-          <section className="ff-card" aria-label={language === 'zh' ? '文件概要' : 'File summary'}>
+          <section id="ff-card-summary" className="ff-card" aria-label={language === 'zh' ? '文件概要' : 'File summary'}>
             <div className="ff-card-head">
               <strong>{language === 'zh' ? '文件概要' : 'Summary'}</strong>
               <button type="button" className="ff-button" onClick={openPicker}>{language === 'zh' ? '换一个文件' : 'Replace'}</button>
@@ -263,7 +298,7 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed }: FileForensicsWo
           </section>
 
           {report && report.suspicious.flags.length > 0 && (
-            <section className="ff-card ff-card-flag" aria-label={language === 'zh' ? 'flag 命中' : 'Flag hits'}>
+            <section id="ff-card-flag" className="ff-card ff-card-flag" aria-label={language === 'zh' ? 'flag 命中' : 'Flag hits'}>
               <div className="ff-card-head">
                 <strong>{language === 'zh' ? '🚩 发现 flag' : '🚩 Flag found'}</strong>
               </div>
@@ -276,7 +311,7 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed }: FileForensicsWo
           )}
 
           {report && (report.png || report.zip) && (
-            <section className="ff-card" aria-label={language === 'zh' ? '文件修复工具' : 'Repair tools'}>
+            <section id="ff-card-repair" className="ff-card" aria-label={language === 'zh' ? '文件修复工具' : 'Repair tools'}>
               <div className="ff-card-head">
                 <strong>{language === 'zh' ? '修复工具' : 'Repair tools'}</strong>
               </div>
@@ -336,7 +371,7 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed }: FileForensicsWo
           )}
 
           {report && (report.suspicious.flags.length > 0 || report.suspicious.base64Candidates.length > 0 || report.suspicious.keywordHits.length > 0 || report.zeroWidth.zeroWidthCount > 0) && (
-            <section className="ff-card" aria-label={language === 'zh' ? '可疑内容' : 'Suspicious content'}>
+            <section id="ff-card-suspicious" className="ff-card" aria-label={language === 'zh' ? '可疑内容' : 'Suspicious content'}>
               <div className="ff-card-head">
                 <strong>{language === 'zh' ? '可疑内容' : 'Suspicious content'}</strong>
               </div>
@@ -366,7 +401,7 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed }: FileForensicsWo
                 <div className="ff-tool">
                   <span className="ff-label">{language === 'zh' ? `发现 ${report.zeroWidth.zeroWidthCount} 个零宽字符` : `${report.zeroWidth.zeroWidthCount} zero-width characters found`}</span>
                   {report.zeroWidth.payload
-                    ? <code className="ff-code">{report.zeroWidth.payload}</code>
+                    ? <code className="ff-code"><FlagAutoText text={report.zeroWidth.payload} /></code>
                     : <span className="ff-note">{language === 'zh' ? '零宽字符未凑满完整字节序列，无法按零宽编码解码；可能只是不可见水印或分隔符。' : 'Zero-width characters do not form complete bytes; they may be watermarks or separators.'}</span>}
                 </div>
               )}
@@ -374,7 +409,7 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed }: FileForensicsWo
           )}
 
           {imagePreviewUrl && (
-            <section className="ff-card" aria-label={language === 'zh' ? '图片预览' : 'Image preview'}>
+            <section id="ff-card-preview" className="ff-card" aria-label={language === 'zh' ? '图片预览' : 'Image preview'}>
               <div className="ff-card-head">
                 <strong>{language === 'zh' ? '图片预览' : 'Image preview'}</strong>
                 <button
@@ -390,13 +425,13 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed }: FileForensicsWo
           )}
 
           {report && report.strings.total > 0 && (
-            <section className="ff-card" aria-label={language === 'zh' ? '可读字符串' : 'Strings'}>
+            <section id="ff-card-strings" className="ff-card" aria-label={language === 'zh' ? '可读字符串' : 'Strings'}>
               <div className="ff-card-head">
                 <strong>{language === 'zh' ? `可读字符串（${report.strings.total} 条）` : `Strings (${report.strings.total})`}</strong>
               </div>
               <div className="ff-strings">
                 {report.strings.values.map((value, index) => (
-                  <code key={`${index}-${value}`} className="ff-code">{value.length > 160 ? `${value.slice(0, 160)}…` : value}</code>
+                  <code key={`${index}-${value}`} className="ff-code"><FlagAutoText text={value.length > 160 ? `${value.slice(0, 160)}…` : value} /></code>
                 ))}
                 {report.strings.total > report.strings.values.length && (
                   <span className="ff-note">{language === 'zh' ? `仅显示前 ${report.strings.values.length} 条。` : `Showing first ${report.strings.values.length}.`}</span>
@@ -406,11 +441,11 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed }: FileForensicsWo
           )}
 
           {report && report.hexdump && (
-            <section className="ff-card" aria-label={language === 'zh' ? 'hexdump 预览' : 'Hexdump'}>
+            <section id="ff-card-hexdump" className="ff-card" aria-label={language === 'zh' ? 'hexdump 预览' : 'Hexdump'}>
               <div className="ff-card-head">
                 <strong>{language === 'zh' ? 'hexdump 预览（前 512 字节）' : 'Hexdump (first 512 bytes)'}</strong>
               </div>
-              <pre className="ff-code ff-code-dump">{report.hexdump}</pre>
+              <pre className="ff-code ff-code-dump"><FlagAutoText text={report.hexdump} /></pre>
             </section>
           )}
         </div>
@@ -632,6 +667,27 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed }: FileForensicsWo
         .ff-busy {
           color: var(--text-muted);
           font-size: 12px;
+        }
+
+        /* flag 自动标红（FlagAutoText）：完整格式深红、关键词红 */
+        .file-forensics .flag-auto {
+          background: transparent;
+          color: inherit;
+          padding: 0;
+          border-radius: 2px;
+          font-weight: 700;
+        }
+
+        .file-forensics .flag-auto-format {
+          background: rgba(255, 61, 61, 0.24);
+          color: #ff7b7b;
+          box-shadow: 0 0 0 1px rgba(255, 61, 61, 0.5);
+        }
+
+        .file-forensics .flag-auto-keyword {
+          background: rgba(255, 61, 61, 0.13);
+          color: #ff9b9b;
+          box-shadow: 0 0 0 1px rgba(255, 61, 61, 0.28);
         }
 
         @media (max-width: 680px) {

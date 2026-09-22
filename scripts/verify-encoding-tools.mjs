@@ -49,7 +49,7 @@ const compileEncodingToolsModule = () => {
     if (cached) return cached.exports;
     let source = fs.readFileSync(key, 'utf8').replace(/^\uFEFF/, '');
     if (key === path.resolve(codecEntryFile)) {
-      source += '\nmodule.exports = { transform, defaultParams, detectInput, smartDecode, inferRsaParamsFromText, inferDlpFromText, factorSmallRsaModulus, operations, gsm7DefaultAlphabet, gsm7ExtensionAlphabet, operationAudience, buildPentestGroups, buildCtfGroups, detectFlagFormats };\n';
+      source += '\nmodule.exports = { transform, defaultParams, detectInput, smartDecode, inferRsaParamsFromText, inferDlpFromText, factorSmallRsaModulus, operations, gsm7DefaultAlphabet, gsm7ExtensionAlphabet, operationAudience, buildPentestGroups, buildCtfGroups, buildCtfMenus, findFlagAutoRanges, detectFlagFormats };\n';
     }
     const compiled = ts.transpileModule(source, {
       compilerOptions: {
@@ -143,6 +143,8 @@ const {
   operationAudience,
   buildPentestGroups,
   buildCtfGroups,
+  buildCtfMenus,
+  findFlagAutoRanges,
   detectFlagFormats,
 } = compileEncodingToolsModule();
 
@@ -2600,6 +2602,36 @@ await run('受众分流：编解码与 CTF 视图记账守恒、无遗漏无重�
   expect(hits.length === 2 && hits[0].prefix === 'flag' && hits[1].prefix === 'ctf', 'flag 格式识别失败');
   expect(detectFlagFormats('plain text without flags').length === 0, '无 flag 文本不得误报');
   expect(detectFlagFormats('').length === 0, '空输入必须返回空结果');
+});
+
+const rangesText = (text, range) => text.slice(range.start, range.end);
+
+await run('CTF 顶部菜单栏：9 菜单覆盖全部 CTF 可见操作、无重复无遗漏', async () => {
+  const menus = buildCtfMenus();
+  expect(menus.length === 9, `菜单数量漂移：期望 9，实际 ${menus.length}`);
+  expect(menus.every(menu => menu.sections.length > 0 && menu.sections.every(section => section.operations.length > 0)), '菜单不得出现空分组');
+  const menuIds = menus.flatMap(menu => menu.sections.flatMap(section => section.operations.map(op => op.id)));
+  expect(new Set(menuIds).size === menuIds.length, '同一操作不得出现在多个菜单');
+  const ctfIds = buildCtfGroups().flatMap(group => group.operations.map(op => op.id));
+  const menuSet = new Set(menuIds);
+  const missing = ctfIds.filter(id => !menuSet.has(id));
+  expect(missing.length === 0, `菜单遗漏操作：${missing.join(', ')}`);
+  const ctfSet = new Set(ctfIds);
+  const unknown = menuIds.filter(id => !ctfSet.has(id));
+  expect(unknown.length === 0, `菜单包含 CTF 视图之外的操作：${unknown.join(', ')}`);
+  expect(menus[0].id === 'smart' && menuIds[0] === 'smart-decode', '智能识别必须是第一菜单且含 smart-decode');
+});
+
+await run('flag 自动标红区间：完整格式深红优先、关键词补位、词边界不误报', async () => {
+  const ranges = findFlagAutoRanges('prefix flag{abcd} middle FLAG{UP} and key tail');
+  const formatHit = ranges.find(range => range.level === 'format');
+  expect(formatHit && rangesText('prefix flag{abcd} middle FLAG{UP} and key tail', formatHit) === 'flag{abcd}', '完整格式区间错误');
+  const keywordTexts = ranges.filter(range => range.level === 'keyword').map(range => rangesText('prefix flag{abcd} middle FLAG{UP} and key tail', range));
+  expect(keywordTexts.includes('FLAG') && keywordTexts.includes('key'), `关键词区间缺失：${keywordTexts.join(', ')}`);
+  expect(!keywordTexts.includes('flag'), '完整格式内的 flag 前缀不得重复命中关键词层');
+  expect(findFlagAutoRanges('monkey business and keyboard').length === 0, '词边界失效：monkey/keyboard 不得命中');
+  expect(findFlagAutoRanges('keys count as key').map(range => rangesText('keys count as key', range)).join(',').includes('keys'), 'keys 复数容差失效');
+  expect(findFlagAutoRanges('').length === 0, '空输入必须返回空区间');
 });
 
 console.log(`\nVerified ${results.length} EncodingTools regression checks.`);

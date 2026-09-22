@@ -243,6 +243,106 @@ export const buildCtfGroups = (): CodecGroupData[] => ctfSections
   })
   .filter(group => group.operations.length > 0);
 
+// CTF 顶部菜单栏（随波逐流形态：顶部菜单 + 下拉 + 点击即执行）：展示层分组，与 ctfSections
+// 是两套视图组织，覆盖同一操作全集（verify 脚本断言并集守恒）。受众分流与本表无关。
+export interface CodecMenuSpec {
+  id: string;
+  name: { zh: string; en: string };
+  // 下拉内小节标签（如古典密码的多表替换/换位）；label 为 null 的组紧跟上一节不留空隙。
+  sections: Array<{ label: { zh: string; en: string } | null; ids: OperationId[] }>;
+}
+
+const ctfMenuSpec: CodecMenuSpec[] = [
+  {
+    id: 'smart',
+    name: { zh: '智能识别', en: 'Smart' },
+    sections: [{ label: null, ids: ['smart-decode'] }],
+  },
+  {
+    id: 'base-rot',
+    name: { zh: 'Base/Rot', en: 'Base/Rot' },
+    sections: [{
+      label: null,
+      ids: ['base64', 'base64url', 'base32', 'z-base-32', 'base36', 'base62', 'base58', 'base58check', 'bech32', 'base45', 'base91', 'base32768', 'ascii85', 'rot', 'rot-bruteforce', 'rot8000'],
+    }],
+  },
+  {
+    id: 'classical',
+    name: { zh: '古典密码', en: 'Classical' },
+    sections: [
+      { label: { zh: '多表替换', en: 'Polyalphabetic' }, ids: ['vigenere', 'beaufort', 'autokey', 'porta', 'gronsfeld'] },
+      { label: { zh: '单表与仿射', en: 'Mono & Affine' }, ids: ['atbash', 'substitution', 'affine'] },
+      { label: { zh: '换位密码', en: 'Transposition' }, ids: ['rail-fence', 'scytale', 'columnar'] },
+      { label: { zh: '坐标与对码', en: 'Coordinate & Digraph' }, ids: ['bacon', 'polybius', 'tap-code', 'playfair', 'hill2', 'bifid', 'trifid', 'four-square', 'nihilist', 'adfgx', 'adfgvx'] },
+      { label: { zh: '机器与破译', en: 'Machines & Attacks' }, ids: ['enigma', 'frequency-analysis', 'cisco-type7'] },
+    ],
+  },
+  {
+    id: 'cn-tables',
+    name: { zh: '中文字表', en: 'CN & Tables' },
+    sections: [{
+      label: null,
+      ids: ['buddha', 'buddha-v2', 'bear-says', 'baijiaxing', 'hexagram', 'sexagesimal', 'cloud-shadow', 'pizzini', 'decabit', 'cetacean', 'albam', 'carbonaro'],
+    }],
+  },
+  {
+    id: 'telegraph',
+    name: { zh: '电报编码', en: 'Telegraph' },
+    sections: [{
+      label: null,
+      ids: ['morse', 'nato-phonetic', 'baudot', 'bcd', 'gray-code', 'dna-code', 'gsm7', 'sms-pdu', 'a1z26'],
+    }],
+  },
+  {
+    id: 'encodings',
+    name: { zh: '编码转换', en: 'Encodings' },
+    sections: [{
+      label: null,
+      ids: ['url-component', 'url-form', 'html-entity', 'xml-entity', 'utf7', 'unicode-escape', 'js-string', 'c-string', 'json-string', 'quoted-printable', 'utf16-bytes', 'xxencode', 'uuencode', 'yenc', 'bubble-babble', 'gzip', 'deflate', 'data-url'],
+    }],
+  },
+  {
+    id: 'radix',
+    name: { zh: '进制转换', en: 'Radix' },
+    sections: [{ label: null, ids: ['hex', 'binary', 'octal-codes', 'ascii-codes'] }],
+  },
+  {
+    id: 'modern',
+    name: { zh: '现代密码', en: 'Modern Crypto' },
+    sections: [{
+      label: null,
+      ids: ['rsa-raw', 'rabin-raw', 'rsa-helper', 'coppersmith', 'xor', 'xor-bruteforce', 'xor-known-plaintext', 'magic-xor-helper', 'mt19937-helper', 'lcg-helper', 'lfsr-helper', 'discrete-log-helper', 'hash-length-extension-helper', 'crypto-attack-helper', 'bip39-seed', 'pgp-parse', 'cbc-padding-demo'],
+    }],
+  },
+  {
+    id: 'misc-tools',
+    name: { zh: '其他工具', en: 'Misc Tools' },
+    sections: [{ label: null, ids: ['reverse-text', 'keyboard-shift', 'zero-width', 'brainfuck', 'ook', 'unix-time'] }],
+  },
+];
+
+export interface CodecMenu {
+  id: string;
+  name: { zh: string; en: string };
+  sections: Array<{ label: { zh: string; en: string } | null; operations: Operation[] }>;
+}
+
+// 顶部菜单栏数据：按 ctfMenuSpec 解析出操作对象；ID 必须全部落在传入的操作全集里（CTF 可见集），
+// 出现未知 ID 属于菜单表与受众表漂移，直接抛错让 verify 门禁第一时间抓住。
+export const buildCtfMenus = (): CodecMenu[] => {
+  const known = new Set<string>(operations.map(operation => operation.id));
+  return ctfMenuSpec.map(spec => ({
+    id: spec.id,
+    name: spec.name,
+    sections: spec.sections.map(section => {
+      for (const id of section.ids) {
+        if (!known.has(id)) throw new Error(`ctfMenuSpec references unknown operation: ${id}`);
+      }
+      return { label: section.label, operations: operationsInOrder(section.ids) };
+    }),
+  }));
+};
+
 interface CtfSectionSpec {
   id: 'smart' | 'classical' | 'modern' | 'misc';
   name: { zh: string; en: string };

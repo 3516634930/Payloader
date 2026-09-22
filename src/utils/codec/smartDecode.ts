@@ -22,6 +22,41 @@ const FLAG_FORMAT_PATTERN = /\b(?:flag|ctf|picoctf|htb|thm|key|crypto|dice|wctf|
 
 const flagFormatPattern = () => new RegExp(FLAG_FORMAT_PATTERN.source, FLAG_FORMAT_PATTERN.flags);
 
+// flag/ctf/key 关键词级识别（展示层自动标红用）：比完整格式宽松，只要求独立成词（\b 边界，monkey 不命中）。
+// 与 FLAG_FORMAT_PATTERN 同源维护：完整格式覆盖短内容（如 FLAG{UP}）不足 4 字符的场景。
+const FLAG_KEYWORD_PATTERN = /\b(?:flag|ctf|key)s?\b/gi;
+
+const flagKeywordPattern = () => new RegExp(FLAG_KEYWORD_PATTERN.source, FLAG_KEYWORD_PATTERN.flags);
+
+export interface FlagAutoRange {
+  start: number;
+  end: number;
+  // format = 前缀{...} 完整格式（深红）；keyword = flag/ctf/key 独立词（红色）
+  level: 'format' | 'keyword';
+}
+
+// 展示层自动标红区间：完整格式优先，关键词只补格式没覆盖的位置（重叠处让位）。
+// 供富输出面板与文件取证报告共用；纯函数、无状态，返回区间按起点有序且互不重叠。
+// 区间数封顶（对抗构造的超长关键词文本可产出数万命中，扫描线性恶化）。
+const MAX_FLAG_AUTO_RANGES = 5000;
+
+export const findFlagAutoRanges = (text: string): FlagAutoRange[] => {
+  if (!text) return [];
+  const ranges: FlagAutoRange[] = [];
+  for (const match of text.matchAll(flagFormatPattern())) {
+    if (ranges.length >= MAX_FLAG_AUTO_RANGES) break;
+    if (match[0].length) ranges.push({ start: match.index, end: match.index + match[0].length, level: 'format' });
+  }
+  for (const match of text.matchAll(flagKeywordPattern())) {
+    if (ranges.length >= MAX_FLAG_AUTO_RANGES) break;
+    const start = match.index;
+    const end = start + match[0].length;
+    const covered = ranges.some(range => start < range.end && end > range.start);
+    if (!covered) ranges.push({ start, end, level: 'keyword' });
+  }
+  return ranges.sort((a, b) => a.start - b.start || a.end - b.end);
+};
+
 export const smartDecode = async (value: string): Promise<string> => {
   const symbolObfuscated = trySmartSymbolObfuscation(value);
   if (symbolObfuscated) return symbolObfuscated;
