@@ -1,4 +1,5 @@
 import { lazy, Suspense, useState, useEffect, useMemo, useCallback, useDeferredValue } from 'react';
+import { useMantineColorScheme } from '@mantine/core';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import MainContent from './components/MainContent';
@@ -34,6 +35,9 @@ function App() {
   const [activeView, setActiveView] = useState<ActiveView>('workspace');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.matchMedia('(max-width: 900px)').matches);
   const [searchQuery, setSearchQuery] = useState('');
+  // CTF 工作台全局密钥（批次 M）：跨工作台实例共享（智能识别 hero ↔ 密码工作台 ↔ 渗透编解码），
+  // Vigenère → AES 等多步连用时密钥只填一次；会话级状态，不落盘。
+  const [globalSecret, setGlobalSecret] = useState('');
   // The public language switch stays disabled until English content passes coverage checks.
   const [language, setLanguage] = useState<Language>('zh');
   const [settledSearchQuery, setSettledSearchQuery] = useState('');
@@ -65,13 +69,15 @@ function App() {
       return 'dark';
     }
   });
+  const { setColorScheme } = useMantineColorScheme();
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
+    setColorScheme(theme);
     try {
       localStorage.setItem('cyber-arsenal-theme', theme);
     } catch { /* ignore */ }
-  }, [theme]);
+  }, [theme, setColorScheme]);
 
   useEffect(() => {
     document.title = getText(settings.browserTitle, language) || 'Payloader';
@@ -212,7 +218,9 @@ function App() {
       deferredSearchQuery,
       searchMatches,
       language,
-      setLanguage
+      setLanguage,
+      globalSecret,
+      setGlobalSecret
     }}>
       <div className="app-container">
         <a className="skip-link" href="#main-content">跳到主要内容</a>
@@ -234,22 +242,26 @@ function App() {
           }}
         />
         <div className="main-layout">
-          <Sidebar
-            collapsed={sidebarCollapsed}
-            onClose={closeSidebar}
-            onNavigate={() => {
-              setActiveView('workspace');
-              if (window.matchMedia('(max-width: 900px)').matches) {
-                setSidebarCollapsed(true);
-              }
-            }}
-          />
-          {!sidebarCollapsed && (
-            <button
-              className="sidebar-backdrop"
-              onClick={closeSidebar}
-              aria-label="关闭导航"
-            />
+          {activeTab !== 'ctf' && (
+            <>
+              <Sidebar
+                collapsed={sidebarCollapsed}
+                onClose={closeSidebar}
+                onNavigate={() => {
+                  setActiveView('workspace');
+                  if (window.matchMedia('(max-width: 900px)').matches) {
+                    setSidebarCollapsed(true);
+                  }
+                }}
+              />
+              {!sidebarCollapsed && (
+                <button
+                  className="sidebar-backdrop"
+                  onClick={closeSidebar}
+                  aria-label="关闭导航"
+                />
+              )}
+            </>
           )}
           <MainContent clientBuildInfo={clientBuildInfo} />
         </div>

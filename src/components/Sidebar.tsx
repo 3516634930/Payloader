@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAppContext } from '../appContext';
 import { t, getText } from '../i18n';
 import { openProtectedExternalLink } from '../protectedLinks';
+import { groupDenseLeaves } from '../utils/navigationGrouping';
 import type { I18nText, NavItem } from '../types';
 
 interface TreeNodeProps {
@@ -73,6 +74,17 @@ function TreeNode({ item, level, matchedIds, forceExpand, isFirst = false, onNav
   const { selectedPayloadId, setSelectedPayloadId, selectedToolId, setSelectedToolId, allToolCommands, language } = useAppContext();
 
   const hasChildren = item.children && item.children.length > 0;
+  // 叶子过多的层级插入虚拟分组节点（二级菜单），避免几十个条目平铺在一层。
+  const displayChildren = useMemo(
+    () => (hasChildren
+      ? groupDenseLeaves(
+        item,
+        item.children!,
+        item.children!.some(child => child.payloadId) ? 'payload' : 'tool',
+      )
+      : []),
+    [item, hasChildren],
+  );
   const isSelected = item.payloadId === selectedPayloadId || item.toolId === selectedToolId;
 
   // Check if this node or any descendant matches the search
@@ -138,7 +150,7 @@ function TreeNode({ item, level, matchedIds, forceExpand, isFirst = false, onNav
       </button>
       {hasChildren && effectiveExpanded && (
         <div className="tree-children" role="group">
-          {item.children!.map(child => (
+          {displayChildren.map(child => (
             <TreeNode key={child.id} item={child} level={level + 1} matchedIds={matchedIds} forceExpand={forceExpand} onNavigate={onNavigate} />
           ))}
         </div>

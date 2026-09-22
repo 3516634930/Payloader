@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useAppContext } from '../appContext';
+import type { ActiveTab } from '../appContext';
 import { t, getText } from '../i18n';
 import { protectedExternalLinks } from '../protectedLinks';
 import type { PublicClientBuildInfo } from '../types';
@@ -129,11 +130,26 @@ function Header({ sidebarCollapsed, setSidebarCollapsed, clientBuildInfo, showCl
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
 
-  const switchTab = (tab: 'payloads' | 'tools') => {
+  const switchTab = (tab: ActiveTab) => {
     setActiveView('workspace');
     setActiveTab(tab);
     setSelectedPayloadId(null);
     setSelectedToolId(null);
+  };
+
+  // WAI-ARIA tabs 模式：roving tabindex + 左右方向键在三个内容 tab 间移动并激活
+  const contentTabs: ActiveTab[] = ['payloads', 'tools', 'ctf'];
+  const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, tab: ActiveTab) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+    event.preventDefault();
+    const index = contentTabs.indexOf(tab);
+    const nextIndex = event.key === 'ArrowRight'
+      ? (index + 1) % contentTabs.length
+      : (index + contentTabs.length - 1) % contentTabs.length;
+    const nextTab = contentTabs[nextIndex];
+    switchTab(nextTab);
+    const buttons = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]');
+    buttons?.[nextIndex]?.focus();
   };
 
   const openEncoding = () => {
@@ -250,16 +266,18 @@ function Header({ sidebarCollapsed, setSidebarCollapsed, clientBuildInfo, showCl
     <>
       <header className="header">
         <div className="header-left">
-          <button 
-            className="menu-toggle"
-            type="button"
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            aria-label={sidebarCollapsed ? '打开分类导航' : '收起分类导航'}
-            aria-controls="primary-navigation"
-            aria-expanded={!sidebarCollapsed}
-          >
-            <span aria-hidden="true">☰</span>
-          </button>
+          {activeTab !== 'ctf' && (
+            <button
+              className="menu-toggle"
+              type="button"
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              aria-label={sidebarCollapsed ? '打开分类导航' : '收起分类导航'}
+              aria-controls="primary-navigation"
+              aria-expanded={!sidebarCollapsed}
+            >
+              <span aria-hidden="true">☰</span>
+            </button>
+          )}
           <div className="logo">
             {settings.logoUrl ? (
               <img className="logo-image" src={settings.logoUrl} alt="" />
@@ -315,12 +333,15 @@ function Header({ sidebarCollapsed, setSidebarCollapsed, clientBuildInfo, showCl
             )}
           </div>
           <div className="tab-switcher" role="tablist" aria-label="内容类型">
-            <button 
+            <button
               type="button"
               role="tab"
               aria-selected={activeTab === 'payloads'}
+              aria-controls="main-content"
+              tabIndex={activeTab === 'payloads' ? 0 : -1}
               className={`tab-btn ${activeTab === 'payloads' ? 'active' : ''}`}
               onClick={() => switchTab('payloads')}
+              onKeyDown={event => handleTabKeyDown(event, 'payloads')}
             >
               {t('header.tabPayloads', language)}
             </button>
@@ -328,10 +349,25 @@ function Header({ sidebarCollapsed, setSidebarCollapsed, clientBuildInfo, showCl
               type="button"
               role="tab"
               aria-selected={activeTab === 'tools'}
+              aria-controls="main-content"
+              tabIndex={activeTab === 'tools' ? 0 : -1}
               className={`tab-btn ${activeTab === 'tools' ? 'active' : ''}`}
               onClick={() => switchTab('tools')}
+              onKeyDown={event => handleTabKeyDown(event, 'tools')}
             >
               {t('header.tabTools', language)}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'ctf'}
+              aria-controls="main-content"
+              tabIndex={activeTab === 'ctf' ? 0 : -1}
+              className={`tab-btn ${activeTab === 'ctf' ? 'active' : ''}`}
+              onClick={() => switchTab('ctf')}
+              onKeyDown={event => handleTabKeyDown(event, 'ctf')}
+            >
+              {t('header.tabCtf', language)}
             </button>
           </div>
         </div>
@@ -359,14 +395,16 @@ function Header({ sidebarCollapsed, setSidebarCollapsed, clientBuildInfo, showCl
             <span aria-hidden="true">⋮</span>
           </button>
 
-          <button 
-            className="encoding-toggle"
-            type="button"
-            onClick={openEncoding}
-            title={t('header.encodingTitle', language)}
-          >
-            {t('header.encoding', language)}
-          </button>
+          {activeTab !== 'ctf' && (
+            <button
+              className="encoding-toggle"
+              type="button"
+              onClick={openEncoding}
+              title={t('header.encodingTitle', language)}
+            >
+              {t('header.encoding', language)}
+            </button>
+          )}
 
           {showClientDownloads && (
             <button
@@ -509,7 +547,9 @@ function Header({ sidebarCollapsed, setSidebarCollapsed, clientBuildInfo, showCl
               </div>
             </div>
             <button type="button" onClick={openVariables}>{t('header.variables', language)}</button>
-            <button type="button" onClick={openEncoding}>{t('header.encoding', language)}</button>
+            {activeTab !== 'ctf' && (
+              <button type="button" onClick={openEncoding}>{t('header.encoding', language)}</button>
+            )}
             {showClientDownloads && (
               <button type="button" onClick={openClientDownloads}>{clientDownloadLabel}</button>
             )}
@@ -715,6 +755,7 @@ function Header({ sidebarCollapsed, setSidebarCollapsed, clientBuildInfo, showCl
             border-radius: 6px;
             padding: 0 10px;
             width: 260px;
+            min-width: 120px;
             transition: all var(--transition-fast);
           }
 
@@ -773,6 +814,7 @@ function Header({ sidebarCollapsed, setSidebarCollapsed, clientBuildInfo, showCl
             border: 1px solid var(--border-color);
             min-height: 44px;
             overflow: hidden;
+            flex-shrink: 0;
           }
 
           .tab-btn {
@@ -1575,7 +1617,7 @@ function Header({ sidebarCollapsed, setSidebarCollapsed, clientBuildInfo, showCl
             flex-shrink: 0;
           }
 
-          @media (max-width: 1100px) {
+          @media (max-width: 1280px) {
             .header {
               height: var(--app-header-height);
               grid-template-columns: minmax(0, 1fr) auto;
@@ -1765,16 +1807,17 @@ function Header({ sidebarCollapsed, setSidebarCollapsed, clientBuildInfo, showCl
               padding: 6px 8px;
             }
 
+            /* 三个内容 tab 在窄屏独占一行，避免与搜索框挤压溢出 */
             .header-center {
-              grid-template-columns: minmax(0, 1fr) minmax(132px, 42vw);
-              grid-template-rows: 44px;
+              grid-template-columns: minmax(0, 1fr);
+              grid-template-rows: 44px 44px;
               gap: 6px;
             }
 
             .search-box,
             .search-box:focus-within,
             .tab-switcher {
-              grid-column: auto;
+              grid-column: 1 / -1;
               grid-row: auto;
               min-height: 44px;
             }

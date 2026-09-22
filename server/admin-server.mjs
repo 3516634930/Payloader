@@ -135,6 +135,9 @@ const adminSessions = new Map();
 const adminRequestLimit = { windowMs: 60_000, max: 300 };
 const failedAuthLimit = { windowMs: 60_000, max: 12 };
 const failedLoginLimit = { windowMs: 60_000, max: 8 };
+// 同时进行 scrypt 凭据校验的请求上限：libuv 线程池默认 4 线程，超过即廉价 429。
+const LOGIN_VERIFY_CONCURRENCY = 4;
+let loginVerifyInFlight = 0;
 const trustedProxyConfig = String(process.env.PAYLOADER_TRUSTED_PROXIES || '')
   .split(',')
   .map(item => item.trim().toLowerCase())
@@ -736,6 +739,18 @@ const checkRateLimit = (request, response, scope, limit) => {
   return false;
 };
 
+// 发送 429 但不改变限流计数——用于并发闸等需要廉价拒绝的路径。
+const respondTooManyRequests = (response, scope, limit) => {
+  const contentType = scope.includes('login') || scope.includes('admin') ? 'application/json; charset=utf-8' : 'text/plain; charset=utf-8';
+  response.writeHead(429, {
+    ...baseResponseHeaders,
+    'content-type': contentType,
+    'cache-control': 'no-store',
+    'retry-after': String(Math.ceil(limit.windowMs / 1000)),
+  });
+  response.end(contentType.startsWith('application/json') ? JSON.stringify({ error: '请求过于频繁，请稍后再试' }) : 'Too many requests');
+};
+
 const clearRateLimit = (request, scope) => {
   rateBuckets.delete(`${scope}:${clientKey(request)}`);
 };
@@ -1076,10 +1091,22 @@ const handleAdminAuthApi = async (request, response, url) => {
       methodNotAllowed(response, ['POST']);
       return true;
     }
+    // scrypt 并发闸：错误登录洪水不占满线程池；正确凭据在低并发时仍可正常登录。
+    if (loginVerifyInFlight >= LOGIN_VERIFY_CONCURRENCY) {
+      respondTooManyRequests(response, 'admin-login-failed', failedLoginLimit);
+      return true;
+    }
     const body = await parseJsonBody(request, 16_384, { requireJson: true });
     const user = typeof body.username === 'string' ? body.username : '';
     const password = typeof body.password === 'string' ? body.password : '';
-    if (user.length > 256 || password.length > 1024 || !await validAdminCredentials(user, password)) {
+    loginVerifyInFlight += 1;
+    let invalidCredentials;
+    try {
+      invalidCredentials = user.length > 256 || password.length > 1024 || !await validAdminCredentials(user, password);
+    } finally {
+      loginVerifyInFlight -= 1;
+    }
+    if (invalidCredentials) {
       if (!checkRateLimit(request, response, 'admin-login-failed', failedLoginLimit)) return true;
       json(response, 401, { error: '账号或密码不正确' });
       return true;

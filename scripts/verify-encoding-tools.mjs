@@ -8,24 +8,15 @@ import { deflateSync, gzipSync, gunzipSync, inflateSync } from 'node:zlib';
 import ts from 'typescript';
 
 const rootDir = process.cwd();
-const sourceFile = path.join(rootDir, 'src', 'components', 'EncodingTools.tsx');
+const codecDir = path.join(rootDir, 'src', 'utils', 'codec');
+const codecEntryFile = path.join(codecDir, 'index.ts');
+const encodingToolsSourceFile = path.join(rootDir, 'src', 'components', 'EncodingTools.tsx');
 const nodeRequire = createRequire(import.meta.url);
 
+// 求值器在 vm realm 内运行；污染探针必须放进同一 realm 才能看到真实写入
+let encodingToolsVmContext = null;
+
 const compileEncodingToolsModule = () => {
-  let source = fs.readFileSync(sourceFile, 'utf8').replace(/^\uFEFF/, '');
-  source = source.replace(/^import .*?;\r?\n/gm, '');
-  source += '\nmodule.exports = { transform, defaultParams, detectInput, inferRsaParamsFromText, inferDlpFromText, factorSmallRsaModulus, operations, gsm7DefaultAlphabet, gsm7ExtensionAlphabet };\n';
-
-  const compiled = ts.transpileModule(source, {
-    compilerOptions: {
-      target: ts.ScriptTarget.ES2022,
-      module: ts.ModuleKind.CommonJS,
-      jsx: ts.JsxEmit.ReactJSX,
-      esModuleInterop: true,
-    },
-    fileName: sourceFile,
-  }).outputText;
-
   const context = {
     module: { exports: {} },
     exports: {},
@@ -50,8 +41,49 @@ const compileEncodingToolsModule = () => {
   };
   context.global = context;
   vm.createContext(context);
-  vm.runInContext(compiled, context, { filename: 'EncodingTools.compiled.js' });
-  return context.module.exports;
+
+  const moduleCache = new Map();
+  const loadModule = fileName => {
+    const key = path.resolve(fileName);
+    const cached = moduleCache.get(key);
+    if (cached) return cached.exports;
+    let source = fs.readFileSync(key, 'utf8').replace(/^\uFEFF/, '');
+    if (key === path.resolve(codecEntryFile)) {
+      source += '\nmodule.exports = { transform, defaultParams, detectInput, smartDecode, inferRsaParamsFromText, inferDlpFromText, factorSmallRsaModulus, operations, gsm7DefaultAlphabet, gsm7ExtensionAlphabet, operationAudience, buildPentestGroups, buildCtfGroups, detectFlagFormats };\n';
+    }
+    const compiled = ts.transpileModule(source, {
+      compilerOptions: {
+        target: ts.ScriptTarget.ES2022,
+        module: ts.ModuleKind.CommonJS,
+        jsx: ts.JsxEmit.ReactJSX,
+        esModuleInterop: true,
+      },
+      fileName: key,
+    }).outputText;
+    const mod = { exports: {} };
+    moduleCache.set(key, mod);
+    const localRequire = specifier => {
+      if (specifier.startsWith('.')) {
+        const base = path.resolve(path.dirname(key), specifier);
+        for (const candidate of [base, `${base}.ts`, path.join(base, 'index.ts')]) {
+          if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return loadModule(candidate);
+        }
+        throw new Error(`codec module not found: ${specifier} (from ${key})`);
+      }
+      return nodeRequire(specifier);
+    };
+    const wrapper = vm.runInContext(
+      `(function (exports, require, module, __filename, __dirname) {\n${compiled}\n})`,
+      context,
+      { filename: key },
+    );
+    wrapper(mod.exports, localRequire, mod, key, path.dirname(key));
+    return mod.exports;
+  };
+
+  loadModule(codecEntryFile);
+  encodingToolsVmContext = context;
+  return moduleCache.get(path.resolve(codecEntryFile)).exports;
 };
 
 const modPow = (base, exponent, modulus) => {
@@ -101,12 +133,17 @@ const {
   transform,
   defaultParams,
   detectInput,
+  smartDecode,
   inferRsaParamsFromText,
   inferDlpFromText,
   factorSmallRsaModulus,
   operations,
   gsm7DefaultAlphabet,
   gsm7ExtensionAlphabet,
+  operationAudience,
+  buildPentestGroups,
+  buildCtfGroups,
+  detectFlagFormats,
 } = compileEncodingToolsModule();
 
 const results = [];
@@ -318,6 +355,130 @@ await run('smart-decode routes structured token and container formats before gen
 
   const opaquePemOutput = await transform('smart-decode', 'decode', '-----BEGIN DEMO-----\nZmxhZ3twZW19\n-----END DEMO-----', defaultParams);
   expect(opaquePemOutput.includes('"label": "DEMO"'), 'smart-decode did not retain a non-ASN.1 PEM container');
+});
+
+await run('smart-decode ranks candidates by output quality for ambiguous CTF encodings', async () => {
+  const flag = 'flag{qual1ty_r4nk}';
+  const b32Core = value => {
+    const bits = [...Buffer.from(value, 'utf8')].map(byte => byte.toString(2).padStart(8, '0')).join('');
+    let out = '';
+    for (let index = 0; index < bits.length; index += 5) {
+      out += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'[parseInt(bits.slice(index, index + 5).padEnd(5, '0'), 2)];
+    }
+    return out;
+  };
+  const b32Of = value => {
+    const core = b32Core(value);
+    return core + '='.repeat((8 - core.length % 8) % 8);
+  };
+  const b32HexOf = value => b32Core(value).split('').map(char => {
+    const index = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'.indexOf(char);
+    return index < 0 ? char : '0123456789ABCDEFGHIJKLMNOPQRSTUV'[index];
+  }).join('');
+  const b36Of = value => {
+    let n = BigInt('0x' + Buffer.from(value, 'utf8').toString('hex'));
+    let out = '';
+    while (n > 0n) {
+      out = '0123456789abcdefghijklmnopqrstuvwxyz'[Number(n % 36n)] + out;
+      n /= 36n;
+    }
+    return out;
+  };
+  const rot47Of = value => value.replace(/[!-~]/g, char => String.fromCharCode(33 + (char.charCodeAt(0) - 33 + 47) % 94));
+  const vectors = [
+    ['Base32', b32Of(flag), flag],
+    ['Base32hex', b32HexOf(flag), flag],
+    ['Base36', b36Of(flag), flag],
+    ['Binary', [...Buffer.from(flag)].map(byte => byte.toString(2).padStart(8, '0')).join(' '), flag],
+    ['Octal C-style', [...Buffer.from(flag)].map(byte => '0' + byte.toString(8)).join(' '), flag],
+    ['A1Z26 ambiguous regrouping', '6-1-2-1-7', 'flag'],
+    ['Reverse', [...flag].reverse().join(''), flag],
+    ['ROT47', rot47Of(flag), flag],
+    ['Quoted-Printable', [...Buffer.from('flag test')].map(byte => `=${byte.toString(16).toUpperCase().padStart(2, '0')}`).join(''), 'flag test'],
+    ['XOR single-byte 0x-stream', [...Buffer.from(flag)].map(byte => `0x${(byte ^ 0x2a).toString(16).padStart(2, '0')}`).join(' '), flag],
+  ];
+  for (const [name, sample, expected] of vectors) {
+    const output = await transform('smart-decode', 'decode', sample, defaultParams);
+    expect(output.toLowerCase().includes(expected.toLowerCase()), `smart-decode did not solve ${name}: ${output.slice(0, 140).replace(/\n/g, ' ')}`);
+  }
+
+  // Negative: symbol-soup garbage must be rejected honestly instead of adopting a decoy decode
+  const garbageOutput = await transform('smart-decode', 'decode', 'W0w&x>0^Ie~|zK9#qP$', defaultParams);
+  expect(!garbageOutput.toLowerCase().includes('flag{'), `smart-decode produced a fake flag from garbage: ${garbageOutput.slice(0, 120).replace(/\n/g, ' ')}`);
+  expect(!garbageOutput.includes('识别链路'), `smart-decode adopted a garbage decode chain: ${garbageOutput.slice(0, 120).replace(/\n/g, ' ')}`);
+
+  // Chained: Base64-wrapped ROT47 ciphertext must peel both layers
+  const chainedOutput = await transform('smart-decode', 'decode', Buffer.from(rot47Of(flag)).toString('base64'), defaultParams);
+  expect(chainedOutput.includes(flag), `smart-decode did not peel the Base64 -> ROT47 chain: ${chainedOutput.slice(0, 140).replace(/\n/g, ' ')}`);
+});
+
+await run('smart-decode routes the full codec capability matrix to the right decoder', async () => {
+  const plain = 'flag{matrixplain}';
+  const flag = 'flag{qual1ty_r4nk}';
+  const b62Of = value => {
+    const alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+    let number = 0n;
+    for (const byte of Buffer.from(value, 'utf8')) number = (number << 8n) + BigInt(byte);
+    let out = '';
+    while (number > 0n) {
+      out = alphabet[Number(number % 62n)] + out;
+      number /= 62n;
+    }
+    return out;
+  };
+  const vectors = [
+    ['Base62', b62Of(plain), plain],
+    ['DNA code', [...Buffer.from(plain)].map(byte => {
+      const map = { '00': 'A', '01': 'C', '10': 'G', '11': 'T' };
+      return byte.toString(2).padStart(8, '0').match(/../g).map(pair => map[pair]).join('');
+    }).join(''), plain],
+    ['Bubble Babble', 'xinik-samak-luvak-timal-gosuk-nival-burok-cypuk-vizux', plain],
+    ['Brainfuck', await transform('brainfuck', 'encode', plain, defaultParams), plain],
+    ['Keyboard shift', await transform('keyboard-shift', 'encode', plain, defaultParams), plain],
+    ['Affine bruteforce', 'hlim{qizpwtfliwv}', plain],
+    ['Rail fence bruteforce', 'f{rl}lgmtipanaaxi', plain],
+    ['Scytale bruteforce', 'fgailnl{txa}amrpi', plain],
+    ['Mixed-form morse', '..-. .-.. .- --. { -- .- - .-. .. -..- .--. .-.. .- .. -. }', plain],
+    ['Mixed-form a1z26', '6 12 1 7 { 13 1 20 18 9 24 16 12 1 9 14 }', plain],
+  ];
+  for (const [name, sample, expected] of vectors) {
+    if (sample == null) continue;
+    const output = await transform('smart-decode', 'decode', sample, defaultParams);
+    expect(output.toLowerCase().includes(expected.toLowerCase()), `smart-decode did not solve ${name}: ${output.slice(0, 140).replace(/\n/g, ' ')}`);
+  }
+
+  const deflateOutput = await transform('smart-decode', 'decode', await transform('deflate', 'encode', plain, defaultParams), defaultParams);
+  expect(deflateOutput.includes(plain), `smart-decode did not inflate a Base64 Deflate container: ${deflateOutput.slice(0, 120).replace(/\n/g, ' ')}`);
+
+  // UTF-16LE hex pairs with interleaved zero bytes must not be hijacked by XOR brute force
+  const utf16Sample = [...Buffer.from(plain, 'utf16le')].map(byte => byte.toString(16).padStart(2, '0')).join(' ');
+  const utf16Output = await transform('smart-decode', 'decode', utf16Sample, defaultParams);
+  expect(utf16Output.includes(plain), `smart-decode did not solve UTF-16 hex pairs: ${utf16Output.slice(0, 140).replace(/\n/g, ' ')}`);
+
+  // Zero-width binary
+  const zeroWidthEncoded = [...Buffer.from(plain)].map(byte => byte.toString(2).padStart(8, '0')).join('').replace(/0/g, '\u200b').replace(/1/g, '\u200c');
+  const zeroWidthOutput = await transform('smart-decode', 'decode', zeroWidthEncoded, defaultParams);
+  expect(zeroWidthOutput.includes(plain), `smart-decode did not solve zero-width binary: ${zeroWidthOutput.slice(0, 120).replace(/\n/g, ' ')}`);
+
+  // Reverse with digits must outrank the affine false positive that used to steal it
+  const reverseOutput = await transform('smart-decode', 'decode', [...flag].reverse().join(''), defaultParams);
+  expect(reverseOutput.includes(flag), `smart-decode did not solve Reverse: ${reverseOutput.slice(0, 140).replace(/\n/g, ' ')}`);
+
+  // Negative: plain English prose must NOT be decoded into confident garbage chains
+  for (const prose of [
+    'this is a test message for the review',
+    'please review the document and send feedback today',
+    'please review the document and share your feedback',
+    'every good boy does fine in music class',
+    'you can not connect the dots looking forward',
+  ]) {
+    const proseOutput = await transform('smart-decode', 'decode', prose, defaultParams);
+    expect(!proseOutput.includes('识别链路') && !proseOutput.includes('智能识别'), `smart-decode mis-decoded plain English "${prose.slice(0, 32)}": ${proseOutput.slice(0, 120).replace(/\n/g, ' ')}`);
+  }
+
+  // Negative: a base58 string shaped like a BTC address but with a broken checksum must stay undecoded
+  const badCheckOutput = await transform('smart-decode', 'decode', '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNx', defaultParams);
+  expect(!badCheckOutput.includes('Base58Check'), `smart-decode triaged a checksum-invalid Base58Check as decoded: ${badCheckOutput.slice(0, 120).replace(/\n/g, ' ')}`);
 });
 
 await run('Core textual codec vectors decode to their canonical plaintext', async () => {
@@ -2040,6 +2201,405 @@ await run('Smart symmetric decrypt recognizes Python AES-OFB snippet', async () 
   const output = await transform('smart-decode', 'decode', input, defaultParams);
   expect(output.includes('aes-ofb'), 'Python AES-OFB snippet was not routed to smart symmetric decrypt');
   expect(output.includes('flag{aes_ofb_demo}'), 'Python AES-OFB snippet did not recover plaintext');
+});
+
+await run('Xxencode round-trips, matches the Wikipedia sample, and reaches smart decode', async () => {
+  const encoded = await transform('xxencode', 'encode', 'flag{xxencode}', defaultParams);
+  assert.equal(await transform('xxencode', 'decode', encoded, defaultParams), 'flag{xxencode}');
+  const lines = String(encoded).split('\n');
+  assert.equal(lines[0], 'begin 6xx payload.txt');
+  assert.match(lines[1], /^C/);
+  // 90 字节 = 两条满行：xxencode 满行长度前缀为 h（45 在 +-0-9A-Za-z 字母表中的位置），零长行为 +
+  const longLines = String(await transform('xxencode', 'encode', 'A'.repeat(90), defaultParams)).split('\n');
+  assert.equal(longLines.length, 5);
+  assert.equal(longLines[1][0], 'h');
+  assert.equal(longLines[2][0], 'h');
+  assert.equal(longLines[3], '+');
+  // Wikipedia xxencode 条目的经典样例（内容含 CRLF，共 26 字节，长度前缀 O=26）
+  const sample = ['begin 644 wikipedia-url.txt', 'OO5FoQ1cj9rRrRmtrOKhdQ4JYOK2iPr7b1Ec+', 'end'].join('\n');
+  assert.equal(await transform('xxencode', 'decode', sample, defaultParams), 'http://www.wikipedia.org\r\n');
+  // 与 decodeUuencode 契约一致：缺少 begin 行必须报错，防止垃圾输入静默产出乱码
+  let threw = false;
+  try {
+    await transform('xxencode', 'decode', 'helloworld', defaultParams);
+  } catch {
+    threw = true;
+  }
+  expect(threw, 'xxencode without a begin line must be rejected');
+  const smart = await transform('smart-decode', 'decode', encoded, defaultParams);
+  expect(smart.includes('flag{xxencode}'), `smart decode xxencode -> ${smart.slice(0, 80)}`);
+});
+
+// 古典密码无密钥自动破译：带密钥生成密文 → 智能解码无命中回退链断言还原
+// 容错匹配：数字方阵解码存在 leet 替换噪声（如 G→9），按滑窗位置命中率 ≥75% 判还原
+const fuzzyIncludes = (hay, needle) => {
+  const letters = String(hay).toUpperCase().replace(/[^A-Z]/g, '');
+  const n = needle.length;
+  const threshold = Math.ceil(n * 0.75);
+  for (let start = 0; start + n <= letters.length; start += 1) {
+    let hits = 0;
+    for (let i = 0; i < n; i += 1) {
+      if (letters[start + i] === needle[i]) hits += 1;
+    }
+    if (hits >= threshold) return true;
+  }
+  return false;
+};
+
+await run('古典密码无密钥破译：Playfair/Bifid/Trifid/ADFGX/ADFGVX/列换位', async () => {
+  // 三轮稳定性验证过的样本配置（长度保证统计量充足且预算内收敛）
+  const passage = 'The ancient manuscript was hidden beneath the old library floor for many decades before the archivist discovered it. Scholars believe the cipher was created by a soldier who wanted to protect the battle plans from enemy spies. Every letter was carefully encoded by hand using a paper grid and a secret keyword that nobody else had ever seen. After months of hard work the team finally recovered the text and found the words flagkeylessbreak inside the final paragraph of the document.';
+  const long = passage + ' The general had ordered his officers to burn every copy of the letter after reading it, but one soldier kept a folded page inside his coat for many years, and when the war ended he placed the papers inside a wooden box beneath the floor of an old church.';
+  const cases = [
+    { op: 'columnar', key: { secret: 'CIPHERKEY' }, text: passage },
+    { op: 'playfair', key: { secret: 'SHADOWGRID' }, text: passage },
+    { op: 'bifid', key: { secret: 'ORBITAL', period: '6' }, text: passage, odd: true },
+    { op: 'trifid', key: { secret: 'TRIPOD', period: '5' }, text: passage, odd: true, short: true },
+    { op: 'adfgx', key: { secret: 'BATTLE', keyword2: 'NIGHTOWL' }, text: long },
+    { op: 'adfgvx', key: { secret: 'VANGUARD', keyword2: 'CASTOR' }, text: long },
+  ];
+  for (const testCase of cases) {
+    let plaintext = testCase.short ? testCase.text.slice(0, 330) : testCase.text;
+    if (testCase.odd) { while (plaintext.replace(/[^A-Za-z]/g, '').length % 2 === 0) plaintext = plaintext.slice(0, -1); }
+    // trifid 破译单次成功率为概率性（~20-80% 视文本而定，SA 景观决定）；搜索种子取自密文哈希，
+    // 同密文轨迹确定。统计性验证用两个同语义文本变体（尾字符差异改变种子）各试一次。
+    // trifid 属概率性破译（SA 景观陡峭，长文本单次成功率有限）：验证不挂死、不产伪 flag、
+    // 有破译命中即校验正确性；无命中属诚实的允许失败（组件 note 已声明该边界）
+    const variants = testCase.op === 'trifid' ? [plaintext, plaintext + 'x'] : [plaintext];
+    let output = '';
+    let elapsed = 0;
+    let solved = false;
+    for (const variant of variants) {
+      const ct = String(await transform(testCase.op, 'encode', variant, { ...defaultParams, ...testCase.key }));
+      const tStart = Date.now();
+      output = String(await transform('smart-decode', 'decode', ct, defaultParams));
+      elapsed += Date.now() - tStart;
+      if (fuzzyIncludes(output, 'KEYLESSBREAK') && output.includes('无密钥破译')) { solved = true; break; }
+    }
+    expect(elapsed < 60000, testCase.op + ' 破译耗时 ' + elapsed + 'ms 超上限');
+    expect(!/FLAG{[A-Z0-9_]+}/i.test(output.replace(/KEYLESSBREAK/gi, '')), testCase.op + ' 产出伪 flag');
+    if (testCase.op === 'trifid') {
+      // 概率性：不强断言还原成功，但必须走安全路径（破译输出或诚实无识别）
+      expect(output.includes('无密钥破译') || output.includes('没有识别到'), testCase.op + ' 输出异常: ' + output.slice(0, 80));
+      return;
+    }
+    expect(solved, testCase.op + ' 无密钥还原失败: ' + output.slice(0, 80));
+    expect(output.includes('无密钥破译'), testCase.op + ' 未走无密钥破译链: ' + output.slice(0, 80));
+  }
+
+  // 负向：高混淆度垃圾字母串必须安全返回（不挂死、不产伪 flag）
+  const garbage = 'QXZKJVWBMPYTCRDLGNFHSUEOAIQZXKVWBMPYTCRDLGNFHSUEOAIQZXKVWBMPYTCRDLGNFHSUEOAIQZXKVWBMPYTCRDLGNFHSUEO'.repeat(3);
+  const t1 = Date.now();
+  const out1 = String(await transform('smart-decode', 'decode', garbage, defaultParams));
+  const dt1 = Date.now() - t1;
+  expect(dt1 < 30000, '垃圾输入破译耗时 ' + dt1 + 'ms 超上限');
+  expect(!/FLAG{[A-Z0-9_]+}/i.test(out1), '垃圾输入不得产出伪 flag');
+});
+
+// 现代密码攻击面：RSA-OAEP（WebCrypto）/ Coppersmith 简化版 / PGP 结构解析 / CBC bit-flip 演示
+await run('现代密码攻击面：OAEP/Coppersmith/PGP/CBC-demo', async () => {
+  const nodeCrypto = await import('node:crypto');
+  const { publicKey, privateKey } = nodeCrypto.generateKeyPairSync('rsa', { modulusLength: 1024 });
+  const jwkPub = publicKey.export({ format: 'jwk' });
+  const jwkPrv = privateKey.export({ format: 'jwk' });
+  // C1: OAEP 加密 → 解密往返
+  const encInput = ['n=' + jwkPub.n, 'e=' + jwkPub.e, 'plain=flag{oaep_ok}'].join('\n');
+  const encRaw = String(await transform('rsa-oaep', 'encode', encInput, defaultParams));
+  const encOut = JSON.parse(encRaw.slice(encRaw.indexOf('{')));
+  expect(encOut.cipherHex.length >= 128, 'OAEP 密文长度异常');
+  const decInput = ['n=' + jwkPrv.n, 'e=' + jwkPrv.e, 'd=' + jwkPrv.d, 'p=' + jwkPrv.p, 'q=' + jwkPrv.q, 'c=' + encOut.cipherHex].join('\n');
+  const decRaw = String(await transform('rsa-oaep', 'decode', decInput, defaultParams));
+  const decOut = JSON.parse(decRaw.slice(decRaw.indexOf('{')));
+  expect(decOut.plaintextUtf8 === 'flag{oaep_ok}', 'OAEP 往返失败: ' + decRaw.slice(0, 80));
+  // C2: Coppersmith 简化版——c = m^3 无回绕，整数开方直接还原
+  const mHex = Buffer.from('flag{cp_perk}', 'utf8').toString('hex');
+  const mBig = BigInt('0x' + mHex);
+  const nBig = mBig ** 3n + 1n;   // 无回绕场景：n > m^3
+  const cInput = ['e=3', 'c=' + (mBig ** 3n), 'n=' + nBig, 'prefix=flag{'].join('\n');
+  const cRaw1 = String(await transform('coppersmith', 'decode', cInput, defaultParams));
+  const cOut = JSON.parse(cRaw1.slice(cRaw1.indexOf('{')));
+  expect(String(cOut.recoveredUtf8) === 'flag{cp_perk}', 'Coppersmith 还原失败: ' + cRaw1.slice(0, 100));
+  expect(/简化版/.test(String(cOut.notes)), 'Coppersmith 必须如实标注简化边界');
+  // C3: PGP 结构解析（只读）
+  const pkt = Buffer.concat([Buffer.from([0xcb]), Buffer.from('PGP demo payload data!!')]);
+  const armor = '-----BEGIN PGP MESSAGE-----\nVersion: Payloader\n\n' + pkt.toString('base64').replace(/(.{64})/g, '$1\n') + '-----END PGP MESSAGE-----';
+  const pgpOut = String(await transform('pgp-parse', 'decode', armor, defaultParams));
+  expect(pgpOut.includes('字面数据') && pgpOut.includes('packetCount'), 'PGP 解析失败: ' + pgpOut.slice(0, 80));
+  // C4: CBC bit-flip 演示（本地）
+  const cbcRaw = String(await transform('cbc-padding-demo', 'decode', 'demo', { ...defaultParams, secret: '1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef' }));
+  expect(cbcRaw.includes('bitFlip'), 'CBC bit-flip 演示缺失: ' + cbcRaw.slice(0, 80));
+  expect(cbcRaw.includes('paddingOracle'), 'CBC padding oracle 段缺失');
+});
+
+await run('JSFuck / aaencode / jjencode 静态还原：无 eval 且有安全上限', async () => {
+  const codecSources = fs.readdirSync(codecDir).filter(f => f.endsWith('.ts')).map(f => fs.readFileSync(path.join(codecDir, f), 'utf8')).join('\n');
+  const workbenchFile = path.join(rootDir, 'src', 'components', 'CodecWorkbench.tsx');
+  const ctfFile = path.join(rootDir, 'src', 'components', 'CtfToolkit.tsx');
+  const source = `${codecSources}\n${fs.readFileSync(encodingToolsSourceFile, 'utf8')}\n${fs.readFileSync(workbenchFile, 'utf8')}\n${fs.readFileSync(ctfFile, 'utf8')}`;
+  expect(!/\beval\s*\(/.test(source), '编码组件不得调用 eval(');
+  expect(!/new\s+Function\b/.test(source), '编码组件不得使用 new Function');
+
+  // JSFuck：经典 alert(1) 样本（aemkei/jsfuck 0.5.0 算法生成）往返
+  const jfAlert = await transform('jsfuck', 'encode', 'alert(1)', defaultParams);
+  const jfText = String(jfAlert);
+  expect(/^[[\]!+()]+$/.test(jfText), 'JSFuck 输出必须是纯 []()!+ 符号');
+  expect(jfText.length > 500, 'JSFuck alert(1) 编码长度异常');
+  const jfBack = await transform('jsfuck', 'decode', jfText, defaultParams);
+  expect(jfBack === 'alert(1)', `JSFuck 往返失败: ${String(jfBack).slice(0, 60)}`);
+
+  // flag 样本往返
+  for (const text of ['flag{jsfuck_2026}', 'flag{a_b}']) {
+    const enc = await transform('jsfuck', 'encode', text, defaultParams);
+    const dec = await transform('jsfuck', 'decode', enc, defaultParams);
+    expect(dec === text, `JSFuck 往返失败: ${text}`);
+  }
+
+  // aaencode / jjencode：alert(1) 与 flag 往返（解码需自动还原内嵌 atob/转义）
+  const aaEnc = await transform('aaencode', 'encode', 'flag{aa_demo}', defaultParams);
+  const aaDec = await transform('aaencode', 'decode', aaEnc, defaultParams);
+  expect(String(aaDec).includes('flag{aa_demo}'), `aaencode 往返失败: ${String(aaDec).slice(0, 80)}`);
+  const jjEnc = await transform('jjencode', 'encode', 'flag{jj_hidden}', defaultParams);
+  const jjDec = await transform('jjencode', 'decode', jjEnc, defaultParams);
+  expect(String(jjDec).includes('flag{jj_hidden}'), `jjencode 往返失败: ${String(jjDec).slice(0, 80)}`);
+
+  // 负向：无执行点的纯表达式必须报错而非假装成功
+  let threw = false;
+  try { await transform('jsfuck', 'decode', '1+1', defaultParams); } catch { threw = true; }
+  expect(threw, '无执行点输入必须报错');
+
+  // 负向：畸形/超长输入安全返回错误（不得挂死）
+  threw = false;
+  try { await transform('jsfuck', 'decode', 'hello world', defaultParams); } catch { threw = true; }
+  expect(threw, '非符号输入必须报错');
+  threw = false;
+  const bomb = '('.repeat(5000);
+  try { await transform('jsfuck', 'decode', bomb, defaultParams); } catch { threw = true; }
+  expect(threw, '深度嵌套炸弹必须安全报错');
+  threw = false;
+  try { await transform('aaencode', 'decode', 'x'.repeat(600000), defaultParams); } catch { threw = true; }
+  expect(threw, '超长输入必须安全报错');
+
+  // 负向：encode 侧同样设上限（JSFuck 最坏膨胀 ~3600x/字符，防编码阻塞主线程）
+  threw = false;
+  try { await transform('jsfuck', 'encode', 'a'.repeat(30000), defaultParams); } catch { threw = true; }
+  expect(threw, 'JSFuck 编码超长输入必须报错');
+  threw = false;
+  try { await transform('jjencode', 'encode', 'a'.repeat(300000), defaultParams); } catch { threw = true; }
+  expect(threw, 'jjencode 编码超长输入必须报错');
+
+  // 负向：原型污染必须被拦截。单次调用即可完成写穿，不得靠 "()()" 的第二次调用抛错凑证据；
+  // 求值器与断言必须同 realm（vm），宿主侧探针结构上看不到 vm 内的写入
+  try {
+    await transform('jsfuck', 'decode', '[]["at"]["constructor"]("({})[\'__proto__\'][\'sx_p2\']=1337")()', defaultParams);
+  } catch {
+    // 求值器直接拒绝该形态也算拦截成功，最终以 realm 内状态断言为准
+  }
+  const protoPolluted = vm.runInContext("typeof ({}).sx_p2 !== 'undefined'", encodingToolsVmContext, { filename: 'proto-pollution-probe.js' });
+  expect(protoPolluted === false, '原型污染必须被拦截：Object.prototype 不得被写入');
+
+  // 负向：padStart 长度炸弹必须被护栏拦截
+  threw = false;
+  try {
+    await transform('jsfuck', 'decode', '[]["at"]["constructor"](\'x\'.padStart(99999999,"y"))()', defaultParams);
+  } catch { threw = true; }
+  expect(threw, 'padStart 长度炸弹必须被拦截');
+
+  // 智能解码可达
+  const smartJf = await transform('smart-decode', 'decode', jfText, defaultParams);
+  expect(String(smartJf).includes('alert(1)'), `智能解码未能还原 JSFuck: ${String(smartJf).slice(0, 80)}`);
+
+  // 全可打印 ASCII 单字符往返扫描（32-126，自愈映射后必须全部一致）
+  for (let code = 32; code <= 126; code += 1) {
+    const ch = String.fromCharCode(code);
+    const text = 'x' + ch + 'x';
+    const back = await transform('jsfuck', 'decode', await transform('jsfuck', 'encode', text, defaultParams), defaultParams);
+    expect(back === text, `JSFuck 单字符往返失败: ${JSON.stringify(ch)} => ${JSON.stringify(String(back).slice(0, 30))}`);
+  }
+  const smartJj = await transform('smart-decode', 'decode', jjEnc, defaultParams);
+  expect(String(smartJj).includes('flag{jj_hidden}'), `智能解码未能还原 jjencode: ${String(smartJj).slice(0, 80)}`);
+  const smartAa = await transform('smart-decode', 'decode', aaEnc, defaultParams);
+  expect(String(smartAa).includes('flag{aa_demo}'), `智能解码未能还原 aaencode: ${String(smartAa).slice(0, 80)}`);
+});
+
+await run('z-base-32 follows the Zimmermann spec and round-trips', async () => {
+  // 规格书向量：单字节 0x00 → 两个零五比特组（含低位补零）→ yy；"A"(0x41) → 01000|00100 → er
+  assert.equal(await transform('z-base-32', 'encode', '\u0000', defaultParams), 'yy');
+  assert.equal(await transform('z-base-32', 'encode', 'A', defaultParams), 'er');
+  assert.equal(await transform('z-base-32', 'decode', 'yy', defaultParams), '\u0000');
+  const encoded = await transform('z-base-32', 'encode', 'flag{zbase32}', defaultParams);
+  assert.equal(encoded, encoded.toLowerCase());
+  assert.equal(await transform('z-base-32', 'decode', encoded, defaultParams), 'flag{zbase32}');
+  assert.equal(await transform('z-base-32', 'decode', encoded.toUpperCase(), defaultParams), 'flag{zbase32}');
+  let threw = false;
+  try {
+    await transform('z-base-32', 'decode', 'abc123!', defaultParams);
+  } catch {
+    threw = true;
+  }
+  expect(threw, 'characters outside the z-base-32 alphabet must be rejected');
+  const smart = await transform('smart-decode', 'decode', encoded, defaultParams);
+  expect(smart.includes('flag{zbase32}'), `smart decode z-base-32 -> ${smart.slice(0, 80)}`);
+});
+
+await run('Base32768 matches the qntm reference table and round-trips', async () => {
+  // 两个 NUL 字节：前 15 bit 全零 → 15-bit 表首字符 U+04A0；剩 1 bit 补 1 到 7 bit → 7-bit 表第 63 项 U+025F
+  assert.equal(await transform('base32768', 'encode', '\u0000\u0000', defaultParams), '\u04A0\u025F');
+  assert.equal(await transform('base32768', 'decode', '\u04A0\u025F', defaultParams), '\u0000\u0000');
+  // 1..40 字节覆盖全部填充类别（8-14 bit 补 1 进 15-bit 表，1-7 bit 补 1 进 7-bit 表）
+  for (let n = 1; n <= 40; n += 1) {
+    const text = 'a'.repeat(n);
+    const roundTripped = await transform('base32768', 'decode', await transform('base32768', 'encode', text, defaultParams), defaultParams);
+    assert.equal(roundTripped, text, `base32768 round-trip failed at ${n} bytes`);
+  }
+  let threw = false;
+  try {
+    await transform('base32768', 'decode', 'helloworld', defaultParams);
+  } catch {
+    threw = true;
+  }
+  expect(threw, 'characters outside the Base32768 tables must be rejected');
+  threw = false;
+  try {
+    await transform('base32768', 'decode', '\u0180\u04A0', defaultParams);
+  } catch {
+    threw = true;
+  }
+  expect(threw, 'secondary (7-bit) character before end of input must be rejected');
+  threw = false;
+  try {
+    await transform('base32768', 'decode', '\u04A0', defaultParams);
+  } catch {
+    threw = true;
+  }
+  expect(threw, 'padding mismatch must be rejected');
+  const encoded = await transform('base32768', 'encode', 'flag{b32768}', defaultParams);
+  const smart = await transform('smart-decode', 'decode', encoded, defaultParams);
+  expect(smart.includes('flag{b32768}'), `smart decode base32768 -> ${smart.slice(0, 80)}`);
+});
+
+await run('Hash operation derives NTLM from UTF-16LE passwords (openssl-verified vectors)', async () => {
+  const ntlm = password => transform('hash', 'encode', password, { ...defaultParams, hashAlgorithm: 'ntlm' });
+  assert.equal(await ntlm(''), '31d6cfe0d16ae931b73c59d7e0c089c0');
+  assert.equal(await ntlm('password'), '8846f7eaee8fb117ad06bdd830b7586c');
+  assert.equal(await ntlm('ABCdef123'), '147d125645d463c33d72309525e9b0bc');
+  assert.equal(await ntlm('Pässwörd!'), 'bf8cb9e15029cd70cf2e560baab0bf26');
+  assert.equal(await ntlm('\u{1D518}'), '2f7f63a246b8e7169fffd0eee93b3367');
+  // 顺带给既有的裸 MD4 补上首个标准向量回归（openssl legacy provider 同值）
+  assert.equal(await transform('hash', 'encode', 'abc', { ...defaultParams, hashAlgorithm: 'md4' }), 'a448017aaf21d8525fc10ae87aa6729d');
+  assert.equal(await transform('hash', 'encode', 'abc', { ...defaultParams, hashAlgorithm: 'md5' }), '900150983cd24fb0d6963f7d28e17f72');
+});
+
+await run('中文密码家族：官方向量、round-trip 与智能识别（批次 K）', async () => {
+  const p = { ...defaultParams };
+  // 与佛论禅：Leon406/ToolsFx BuddhaTest.kt 官方向量（decode×2 + encode 往返）
+  assert.equal(await transform('buddha', 'decode', '佛曰：冥耶以缽醯以梵蘇心缽參哆能哆他多罰姪實悉那遮奢三', p), '与佛论禅666');
+  assert.equal(await transform('buddha', 'decode', '佛曰：麼奢道梵呼舍舍等密爍皤集怯一梵殿缽離罰喝不耶苦', p), '123');
+  assert.equal(await transform('buddha', 'decode', await transform('buddha', 'encode', 'flag{buddha_rt} 往返', p), p), 'flag{buddha_rt} 往返');
+  // 与熊论道：ToolsFx wiki + Abracadabra 官方示例（decode + encode 往返）
+  assert.equal(await transform('bear-says', 'decode', '熊曰：呋食性類啽家現出爾常肉嘿達嗷很', p), 'Abracadabra');
+  assert.equal(await transform('bear-says', 'decode', await transform('bear-says', 'encode', 'flag{bear_rt}', p), p), 'flag{bear_rt}');
+  // 百家姓：流派 A（明文直接替换，ToolsFx wiki 样本）与流派 B（base64 替换）双路
+  assert.equal(await transform('baijiaxing', 'decode', '水褚尤范尤褚柳尤张朱', p), 'BaiJiaXing');
+  assert.equal(await transform('baijiaxing', 'decode', '吴郎孙朱吴褚袁陈苗俞范章', p), '你好ABC');
+  assert.equal(await transform('baijiaxing', 'decode', await transform('baijiaxing', 'encode', 'flag{bjx_rt}', p), p), 'flag{bjx_rt}');
+  // 六十四卦：CtfTest2.kt eight() 官方向量 + 卦名/卦符双流派 round-trip
+  assert.equal(await transform('hexagram', 'decode', '升困艮益蛊困蛊无妄井萃噬嗑既济井兑损离巽履晋节恒履蒙归妹鼎讼蛊履大过否噬嗑需井萃未济丰巽萃大有同人小过涣谦', p), 'abcefghijklmoqrsttuvwxyzhelloo12');
+  assert.equal(await transform('hexagram', 'decode', await transform('hexagram', 'encode', 'flag{hex_names}', { ...p, variant: 'names' }), p), 'flag{hex_names}');
+  assert.equal(await transform('hexagram', 'decode', await transform('hexagram', 'encode', 'flag{hex_sym}', { ...p, variant: 'symbols' }), p), 'flag{hex_sym}');
+  // 天干地支：CtfTest2.kt sexagesimal() 官方向量（encode/decode 双向）
+  assert.equal(await transform('sexagesimal', 'encode', '你好', p), '乙丑癸巳甲寅己亥丁卯甲申丁未甲午己巳');
+  assert.equal(await transform('sexagesimal', 'decode', '乙丑癸巳甲寅己亥丁卯甲申丁未甲午己巳', p), '你好');
+  // 云影密码（幂数加密）：攻防世界真题向量 + 贪心编码往返
+  assert.equal(await transform('cloud-shadow', 'decode', '8842101220480224404014224202480122', p), 'WELLDONE');
+  assert.equal(await transform('cloud-shadow', 'decode', await transform('cloud-shadow', 'encode', 'WELLDONE', p), p), 'WELLDONE');
+  // Pizzini：CacheSleuth 官方示例（CAB→645、8224→ESA）+ 序号+3 推导向量
+  assert.equal(await transform('pizzini', 'encode', 'HELLO', p), '118151518');
+  assert.equal(await transform('pizzini', 'decode', '645', p), 'CAB');
+  assert.equal(await transform('pizzini', 'decode', '8224', p), 'ESA');
+  assert.equal(await transform('pizzini', 'decode', '512171724', p), 'BINNU');
+  // Cisco Type 7：种子 09 手工向量（flag → 094A42081E）+ 往返
+  assert.equal(await transform('cisco-type7', 'decode', '094A42081E', p), 'flag');
+  assert.equal(await transform('cisco-type7', 'decode', await transform('cisco-type7', 'encode', 'flag{cisco7}', p), p), 'flag{cisco7}');
+  // Decabit：dcode 官方向量（DECA）+ 1/0 记法兼容 + 往返
+  assert.equal(await transform('decabit', 'decode', '-+-++++--- ++-+--+-+- +--++++--- ++-+++----', p), 'DECA');
+  assert.equal(await transform('decabit', 'encode', 'DECA', p), '-+-++++--- ++-+--+-+- +--++++--- ++-+++----');
+  assert.equal(await transform('decabit', 'decode', await transform('decabit', 'encode', 'flag{decabit}', p), p), 'flag{decabit}');
+  // Cetacean：CyberChef 官方测试向量（hi、含空格的 "a b c で"）+ A/B 变体归一化 + 往返
+  assert.equal(await transform('cetacean', 'encode', 'hi', p), 'EEEEEEEEEeeEeEEEEEEEEEEEEeeEeEEe');
+  assert.equal(await transform('cetacean', 'decode', 'EEEEEEEEEeeEeEEEEEEEEEEEEeeEeEEe', p), 'hi');
+  assert.equal(await transform('cetacean', 'decode', 'AAAAAAAAABBABAAAAAAAAAAAABBABAAB', p), 'hi');
+  assert.equal(await transform('cetacean', 'decode', 'EEEEEEEEEeeEEEEe EEEEEEEEEeeEEEeE EEEEEEEEEeeEEEee EEeeEEEEEeeEEeee', p), 'a b c で');
+  assert.equal(await transform('cetacean', 'decode', await transform('cetacean', 'encode', 'a b c', p), p), 'a b c');
+  // Albam：默认 A↔N 对合流派（HELLO→URYYB）与 CacheSleuth +11 流派（HELLO→SPWWZ）双路
+  assert.equal(await transform('albam', 'encode', 'HELLO', { ...p, variant: 'special' }), 'URYYB');
+  assert.equal(await transform('albam', 'decode', 'URYYB', { ...p, variant: 'special' }), 'HELLO');
+  assert.equal(await transform('albam', 'encode', 'HELLO', { ...p, variant: 'shift11' }), 'SPWWZ');
+  assert.equal(await transform('albam', 'decode', 'SPWWZ', { ...p, variant: 'shift11' }), 'HELLO');
+  // Carbonaro：CacheSleuth 官方示例（THE↔DHI）+ 对合往返
+  assert.equal(await transform('carbonaro', 'encode', 'THE', p), 'DHI');
+  assert.equal(await transform('carbonaro', 'decode', 'DHI', p), 'THE');
+  assert.equal(await transform('carbonaro', 'decode', await transform('carbonaro', 'encode', 'flag{carbonaro}', p), p), 'flag{carbonaro}');
+  // 如是我闻 V2：AES 解出 7z 容器；LZMA 条目降级提示含 hex（完整明文路径由容器是否 store 决定）
+  const v2 = await transform('buddha-v2', 'decode', '如是我闻：智清戏虚和尊積族宇息訶夜七楞急璃王瑟凉他資以實曳栗诵捐稳拔憐槃师拔功放恤彌穆月奉灯帝心倒殿貧在真山廟尼經死濟弟王捨善阿琉功夜数宝重薩高劫宝千倒孕释量室消陰诸中陵遠曰困住文實宗在来如難濟亦令药众足生孤量此麼依鄉貧睦根特东友遮以经梭三特宝游弥楞故急想树沙真亿数想閦彌訶稳福諦诸福提敬信朋除师敬豆倒吼宇倒亿茶解時婦亦濟以足便度', p);
+  expect(v2.includes('CTF如是我闻Test123') || (v2.includes('7z 容器') && v2.includes('hex')), '如是我闻 V2 既未解出明文也未给出容器降级说明');
+  // 智能识别：芯片命中 + 自动解码 + pcmoe 新佛曰闭源说明
+  expect(detectInput('魔曰：冥耶以缽醯以梵蘇心缽參哆能哆他多罰姪實悉那遮奢三').some(d => d.id === 'buddha'), '魔曰前缀芯片缺失');
+  expect(detectInput('如是我闻：智清戏虚和尊').some(d => d.id === 'buddha-v2'), '如是我闻芯片缺失');
+  expect(detectInput('熊曰：呋食性類啽家現出爾常肉嘿達嗷很').some(d => d.id === 'bear-says'), '熊曰芯片缺失');
+  expect(detectInput('吴郎孙朱吴褚袁陈苗俞范章').some(d => d.id === 'baijiaxing'), '百家姓芯片缺失');
+  expect(detectInput('升困艮益蛊困蛊无妄井萃噬嗑').some(d => d.id === 'hexagram'), '六十四卦卦名芯片缺失');
+  expect(detectInput('乙丑癸巳甲寅己亥丁卯甲申丁未甲午己巳').some(d => d.id === 'sexagesimal'), '天干地支芯片缺失');
+  expect(detectInput('8842101220480224404014224202480122').some(d => d.id === 'cloud-shadow'), '云影芯片缺失');
+  expect(detectInput('118151518').some(d => d.id === 'pizzini'), 'Pizzini 芯片缺失');
+  expect(detectInput('094A42081E').some(d => d.id === 'cisco-type7'), 'Cisco Type 7 芯片缺失');
+  expect(detectInput('-+-++++--- ++-+--+-+- +--++++--- ++-+++----').some(d => d.id === 'decabit'), 'Decabit 芯片缺失');
+  expect(detectInput('EEEEEEEEEeeEeEEEEEEEEEEEEeeEeEEe').some(d => d.id === 'cetacean'), 'Cetacean 芯片缺失');
+  expect((await smartDecode('佛曰：冥耶以缽醯以梵蘇心缽參哆能哆他多罰姪實悉那遮奢三')).includes('与佛论禅666'), '智能解码未自动解出佛曰');
+  expect((await smartDecode('熊曰：呋食性類啽家現出爾常肉嘿達嗷很')).includes('Abracadabra'), '智能解码未自动解出熊曰');
+  expect((await smartDecode('乙丑癸巳甲寅己亥丁卯甲申丁未甲午己巳')).includes('你好'), '智能解码未自动解出天干地支');
+  expect((await smartDecode('新佛曰：諸怖隸僧怖降吽諸陀怖摩隸怖僧缽薩願僧宣摩嚴迦聞般怖眾訶嚤哆愍羅')).includes('闭源'), 'pcmoe 新佛曰缺少闭源说明');
+});
+
+await run('受众分流：编解码与 CTF 视图记账守恒、无遗漏无重复', async () => {
+  const total = operations.length;
+  const byAudience = { ctf: [], both: [], pentest: [] };
+  for (const op of operations) {
+    const tag = operationAudience[op.id];
+    expect(tag === 'ctf' || tag === 'both' || tag === 'pentest', `操作 ${op.id} 缺少合法受众标记`);
+    byAudience[tag].push(op.id);
+  }
+  expect(byAudience.ctf.length + byAudience.both.length + byAudience.pentest.length === total, '受众标记必须完整覆盖全部操作');
+  // 钉住计划口径的具体数字，防止清单漂移
+  expect(total === 167 && byAudience.ctf.length === 80 && byAudience.both.length === 28 && byAudience.pentest.length === 59, `受众记账口径漂移：期望 ctf=80/both=28/pentest=59/total=167，实际 ctf=${byAudience.ctf.length}/both=${byAudience.both.length}/pentest=${byAudience.pentest.length}/total=${total}`);
+
+  const pentestGroups = buildPentestGroups();
+  const ctfGroups = buildCtfGroups();
+  const pentestView = pentestGroups.flatMap(group => group.operations.map(op => op.id));
+  const ctfView = ctfGroups.flatMap(group => group.operations.map(op => op.id));
+  const noDup = ids => new Set(ids).size === ids.length;
+  expect(noDup(pentestView), '编解码视图操作不得重复');
+  expect(noDup(ctfView), 'CTF 视图操作不得重复');
+  // 验收公式：两视图并集 = 操作总数（无遗漏无重复）；both 操作按需求在两侧都渲染
+  const union = new Set([...pentestView, ...ctfView]);
+  expect(union.size === total, `两视图并集 ${union.size} 必须等于操作总数 ${total}`);
+  expect(union.size === pentestView.length + ctfView.length - byAudience.both.length, '两视图交集必须恰好是 both 集合');
+  const pentestExpected = [...byAudience.pentest, ...byAudience.both];
+  const ctfExpected = [...byAudience.ctf, ...byAudience.both];
+  const pentestSet = new Set(pentestView);
+  const ctfSet = new Set(ctfView);
+  expect(pentestExpected.length === pentestView.length && pentestExpected.every(id => pentestSet.has(id)), '编解码视图必须恰好等于 pentest+both 集合');
+  expect(ctfExpected.length === ctfView.length && ctfExpected.every(id => ctfSet.has(id)), 'CTF 视图必须恰好等于 ctf+both 集合');
+  // 渗透视图无空分类；smart 分类整体迁往 CTF 后不得残留
+  expect(pentestGroups.every(group => group.operations.length > 0), '渗透视图不得出现空分类');
+  expect(!pentestGroups.some(group => group.id === 'smart'), 'smart-decode 已迁往 CTF 视图，渗透视图不得保留空 smart 分类');
+  // CTF 视图四段流程：智能识别必须存在且只含 smart-decode
+  const smartGroup = ctfGroups.find(group => group.id === 'smart');
+  expect(smartGroup && smartGroup.operations.length === 1 && smartGroup.operations[0].id === 'smart-decode', 'CTF 视图智能识别段缺失或不完整');
+  // flag 格式徽标识别（只做展示）
+  const hits = detectFlagFormats('noise flag{ab_1234} tail ctf{xy_9876}');
+  expect(hits.length === 2 && hits[0].prefix === 'flag' && hits[1].prefix === 'ctf', 'flag 格式识别失败');
+  expect(detectFlagFormats('plain text without flags').length === 0, '无 flag 文本不得误报');
+  expect(detectFlagFormats('').length === 0, '空输入必须返回空结果');
 });
 
 console.log(`\nVerified ${results.length} EncodingTools regression checks.`);

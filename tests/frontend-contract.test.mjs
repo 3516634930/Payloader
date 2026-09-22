@@ -131,11 +131,25 @@ test('public search controls expose stable form names', async () => {
 });
 
 test('mobile encoding controls meet the minimum touch target', async () => {
-  const encodingTools = await read('src/components/EncodingTools.tsx');
-  const mobileStyles = encodingTools.slice(encodingTools.indexOf('@media (max-width: 680px)'));
+  const codecWorkbench = await read('src/components/CodecWorkbench.tsx');
+  const mobileStyles = codecWorkbench.slice(codecWorkbench.indexOf('@media (max-width: 680px)'));
 
   assert.match(mobileStyles, /\.operation-select-field select,[\s\S]*?\.copy-btn\s*\{[^}]*min-height:\s*44px/);
   assert.doesNotMatch(mobileStyles, /min-height:\s*(?:3\d|4[0-3])px/);
+});
+
+test('top navigation exposes three content tabs and the CTF view drops the sidebar', async () => {
+  const [app, header, main] = await Promise.all([
+    read('src/App.tsx'),
+    read('src/components/Header.tsx'),
+    read('src/components/MainContent.tsx'),
+  ]);
+
+  assert.match(header, /t\(['"]header\.tabCtf['"]/);
+  assert.match(header, /aria-selected=\{activeTab === 'ctf'\}/);
+  assert.match(app, /activeTab !== 'ctf'/);
+  assert.match(main, /activeTab === 'ctf' && !query/);
+  assert.match(main, /import\(['"]\.\/CtfToolkit['"]\)/);
 });
 
 test('payload tutorial and WAF states are content driven', async () => {

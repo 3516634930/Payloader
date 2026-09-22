@@ -693,17 +693,22 @@ const section = (title, desc, body, actions = '') => {
       </div>
       <span class="section-edit-label">编辑</span>
     </button>
-    <button class="section-backdrop" type="button" data-action="close-section" aria-label="关闭编辑弹窗"></button>
+    <button class="section-backdrop" type="button" data-action="close-section" aria-label="收起编辑弹窗"></button>
     <div class="section-modal" role="dialog" aria-modal="true" aria-labelledby="${titleId}">
       <div class="section-modal-head">
         <div>
           <h3>${title}</h3>
           ${desc ? `<p>${desc}</p>` : ''}
         </div>
-        <button class="icon-btn" type="button" data-action="close-section">关闭</button>
+        <button class="icon-btn" type="button" data-action="close-section">收起</button>
       </div>
       ${actions ? `<div class="section-actions">${actions}</div>` : ''}
       <div class="section-body">${body}</div>
+      <div class="section-modal-foot">
+        <span class="section-modal-hint">修改会先暂存在本页，点击「保存更改」提交到服务器。</span>
+        <button class="btn" type="button" data-action="close-section">收起</button>
+        <button class="btn primary" type="button" data-action="save-section">保存更改</button>
+      </div>
     </div>
   </section>
 `;
@@ -1576,7 +1581,7 @@ const renderPayloadForm = () => {
   const body = `
     ${section('基础信息', '决定列表、搜索和详情页头部展示。', `
       <div class="form-grid">
-        ${field('payload-id', 'ID', item.id)}
+        ${field('payload-id', 'ID', item.id, { readonly: true, hint: '稳定标识，由系统生成，不可修改。' })}
         ${field('payload-tags', '标签', (item.tags || []).join(', '), { hint: '用逗号分隔。' })}
         ${textFields('payload-name', '名称', item.name)}
         ${textFields('payload-category', '分类', item.category)}
@@ -1638,7 +1643,7 @@ const renderToolForm = () => {
   const body = `
     ${section('工具信息', '决定工具在前台列表和详情页中的展示。', `
       <div class="form-grid">
-        ${field('tool-id', 'ID', item.id)}
+        ${field('tool-id', 'ID', item.id, { readonly: true, hint: '稳定标识，由系统生成，不可修改。' })}
         ${textFields('tool-name', '名称', item.name)}
         ${textFields('tool-category', '分类', item.category)}
         ${textarea('tool-desc-zh', '描述（中文）', text(item.description).zh, { wide: true })}
@@ -1709,7 +1714,7 @@ const renderNavigationForm = () => {
     ${datalist('tool-id-options', state.tools)}
     ${section('根节点', '根节点控制一棵导航树，类型决定它显示在 Payload 还是工具命令页面。', `
       <div class="form-grid">
-        ${field('nav-id', 'ID', item.id)}
+        ${field('nav-id', 'ID', item.id, { readonly: true, hint: '稳定标识，由系统生成，不可修改。' })}
         ${select('nav-kind', '导航类型', item.kind || 'payloads', [
           { value: 'payloads', label: 'Payload 导航' },
           { value: 'tools', label: '工具命令导航' },
@@ -2666,6 +2671,12 @@ document.addEventListener('click', event => {
     return;
   }
 
+  if (action === 'save-section') {
+    closeActiveSection();
+    saveCurrent().catch(error => notice(error.message || '保存失败'));
+    return;
+  }
+
   if (action === 'generate-client-build') {
     generateClientBuild().catch(error => notice(error.message || '生成客户端失败'));
     return;
@@ -2948,6 +2959,13 @@ document.addEventListener('keydown', event => {
   }
   if (event.key === 'Escape' && state.activeSectionTitle) {
     closeActiveSection();
+    return;
+  }
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+    if (state.module === 'clientBuilds' || state.module === 'updates' || state.saving || state.loading) return;
+    if (!state.dirty && !state.draft) return;
+    event.preventDefault();
+    saveCurrent().catch(error => notice(error.message || '保存失败'));
   }
 });
 

@@ -4,7 +4,7 @@ import type { GlobalVariable, NavItem, PayloadItem, SiteSettings, ToolCommand } 
 import type { SearchMatches } from './searchIndex';
 
 export type ThemeMode = 'dark' | 'light';
-export type ActiveTab = 'payloads' | 'tools';
+export type ActiveTab = 'payloads' | 'tools' | 'ctf';
 export type ActiveView = 'workspace' | 'clientDownloads';
 export type PayloadMode = 'normal' | 'waf';
 
@@ -36,6 +36,9 @@ export interface AppContextType {
   searchMatches: SearchMatches;
   language: Language;
   setLanguage: React.Dispatch<React.SetStateAction<Language>>;
+  // CTF 工作台全局密钥：带 key 参数的操作在私有值为空时自动回退到它（批次 M）。
+  globalSecret: string;
+  setGlobalSecret: React.Dispatch<React.SetStateAction<string>>;
 }
 
 export const AppContext = createContext<AppContextType | null>(null);

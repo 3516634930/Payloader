@@ -761,15 +761,16 @@ function PayloadDetail({ payloadId }: PayloadDetailProps) {
         }
 
         .execution-content {
-          background: var(--bg-card);
-          border: 1px solid var(--border-color);
-          border-radius: 8px;
-          padding: 14px;
-          transition: border-color var(--transition-fast);
+          background: transparent;
+          border: none;
+          border-bottom: 1px solid var(--border-color);
+          border-radius: 0;
+          padding: 10px 2px;
+          transition: background var(--transition-fast);
         }
 
         .execution-content:hover {
-          border-color: rgba(0, 240, 255, 0.55);
+          background: var(--bg-hover);
         }
 
         .execution-header {
@@ -826,8 +827,13 @@ function PayloadDetail({ payloadId }: PayloadDetailProps) {
         .execution-desc {
           font-size: 13px;
           color: var(--text-muted);
-          line-height: 1.55;
-          margin-bottom: 10px;
+          line-height: 1.5;
+          margin-bottom: 8px;
+          display: -webkit-box;
+          -webkit-line-clamp: 1;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+          overflow-wrap: anywhere;
         }
 
         .code-block-wrapper {
@@ -841,8 +847,10 @@ function PayloadDetail({ payloadId }: PayloadDetailProps) {
           background: var(--bg-tertiary);
           border: 1px solid var(--border-color);
           border-radius: 6px;
-          padding: 12px 14px;
+          padding: 10px 12px;
           overflow-x: hidden;
+          overflow-y: auto;
+          max-height: 150px;
           position: relative;
           max-width: 100%;
         }

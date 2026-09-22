@@ -6,6 +6,7 @@ const translations = {
   'header.searchPlaceholder': { zh: '搜索 Payload / 工具 / 标签...', en: 'Search Payload / Tool / Tag...' },
   'header.tabPayloads': { zh: 'Payload', en: 'Payloads' },
   'header.tabTools': { zh: '工具命令', en: 'Tools' },
+  'header.tabCtf': { zh: 'CTF 解题', en: 'CTF' },
   'header.themeToggleDark': { zh: '切换到亮色模式', en: 'Switch to Light Mode' },
   'header.themeToggleLight': { zh: '切换到暗色模式', en: 'Switch to Dark Mode' },
   'header.encoding': { zh: '编解码', en: 'Codec' },

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { lazy, Suspense, useMemo } from 'react';
 import { useAppContext } from '../appContext';
 import { getText, t } from '../i18n';
 import { openProtectedExternalLink } from '../protectedLinks';
@@ -7,6 +7,8 @@ import ToolDetail from './ToolDetail';
 import ClientDownloads from './ClientDownloads';
 import SimpleTextDetail from './SimpleTextDetail';
 import type { PublicClientBuildInfo } from '../types';
+
+const LazyCtfToolkit = lazy(() => import('./CtfToolkit'));
 
 interface MainContentProps {
   clientBuildInfo: PublicClientBuildInfo | null;
@@ -97,7 +99,8 @@ function MainContent({ clientBuildInfo }: MainContentProps) {
   };
 
   const renderSearchResults = () => {
-    const isPayloadSearch = activeTab === 'payloads';
+    // CTF 标签页下全局搜索沿用 Payload 库结果（工具命令属于渗透工作流）。
+    const isPayloadSearch = activeTab !== 'tools';
     const resultCount = isPayloadSearch ? payloadResults.length : toolResults.length;
     const title = language === 'zh'
       ? `搜索结果：${deferredSearchQuery.trim()}`
@@ -174,6 +177,14 @@ function MainContent({ clientBuildInfo }: MainContentProps) {
 
     if (activeView === 'clientDownloads') {
       return <ClientDownloads clientBuildInfo={clientBuildInfo} />;
+    }
+
+    if (activeTab === 'ctf' && !query) {
+      return (
+        <Suspense fallback={<div className="lazy-loading" role="status" aria-live="polite">正在加载 CTF 解题工具箱...</div>}>
+          <LazyCtfToolkit />
+        </Suspense>
+      );
     }
 
     if (query) {

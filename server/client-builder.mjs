@@ -1250,10 +1250,25 @@ const getBuildFreshness = metadata => {
   }
   const cacheKey = freshnessMetadataKey(metadata);
   const currentTime = Date.now();
-  if (
-    freshnessCache?.key === cacheKey
-    && (!freshnessCache.settled || freshnessCache.expiresAt > currentTime)
-  ) {
+  if (freshnessCache?.key === cacheKey) {
+    // stale-while-revalidate：过期后先返回上次结果，仅触发一次后台刷新，
+    // 避免未认证请求以固定心跳持续触发全源码树哈希与出网检查。
+    if (freshnessCache.settled && freshnessCache.expiresAt <= currentTime && !freshnessCache.refreshing) {
+      freshnessCache.refreshing = true;
+      void (async () => {
+        try {
+          const refreshed = await evaluateFreshness(metadata, await computeCurrentBuildHashes(), now());
+          freshnessCache = {
+            key: cacheKey,
+            settled: true,
+            expiresAt: Date.now() + freshnessCacheTtlMs,
+            promise: Promise.resolve(refreshed),
+          };
+        } finally {
+          if (freshnessCache?.key === cacheKey) freshnessCache.refreshing = false;
+        }
+      })();
+    }
     return freshnessCache.promise;
   }
 

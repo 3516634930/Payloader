@@ -318,19 +318,20 @@ function ToolDetail({ toolId }: ToolDetailProps) {
         .commands-list {
           display: flex;
           flex-direction: column;
-          gap: 16px;
+          gap: 0;
         }
 
         .command-item {
-          background: var(--bg-card);
-          border: 1px solid var(--border-color);
-          border-radius: 8px;
-          padding: 16px;
-          transition: all var(--transition-fast);
+          background: transparent;
+          border: none;
+          border-bottom: 1px solid var(--border-color);
+          border-radius: 0;
+          padding: 10px 2px;
+          transition: background var(--transition-fast);
         }
 
         .command-item:hover {
-          border-color: var(--neon-cyan);
+          background: var(--bg-hover);
         }
 
         .command-header {
@@ -366,7 +367,12 @@ function ToolDetail({ toolId }: ToolDetailProps) {
         .command-desc {
           font-size: 13px;
           color: var(--text-muted);
-          margin-bottom: 12px;
+          margin-bottom: 8px;
+          display: -webkit-box;
+          -webkit-line-clamp: 1;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+          overflow-wrap: anywhere;
         }
 
         .code-block-wrapper {
