@@ -13,6 +13,11 @@ import { mt19937Helper } from './smartHelpers';
 import { brainfuckToOokText, cryptoAttackHelper, encodeBrainfuckText, frequencyAnalysis, hashLengthExtensionHelper, jsfuckInspector, lcgHelper, lfsrHelper, ookToBrainfuckText, runBrainfuck } from './attacks';
 import { cloudShadowDecode, cloudShadowEncode, baijiaxingDecode, baijiaxingEncode, bearDecode, bearEncode, buddhaDecode, buddhaEncode, buddhaV2Decode, hexagramDecode, hexagramEncode, sexagesimalDecode, sexagesimalEncode } from './chineseCiphers';
 import { albamTransform, carbonaroTransform, ciscoType7Decode, ciscoType7Encode, cetaceanDecode, cetaceanEncode, decabitDecode, decabitEncode, pizziniDecode, pizziniEncode } from './mapCiphers';
+import { parityBaseTransform } from './parityBases';
+import { parityCharTransform } from './parityCharCodes';
+import { parityCnTransform } from './parityChinese';
+import { parityKeyedTransform } from './parityKeyed';
+import { parityNumTransform } from './parityNumeric';
 import { decodeAaencode, decodeJjencode, decodeJsfuck, encodeAaencode, encodeJjencode, encodeJsfuck } from './sandbox';
 import { decodeFernet, decodeJwt, decodeOtpAuthUriCompat, encodeFernet, encodeOtpAuthUri, generateHotp, generateTotp, jwtHmacTransform, jwtPublicTransform } from './tokens';
 import { compressText, decodeQuery, decompressText, encodeQuery } from './smartBase';
@@ -354,6 +359,87 @@ export async function transform(operationId: OperationId, direction: Direction, 
       const isBase64 = /;base64/i.test(match[1]);
       return isBase64 ? base64ToText(match[2]) : decodeURIComponent(match[2]);
     }
+    // ---- 批次 O：随波逐流操作对齐（五个 parity 模块分组委派）----
+    case 'base92':
+    case 'base100':
+    case 'base85-rfc1924':
+    case 'base62-ascii':
+    case 'base64-multiline':
+    case 'base64-case-mangled':
+    case 'base64-to-hex':
+    case 'base-custom':
+    case 'base-multi-decode':
+    case 'rot18':
+    case 'rot-special':
+      return parityBaseTransform(operationId, direction, input, params);
+    case 'pigpen':
+    case 'keyboard-keycode':
+    case 'handycode':
+    case 'chinesecode':
+    case 'backslash-code':
+    case 'slash-pipe':
+    case 'tomtom':
+    case 'clock-code':
+    case 'goldbug':
+    case 'kenny':
+    case 'abaddon':
+    case 'dvorak':
+    case 'five-needle':
+    case 'hodor':
+    case 'duckspeak':
+    case 'numberpad-lines':
+    case 'quadoo':
+    case 'bwt':
+      return parityCharTransform(operationId, direction, input, params);
+    case 'core-values':
+    case 'hanzi-stroke':
+    case 'yinyang-qi':
+    case 'bagua-symbols':
+    case 'telecode':
+    case 'xiangyue':
+    case 'makabaka':
+    case 'yinyin':
+    case 'shouyin':
+    case 'periodic-table':
+    case 'mars-text':
+    case 'braille':
+    case 'music-notes':
+    case 'flower-code':
+    case 'letter-code':
+    case 'arrow-code':
+    case 'hanzi-code':
+    case 'ipa-code':
+    case 'whitespace-code':
+    case 'deadfish':
+    case 'spoon':
+    case 'manchester':
+    case 'emoji-encoder':
+      return parityCnTransform(operationId, direction, input, params);
+    case 'otp':
+    case 'multiplicative':
+    case 'fractionated-morse':
+    case 'fenham':
+    case 'running-key':
+    case 'bazeries':
+    case 'kamasutra':
+    case 'm209':
+    case 'rc2':
+    case 'rc6':
+      return parityKeyedTransform(operationId, direction, input, params);
+    case 'ieee754':
+    case 'twos-complement':
+    case 'ones-complement':
+    case 'radix-xor':
+    case 'bit-split':
+    case 'hamming':
+    case 'qwe-keyboard':
+    case 'gcd':
+    case 'prime-factor':
+    case 'fibonacci-code':
+    case 'pickle-parse':
+    case 'ascii-control':
+    case 'quwei':
+      return parityNumTransform(operationId, direction, input, params);
     default:
       return input;
   }

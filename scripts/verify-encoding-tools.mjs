@@ -49,7 +49,7 @@ const compileEncodingToolsModule = () => {
     if (cached) return cached.exports;
     let source = fs.readFileSync(key, 'utf8').replace(/^\uFEFF/, '');
     if (key === path.resolve(codecEntryFile)) {
-      source += '\nmodule.exports = { transform, defaultParams, detectInput, smartDecode, inferRsaParamsFromText, inferDlpFromText, factorSmallRsaModulus, operations, gsm7DefaultAlphabet, gsm7ExtensionAlphabet, operationAudience, buildPentestGroups, buildCtfGroups, buildCtfMenus, findFlagAutoRanges, detectFlagFormats };\n';
+      source += '\nmodule.exports = { transform, defaultParams, detectInput, smartDecode, inferRsaParamsFromText, inferDlpFromText, factorSmallRsaModulus, operations, gsm7DefaultAlphabet, gsm7ExtensionAlphabet, operationAudience, buildPentestGroups, buildCtfGroups, buildCtfMenus, findFlagAutoRanges, detectFlagFormats, parityBaseVectors, parityCharVectors, parityCnVectors, parityKeyedVectors, parityNumVectors, parityProbes };\n';
     }
     const compiled = ts.transpileModule(source, {
       compilerOptions: {
@@ -146,6 +146,12 @@ const {
   buildCtfMenus,
   findFlagAutoRanges,
   detectFlagFormats,
+  parityBaseVectors,
+  parityCharVectors,
+  parityCnVectors,
+  parityKeyedVectors,
+  parityNumVectors,
+  parityProbes,
 } = compileEncodingToolsModule();
 
 const results = [];
@@ -2562,6 +2568,94 @@ await run('中文密码家族：官方向量、round-trip 与智能识别（批�
   expect((await smartDecode('新佛曰：諸怖隸僧怖降吽諸陀怖摩隸怖僧缽薩願僧宣摩嚴迦聞般怖眾訶嚤哆愍羅')).includes('闭源'), 'pcmoe 新佛曰缺少闭源说明');
 });
 
+// ---- 批次 O：随波逐流操作对齐（75 个新操作的数据驱动向量回归）----
+const PARITY_OP_IDS = [
+  'base92', 'base100', 'base85-rfc1924', 'base62-ascii', 'base64-multiline', 'base64-case-mangled', 'base64-to-hex', 'base-custom', 'base-multi-decode', 'rot18', 'rot-special',
+  'pigpen', 'keyboard-keycode', 'handycode', 'chinesecode', 'backslash-code', 'slash-pipe', 'tomtom', 'clock-code', 'goldbug', 'kenny', 'abaddon', 'dvorak', 'five-needle', 'hodor', 'duckspeak', 'numberpad-lines', 'quadoo', 'bwt',
+  'core-values', 'hanzi-stroke', 'yinyang-qi', 'bagua-symbols', 'telecode', 'xiangyue', 'makabaka', 'yinyin', 'shouyin', 'periodic-table', 'mars-text', 'braille', 'music-notes', 'flower-code', 'letter-code', 'arrow-code', 'hanzi-code', 'ipa-code', 'whitespace-code', 'deadfish', 'spoon', 'manchester', 'emoji-encoder',
+  'otp', 'multiplicative', 'fractionated-morse', 'fenham', 'running-key', 'bazeries', 'kamasutra', 'm209', 'rc2', 'rc6',
+  'ieee754', 'twos-complement', 'ones-complement', 'radix-xor', 'bit-split', 'hamming', 'qwe-keyboard', 'gcd', 'prime-factor', 'fibonacci-code', 'pickle-parse', 'ascii-control', 'quwei',
+];
+const parityVectorGroups = [parityBaseVectors, parityCharVectors, parityCnVectors, parityKeyedVectors, parityNumVectors];
+
+await run('批次 O 随波逐流对齐：75 操作全覆盖、权威向量对拍与 round-trip 数据驱动回归', async () => {
+  const vectors = parityVectorGroups.flat();
+  expect(vectors.length >= 75, `回归向量不足：期望 ≥75（每操作至少 1 条），实际 ${vectors.length}`);
+  const authoritativeCount = vectors.filter(vector => vector.cipher !== undefined).length;
+  expect(authoritativeCount >= 30, `权威向量不足：期望 ≥30（不少于新增操作数的 1/3），实际 ${authoritativeCount}`);
+  const vectorIds = new Set(vectors.map(vector => vector.id));
+  const missingVectors = PARITY_OP_IDS.filter(id => !vectorIds.has(id));
+  expect(missingVectors.length === 0, `操作缺回归向量：${missingVectors.join(', ')}`);
+  const unknownVectors = [...vectorIds].filter(id => !PARITY_OP_IDS.includes(id));
+  expect(unknownVectors.length === 0, `回归向量引用未知操作：${unknownVectors.join(', ')}`);
+  for (const vector of vectors) {
+    const params = { ...defaultParams, ...(vector.params ?? {}) };
+    const tag = `${vector.id}${vector.params ? JSON.stringify(vector.params) : ''}`;
+    if (vector.direction === 'decode') {
+      expect(vector.cipher !== undefined, `单向向量缺密文：${tag}`);
+      const decoded = await transform(vector.id, 'decode', vector.cipher, params);
+      expect(decoded === vector.plain, `单向解码不符 ${tag}: 期望 ${JSON.stringify(vector.plain)} 实得 ${JSON.stringify(decoded)}`);
+    } else {
+      const encoded = await transform(vector.id, 'encode', vector.plain, params);
+      if (vector.cipher !== undefined) {
+        expect(encoded === vector.cipher, `权威对拍不符 ${tag}: 期望 ${JSON.stringify(vector.cipher)} 实得 ${JSON.stringify(encoded)}`);
+      }
+      const decoded = await transform(vector.id, 'decode', vector.cipher ?? encoded, params);
+      expect(decoded === vector.plain, `round-trip 不符 ${tag}: 期望 ${JSON.stringify(vector.plain)} 实得 ${JSON.stringify(decoded)}`);
+    }
+  }
+});
+
+await run('批次 O 智能识别：形状探针芯片正反例命中 + 高特征样本自动解码', async () => {
+  const vectors = parityVectorGroups.flat();
+  const plainSentence = 'The quick brown fox jumps over the lazy dog, twice!';
+  let chipChecks = 0;
+  for (const probe of parityProbes) {
+    // 样本池 = 该操作全部权威 cipher 向量 + 全部 plain 向量的现编码结果；至少一个真实样本命中芯片才算数。
+    const idVectors = vectors.filter(vector => vector.id === probe.id);
+    const samples = [];
+    for (const vector of idVectors) {
+      if (vector.cipher !== undefined) samples.push(vector.cipher);
+      if (vector.direction === 'decode') continue;
+      try {
+        samples.push(await transform(probe.id, 'encode', vector.plain, { ...defaultParams, ...(vector.params ?? {}) }));
+      } catch {
+        // 单向操作或该样本不支持编码：密文样本已覆盖，跳过
+      }
+    }
+    if (samples.length === 0) continue;
+    const hit = samples.some(sampleText => detectInput(sampleText).some(detection => detection.id === probe.id));
+    expect(hit, `探针芯片未命中任何真实样本：${probe.id}（样本 ${samples.length} 个）`);
+    expect(!probe.test(plainSentence), `探针误报普通文本：${probe.id}`);
+    chipChecks += 1;
+  }
+  expect(chipChecks >= 20, `形状探针芯片覆盖不足：期望 ≥20 个有样本验证，实际 ${chipChecks}`);
+  // telecode/quwei 等 4 位数字组形态与日期/编号不可区分，已退出直解路径（只出芯片），故不在自动解码样本内
+  const autoSampleIds = ['base100', 'braille', 'bagua-symbols', 'core-values', 'deadfish', 'manchester'];
+  for (const id of autoSampleIds) {
+    const idVectors = vectors.filter(vector => vector.id === id);
+    if (idVectors.length === 0) throw new Error(`自动解码样本缺失：${id}`);
+    let decodedAtLeastOne = false;
+    let lastOutput = '';
+    for (const vector of idVectors) {
+      const cipherText = vector.cipher !== undefined
+        ? vector.cipher
+        : await transform(id, 'encode', vector.plain, { ...defaultParams, ...(vector.params ?? {}) });
+      lastOutput = await smartDecode(cipherText);
+      if (lastOutput.includes(vector.plain)) {
+        decodedAtLeastOne = true;
+        break;
+      }
+    }
+    expect(decodedAtLeastOne, `智能解码未自动解出 ${id}：最后输出 ${JSON.stringify(lastOutput.slice(0, 160))}`);
+  }
+  // 数字形探针直解必须过质量底线（review P1 回归钉）：普通数字串不得被强行解成电码/区位码/数字键盘码
+  for (const digits of ['1234 5678', '2024 0101', '7295 32489']) {
+    const output = await smartDecode(digits);
+    expect(!output.includes('识别链路'), `普通数字串被误直解：${digits} → ${JSON.stringify(output.slice(0, 90))}`);
+  }
+});
+
 await run('受众分流：编解码与 CTF 视图记账守恒、无遗漏无重复', async () => {
   const total = operations.length;
   const byAudience = { ctf: [], both: [], pentest: [] };
@@ -2572,7 +2666,7 @@ await run('受众分流：编解码与 CTF 视图记账守恒、无遗漏无重�
   }
   expect(byAudience.ctf.length + byAudience.both.length + byAudience.pentest.length === total, '受众标记必须完整覆盖全部操作');
   // 钉住计划口径的具体数字，防止清单漂移
-  expect(total === 167 && byAudience.ctf.length === 80 && byAudience.both.length === 28 && byAudience.pentest.length === 59, `受众记账口径漂移：期望 ctf=80/both=28/pentest=59/total=167，实际 ctf=${byAudience.ctf.length}/both=${byAudience.both.length}/pentest=${byAudience.pentest.length}/total=${total}`);
+  expect(total === 242 && byAudience.ctf.length === 155 && byAudience.both.length === 28 && byAudience.pentest.length === 59, `受众记账口径漂移：期望 ctf=155/both=28/pentest=59/total=242，实际 ctf=${byAudience.ctf.length}/both=${byAudience.both.length}/pentest=${byAudience.pentest.length}/total=${total}`);
 
   const pentestGroups = buildPentestGroups();
   const ctfGroups = buildCtfGroups();
@@ -2608,7 +2702,7 @@ const rangesText = (text, range) => text.slice(range.start, range.end);
 
 await run('CTF 顶部菜单栏：9 菜单覆盖全部 CTF 可见操作、无重复无遗漏', async () => {
   const menus = buildCtfMenus();
-  expect(menus.length === 9, `菜单数量漂移：期望 9，实际 ${menus.length}`);
+  expect(menus.length === 10, `菜单数量漂移：期望 10，实际 ${menus.length}`);
   expect(menus.every(menu => menu.sections.length > 0 && menu.sections.every(section => section.operations.length > 0)), '菜单不得出现空分组');
   const menuIds = menus.flatMap(menu => menu.sections.flatMap(section => section.operations.map(op => op.id)));
   expect(new Set(menuIds).size === menuIds.length, '同一操作不得出现在多个菜单');

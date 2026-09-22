@@ -9,6 +9,12 @@ import type { FlagAutoRange, FlagFormatHit } from './smartDecode';
 import { transform } from './transform';
 import { buildCtfGroups, buildCtfMenus, buildPentestGroups, isOperationVisible, operationAudience } from './audience';
 import type { Audience, CodecGroupData, CodecMenu } from './audience';
+import { parityBaseVectors } from './parityBases';
+import { parityCharVectors } from './parityCharCodes';
+import { parityCnVectors } from './parityChinese';
+import { parityKeyedVectors } from './parityKeyed';
+import { parityNumVectors } from './parityNumeric';
+import { parityProbes } from './smartDecode';
 import { label } from './bases';
 
 export {
@@ -36,6 +42,12 @@ export {
   operationAudience,
   operations,
   otpHashAlgorithms,
+  parityBaseVectors,
+  parityCharVectors,
+  parityCnVectors,
+  parityKeyedVectors,
+  parityNumVectors,
+  parityProbes,
   smartDecode,
   stripCandidateSection,
   transform,

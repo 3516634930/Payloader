@@ -1,5 +1,10 @@
 // CODEC-IMPORTS
 import type { Operation, ParamKey } from './types';
+import { parityBaseOperations, parityBaseDefaultParams } from './parityBases';
+import { parityCharOperations, parityCharDefaultParams } from './parityCharCodes';
+import { parityCnOperations, parityCnDefaultParams } from './parityChinese';
+import { parityKeyedOperations, parityKeyedDefaultParams } from './parityKeyed';
+import { parityNumOperations, parityNumDefaultParams } from './parityNumeric';
 // CODEC-IMPORTS-END
 export const operations: Operation[] = [
   {
@@ -1246,9 +1251,20 @@ export const operations: Operation[] = [
     summary: { zh: '在文本与 data:mime;base64,... 封装之间互转。', en: 'Converts text to and from data:mime;base64,... wrappers.' },
     params: ['mimeType'],
   },
+  // ---- 批次 O：随波逐流操作对齐（五个 parity 模块，受众与菜单见 audience.ts）----
+  ...parityBaseOperations,
+  ...parityCharOperations,
+  ...parityCnOperations,
+  ...parityKeyedOperations,
+  ...parityNumOperations,
 ];
 
 export const defaultParams: Record<ParamKey, string> = {
+  ...parityBaseDefaultParams,
+  ...parityCharDefaultParams,
+  ...parityCnDefaultParams,
+  ...parityKeyedDefaultParams,
+  ...parityNumDefaultParams,
   variant: 'special',
   hashAlgorithm: 'sha256',
   secret: '',
@@ -1272,5 +1288,6 @@ export const defaultParams: Record<ParamKey, string> = {
   rails: '3',
   knownPlaintext: 'flag{',
   dropBytes: '768',
+  keyBits: '64',
 };
 

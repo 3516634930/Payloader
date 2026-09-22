@@ -12,3 +12,6 @@
 - [ ] TD-006 | 速查工具跳转未命中（id 不在运行库）时静默返回，无用户反馈；契约测试只护种子库，不护线上库漂移 | 发现于 2026-09-22 批次 M（reviewer P2） | 影响 `src/components/ctf/CheatsheetWorkspace.tsx` openEntry | 建议修法：未命中时 notifications 提示"条目不存在，可能已被策展合并"；测试可加可选的运行库对照 | P2
 - [ ] TD-007 | handleFileSelected 在 await 读取头部后读取闭包 activeModuleId，极端时序下路由到过期域（理论竞态，实测未复现） | 发现于 2026-09-22 批次 L（reviewer P2） | 影响 `src/components/CtfToolkit.tsx` | 建议修法：路由判定改为读 activeModuleIdRef 或放在 await 之前 | P3
 - [ ] TD-008 | TrafficWorkspace 单文件 500+ 行且 pw-* 主题样式在 4 个流量组件中重复定义（代码库既有"样式随组件"惯例的代价） | 发现于 2026-09-22 批次 L（reviewer P2） | 影响 `src/components/ctf/traffic/*.tsx` | 建议修法：下轮 UI 打磨批次提取共享样式模块或迁 Mantine 组件 | P3
+
+## 技术债（批次 O 附带盘点）
+- [ ] TD-批次O-1 | verify:codec bifid 无密钥破译块（scripts/verify-encoding-tools.mjs ≈:2294）为模拟退火概率性测试，偶发首跑失败、复跑即绿 | 发现于 2026-09-22 批次 O 全量门禁 | 影响 CI 稳定性（非本批次成因，隔离复现确认） | 建议修法：钉随机种子或降低断言严格度 | 优先级 P2

@@ -14,8 +14,40 @@ import { parseFernetRaw } from './tokens';
 import { looksLikeBson, looksLikeProtobufWire, looksLikeSmsPdu } from './binaryFormats';
 import { baijiaxingDecode, bearDecode, buddhaDecode, buddhaV2Decode, hexagramDecode, looksLikeBaijiaxing, looksLikeCloudShadow, looksLikeHexagramNames, looksLikeHexagramSymbols, looksLikeSexagesimal, sexagesimalDecode } from './chineseCiphers';
 import { looksLikeCetaceanShape, looksLikeCiscoType7Shape, looksLikeDecabitShape, looksLikePizziniShape } from './mapCiphers';
-import type { Detection } from './types';
+import { parityBaseLooksLike, parityBaseOperations, parityBaseTransform } from './parityBases';
+import { parityCharLooksLike, parityCharOperations, parityCharTransform } from './parityCharCodes';
+import { parityCnLooksLike, parityCnOperations, parityCnTransform } from './parityChinese';
+import { parityKeyedOperations, parityKeyedTransform } from './parityKeyed';
+import { parityNumLooksLike, parityNumOperations, parityNumTransform } from './parityNumeric';
+import { defaultParams } from './operations';
+import type { Detection, Direction, OperationId, ParamKey } from './types';
 // CODEC-IMPORTS-END
+
+// 批次 O（随波逐流操作对齐）智能识别接入：五个 parity 模块的形状探针（与各自码表同源）
+// 同时供给 detectInput 芯片与 smartDecode 候选链；带key 类（parityKeyed）无形状特征不参与。
+type ParityDispatch = (id: OperationId, direction: Direction, input: string, params: Record<ParamKey, string>) => Promise<string>;
+
+export const parityProbes = [...parityBaseLooksLike, ...parityCharLooksLike, ...parityCnLooksLike, ...parityNumLooksLike];
+
+// 数字形态探针（4 位数字组/纯数字组）：形状本身不特异——日期、编号、坐标都会命中，且输出分
+//（单个合法汉字即可过线）无法区分「中国」与「仡」。这类探针不进直解路径，只出识别芯片 +
+// 在候选层与打分同台，普通数字串保持批次 O 之前的原有行为（review P1 回归项）。
+const WEAK_SHAPE_PROBE_IDS = new Set<string>(['telecode', 'quwei', 'numberpad-lines']);
+
+const parityDispatchById = (() => {
+  const byId = new Map<OperationId, ParityDispatch>();
+  const groups = [
+    [parityBaseTransform, parityBaseOperations],
+    [parityCharTransform, parityCharOperations],
+    [parityCnTransform, parityCnOperations],
+    [parityKeyedTransform, parityKeyedOperations],
+    [parityNumTransform, parityNumOperations],
+  ] as const;
+  for (const [dispatch, operations] of groups) {
+    for (const operation of operations) byId.set(operation.id, dispatch);
+  }
+  return byId;
+})();
 // 完整 flag 格式清单（前缀{4+位内容}）：智能解码强信号判定与 flag 徽标展示共用同一清单。
 // 带 g 标志，只能用于 matchAll（内部克隆正则）；.test() 场景用 flagFormatPattern() 克隆，避免 lastIndex 漂移。
 const FLAG_FORMAT_PATTERN = /\b(?:flag|ctf|picoctf|htb|thm|key|crypto|dice|wctf|utflag|sekai|actf|seccon|ritsec|lactf|crew|nahamcon|hsctf|justctf|b01lers|wanictf|jerseyctf|mapna)\{[A-Za-z0-9_!@#$%^&*.-]{4,}\}/gi;
@@ -110,6 +142,21 @@ export const smartDecode = async (value: string): Promise<string> => {
   if (smartNonceReuse) return smartNonceReuse;
   const smartHashLengthExtension = trySmartHashLengthExtension(input);
   if (smartHashLengthExtension) return smartHashLengthExtension;
+  // 批次 O 字表类：高特异形状探针（码表占比/前缀门控）命中且解码成功时直接返回，
+  // 先于 XOR/古典等泛化启发式——否则短数字/hex 形态（电码、云影类）会被泛化路径抢先。
+  // 探针误报由各解码器内部的严格字符校验兜底（失败即跳过，继续走泛化路径）。
+  for (const probe of parityProbes) {
+    if (WEAK_SHAPE_PROBE_IDS.has(probe.id)) continue;
+    if (!probe.test(input)) continue;
+    const dispatch = parityDispatchById.get(probe.id);
+    if (!dispatch) continue;
+    try {
+      const output = await dispatch(probe.id, 'decode', input, defaultParams);
+      if (output && output !== input) return `识别链路: ${probe.label}\n\n${output}`;
+    } catch {
+      // 形状命中但解码失败：继续尝试其它探针与泛化路径
+    }
+  }
   const smartXor = trySmartXorDecrypt(input);
   if (smartXor) return smartXor;
   const smartVigenere = trySmartVigenereBruteforce(input);
@@ -525,11 +572,26 @@ export const smartDecode = async (value: string): Promise<string> => {
         if (!strongSignal) return null;
         return { name: 'Keyboard shift', output: best.output };
       })(),
-    ].filter(Boolean) as Array<{ name: string; output: string }>;
+    ].filter(Boolean) as Array<{ name: string; output: string; bonus?: number }>;
+
+    // 批次 O 字表类：形状探针命中的候选异步解码后同台打分；解码失败只跳过该候选
+    //（形状命中≠必然可解，误报由 SMART_DECODE_ADOPT_FLOOR 与排序统一裁决）。
+    // bonus：探针本身就是高特异形状门控（码表占比/前缀），同分时优先于泛化启发式（如短 hex 的 XOR 候选）。
+    for (const probe of parityProbes) {
+      if (!probe.test(current)) continue;
+      const dispatch = parityDispatchById.get(probe.id);
+      if (!dispatch) continue;
+      try {
+        const output = await dispatch(probe.id, 'decode', current, defaultParams);
+        if (output && output !== current) candidates.push({ name: probe.label, output, bonus: 25 });
+      } catch {
+        // 形状命中但解码失败：跳过该候选
+      }
+    }
 
     // Rank every candidate by output quality and adopt only the best; never settle for the first non-empty decode.
     const ranked = candidates
-      .map((candidate, index) => ({ ...candidate, index, score: smartDecodeOutputScore(candidate.output, current) }))
+      .map((candidate, index) => ({ ...candidate, index, score: smartDecodeOutputScore(candidate.output, current) + (candidate.bonus ?? 0) }))
       .sort((left, right) => right.score - left.score || left.index - right.index);
     const best = ranked[0];
     if (!best || best.score < SMART_DECODE_ADOPT_FLOOR) break;
@@ -574,7 +636,11 @@ export const smartDecode = async (value: string): Promise<string> => {
 
 export const detectInput = (value: string): Detection[] => {
   const text = value.trim();
-  if (!text) return [];
+  if (!text) {
+    // 批次 O：纯空白符密文（whitespace-code）trim 后为空，探针改为看原始输入。
+    const whitespaceHits = value ? parityProbes.filter(probe => probe.test(value)) : [];
+    return whitespaceHits.map(probe => ({ id: probe.id, label: probe.label }));
+  }
   const detections: Detection[] = [];
   const compactHex = text.replace(/\\x/gi, '').replace(/0x/gi, '').replace(/[^0-9a-f]/gi, '');
   const mnemonicWords = text.toLowerCase().normalize('NFKD').split(/\s+/);
@@ -658,6 +724,10 @@ export const detectInput = (value: string): Detection[] => {
   if (looksLikeCiscoType7Shape(text)) detections.push({ id: 'cisco-type7', label: 'Cisco Type 7' });
   if (looksLikeDecabitShape(text)) detections.push({ id: 'decabit', label: 'Decabit' });
   if (looksLikeCetaceanShape(text)) detections.push({ id: 'cetacean', label: 'Cetacean' });
+  // 批次 O 字表类高特征探针（码表同源谓词，自带最低长度/占比阈值）：命中即出芯片。
+  for (const probe of parityProbes) {
+    if (probe.test(text)) detections.push({ id: probe.id, label: probe.label });
+  }
   if (/^=ybegin\b|^=ypart\b|^=yend\b/im.test(text)) detections.push({ id: 'yenc', label: 'yEnc' });
   if (/^x(?:[a-z]{4,5}-){2,}[a-z]{3,4}x$/i.test(text.replace(/\s+/g, ''))) detections.push({ id: 'bubble-babble', label: 'Bubble Babble' });
   if (/^(\d{1,2}[\s,;|/-]+)*\d{1,2}$/.test(text) && text.split(/[\s,;|/-]+/).some(token => Number(token) >= 1 && Number(token) <= 26)) detections.push({ id: 'a1z26', label: 'A1Z26' });
@@ -711,6 +781,8 @@ export const detectInput = (value: string): Detection[] => {
     if (id === 'baijiaxing' || id === 'hexagram' || id === 'sexagesimal') return 94;
     // 字表映射与脉冲类（批次 M）：字符集强结构特征（01248/种子+hex/10 脉冲/Ee 位串/自分隔数字），误报率低，排在通用编码芯片之前。
     if (id === 'cloud-shadow' || id === 'cisco-type7' || id === 'decabit' || id === 'cetacean' || id === 'pizzini') return 96;
+    // 批次 O 字表类探针命中的芯片：同等强结构特征，与批次 M 同档。
+    if (parityProbes.some(probe => probe.id === id)) return 96;
     if (id === 'smart-decode') return 100;
     return 0;
   };
