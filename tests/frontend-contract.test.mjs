@@ -132,8 +132,9 @@ test('public search controls expose stable form names', async () => {
 });
 
 test('mobile encoding controls meet the minimum touch target', async () => {
-  const codecWorkbench = await read('src/components/CodecWorkbench.tsx');
-  const mobileStyles = codecWorkbench.slice(codecWorkbench.indexOf('@media (max-width: 680px)'));
+  // CodecWorkbench 样式已迁出至独立 CSS 文件（F3 内联 style 迁移），触控目标断言跟随样式文件
+  const codecWorkbenchStyles = await read('src/styles/codec-workbench.css');
+  const mobileStyles = codecWorkbenchStyles.slice(codecWorkbenchStyles.indexOf('@media (max-width: 680px)'));
 
   assert.match(mobileStyles, /\.operation-select-field select,[\s\S]*?\.copy-btn\s*\{[^}]*min-height:\s*44px/);
   assert.doesNotMatch(mobileStyles, /min-height:\s*(?:3\d|4[0-3])px/);
