@@ -17,6 +17,7 @@ test('runtime source and renderer data use only opaque project routes', async ()
     'server/project-attribution.cjs',
     'server/project-attribution.mjs',
     'server/data-store.mjs',
+    'server/sanitize.mjs',
     'server/admin-server.mjs',
     'server/client-builder.mjs',
     'server/client-electron-main.cjs',
@@ -24,11 +25,12 @@ test('runtime source and renderer data use only opaque project routes', async ()
   ].map(read));
 
   for (const source of sources) assert.ok(!source.includes(expectedTarget));
-  assert.match(sources[2], /publicProjectRoute/);
-  assert.match(sources[3], /officialProjectUrl/);
-  assert.match(sources[4], /clientProjectRoute/);
+  assert.match(sources[2], /sanitize\.mjs/);
+  assert.match(sources[3], /publicProjectRoute/);
+  assert.match(sources[4], /officialProjectUrl/);
   assert.match(sources[5], /clientProjectRoute/);
-  assert.match(sources[6], /publicProjectRoute/);
+  assert.match(sources[6], /clientProjectRoute/);
+  assert.match(sources[7], /publicProjectRoute/);
 });
 
 test('encrypted project attribution resolves only the fixed target', async () => {

@@ -3,17 +3,12 @@ import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as sqlite from 'node:sqlite';
-import { publicProjectRoute } from './project-attribution.mjs';
 import {
   applyVisibleChineseDisplayOverrides,
-  dedupeCommandEntries,
   ensureDisplayTextObject,
   isObject,
-  isPlatform,
-  localizeKnownToolEnglish,
   looksLikeSentenceTitle,
   normalizeList,
-  normalizeText,
   normalizeVisibleCommandDescription,
   normalizeVisibleCommandTitle,
   scrubDestructivePayloadCommands,
@@ -21,9 +16,24 @@ import {
   scrubRetiredEdrContent,
   textLooksNonProfessionalZh,
   textValue,
-  toText,
 } from './text-quality.mjs';
 import { importArrayLimits, importSummary, maxImportNavigationDepth, maxImportNavigationNodes } from './import-template.mjs';
+import {
+  cloneValue,
+  defaultSettings,
+  makeId,
+  protectedExternalUrl,
+  protectedXssToolId,
+  sanitizeNavItem,
+  sanitizePayload,
+  sanitizeSettings,
+  sanitizeStoredPublicPayload,
+  sanitizeTool,
+  systemToolIds,
+} from './sanitize.mjs';
+import { invalidatePublicDataCache, readPublicDataCache, withCacheInvalidation, writePublicDataCache } from './store-cache.mjs';
+
+export { sanitizeNavItem, sanitizePayload, sanitizeSettings, sanitizeTool } from './sanitize.mjs';
 
 export { createImportTemplate } from './import-template.mjs';
 
@@ -40,7 +50,6 @@ const makeSeedArtifactId = () => `${Date.now()}-${Math.random().toString(36).sli
 
 let db;
 let dbInitialization;
-let publicDataCache;
 let storeGeneration = 0;
 let mutationQueue = Promise.resolve();
 let storeTestHooks = {};
@@ -52,20 +61,8 @@ const parseJson = value => {
   return JSON.parse(value);
 };
 
-const projectUrl = publicProjectRoute;
-
-const protectedExternalUrl = 'https://xss.icu/';
-const protectedXssToolId = 'xss-platform';
 const protectedXssNavId = 'system-xss-platform';
 
-const defaultSettings = {
-  siteTitle: { zh: 'PAYLOADER', en: 'PAYLOADER' },
-  siteSubtitle: { zh: '渗透测试辅助平台', en: 'Pentest Assistance Platform' },
-  browserTitle: { zh: 'Payloader - 渗透测试辅助平台', en: 'Payloader - Pentest Assistance Platform' },
-  logoIcon: '⚡',
-  logoUrl: '',
-  projectUrl,
-};
 
 const protectedXssPlatformTool = Object.freeze({
   id: protectedXssToolId,
@@ -82,7 +79,6 @@ const protectedXssPlatformNavigation = Object.freeze({
   name: { zh: 'XSS 平台', en: 'XSS Platform' },
   toolId: protectedXssToolId,
 });
-const systemToolIds = new Set([protectedXssToolId]);
 const systemNavigationNodeIds = new Set([protectedXssNavId]);
 const xeyeDisabledMetadataKey = 'xeye_platform_disabled';
 
@@ -93,23 +89,6 @@ const protectedStoreError = message => {
 };
 
 const rowsToItems = rows => rows.map(row => parseJson(row.data ?? row.tree)).filter(Boolean);
-const sanitizeLogoUrl = value => {
-  const logoUrl = String(value ?? '').trim();
-  return /^\/uploads\/logo\/logo-[a-zA-Z0-9.-]+\.(png|jpe?g|webp)$/.test(logoUrl) ? logoUrl : '';
-};
-
-const makeId = (prefix, fallback = 'item') => {
-  const source = String(fallback || 'item')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 48);
-  const suffix = Math.random().toString(36).slice(2, 8);
-  return `${prefix}-${source || 'item'}-${suffix}`;
-};
-
-export const getDbFile = () => dbFile;
 export const getDefaultSeedDbFile = () => defaultSeedDbFile;
 export const getRuntimeDbFile = () => dbFile;
 
@@ -133,7 +112,7 @@ export const closeStore = () => {
     db = undefined;
   }
   if (initialized || !dbInitialization) dbInitialization = undefined;
-  publicDataCache = undefined;
+  invalidatePublicDataCache();
 };
 
 const enqueueMutation = work => {
@@ -142,9 +121,6 @@ const enqueueMutation = work => {
   return operation;
 };
 
-const invalidatePublicDataCache = () => {
-  publicDataCache = undefined;
-};
 
 const initializeContentDatabase = database => {
   database.exec(`
@@ -257,14 +233,14 @@ export const getMetadataValue = async (key, fallback = null) => {
   return readMetadata(database, key) ?? fallback;
 };
 
-export const setMetadataValue = async (key, value) => {
+export const setMetadataValue = withCacheInvalidation(async (key, value) => {
   return enqueueMutation(async () => {
     const database = await getDb();
     writeMetadata(database, key, String(value ?? ''));
     if (key === 'settings') invalidatePublicDataCache();
     return value;
   });
-};
+});
 
 const runTransaction = (database, work) => {
   database.exec('BEGIN');
@@ -1512,7 +1488,7 @@ export const createDataExportPackage = async () => {
   };
 };
 
-export const resetDefaultData = value => {
+export const resetDefaultData = withCacheInvalidation(value => {
   const target = validateResetTarget(value);
   return enqueueMutation(async () => {
     const [database, defaults] = await Promise.all([getDb(), loadDefaultData()]);
@@ -1541,8 +1517,7 @@ export const resetDefaultData = value => {
       writeMetadata(database, `reset_${target}_at`, timestamp);
     });
 
-    invalidatePublicDataCache();
-    const data = await getPublicData();
+    const data = await getPublicData({ bypassCache: true });
     return {
       data,
       impact,
@@ -1552,173 +1527,8 @@ export const resetDefaultData = value => {
       backup,
     };
   });
-};
+});
 
-export const sanitizeSettings = value => {
-  const candidate = isObject(value) ? value : {};
-  const merged = { ...defaultSettings, ...candidate };
-  return {
-    siteTitle: normalizeText(merged.siteTitle),
-    siteSubtitle: normalizeText(merged.siteSubtitle),
-    browserTitle: normalizeText(merged.browserTitle),
-    logoIcon: String(merged.logoIcon ?? defaultSettings.logoIcon).trim() || defaultSettings.logoIcon,
-    logoUrl: sanitizeLogoUrl(merged.logoUrl),
-    projectUrl,
-  };
-};
-
-const sanitizePayloadExecution = value => {
-  const candidate = isObject(value) ? value : {};
-  return {
-    title: ensureDisplayTextObject(candidate.title),
-    command: String(candidate.command ?? '').trim(),
-    description: candidate.description == null ? undefined : ensureDisplayTextObject(candidate.description),
-    syntaxBreakdown: normalizeList(candidate.syntaxBreakdown).map(sanitizeSyntaxPart).filter(Boolean),
-    platform: isPlatform(candidate.platform) ? candidate.platform : 'all',
-    requiresAdmin: Boolean(candidate.requiresAdmin),
-  };
-};
-
-const sanitizeSyntaxPart = value => {
-  if (!isObject(value)) return null;
-  const part = String(value.part ?? '').trim();
-  if (!part) return null;
-  return {
-    part,
-    explanation: ensureDisplayTextObject(value.explanation),
-    type: typeof value.type === 'string' ? value.type : undefined,
-  };
-};
-
-const sanitizeAttackChainStep = value => {
-  if (!isObject(value)) return null;
-  const payload = String(value.payload ?? '').trim();
-  const step = {
-    title: ensureDisplayTextObject(value.title),
-    description: ensureDisplayTextObject(value.description),
-  };
-  if (payload) step.payload = payload;
-  return step;
-};
-
-const sanitizeStoredPublicPayload = value => {
-  const candidate = isObject(value) ? value : {};
-  const name = ensureDisplayTextObject(candidate.name);
-  const id = typeof candidate.id === 'string' && candidate.id.trim() ? candidate.id.trim() : makeId('payload', name.zh || name.en || 'payload');
-  return {
-    id,
-    name,
-    description: ensureDisplayTextObject(candidate.description),
-    category: ensureDisplayTextObject(candidate.category),
-    subCategory: candidate.subCategory == null ? undefined : ensureDisplayTextObject(candidate.subCategory),
-    tags: normalizeList(candidate.tags).map(String).map(item => item.trim()).filter(Boolean),
-    prerequisites: normalizeList(candidate.prerequisites).map(ensureDisplayTextObject),
-    execution: dedupeCommandEntries(normalizeList(candidate.execution).map(sanitizePayloadExecution).filter(item => item.command)),
-    analysis: candidate.analysis == null ? undefined : ensureDisplayTextObject(candidate.analysis),
-    opsecTips: normalizeList(candidate.opsecTips).map(ensureDisplayTextObject),
-    wafBypass: dedupeCommandEntries(normalizeList(candidate.wafBypass).map(sanitizePayloadExecution).filter(item => item.command)),
-    attackChain: normalizeList(candidate.attackChain).map(sanitizeAttackChainStep).filter(Boolean),
-    references: normalizeList(candidate.references).map(String).map(item => item.trim()).filter(Boolean),
-    tutorial: isObject(candidate.tutorial) ? {
-      overview: ensureDisplayTextObject(candidate.tutorial.overview),
-      vulnerability: ensureDisplayTextObject(candidate.tutorial.vulnerability),
-      exploitation: ensureDisplayTextObject(candidate.tutorial.exploitation),
-      mitigation: ensureDisplayTextObject(candidate.tutorial.mitigation),
-      difficulty: ['beginner', 'intermediate', 'advanced', 'expert'].includes(candidate.tutorial.difficulty) ? candidate.tutorial.difficulty : 'beginner',
-    } : undefined,
-  };
-};
-
-export const sanitizePayload = value => {
-  const scrubbed = scrubLowQualityEnglishContent(scrubRetiredEdrContent(value).value).value;
-  const candidate = isObject(scrubbed) ? scrubbed : {};
-  const name = ensureDisplayTextObject(candidate.name);
-  const execution = normalizeList(candidate.execution).map(sanitizePayloadExecution).filter(item => item.command);
-  return {
-    id: typeof candidate.id === 'string' && candidate.id.trim() ? candidate.id.trim() : makeId('payload', name.zh || name.en || 'payload'),
-    name,
-    description: ensureDisplayTextObject(candidate.description),
-    category: ensureDisplayTextObject(candidate.category),
-    subCategory: candidate.subCategory == null ? undefined : ensureDisplayTextObject(candidate.subCategory),
-    tags: normalizeList(candidate.tags).map(String).map(item => item.trim()).filter(Boolean),
-    prerequisites: normalizeList(candidate.prerequisites).map(ensureDisplayTextObject),
-    execution: execution.length ? execution : [{ title: toText('Command'), command: String(candidate.command ?? 'echo TODO').trim() || 'echo TODO', platform: 'all' }],
-    analysis: candidate.analysis == null ? undefined : ensureDisplayTextObject(candidate.analysis),
-    opsecTips: normalizeList(candidate.opsecTips).map(ensureDisplayTextObject),
-    wafBypass: normalizeList(candidate.wafBypass).map(sanitizePayloadExecution).filter(item => item.command),
-    attackChain: normalizeList(candidate.attackChain).map(sanitizeAttackChainStep).filter(Boolean),
-    references: normalizeList(candidate.references).map(String).map(item => item.trim()).filter(Boolean),
-    tutorial: isObject(candidate.tutorial) ? {
-      overview: ensureDisplayTextObject(candidate.tutorial.overview),
-      vulnerability: ensureDisplayTextObject(candidate.tutorial.vulnerability),
-      exploitation: ensureDisplayTextObject(candidate.tutorial.exploitation),
-      mitigation: ensureDisplayTextObject(candidate.tutorial.mitigation),
-      difficulty: ['beginner', 'intermediate', 'advanced', 'expert'].includes(candidate.tutorial.difficulty) ? candidate.tutorial.difficulty : 'beginner',
-    } : undefined,
-  };
-};
-
-const sanitizeToolCommandItem = value => {
-  const candidate = isObject(value) ? value : {};
-  const command = String(candidate.command ?? '').trim();
-  if (!command) return null;
-  let name = localizeKnownToolEnglish(candidate.name);
-  const description = localizeKnownToolEnglish(candidate.description);
-  if (isObject(name) && !name.zh.trim() && !name.en.trim()) {
-    const fallbackLabel = textValue(description).trim() || command.split(/\r?\n/, 1)[0].trim() || 'Command';
-    name = localizeKnownToolEnglish(toText(fallbackLabel));
-  }
-  return {
-    name,
-    command,
-    description,
-    syntaxBreakdown: normalizeList(candidate.syntaxBreakdown).map(sanitizeSyntaxPart).filter(Boolean),
-    examples: normalizeList(candidate.examples).map(localizeKnownToolEnglish),
-    platform: isPlatform(candidate.platform) ? candidate.platform : 'all',
-  };
-};
-
-export const sanitizeTool = value => {
-  const candidate = isObject(value) ? value : {};
-  const name = localizeKnownToolEnglish(candidate.name);
-  const commands = normalizeList(candidate.commands).map(sanitizeToolCommandItem).filter(Boolean);
-  const id = typeof candidate.id === 'string' && candidate.id.trim() ? candidate.id.trim() : makeId('tool', name.zh || name.en || 'tool');
-  const externalUrl = candidate.externalUrl === protectedExternalUrl && systemToolIds.has(id) ? protectedExternalUrl : '';
-  const description = localizeKnownToolEnglish(candidate.description);
-  const category = localizeKnownToolEnglish(candidate.category);
-  const installation = candidate.installation == null ? undefined : localizeKnownToolEnglish(candidate.installation);
-  const item = {
-    id,
-    name,
-    description,
-    category,
-    commands: commands.length ? commands : (externalUrl ? [] : [{ name: toText('Command'), command: 'echo TODO', description: toText('TODO'), platform: 'all' }]),
-    installation,
-    references: normalizeList(candidate.references).map(String).map(item => item.trim()).filter(Boolean),
-  };
-  if (externalUrl) {
-    item.externalUrl = externalUrl;
-    item.systemLocked = true;
-  }
-  return item;
-};
-
-export const sanitizeNavItem = value => {
-  const candidate = isObject(value) ? value : {};
-  const name = normalizeText(candidate.name);
-  const item = {
-    id: typeof candidate.id === 'string' && candidate.id.trim() ? candidate.id.trim() : makeId('nav', name.zh || name.en || 'node'),
-    name,
-  };
-  if (typeof candidate.icon === 'string' && candidate.icon.trim()) item.icon = candidate.icon.trim();
-  if (typeof candidate.payloadId === 'string' && candidate.payloadId.trim()) item.payloadId = candidate.payloadId.trim();
-  if (typeof candidate.toolId === 'string' && candidate.toolId.trim()) item.toolId = candidate.toolId.trim();
-  const children = normalizeList(candidate.children).map(sanitizeNavItem);
-  if (children.length) item.children = children;
-  return item;
-};
-
-const cloneValue = value => parseJson(json(value));
 const isSystemToolId = id => systemToolIds.has(String(id || ''));
 const isSystemNavigationNodeId = id => systemNavigationNodeIds.has(String(id || ''));
 
@@ -1913,7 +1723,7 @@ const assertNoDemoPlaceholderContent = value => {
   throw error;
 };
 
-export const importDataPackage = async (value, options = {}) => {
+export const importDataPackage = withCacheInvalidation(async (value, options = {}) => {
   const normalized = normalizeImportPackage(value);
   assertNoDemoPlaceholderContent([
     ...normalized.payloads,
@@ -1953,18 +1763,18 @@ export const importDataPackage = async (value, options = {}) => {
       writeMetadata(database, 'last_import_mode', mode);
     });
 
-    invalidatePublicDataCache();
     return {
       mode,
       summary: importSummary(normalized),
       warnings: normalized.warnings,
-      data: await getPublicData(),
+      data: await getPublicData({ bypassCache: true }),
     };
   });
-};
+});
 
-export const getPublicData = async () => {
-  if (publicDataCache) return publicDataCache;
+export const getPublicData = async ({ bypassCache = false } = {}) => {
+  const cached = readPublicDataCache();
+  if (cached && !bypassCache) return cached;
   const database = await getDb();
   const xeyeEnabled = isXeyeEnabled(database);
   const settings = {
@@ -1981,7 +1791,7 @@ export const getPublicData = async () => {
     .map(item => sanitizeTool(item));
   const publicTools = xeyeEnabled ? withProtectedSystemTools(storedPublicTools) : storedPublicTools;
   const toolIds = new Set(publicTools.map(item => item.id));
-  publicDataCache = {
+  return writePublicDataCache({
     settings,
     payloads: publicPayloadData.payloads,
     tools: publicTools,
@@ -1990,8 +1800,7 @@ export const getPublicData = async () => {
       xeyeEnabled ? withProtectedSystemToolNavigation(toolNavigation) : toolNavigation,
       toolIds,
     ),
-  };
-  return publicDataCache;
+  });
 };
 
 export const getSettings = async () => {
@@ -2002,16 +1811,15 @@ export const getSettings = async () => {
   };
 };
 
-export const saveSettings = async value => {
+export const saveSettings = withCacheInvalidation(async value => {
   const settings = sanitizeSettings(value);
   return enqueueMutation(async () => {
     const database = await getDb();
     writeMetadata(database, 'settings', json(settings));
     writeMetadata(database, 'settings_updated_at', now());
-    invalidatePublicDataCache();
     return { ...settings, xeyeEnabled: isXeyeEnabled(database) };
   });
-};
+});
 
 export const listAdminItems = async resource => {
   const database = await getDb();
@@ -2140,7 +1948,7 @@ export const listCustomContent = async () => {
   return [...payloads, ...tools];
 };
 
-export const saveCustomContent = async value => {
+export const saveCustomContent = withCacheInvalidation(async value => {
   const input = normalizeCustomContentInput(value);
   const id = input.id || makeId('custom', input.title);
   const item = customItemForDestination({ ...input, id });
@@ -2168,12 +1976,11 @@ export const saveCustomContent = async value => {
       upsertItems(database, input.destination, [item]);
       if (moving) database.prepare(`DELETE FROM ${sourceTable} WHERE id = ?`).run(id);
     });
-    invalidatePublicDataCache();
     return customContentView(item, input.destination);
   });
-};
+});
 
-export const deleteCustomContent = async value => {
+export const deleteCustomContent = withCacheInvalidation(async value => {
   const id = String(value?.id || '').trim();
   const destination = requireCustomDestination(value?.destination);
   if (!id) throw customContentError(400, '缺少自定义内容 ID');
@@ -2187,10 +1994,9 @@ export const deleteCustomContent = async value => {
       throw customContentError(404, '自定义内容不存在');
     }
     database.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
-    invalidatePublicDataCache();
     return { ok: true };
   });
-};
+});
 
 const tableForResource = resource => {
   if (resource === 'payloads') return { table: 'payloads', dataColumn: 'data', sanitizer: sanitizePayload };
@@ -2198,7 +2004,7 @@ const tableForResource = resource => {
   throw new Error(`Unsupported resource: ${resource}`);
 };
 
-export const saveAdminItem = async (resource, item) => {
+export const saveAdminItem = withCacheInvalidation(async (resource, item) => {
   const { table, dataColumn, sanitizer } = tableForResource(resource);
   const normalized = sanitizer(item);
   assertMutableAdminItem(resource, normalized);
@@ -2215,12 +2021,11 @@ export const saveAdminItem = async (resource, item) => {
         ${dataColumn} = excluded.${dataColumn},
         updated_at = excluded.updated_at
     `).run(normalized.id, json(normalized), sortOrder, timestamp, timestamp);
-    invalidatePublicDataCache();
     return normalized;
   });
-};
+});
 
-export const saveNavigationItem = async item => {
+export const saveNavigationItem = withCacheInvalidation(async item => {
   const normalized = sanitizeNavItem(item);
   const kind = item.kind === 'tools' ? 'tools' : 'payloads';
   assertMutableAdminItem('navigation', { ...normalized, kind });
@@ -2237,19 +2042,17 @@ export const saveNavigationItem = async item => {
         kind = excluded.kind,
         updated_at = excluded.updated_at
     `).run(normalized.id, json(normalized), kind, sortOrder, timestamp, timestamp);
-    invalidatePublicDataCache();
     return { ...normalized, kind };
   });
-};
+});
 
-export const deleteAdminItem = async (resource, id) => {
+export const deleteAdminItem = withCacheInvalidation(async (resource, id) => {
   if (!id) throw new Error('Missing id');
   if (resource === 'tools' && isSystemToolId(id)) {
     return enqueueMutation(async () => {
       const database = await getDb();
       writeMetadata(database, xeyeDisabledMetadataKey, '1');
       writeMetadata(database, `${xeyeDisabledMetadataKey}_at`, now());
-      invalidatePublicDataCache();
     });
   }
   assertMutableAdminItem(resource, id);
@@ -2257,16 +2060,14 @@ export const deleteAdminItem = async (resource, id) => {
     const database = await getDb();
     if (resource === 'navigation') {
       database.prepare('DELETE FROM navigation_nodes WHERE id = ?').run(id);
-      invalidatePublicDataCache();
       return;
     }
     const { table } = tableForResource(resource);
     database.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
-    invalidatePublicDataCache();
   });
-};
+});
 
-export const moveAdminItem = async (resource, id, direction) => {
+export const moveAdminItem = withCacheInvalidation(async (resource, id, direction) => {
   if (!id) throw new Error('Missing id');
   assertMutableAdminItem(resource, id);
   return enqueueMutation(async () => {
@@ -2284,9 +2085,8 @@ export const moveAdminItem = async (resource, id, direction) => {
       database.prepare(`UPDATE ${table} SET sort_order = ? WHERE id = ?`).run(other.sort_order, current.id);
       database.prepare(`UPDATE ${table} SET sort_order = ? WHERE id = ?`).run(current.sort_order, other.id);
     });
-    invalidatePublicDataCache();
   });
-};
+});
 
 export const routeResource = path => {
   if (path.includes('/payloads')) return 'payloads';

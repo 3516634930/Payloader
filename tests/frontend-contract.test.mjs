@@ -547,22 +547,23 @@ test('CTF workbench renders the menubar mode while the pentest view stays unchan
 });
 
 test('CTF file modules stay mounted across domain switches and hero mode defaults to full', async () => {
-  const [modules, toolkit, hero] = await Promise.all([
-    read('src/utils/ctf/modules.ts'),
+  // 注册表数据已拆到 moduleContracts.ts（零 React 依赖）：运行时加载真实断言，不再正则源码。
+  const { ctfModuleContracts } = loadTsModule('src/utils/ctf/moduleContracts.ts');
+  const [toolkit, hero] = await Promise.all([
     read('src/components/CtfToolkit.tsx'),
     read('src/components/ctf/CtfHero.tsx'),
   ]);
+  const contractById = Object.fromEntries(ctfModuleContracts.map(module => [module.id, module]));
 
   // misc/traffic keepMounted：文件与报告跨域切换保留（hidden 不卸载）。
-  assert.match(modules, /id: 'misc'[\s\S]{0,200}?keepMounted: true/);
-  assert.match(modules, /id: 'traffic'[\s\S]{0,200}?keepMounted: true/);
+  assert.equal(contractById.misc.keepMounted, true, 'misc 域必须 keepMounted');
+  assert.equal(contractById.traffic.keepMounted, true, 'traffic 域必须 keepMounted');
   // heroMode 缺省 full：未声明 collapsed 的域（cipher）保持完整智能识别 hero。
-  assert.match(modules, /heroMode\?:/);
+  assert.ok(!('heroMode' in contractById.cipher), 'cipher 域不得声明 heroMode（保持缺省 full）');
   assert.match(toolkit, /heroMode \?\? 'full'/);
   assert.match(toolkit, /heroMode=\{heroMode\}/);
   // 六个域显式注册 collapsed（misc/traffic + web/reverse/pwn/ai），cipher 保持缺省 full。
-  assert.equal((modules.match(/heroMode: 'collapsed'/g) || []).length, 6);
-  assert.doesNotMatch(modules, /id: 'cipher'[\s\S]{0,200}?heroMode/);
+  assert.equal(ctfModuleContracts.filter(module => module.heroMode === 'collapsed').length, 6);
   // 折叠形态由 CtfHero 实现并记忆展开状态（单实例跨域保留）。
   assert.match(hero, /ctf-hero-strip/);
   assert.match(hero, /setExpanded/);

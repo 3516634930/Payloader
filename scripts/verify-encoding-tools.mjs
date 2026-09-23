@@ -2790,19 +2790,13 @@ await run('flag 自动标红区间：完整格式深红优先、关键词补位�
   expect(findFlagAutoRanges('').length === 0, '空输入必须返回空区间');
 });
 
-// 逆向域批次：注册表 entryKinds 守护（声明性数据，漂移即破坏魔数路由与 hero 形态）。
-// 注册表 import 整条 React 组件链，vm 沙箱加载成本高，声明层用文本断言足够稳定。
+// 逆向域批次：注册表 entryKinds 守护。moduleContracts.ts 是零 React 依赖的纯数据模块（T2 分层解耦），
+// 沙箱直接运行时加载真实断言，取代旧的源码正则（文本断言无法捕捉语义等价改写）。
 await run('逆向/Pwn 注册表 entryKinds：reverse=file+cheatsheet、pwn=text+cheatsheet', async () => {
-  const modulesSource = fs.readFileSync(path.join(rootDir, 'src', 'utils', 'ctf', 'modules.ts'), 'utf8');
-  const parseEntryKinds = moduleId => {
-    const block = modulesSource.match(new RegExp(`\\{\\s*id: '${moduleId}',[\\s\\S]*?entryKinds: \\[([^\\]]*)\\]`));
-    if (!block) return null;
-    return block[1].split(',').map(part => part.trim().replace(/['"]/g, '')).filter(Boolean);
-  };
-  const reverse = parseEntryKinds('reverse');
-  const pwn = parseEntryKinds('pwn');
-  expect(JSON.stringify(reverse) === JSON.stringify(['file', 'cheatsheet']), `reverse entryKinds 漂移：${JSON.stringify(reverse)}`);
-  expect(JSON.stringify(pwn) === JSON.stringify(['text', 'cheatsheet']), `pwn entryKinds 漂移：${JSON.stringify(pwn)}`);
+  const { ctfModuleContracts } = sharedLoadModule(path.join(rootDir, 'src', 'utils', 'ctf', 'moduleContracts.ts'));
+  const contractById = Object.fromEntries(ctfModuleContracts.map(module => [module.id, module]));
+  expect(JSON.stringify(contractById.reverse.entryKinds) === JSON.stringify(['file', 'cheatsheet']), `reverse entryKinds 漂移：${JSON.stringify(contractById.reverse.entryKinds)}`);
+  expect(JSON.stringify(contractById.pwn.entryKinds) === JSON.stringify(['text', 'cheatsheet']), `pwn entryKinds 漂移：${JSON.stringify(contractById.pwn.entryKinds)}`);
   // 魔数路由扩展改为运行时断言：ROUTE_EXT_GROUPS（fileDetect.ts）是扩展名→题型域的唯一权威，
   // CtfToolkit/recommendTools 只允许 import 消费，禁止本地重声明（历史上同一事实四处漂移）。
   const routeGroups = sharedLoadModule(path.join(rootDir, 'src', 'utils', 'ctf', 'fileDetect.ts')).ROUTE_EXT_GROUPS;
