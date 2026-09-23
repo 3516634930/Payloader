@@ -542,14 +542,18 @@ export const saveNavigationItem = withCacheInvalidation(async item => {
   });
 });
 
+// 显式语义：删除系统内置 XSS 平台入口 = 禁用 Xeye 平台（写元数据开关，不删数据行）
+export const disableXeye = withCacheInvalidation(() => enqueueMutation(async () => {
+  const database = await getDb();
+  writeMetadata(database, xeyeDisabledMetadataKey, '1');
+  writeMetadata(database, `${xeyeDisabledMetadataKey}_at`, now());
+  return { ok: true };
+}));
+
 export const deleteAdminItem = withCacheInvalidation(async (resource, id) => {
   if (!id) throw new Error('Missing id');
   if (resource === 'tools' && isSystemToolId(id)) {
-    return enqueueMutation(async () => {
-      const database = await getDb();
-      writeMetadata(database, xeyeDisabledMetadataKey, '1');
-      writeMetadata(database, `${xeyeDisabledMetadataKey}_at`, now());
-    });
+    return disableXeye();
   }
   assertMutableAdminItem(resource, id);
   return enqueueMutation(async () => {

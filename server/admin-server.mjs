@@ -172,6 +172,7 @@ createAuthRoutes({
   clearRateLimit,
   respondTooManyRequests,
   failedLoginLimit,
+  adminRequestLimit,
 }).registerAuthRoutes(router);
 createAdminRoutes({
   services,

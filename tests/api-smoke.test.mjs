@@ -335,4 +335,17 @@ test('public runtime endpoints and admin boundary are available', async t => {
 
   const revokedSession = await fetch(`${baseUrl}/api/admin/session`, { headers: authenticatedHeaders });
   assert.equal(revokedSession.status, 401);
+
+  // session 探测限流：无凭据高频请求必须触发 429，而非无限期的 401 应答（adminRequestLimit 上限 300/分钟）
+  let sawRateLimit = false;
+  for (let attempt = 0; attempt < 305; attempt += 1) {
+    const probe = await fetch(`${baseUrl}/api/admin/session`);
+    if (probe.status === 429) {
+      sawRateLimit = true;
+      assert.match(probe.headers.get('retry-after') || '', /^\d+$/);
+      break;
+    }
+    assert.equal(probe.status, 401);
+  }
+  assert.ok(sawRateLimit, 'session probing must eventually return 429');
 });

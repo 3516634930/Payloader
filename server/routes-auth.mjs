@@ -16,6 +16,7 @@ export const createAuthRoutes = ({
   clearRateLimit,
   respondTooManyRequests,
   failedLoginLimit,
+  adminRequestLimit,
 }) => {
   const sendJson = (response, payload) => {
     response.writeHead(200, {
@@ -28,6 +29,8 @@ export const createAuthRoutes = ({
 
   const registerAuthRoutes = router => {
     router.route(['GET'], '/api/admin/session', async (request, response) => {
+      // session 可被无成本探测：与登录同级限流，超出常规频率即廉价 429
+      if (!checkRateLimit(request, response, 'admin-session-probe', adminRequestLimit)) return;
       const session = await readAdminSession(request);
       if (!session) {
         json(response, 401, { error: '登录已失效，请重新登录' });
@@ -74,6 +77,7 @@ export const createAuthRoutes = ({
     }, { group: 'auth-entry' });
 
     router.route(['POST'], '/api/admin/logout', async (request, response) => {
+      if (!checkRateLimit(request, response, 'admin-session-probe', adminRequestLimit)) return;
       const session = await readAdminSession(request);
       if (session) revokeSession(session.jwtId);
       sendJson(response, { ok: true });
