@@ -1,52 +1,16 @@
 // CODEC-IMPORTS
-import { extractPythonRandomFloatWords, extractPythonRandrangeSamples, inferMt19937FromText, mt19937PredictFromOutputs } from './prng';
 import { hashLengthExtensionHelper, inferHashLengthExtensionFromText } from './attacks';
-import { decodeQuery, decompressText, printableRatio, smartTextScore } from './smartBase';
-import { utf8Decoder, utf8Encoder } from './alphabets';
+import { decodeQuery, decompressText, looksLikeResolvedSmartDecodeText, runSmartDecodeOperation, smartTextScore } from './smartBase';
+import { utf8Decoder } from './alphabets';
 import { extractClassicCipherSource } from './smartClassical';
 import { bigintGcd, bigintMod, bigintModInverse, parseNumericValue } from './rsa';
 import { base64ToBytes, hexToBytes } from './bases';
 import { cleanLooseFieldValue, looseField, parseLooseCtfFields } from './crypto';
-import { transform } from './transform';
 import { defaultParams } from './operations';
 import { decodeFernet, decodeJwt, decodeOtpAuthUriCompat, parseFernetRaw } from './tokens';
 import { decodePemBlock, parseAsn1Der, parseJwkJwe, parseSshPublicKey } from './binaryFormats';
 import { adfgxTransform, bifidTransform, columnarDecode, playfairTransform, trifidTransform } from './classical';
 // CODEC-IMPORTS-END
-export const mt19937Helper = (value: string) => {
-  const inference = inferMt19937FromText(value);
-  const clone = mt19937PredictFromOutputs(inference.numbers);
-  const floatWords = extractPythonRandomFloatWords(inference.floatOutputs || []);
-  const randrangeSamples = extractPythonRandrangeSamples(value);
-  return JSON.stringify({
-    outputCount: inference.numbers.length,
-    wordFormat: inference.wordFormat,
-    enoughForFullStateClone: inference.numbers.length >= 624,
-    firstOutputs: inference.numbers.slice(0, 16).map(number => number.toString()),
-    clone,
-    floatOutputCount: floatWords.length,
-    floatWords: floatWords.slice(0, 16),
-    boundedRandrangeCount: randrangeSamples.length,
-    randrangeSamples: randrangeSamples.slice(0, 32),
-    inferredFields: inference.fields,
-    inferenceConfidence: inference.confidence,
-    notes: [
-      clone ? 'Recovered MT19937 state from consecutive MT19937 words and predicted future values locally.' : 'MT19937 full state cloning requires 624 consecutive 32-bit outputs, or packed Python getrandbits(32*k) outputs such as 312 x 64-bit values.',
-      floatWords.length ? 'Python random.random() outputs were converted into 53-bit numerators and split into the 27-bit / 26-bit halves used by CPython. Use these with a symbolic or lattice-aware MT recovery tool.' : '',
-      randrangeSamples.length ? 'Bounded randrange/randbelow samples were extracted with their upper bounds. These are suitable as constraints for a leakage-aware MT solver, but not for direct local state cloning.' : '',
-      'If the challenge gives floats, randrange outputs, or truncated bits, move to constraint solving / leakage-specific recovery.',
-    ],
-    localPythonTemplate: [
-      'from randcrack import RandCrack',
-      'rc = RandCrack()',
-      'for x in outputs[:624]:',
-      '    rc.submit(x)',
-      'print(rc.predict_getrandbits(32))',
-      '# random.random() leakage needs a float-aware MT solver; use the extracted numerators/halves above as constraints.',
-    ].join('\\n'),
-  }, null, 2);
-};
-
 export const trySmartHashLengthExtension = (value: string) => {
   const inference = inferHashLengthExtensionFromText(value, '', '', '');
   const explicit = /(length extension|hashpump|hash_extender|secret\s*\|\||prefix mac|secret-prefix)/i.test(value);
@@ -57,33 +21,6 @@ export const trySmartHashLengthExtension = (value: string) => {
 };
 
 export const canSmartHashLengthExtension = (value: string) => Boolean(trySmartHashLengthExtension(value));
-
-export const looksLikeResolvedSmartDecodeText = (value: string) => {
-  const text = value.trim();
-  if (!text) return false;
-  if (/flag\{|ctf\{|picoctf\{|htb\{|thm\{|key\{|crypto\{|dice\{|wctf\{|utflag\{|hsctf\{|sdctf\{|dctf\{|nahamcon\{|ductf\{|bcactf\{|uiuctf\{|pbctf\{|corctf\{|sekai\{|idek\{|bi0s\{|glacierctf\{|rgbctf\{|zer0pts\{|watevr\{|darkctf\{|secureflag\{|actf\{|seccon\{|sunshine\{|ritsec\{|magpie\{|crew\{|squ1rrel\{|nitro\{|mapna\{|cakectf\{|dragonctf\{|lactf\{|wanictf\{|jerseyctf\{|b01lers\{|sunshinectf\{/i.test(text)) return true;
-  // Generic CTF flag: word{ ... } but exclude common encoding/intermediate prefixes
-  if (/\b[a-z]{2,12}\{[A-Za-z0-9_!@#$%^&*.-]{4,}\}/i.test(text) &&
-    !/\b(?:b64|hex|url|rot|xor|enc|dec|utf|msg|str|txt|raw|out|res|key|val|data|base|code|text|byte|hash)\{/i.test(text))
-    return true;
-  if (/^<[a-z!?/][\s\S]*>$/i.test(text) && printableRatio(utf8Encoder.encode(text)) > 0.9) return true;
-  if (/^(?:https?|ftp|file|mailto):\/\/\S+/i.test(text)) return true;
-  if ((text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'))) {
-    try {
-      JSON.parse(text);
-      return true;
-    } catch {
-      // Keep testing other heuristics.
-    }
-  }
-  if (/%[0-9a-fA-F]{2}/.test(text)) return false;
-  if (/&(#\d+|#x[0-9a-f]+|[a-z]+);/i.test(text)) return false;
-  if (/\\u\{?[0-9a-fA-F]{2,}|\\x[0-9a-fA-F]{2}/.test(text)) return false;
-  if (/\+[A-Za-z0-9/]+-|\+-/.test(text)) return false;
-  const score = smartTextScore(text);
-  if (text.length <= 12) return score >= 8 && printableRatio(utf8Encoder.encode(text)) > 0.9;
-  return score >= 16 && printableRatio(utf8Encoder.encode(text)) > 0.94;
-};
 
 export const trySmartSubstitutionBruteforce = (value: string): string | null => {
   const { source: _subSrc } = extractClassicCipherSource(value);
@@ -320,17 +257,17 @@ export const trySmartStructuredDecode = async (value: string): Promise<string | 
   if (!text) return null;
   try {
     if (/^data:[^,]*,/is.test(text)) {
-      const output = await transform('data-url', 'decode', text, defaultParams);
+      const output = await runSmartDecodeOperation('data-url', text, defaultParams);
       return `智能识别: Data URL\n\n${output}`;
     }
     if (/^Basic\s+[A-Za-z0-9+/=_-]+$/i.test(text)) {
-      return `智能识别: HTTP Basic Authorization\n\n${await transform('basic-auth', 'decode', text, defaultParams)}`;
+      return `智能识别: HTTP Basic Authorization\n\n${await runSmartDecodeOperation('basic-auth', text, defaultParams)}`;
     }
     if (/^otpauth:\/\//i.test(text)) {
       return `智能识别: otpauth URI\n\n${await decodeOtpAuthUriCompat(text)}`;
     }
     if (/^(?:https?:\/\/)?(?:[\w-]+\.)?xn--[a-z0-9-]+(?:\.[\w.-]+)*\/?$/i.test(text)) {
-      return `智能识别: Punycode / IDN\n\n${await transform('punycode', 'decode', text, defaultParams)}`;
+      return `智能识别: Punycode / IDN\n\n${await runSmartDecodeOperation('punycode', text, defaultParams)}`;
     }
     // Query strings need a key=value assignment after '?'; bare '?' text (e.g. ROT47 ciphertext) is not a query
     if (/^(?:https?:\/\/)?[^\s?]+\?[^=]*=[^\s]+$/.test(text)) {
@@ -397,104 +334,18 @@ export const trySmartStructuredDecode = async (value: string): Promise<string | 
   return null;
 };
 
-// ---- 古典密码无密钥自动破译（模拟退火 + 英文 trigram 适应度）----
-// 纯统计搜索：只做密钥排列扰动与打分，不执行输入内容。总耗时受硬预算约束，
-// 每个重启块之间让出主线程，保证智能解码界面不冻结。trigram 表可用
-// scripts/build-trigram-table.cjs 从 Gutenberg 公版语料重建。
+// 评分族已下沉 codec/ngram.ts（T6 解环）：smartClassical 直连 ngram，本模块 re-export 兼容。
+export { looksLikeResolvedSmartDecodeText } from './smartBase';
 
+import { classicalNgramMean, classicalNgramMeanPenalized } from './ngram';
 
-let classicalNgramLut: Float32Array | null = null;
-
-// 评分表数据已拆至 ngramTableData.ts（动态 import 注水，见 codec/index.ts hydrateCodecHeavyData）。
-let ngramTableB64: string | null = null;
-export const injectClassicalNgramTable = (b64: string): void => {
-  if (ngramTableB64 === b64) return;
-  ngramTableB64 = b64;
-  classicalNgramLut = null;
-};
-// 自带 base64 解码：不依赖 realm 全局 atob（vm/worker 环境可能没有）
-export const classicalDecodeBase64 = (input: string): Uint8Array => {
-  const table = new Uint8Array(123);
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-  for (let index = 0; index < chars.length; index += 1) table[chars.charCodeAt(index)] = index;
-  const clean = input.replace(/[^A-Za-z0-9+/]/g, '');
-  const output = new Uint8Array(Math.floor(clean.length * 3 / 4));
-  let outIndex = 0;
-  let buffer = 0;
-  let bits = 0;
-  for (let index = 0; index < clean.length; index += 1) {
-    buffer = (buffer << 6) | table[clean.charCodeAt(index)];
-    bits += 6;
-    if (bits >= 8) {
-      bits -= 8;
-      output[outIndex] = (buffer >> bits) & 0xff;
-      outIndex += 1;
-    }
-  }
-  return output.subarray(0, outIndex);
-};
-export const getClassicalNgramLut = (): Float32Array | null => {
-  if (!ngramTableB64) return null;
-  if (!classicalNgramLut) {
-    const bytes = classicalDecodeBase64(ngramTableB64);
-    const lut = new Float32Array(bytes.length);
-    for (let index = 0; index < bytes.length; index += 1) lut[index] = bytes[index] / 25.5 - 10;
-    classicalNgramLut = lut;
-  }
-  return classicalNgramLut;
-};
-
-// 适应度：字母流 quadgram log10 概率均值 ×100。语料实测英文约 -430~-450，随机串约 -870。
-export const classicalNgramMean = (codes: Uint8Array): number => {
-  const lut = getClassicalNgramLut();
-  if (!lut) return -9999;
-  let sum = 0;
-  let count = 0;
-  let p1 = -1;
-  let p2 = -1;
-  let p3 = -1;
-  for (let index = 0; index < codes.length; index += 1) {
-    const code = codes[index];
-    if (code > 25) { p1 = -1; p2 = -1; p3 = -1; continue; }
-    if (p1 >= 0 && p2 >= 0 && p3 >= 0) {
-      sum += lut[((p1 * 26 + p2) * 26 + p3) * 26 + code];
-      count += 1;
-    }
-    p1 = p2;
-    p2 = p3;
-    p3 = code;
-  }
-  return count > 0 ? (sum / count) * 100 : -9999;
-};
-
-// 采纳版：跳过位（空格/数字/点）按最差分 -9 计入均值——防稀疏碎片解码均值虚高。
-// 纯英文字母 ≈ -430，带 20% 空格 ≈ -524，50% 数字碎片 ≈ -660。
-export const classicalNgramMeanPenalized = (codes: Uint8Array): number => {
-  const lut = getClassicalNgramLut();
-  if (!lut) return -9999;
-  let sum = 0;
-  let count = 0;
-  let p1 = -1;
-  let p2 = -1;
-  let p3 = -1;
-  for (let index = 0; index < codes.length; index += 1) {
-    const code = codes[index];
-    if (code > 25) {
-      sum += -9;
-      count += 1;
-      p1 = -1; p2 = -1; p3 = -1;
-      continue;
-    }
-    if (p1 >= 0 && p2 >= 0 && p3 >= 0) {
-      sum += lut[((p1 * 26 + p2) * 26 + p3) * 26 + code];
-      count += 1;
-    }
-    p1 = p2;
-    p2 = p3;
-    p3 = code;
-  }
-  return count > 0 ? (sum / count) * 100 : -9999;
-};
+export {
+  classicalDecodeBase64,
+  classicalNgramMean,
+  classicalNgramMeanPenalized,
+  getClassicalNgramLut,
+  injectClassicalNgramTable,
+} from './ngram';
 
 export const CLASSICAL_BREAK_TOTAL_BUDGET_MS = 15000;
 // 评分参照：真密钥约 -320~-335（视文本长度），随机串约 -630

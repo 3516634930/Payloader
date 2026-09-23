@@ -2,9 +2,7 @@
 import { base64ToBytes, bytesToBase64, bytesToHex, hexToBytes } from './bases';
 import { utf8Decoder, utf8Encoder } from './alphabets';
 import { cleanSymmetricFieldValue, extractNamedPythonCall, inferSymmetricCryptoFromText, normalizeLooseFieldName, parseOptionalHexOrUtf8Bytes, parsePythonAssignmentFields, parsePythonCiphertextBytes, parseSymmetricFields } from './crypto';
-import { transform } from './transform';
 import { parseFunctionLikeCall, parsePythonBytesLiteral } from './rsa';
-import { looksLikeResolvedSmartDecodeText } from './smartHelpers';
 import { guessRepeatingKey, printableScore } from './classical';
 import { caesar } from './textEncodings';
 import type { OperationId } from './types';
@@ -103,12 +101,25 @@ export const smartSymmetricOperationIds = new Set<OperationId>([
   'rabbit',
 ]);
 
+// 解码执行器注入点（T6 解环）：smartBase 不再 import transform 全引擎；由 transform 模块
+// 加载时注入实现，smartDecode/smartHelpers 经 runSmartDecodeOperation 间接调用。未注入时
+// （如脱离 transform 单测 smartBase）解码尝试按不可用处理，返回 null 与原失败路径一致。
+export type SmartDecodeExecutor = (operationId: string, input: string, params: Record<string, string>) => Promise<string>;
+let smartDecodeExecutor: SmartDecodeExecutor | null = null;
+export const setSmartDecodeExecutor = (executor: SmartDecodeExecutor): void => {
+  smartDecodeExecutor = executor;
+};
+export const runSmartDecodeOperation = async (operationId: string, input: string, params: Record<string, string>): Promise<string> => {
+  if (!smartDecodeExecutor) throw new Error('smart decode executor 未注入');
+  return smartDecodeExecutor(operationId, input, params);
+};
+
 export const trySmartSymmetricDecrypt = async (value: string): Promise<string | null> => {
   const inference = inferSymmetricCryptoFromText(value);
   if (!inference.operationId || !smartSymmetricOperationIds.has(inference.operationId)) return null;
   if (inference.confidence < 8 || !inference.fields.key || (!inference.fields.ciphertext && !inference.fields.sealed)) return null;
   try {
-    const output: string = await transform(inference.operationId, 'decode', inference.input, inference.params);
+    const output: string = await runSmartDecodeOperation(inference.operationId, inference.input, inference.params);
     return `智能识别: ${inference.operationId} 可直接解密\n\n${output}\n\ninference: ${JSON.stringify(inference.notes)}`;
   } catch {
     return null;
@@ -477,4 +488,32 @@ export const trySmartXorDecrypt = (value: string) => {
     note: 'Single-byte XOR is auto-ranked. Repeating-key XOR uses IC analysis (key lengths 2-32) — check repeatingKeyAnalysis for best candidates.',
   }, null, 2)}`;
 };
-
+
+// 自 smartHelpers 下沉（T6 解环）：纯评分判断，依赖的 printableRatio/smartTextScore 均在本模块。
+export const looksLikeResolvedSmartDecodeText = (value: string) => {
+  const text = value.trim();
+  if (!text) return false;
+  if (/flag\{|ctf\{|picoctf\{|htb\{|thm\{|key\{|crypto\{|dice\{|wctf\{|utflag\{|hsctf\{|sdctf\{|dctf\{|nahamcon\{|ductf\{|bcactf\{|uiuctf\{|pbctf\{|corctf\{|sekai\{|idek\{|bi0s\{|glacierctf\{|rgbctf\{|zer0pts\{|watevr\{|darkctf\{|secureflag\{|actf\{|seccon\{|sunshine\{|ritsec\{|magpie\{|crew\{|squ1rrel\{|nitro\{|mapna\{|cakectf\{|dragonctf\{|lactf\{|wanictf\{|jerseyctf\{|b01lers\{|sunshinectf\{/i.test(text)) return true;
+  // Generic CTF flag: word{ ... } but exclude common encoding/intermediate prefixes
+  if (/\b[a-z]{2,12}\{[A-Za-z0-9_!@#$%^&*.-]{4,}\}/i.test(text) &&
+    !/\b(?:b64|hex|url|rot|xor|enc|dec|utf|msg|str|txt|raw|out|res|key|val|data|base|code|text|byte|hash)\{/i.test(text))
+    return true;
+  if (/^<[a-z!?/][\s\S]*>$/i.test(text) && printableRatio(utf8Encoder.encode(text)) > 0.9) return true;
+  if (/^(?:https?|ftp|file|mailto):\/\/\S+/i.test(text)) return true;
+  if ((text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'))) {
+    try {
+      JSON.parse(text);
+      return true;
+    } catch {
+      // Keep testing other heuristics.
+    }
+  }
+  if (/%[0-9a-fA-F]{2}/.test(text)) return false;
+  if (/&(#\d+|#x[0-9a-f]+|[a-z]+);/i.test(text)) return false;
+  if (/\\u\{?[0-9a-fA-F]{2,}|\\x[0-9a-fA-F]{2}/.test(text)) return false;
+  if (/\+[A-Za-z0-9/]+-|\+-/.test(text)) return false;
+  const score = smartTextScore(text);
+  if (text.length <= 12) return score >= 8 && printableRatio(utf8Encoder.encode(text)) > 0.9;
+  return score >= 16 && printableRatio(utf8Encoder.encode(text)) > 0.94;
+};
+

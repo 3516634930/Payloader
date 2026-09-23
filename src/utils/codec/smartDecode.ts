@@ -1,7 +1,7 @@
 // CODEC-IMPORTS
 import { decodeAaencode, decodeJjencode, decodeJsfuck, trySmartSymbolObfuscation } from './sandbox';
 import { canSmartHashLengthExtension, extractSmartRawPayloadCandidate, looksLikeResolvedSmartDecodeText, trySmartClassicalKeylessBreak, trySmartCrtSolver, trySmartEccHelper, trySmartHashLengthExtension, trySmartModDecode, trySmartStructuredDecode, trySmartSubstitutionBruteforce } from './smartHelpers';
-import { canSmartDiscreteLog, canSmartNonceReuse, canSmartPrngAnalyze, canSmartSignatureNonceReuse, inferMt19937FromText, trySmartDiscreteLog, trySmartNonceReuse, trySmartPrngAnalyze, trySmartSignatureNonceReuseAsync } from './prng';
+import { canSmartDiscreteLog, canSmartNonceReuse, canSmartPrngAnalyze, canSmartSignatureNonceReuse, extractPythonRandomFloatWords, extractPythonRandrangeSamples, inferMt19937FromText, mt19937PredictFromOutputs, trySmartDiscreteLog, trySmartNonceReuse, trySmartPrngAnalyze, trySmartSignatureNonceReuseAsync } from './prng';
 import { canRabinRawDecryptFromText, canRsaRawDecryptFromText, canSmartRsaHelper, trySmartRabinDecrypt, trySmartRsaDecrypt } from './rsa';
 import { SMART_DECODE_ADOPT_FLOOR, canSmartSymmetricDecryptFromText, printableRatio, smartDecodeOutputScore, smartTextScore, tryDecode, trySmartSymmetricDecrypt, trySmartXorDecrypt } from './smartBase';
 import { trySmartClassicDecrypt, trySmartVigenereBruteforce, validAffineMultipliers } from './smartClassical';
@@ -831,4 +831,39 @@ export const extractPureDecodeResult = (output: string): string => {
   const headerMatch = text.match(/^识别链路:[^\n]*\n+/);
   return headerMatch ? text.slice(headerMatch[0].length) : text;
 };
-
+
+// 自 smartHelpers 下沉（T6 解环）：transform 的 smart-decode 分支直连本模块，消除 transform→smartHelpers 边。
+export const mt19937Helper = (value: string) => {
+  const inference = inferMt19937FromText(value);
+  const clone = mt19937PredictFromOutputs(inference.numbers);
+  const floatWords = extractPythonRandomFloatWords(inference.floatOutputs || []);
+  const randrangeSamples = extractPythonRandrangeSamples(value);
+  return JSON.stringify({
+    outputCount: inference.numbers.length,
+    wordFormat: inference.wordFormat,
+    enoughForFullStateClone: inference.numbers.length >= 624,
+    firstOutputs: inference.numbers.slice(0, 16).map(number => number.toString()),
+    clone,
+    floatOutputCount: floatWords.length,
+    floatWords: floatWords.slice(0, 16),
+    boundedRandrangeCount: randrangeSamples.length,
+    randrangeSamples: randrangeSamples.slice(0, 32),
+    inferredFields: inference.fields,
+    inferenceConfidence: inference.confidence,
+    notes: [
+      clone ? 'Recovered MT19937 state from consecutive MT19937 words and predicted future values locally.' : 'MT19937 full state cloning requires 624 consecutive 32-bit outputs, or packed Python getrandbits(32*k) outputs such as 312 x 64-bit values.',
+      floatWords.length ? 'Python random.random() outputs were converted into 53-bit numerators and split into the 27-bit / 26-bit halves used by CPython. Use these with a symbolic or lattice-aware MT recovery tool.' : '',
+      randrangeSamples.length ? 'Bounded randrange/randbelow samples were extracted with their upper bounds. These are suitable as constraints for a leakage-aware MT solver, but not for direct local state cloning.' : '',
+      'If the challenge gives floats, randrange outputs, or truncated bits, move to constraint solving / leakage-specific recovery.',
+    ],
+    localPythonTemplate: [
+      'from randcrack import RandCrack',
+      'rc = RandCrack()',
+      'for x in outputs[:624]:',
+      '    rc.submit(x)',
+      'print(rc.predict_getrandbits(32))',
+      '# random.random() leakage needs a float-aware MT solver; use the extracted numerators/halves above as constraints.',
+    ].join('\\n'),
+  }, null, 2);
+};
+

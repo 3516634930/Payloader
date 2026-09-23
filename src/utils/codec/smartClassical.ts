@@ -3,7 +3,7 @@ import { looseField, parseLooseCtfFields, parseSymmetricFields } from './crypto'
 import { smartTextScore } from './smartBase';
 import { affineTransform, atbashTransform, caesar, morseDecode, polluxDecode, trithemiusDecode } from './textEncodings';
 import { adfgxTransform, autokeyTransform, baconDecode, beaufortTransform, bifidTransform, columnarDecode, fourSquareTransform, gronsfeldTransform, playfairTransform, polybiusDecode, portaTransform, railFenceDecode, scytaleDecode, tapCodeDecode, trifidTransform, vigenereTransform } from './classical';
-import { classicalNgramMean } from './smartHelpers';
+import { classicalNgramMean } from './ngram';
 // CODEC-IMPORTS-END
 export const extractClassicCipherSource = (value: string) => {
   const symmetricFields = parseSymmetricFields(value);

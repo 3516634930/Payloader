@@ -9,7 +9,8 @@ import { adfgxTransform, autokeyTransform, baconDecode, baconEncode, beaufortTra
 import { rabinRawTransform, rsaHelper, rsaRawTransform } from './rsa';
 import { cbcDemoTransform, coppersmithStereotypedSolve, parsePgpMessage, rsaOaepDecryptFromText, rsaOaepEncryptFromText } from './pgp';
 import { discreteLogHelper, signatureNonceReuseHelper } from './prng';
-import { mt19937Helper } from './smartHelpers';
+import { mt19937Helper } from './smartDecode';
+import { setSmartDecodeExecutor } from './smartBase';
 import { brainfuckToOokText, cryptoAttackHelper, encodeBrainfuckText, frequencyAnalysis, hashLengthExtensionHelper, jsfuckInspector, lcgHelper, lfsrHelper, ookToBrainfuckText, runBrainfuck } from './attacks';
 import { cloudShadowDecode, cloudShadowEncode, baijiaxingDecode, baijiaxingEncode, bearDecode, bearEncode, buddhaDecode, buddhaEncode, buddhaV2Decode, hexagramDecode, hexagramEncode, sexagesimalDecode, sexagesimalEncode } from './chineseCiphers';
 import { albamTransform, carbonaroTransform, ciscoType7Decode, ciscoType7Encode, cetaceanDecode, cetaceanEncode, decabitDecode, decabitEncode, pizziniDecode, pizziniEncode } from './mapCiphers';
@@ -23,6 +24,10 @@ import { decodeFernet, decodeJwt, decodeOtpAuthUriCompat, encodeFernet, encodeOt
 import { compressText, decodeQuery, decompressText, encodeQuery } from './smartBase';
 import type { Direction, OperationId, ParamKey } from './types';
 // CODEC-IMPORTS-END
+
+// T6 解环：transform 作为解码执行器注入 smartBase——smartBase/smartHelpers 的按操作 id 解码
+// 统一经该执行器（smart-decode 分支内部亦走 smartDecode），模块加载完成即生效。
+setSmartDecodeExecutor((operationId, input, params) => transform(operationId as import('./types').OperationId, 'decode', input, params));
 export async function transform(operationId: OperationId, direction: Direction, input: string, params: Record<ParamKey, string>): Promise<string> {
 
   switch (operationId) {
