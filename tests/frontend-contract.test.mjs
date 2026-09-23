@@ -99,14 +99,18 @@ test('sidebar search keeps one roving tab stop on the first visible root', async
 });
 
 test('dialogs are labelled, modal, keyboard closable, and focus managed', async () => {
-  const [header, syntaxModal] = await Promise.all([
+  // F5 面板化拆分：Header 编码弹层的焦点陷阱逻辑抽至 useFocusTrap.ts，断言跟随拆分文件
+  const [header, syntaxModal, focusTrap] = await Promise.all([
     read('src/components/Header.tsx'),
     read('src/components/SyntaxModal.tsx'),
+    read('src/components/useFocusTrap.ts'),
   ]);
 
   for (const source of [header, syntaxModal]) {
     assert.match(source, /role=["']dialog["']/);
     assert.match(source, /aria-modal=["']true["']/);
+  }
+  for (const source of [focusTrap, syntaxModal]) {
     assert.match(source, /Escape/);
     assert.match(source, /previousFocus|previouslyFocused/);
   }
@@ -129,14 +133,16 @@ test('mobile search input meets the minimum touch target', async () => {
 });
 
 test('public search controls expose stable form names', async () => {
-  const [header, payloadDetail] = await Promise.all([
-    read('src/components/Header.tsx'),
-    read('src/components/PayloadDetail.tsx'),
+  // F5 拆分：搜索输入框分属 HeaderSearch/VariablesMenu/ExecutionListPanel，断言跟随拆分文件
+  const [headerSearch, variablesMenu, executionList] = await Promise.all([
+    read('src/components/HeaderSearch.tsx'),
+    read('src/components/VariablesMenu.tsx'),
+    read('src/components/ExecutionListPanel.tsx'),
   ]);
 
-  assert.match(header, /name=["']content-search["']/);
-  assert.match(header, /name=["']variable-search["']/);
-  assert.match(payloadDetail, /name=["']payload-command-search["']/);
+  assert.match(headerSearch, /name=["']content-search["']/);
+  assert.match(variablesMenu, /name=["']variable-search["']/);
+  assert.match(executionList, /name=["']payload-command-search["']/);
 });
 
 test('mobile encoding controls meet the minimum touch target', async () => {
@@ -259,10 +265,14 @@ test('commands and attack chains use canonical variable placeholders', () => {
 });
 
 test('global-variable panel returns focus to its own toggle', async () => {
-  const header = await read('src/components/Header.tsx');
+  // F5 拆分：变量菜单按钮迁至 VariablesMenu.tsx；payload tab 仍在 Header，负向断言保留原锚
+  const [header, variablesMenu] = await Promise.all([
+    read('src/components/Header.tsx'),
+    read('src/components/VariablesMenu.tsx'),
+  ]);
 
   const payloadTab = header.match(/<button\s+[^>]*role="tab"[\s\S]*?\{t\('header\.tabPayloads', language\)\}/)?.[0] || '';
-  const variableToggle = header.match(/<button\s+[^>]*className="variables-toggle"[\s\S]*?\{t\('header\.variables', language\)\}/)?.[0] || '';
+  const variableToggle = variablesMenu.match(/<button\s+[^>]*className="variables-toggle"[\s\S]*?\{t\('header\.variables', language\)\}/)?.[0] || '';
 
   assert.doesNotMatch(payloadTab, /ref=\{variablesToggleRef\}/);
   assert.match(variableToggle, /ref=\{variablesToggleRef\}/);
@@ -443,6 +453,7 @@ test('admin shell is public while admin data uses explicit Bearer authorization'
   const login = await read('admin/login.html');
   const loginScript = await read('admin/login.js');
   const server = await read('server/admin-server.mjs');
+  const session = await read('server/admin-session.mjs');
   const admin = await read('admin/admin.js');
 
   assert.match(login, /admin-polish\.css/);
@@ -453,7 +464,7 @@ test('admin shell is public while admin data uses explicit Bearer authorization'
   assert.doesNotMatch(loginScript, /正在建立安全会话|登录成功，正在进入后台|进入后台/);
   assert.match(server, /url\.pathname === '\/admin'[\s\S]*?serveStatic\(request, response, adminPath\)/);
   assert.match(server, /handleAdminApi[\s\S]*?requireAuth\(request, response\)/);
-  assert.match(server, /authorization\.match\(\/\^Bearer/);
+  assert.match(session, /authorization\.match\(\/\^Bearer/);
   assert.match(admin, /sessionStorage\.getItem\(adminTokenStorageKey\)/);
   assert.match(admin, /headers\.authorization = `Bearer \$\{state\.accessToken\}`/);
   assert.doesNotMatch(admin, /localStorage\.setItem\([^\n]*access-token/);
@@ -534,11 +545,12 @@ test('sidebar derives custom entries from the active payload or tool collection'
 });
 
 test('CTF workbench renders the menubar mode while the pentest view stays unchanged', async () => {
-  const [cipher, encoding, workbench, menuBar] = await Promise.all([
+  const [cipher, encoding, workbench, menuBar, workbenchActions] = await Promise.all([
     read('src/components/ctf/CipherWorkspace.tsx'),
     read('src/components/EncodingTools.tsx'),
     read('src/components/CodecWorkbench.tsx'),
     read('src/components/codec/WorkbenchMenuBar.tsx'),
+    read('src/components/codec/workbenchActions.ts'),
   ]);
 
   assert.match(cipher, /mode="ctf"/);
@@ -547,7 +559,8 @@ test('CTF workbench renders the menubar mode while the pentest view stays unchan
   assert.match(workbench, /buildCtfMenus\(\)/);
   assert.match(workbench, /mode \? 'pentest'|mode = 'pentest'/);
   assert.match(workbench, /ctf-nav-mode/);
-  assert.match(workbench, /【\$\{name\}解密】/);
+  // F4 拆分：动作标记法工厂迁至 workbenchActions.ts，断言跟随
+  assert.match(workbenchActions, /【\$\{name\}解密】/);
   // CTF 态操作导航只走顶部菜单栏：平铺备选网格（action-fold）必须不存在
   assert.doesNotMatch(workbench, /action-fold/);
   assert.match(menuBar, /withinPortal/);
@@ -571,8 +584,9 @@ test('CTF file modules stay mounted across domain switches and hero mode default
   assert.match(toolkit, /heroMode=\{heroMode\}/);
   // 六个域显式注册 collapsed（misc/traffic + web/reverse/pwn/ai），cipher 保持缺省 full。
   assert.equal(ctfModuleContracts.filter(module => module.heroMode === 'collapsed').length, 6);
-  // 折叠形态由 CtfHero 实现并记忆展开状态（单实例跨域保留）。
-  assert.match(hero, /ctf-hero-strip/);
+  // 折叠形态由 CtfHero（状态记忆）+ CtfHeroStrip（F4 拆出的折叠条组件）协同实现，单实例跨域保留。
+  const heroStrip = await read('src/components/ctf/CtfHeroStrip.tsx');
+  assert.match(heroStrip, /ctf-hero-strip/);
   assert.match(hero, /setExpanded/);
   // pendingFile 定向投递：只发给路由目标域，常驻隐藏面板不感知（回灌污染修复的接线本体）。
   assert.match(toolkit, /module\.id === pendingFile\?\.targetModuleId/);

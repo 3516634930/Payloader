@@ -1,9 +1,9 @@
 import { createServer } from 'node:http';
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { createReadStream } from 'node:fs';
-import { createHash, createHmac, randomBytes, randomUUID, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto';
-import { promisify } from 'node:util';
-import { isIP } from 'node:net';
+import { randomUUID } from 'node:crypto';
+
+
 import { extname, isAbsolute, join, normalize, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -39,6 +39,13 @@ import {
 import { createPublicDataResponder } from './public-data-response.mjs';
 import { officialProjectUrl, publicProjectRoute } from './project-attribution.mjs';
 import { readImageInfo } from './image-inspect.mjs';
+import { baseResponseHeaders, HttpError, isJsonRequest, json, methodNotAllowed, parseJsonBody, safeErrorPayload, text } from './http-helpers.mjs';
+
+export { readBody } from './http-helpers.mjs';
+
+import { createRateLimiter } from './rate-limit.mjs';
+import { createCredentialStore } from './admin-credentials.mjs';
+import { createSessionManager } from './admin-session.mjs';
 import { createShutdownController } from './server-lifecycle.mjs';
 import { createVersionChecker, VERSION_STATUS_METADATA_KEY } from './version-checker.mjs';
 
@@ -62,24 +69,9 @@ const allowInsecureDevCredentials = process.env.PAYLOADER_ALLOW_INSECURE_DEV_CRE
   && process.env.NODE_ENV !== 'production'
   && loopbackHosts.has(host.toLowerCase());
 const requiresExplicitInitialCredentials = !allowInsecureDevCredentials;
-const publishedExampleAdminPasswords = new Set([bundledDefaultAdminPassword, 'Change-Me-2026!']);
 const pathSeparator = process.platform === 'win32' ? '\\' : '/';
 const sessionTtlMs = Number(process.env.PAYLOADER_ADMIN_SESSION_TTL_MS || 8 * 60 * 60 * 1000);
 const jwtSecretFile = join(dataDir, 'admin-jwt-secret.key');
-const jwtIssuer = 'payloader-admin';
-const jwtAudience = 'payloader-admin-panel';
-const jwtClockSkewSec = 30;
-const maxJwtBearerLength = 2048;
-const credentialsMetadataKey = 'admin_credentials';
-const credentialHashParams = Object.freeze({
-  algorithm: 'scrypt',
-  keyLength: 64,
-  saltBytes: 24,
-});
-const defaultScryptCost = Object.freeze({ N: 32768, r: 8, p: 1 });
-const scryptCostLimits = Object.freeze({ minN: 16384, maxN: 262144, maxR: 16, maxP: 4 });
-const minAdminPasswordLength = 10;
-const scrypt = promisify(scryptCallback);
 
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -100,27 +92,6 @@ const maxLogoRequestBytes = 1_500_000;
 const maxImportRequestBytes = 24 * 1024 * 1024;
 const maxUrlLength = 4_096;
 const acceptedLogoMimeTypes = new Set(['image/png', 'image/jpeg', 'image/webp']);
-const contentSecurityPolicy = [
-  "default-src 'self'",
-  "base-uri 'none'",
-  "object-src 'none'",
-  "frame-ancestors 'none'",
-  "img-src 'self' data: blob:",
-  "script-src 'self'",
-  "style-src 'self' 'unsafe-inline'",
-  "font-src 'self' data:",
-  "connect-src 'self'",
-  "form-action 'self'",
-].join('; ');
-const baseResponseHeaders = {
-  'x-content-type-options': 'nosniff',
-  'referrer-policy': 'no-referrer',
-  'x-frame-options': 'DENY',
-  'permissions-policy': 'camera=(), microphone=(), geolocation=(), payment=()',
-  'cross-origin-resource-policy': 'same-origin',
-  'cross-origin-opener-policy': 'same-origin',
-  'content-security-policy': contentSecurityPolicy,
-};
 const publicDataResponder = createPublicDataResponder({
   loadData: getPublicData,
   responseHeaders: baseResponseHeaders,
@@ -131,450 +102,29 @@ const applicationVersionChecker = createVersionChecker({
   loadStatus: () => getMetadataValue(VERSION_STATUS_METADATA_KEY, ''),
   saveStatus: value => setMetadataValue(VERSION_STATUS_METADATA_KEY, value),
 });
-const rateBuckets = new Map();
-const adminSessions = new Map();
-const adminRequestLimit = { windowMs: 60_000, max: 300 };
-const failedAuthLimit = { windowMs: 60_000, max: 12 };
-const failedLoginLimit = { windowMs: 60_000, max: 8 };
-// 同时进行 scrypt 凭据校验的请求上限：libuv 线程池默认 4 线程，超过即廉价 429。
-const LOGIN_VERIFY_CONCURRENCY = 4;
-let loginVerifyInFlight = 0;
-const trustedProxyConfig = String(process.env.PAYLOADER_TRUSTED_PROXIES || '')
-  .split(',')
-  .map(item => item.trim().toLowerCase())
-  .filter(Boolean);
-const trustedProxyAddresses = new Set();
-let trustLoopbackProxies = false;
-for (const entry of trustedProxyConfig) {
-  if (entry === 'loopback') {
-    trustLoopbackProxies = true;
-  } else if (isIP(entry)) {
-    trustedProxyAddresses.add(entry);
-  } else {
-    throw new Error(`Invalid PAYLOADER_TRUSTED_PROXIES entry: ${entry}`);
-  }
-}
 
-class HttpError extends Error {
-  constructor(status, message) {
-    super(message);
-    this.status = status;
-  }
-}
 
-const errorStatus = error => (
-  error instanceof HttpError
-    ? error.status
-    : Number.isInteger(error?.status)
-      ? error.status
-      : 500
-);
 
-const safeErrorPayload = error => {
-  const status = errorStatus(error);
-  if (status >= 500) {
-    console.error(error);
-    return { status, payload: { error: 'Internal server error' } };
-  }
-  return {
-    status,
-    payload: { error: error instanceof Error ? error.message : 'Request failed' },
-  };
-};
 
-const json = (response, status, payload) => {
-  response.writeHead(status, {
-    ...baseResponseHeaders,
-    'content-type': 'application/json; charset=utf-8',
-    'cache-control': 'no-store',
-  });
-  response.end(JSON.stringify(payload));
-};
 
-const text = (response, status, body) => {
-  response.writeHead(status, {
-    ...baseResponseHeaders,
-    'content-type': 'text/plain; charset=utf-8',
-    'cache-control': 'no-store',
-  });
-  response.end(body);
-};
-
-const methodNotAllowed = (response, allowed) => {
-  response.writeHead(405, {
-    ...baseResponseHeaders,
-    allow: allowed.join(', '),
-    'content-type': 'text/plain; charset=utf-8',
-    'cache-control': 'no-store',
-  });
-  response.end('Method not allowed');
-};
-
-export const readBody = (request, maxBytes = 4_000_000) => new Promise((resolveBody, rejectBody) => {
-  const contentLength = Number.parseInt(String(request.headers['content-length'] || '0'), 10);
-  if (Number.isFinite(contentLength) && contentLength > maxBytes) {
-    rejectBody(new HttpError(413, 'Request body too large'));
-    request.destroy();
-    return;
-  }
-  const chunks = [];
-  let received = 0;
-  let settled = false;
-  const rejectOnce = error => {
-    if (settled) return;
-    settled = true;
-    rejectBody(error);
-    request.destroy();
-  };
-  request.on('data', chunk => {
-    if (settled) return;
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    received += buffer.length;
-    if (received > maxBytes) {
-      rejectOnce(new HttpError(413, 'Request body too large'));
-      return;
-    }
-    chunks.push(buffer);
-  });
-  request.on('end', () => {
-    if (settled) return;
-    settled = true;
-    resolveBody(Buffer.concat(chunks, received).toString('utf8'));
-  });
-  request.on('error', error => {
-    if (settled) return;
-    settled = true;
-    rejectBody(error);
-  });
+const sessions = createSessionManager({
+  jwtSecretFile,
+  sessionTtlMs,
+  getCredentials: () => getAdminCredentials(),
 });
-
-const parseJsonBody = async (request, maxBytes, options = {}) => {
-  if (options.requireJson && !isJsonRequest(request)) {
-    throw new HttpError(415, 'Request body must use application/json');
-  }
-  const raw = await readBody(request, maxBytes);
-  if (!raw.trim()) return {};
-  try {
-    return JSON.parse(raw);
-  } catch {
-    throw new HttpError(400, 'Invalid JSON request body');
-  }
-};
-
-const isJsonRequest = request => {
-  const contentType = String(request.headers['content-type'] || '').toLowerCase();
-  return contentType.includes('application/json');
-};
-
-const hashText = value => createHash('sha256').update(String(value), 'utf8').digest();
-
-const safeTextEquals = (value, expectedHash) => {
-  const actualHash = hashText(value);
-  return timingSafeEqual(actualHash, expectedHash);
-};
-
-const isPlainObject = value => Boolean(value && typeof value === 'object' && !Array.isArray(value));
-const normalizeAdminUsername = value => String(value || '').trim();
-
-const validateAdminUsername = value => {
-  const username = normalizeAdminUsername(value);
-  if (!/^[A-Za-z0-9._-]{3,64}$/.test(username)) {
-    throw new HttpError(400, '管理员用户名只能包含字母、数字、点、下划线和短横线，长度为 3-64 位。');
-  }
-  return username;
-};
-
-const validateAdminPassword = value => {
-  const password = String(value || '');
-  if (password.length < minAdminPasswordLength || password.length > 128) {
-    throw new HttpError(400, `管理员密码长度必须为 ${minAdminPasswordLength}-128 位。`);
-  }
-  const classes = [
-    /[a-z]/.test(password),
-    /[A-Z]/.test(password),
-    /\d/.test(password),
-    /[^A-Za-z0-9]/.test(password),
-  ].filter(Boolean).length;
-  if (classes < 3) {
-    throw new HttpError(400, '管理员密码至少需要包含大小写字母、数字、符号中的三类。');
-  }
-  return password;
-};
-
-const isPowerOfTwo = value => Number.isInteger(value) && value > 0 && Math.log2(value) % 1 === 0;
-
-const normalizeScryptCost = value => {
-  const cost = isPlainObject(value) ? value : {};
-  const N = Number(cost.N ?? defaultScryptCost.N);
-  const r = Number(cost.r ?? defaultScryptCost.r);
-  const p = Number(cost.p ?? defaultScryptCost.p);
-  if (
-    !isPowerOfTwo(N) ||
-    N < scryptCostLimits.minN ||
-    N > scryptCostLimits.maxN ||
-    !Number.isInteger(r) ||
-    r < 1 ||
-    r > scryptCostLimits.maxR ||
-    !Number.isInteger(p) ||
-    p < 1 ||
-    p > scryptCostLimits.maxP
-  ) {
-    throw new Error('Invalid admin credential hash parameters.');
-  }
-  return { N, r, p };
-};
-
-const decodeCredentialBuffer = (value, minLength) => {
-  const encoded = String(value || '');
-  if (!/^[A-Za-z0-9_-]+$/.test(encoded)) return null;
-  const buffer = Buffer.from(encoded, 'base64url');
-  return buffer.length >= minLength ? buffer : null;
-};
-
-const normalizeStoredAdminCredentials = credentials => {
-  if (!isPlainObject(credentials)) {
-    throw new Error('Stored admin credential metadata is invalid.');
-  }
-  const username = validateAdminUsername(credentials.username);
-  const passwordHash = credentials.passwordHash;
-  if (!isPlainObject(passwordHash) || passwordHash.algorithm !== credentialHashParams.algorithm) {
-    throw new Error('Stored admin credential hash is invalid.');
-  }
-  const keyLength = Number(passwordHash.keyLength || credentialHashParams.keyLength);
-  if (!Number.isInteger(keyLength) || keyLength < 32 || keyLength > 128) {
-    throw new Error('Stored admin credential key length is invalid.');
-  }
-  if (
-    !decodeCredentialBuffer(passwordHash.salt, 16) ||
-    !decodeCredentialBuffer(passwordHash.hash, 32)
-  ) {
-    throw new Error('Stored admin credential hash data is invalid.');
-  }
-  const version = String(credentials.version || '');
-  if (!/^[A-Za-z0-9_-]{32,96}$/.test(version)) {
-    throw new Error('Stored admin credential version is invalid.');
-  }
-  return {
-    username,
-    passwordHash: {
-      algorithm: credentialHashParams.algorithm,
-      salt: String(passwordHash.salt),
-      hash: String(passwordHash.hash),
-      keyLength,
-      cost: normalizeScryptCost(passwordHash.cost),
-    },
-    version,
-    createdAt: String(credentials.createdAt || credentials.updatedAt || new Date().toISOString()),
-    updatedAt: String(credentials.updatedAt || credentials.createdAt || new Date().toISOString()),
-    source: String(credentials.source || 'admin-panel'),
-  };
-};
-
-const hashAdminPassword = async password => {
-  const salt = randomBytes(credentialHashParams.saltBytes);
-  const cost = defaultScryptCost;
-  const key = await scrypt(password, salt, credentialHashParams.keyLength, {
-    ...cost,
-    maxmem: 64 * 1024 * 1024,
-  });
-  return {
-    algorithm: credentialHashParams.algorithm,
-    salt: salt.toString('base64url'),
-    hash: Buffer.from(key).toString('base64url'),
-    keyLength: credentialHashParams.keyLength,
-    cost,
-  };
-};
-
-const verifyAdminPasswordHash = async (password, passwordHash) => {
-  try {
-    if (!passwordHash || passwordHash.algorithm !== credentialHashParams.algorithm) return false;
-    const salt = decodeCredentialBuffer(passwordHash.salt, 16);
-    const expected = decodeCredentialBuffer(passwordHash.hash, 32);
-    const keyLength = Number(passwordHash.keyLength || credentialHashParams.keyLength);
-    if (!salt || !expected || !Number.isInteger(keyLength) || keyLength < 32 || keyLength > 128) return false;
-    const cost = normalizeScryptCost(passwordHash.cost);
-    const derived = await scrypt(String(password || ''), salt, keyLength, {
-      ...cost,
-      maxmem: 64 * 1024 * 1024,
-    });
-    const actual = Buffer.from(derived);
-    return actual.length === expected.length && timingSafeEqual(actual, expected);
-  } catch {
-    return false;
-  }
-};
-
-const publicCredentialInfo = credentials => ({
-  username: credentials.username,
-  updatedAt: credentials.updatedAt,
-  createdAt: credentials.createdAt,
+const { createAdminSession, getJwtSecret, readAdminSession, revokeAllSessions, revokeSession } = sessions;
+const credentials = createCredentialStore({
+  env: {
+    requiresExplicitInitialCredentials,
+    defaultAdminUser,
+    defaultAdminPassword,
+    configuredAdminUser,
+    configuredAdminPassword,
+  },
+  onCredentialsSaved: revokeAllSessions,
 });
-
-let adminCredentialsPromise;
-
-const loadAdminCredentials = async () => {
-  const stored = await getMetadataValue(credentialsMetadataKey, '');
-  if (stored) {
-    try {
-      const credentials = normalizeStoredAdminCredentials(JSON.parse(stored));
-      if (requiresExplicitInitialCredentials) {
-        for (const publishedPassword of publishedExampleAdminPasswords) {
-          if (!await verifyAdminPasswordHash(publishedPassword, credentials.passwordHash)) continue;
-          const label = publishedPassword === bundledDefaultAdminPassword ? 'bundled default' : 'published example';
-          if (
-            configuredAdminUser
-            && configuredAdminPassword
-            && !publishedExampleAdminPasswords.has(configuredAdminPassword)
-          ) {
-            const timestamp = new Date().toISOString();
-            const migrated = {
-              username: validateAdminUsername(configuredAdminUser),
-              passwordHash: await hashAdminPassword(validateAdminPassword(configuredAdminPassword)),
-              version: randomUUID(),
-              createdAt: credentials.createdAt || timestamp,
-              updatedAt: timestamp,
-              source: 'published-password-migration',
-            };
-            await setMetadataValue(credentialsMetadataKey, JSON.stringify(migrated));
-            return migrated;
-          }
-          throw new Error(`Stored administrator credentials still use the ${label} password. Provide new strong PAYLOADER_ADMIN_USER and PAYLOADER_ADMIN_PASSWORD values for one startup to migrate them.`);
-        }
-      }
-      return credentials;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Stored admin credential metadata is invalid.';
-      throw new Error(`${message} Refusing to fall back to default admin credentials.`);
-    }
-  }
-
-  const timestamp = new Date().toISOString();
-  if (requiresExplicitInitialCredentials && (!configuredAdminUser || !configuredAdminPassword)) {
-    throw new Error('PAYLOADER_ADMIN_USER and PAYLOADER_ADMIN_PASSWORD are required for the first production or non-loopback startup.');
-  }
-  const username = validateAdminUsername(defaultAdminUser);
-  const initialPassword = String(defaultAdminPassword || '');
-  if (requiresExplicitInitialCredentials) {
-    validateAdminPassword(initialPassword);
-    if (publishedExampleAdminPasswords.has(initialPassword)) {
-      throw new Error('PAYLOADER_ADMIN_PASSWORD must not use a published example password.');
-    }
-  } else if (initialPassword.length < 8 || initialPassword.length > 128) {
-    throw new Error('Initial PAYLOADER_ADMIN_PASSWORD must be 8-128 characters.');
-  }
-  const passwordHash = await hashAdminPassword(initialPassword);
-  const credentials = {
-    username,
-    passwordHash,
-    version: randomUUID(),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    source: 'initial-default',
-  };
-  await setMetadataValue(credentialsMetadataKey, JSON.stringify(credentials));
-  return credentials;
-};
-
-const getAdminCredentials = () => {
-  if (!adminCredentialsPromise) {
-    const pending = loadAdminCredentials();
-    const guarded = pending.catch(error => {
-      if (adminCredentialsPromise === guarded) adminCredentialsPromise = undefined;
-      throw error;
-    });
-    adminCredentialsPromise = guarded;
-  }
-  return adminCredentialsPromise;
-};
-
-const validAdminCredentials = async (user, password) => {
-  const credentials = await getAdminCredentials();
-  const usernameMatches = safeTextEquals(normalizeAdminUsername(user), hashText(credentials.username));
-  const passwordMatches = await verifyAdminPasswordHash(password, credentials.passwordHash);
-  return usernameMatches && passwordMatches;
-};
-
-const saveAdminCredentials = async ({ username, currentPassword, newPassword }) => {
-  const current = await getAdminCredentials();
-  if (!await verifyAdminPasswordHash(currentPassword, current.passwordHash)) {
-    throw new HttpError(403, '当前密码不正确。');
-  }
-  const nextUsername = validateAdminUsername(username || current.username);
-  const nextPassword = newPassword ? validateAdminPassword(newPassword) : '';
-  if (nextPassword && await verifyAdminPasswordHash(nextPassword, current.passwordHash)) {
-    throw new HttpError(400, '新密码不能和当前密码相同。');
-  }
-  const timestamp = new Date().toISOString();
-  const credentials = {
-    username: nextUsername,
-    passwordHash: nextPassword ? await hashAdminPassword(nextPassword) : current.passwordHash,
-    version: randomUUID(),
-    createdAt: current.createdAt || timestamp,
-    updatedAt: timestamp,
-    source: 'admin-panel',
-  };
-  await setMetadataValue(credentialsMetadataKey, JSON.stringify(credentials));
-  adminCredentialsPromise = Promise.resolve(credentials);
-  adminSessions.clear();
-  return publicCredentialInfo(credentials);
-};
-
-let jwtSecretPromise;
-
-const base64UrlJson = value => Buffer.from(JSON.stringify(value), 'utf8').toString('base64url');
-
-const parseBase64UrlJson = value => {
-  try {
-    return JSON.parse(Buffer.from(String(value), 'base64url').toString('utf8'));
-  } catch {
-    return null;
-  }
-};
-
-const loadJwtSecret = async () => {
-  const envSecret = String(process.env.PAYLOADER_JWT_SECRET || '').trim();
-  if (envSecret) {
-    const decoded = /^[A-Za-z0-9_-]{43,}$/.test(envSecret)
-      ? Buffer.from(envSecret, 'base64url')
-      : Buffer.from(envSecret, 'utf8');
-    if (decoded.length >= 32) return decoded;
-    throw new Error('PAYLOADER_JWT_SECRET must be at least 32 bytes.');
-  }
-
-  try {
-    const stored = (await readFile(jwtSecretFile, 'utf8')).trim();
-    const decoded = Buffer.from(stored, 'base64url');
-    if (decoded.length >= 32) return decoded;
-  } catch {
-    // Create a per-install secret below.
-  }
-
-  const generated = randomBytes(64);
-  await mkdir(dataDir, { recursive: true });
-  try {
-    await writeFile(jwtSecretFile, `${generated.toString('base64url')}\n`, { flag: 'wx', mode: 0o600 });
-  } catch (error) {
-    if (error?.code !== 'EEXIST') throw error;
-    const stored = (await readFile(jwtSecretFile, 'utf8')).trim();
-    const decoded = Buffer.from(stored, 'base64url');
-    if (decoded.length < 32) throw new Error('Stored Payloader JWT secret is invalid.');
-    return decoded;
-  }
-  return generated;
-};
-
-const getJwtSecret = () => {
-  if (!jwtSecretPromise) {
-    const pending = loadJwtSecret();
-    const guarded = pending.catch(error => {
-      if (jwtSecretPromise === guarded) jwtSecretPromise = undefined;
-      throw error;
-    });
-    jwtSecretPromise = guarded;
-  }
-  return jwtSecretPromise;
-};
+const { endLoginVerify, getAdminCredentials, publicCredentialInfo, saveAdminCredentials, tryBeginLoginVerify, validAdminCredentials } = credentials;
+const { adminRequestLimit, checkRateLimit, clearRateLimit, clientKey, failedAuthLimit, failedLoginLimit, respondTooManyRequests } = createRateLimiter();
 
 export const ensureApplicationReady = async () => {
   await Promise.all([
@@ -586,168 +136,9 @@ export const ensureApplicationReady = async () => {
   return true;
 };
 
-const signJwt = async payload => {
-  const header = { alg: 'HS256', typ: 'JWT' };
-  const encodedHeader = base64UrlJson(header);
-  const encodedPayload = base64UrlJson(payload);
-  const signingInput = `${encodedHeader}.${encodedPayload}`;
-  const signature = createHmac('sha256', await getJwtSecret()).update(signingInput).digest('base64url');
-  return `${signingInput}.${signature}`;
-};
-
-const verifyJwt = async token => {
-  const parts = String(token || '').split('.');
-  if (parts.length !== 3 || parts.some(part => part.length === 0)) return null;
-  const [encodedHeader, encodedPayload, signature] = parts;
-  const header = parseBase64UrlJson(encodedHeader);
-  if (!header || header.alg !== 'HS256' || header.typ !== 'JWT') return null;
-  const signingInput = `${encodedHeader}.${encodedPayload}`;
-  const expected = createHmac('sha256', await getJwtSecret()).update(signingInput).digest('base64url');
-  if (!timingSafeEqual(hashText(signature), hashText(expected))) return null;
-  const payload = parseBase64UrlJson(encodedPayload);
-  const credentials = await getAdminCredentials();
-  if (!payload || payload.iss !== jwtIssuer || payload.aud !== jwtAudience || payload.sub !== credentials.username || payload.cv !== credentials.version) return null;
-  const now = Math.floor(Date.now() / 1000);
-  if (!Number.isInteger(payload.iat) || !Number.isInteger(payload.nbf) || !Number.isInteger(payload.exp)) return null;
-  if (payload.nbf - jwtClockSkewSec > now || payload.exp + jwtClockSkewSec < now) return null;
-  if (payload.iat - jwtClockSkewSec > now || payload.exp <= payload.iat) return null;
-  if (typeof payload.jti !== 'string' || payload.jti.length < 32 || payload.jti.length > 96) return null;
-  if (typeof payload.sid !== 'string' || payload.sid.length < 32 || payload.sid.length > 96) return null;
-  return payload;
-};
-
-const cleanupSessions = () => {
-  const now = Date.now();
-  for (const [sessionId, session] of adminSessions.entries()) {
-    if (session.expiresAt <= now) adminSessions.delete(sessionId);
-  }
-};
-
-const newToken = bytes => randomBytes(bytes).toString('base64url');
-
-const createAdminSession = async request => {
-  cleanupSessions();
-  const credentials = await getAdminCredentials();
-  const sessionId = newToken(24);
-  const jwtId = newToken(32);
-  const now = Date.now();
-  const nowSec = Math.floor(now / 1000);
-  const expiresAt = now + sessionTtlMs;
-  const token = await signJwt({
-    iss: jwtIssuer,
-    aud: jwtAudience,
-    sub: credentials.username,
-    cv: credentials.version,
-    sid: sessionId,
-    jti: jwtId,
-    iat: nowSec,
-    nbf: nowSec,
-    exp: Math.floor(expiresAt / 1000),
-  });
-  adminSessions.set(jwtId, {
-    sessionId,
-    createdAt: now,
-    expiresAt,
-    tokenHash: hashText(token).toString('base64url'),
-    userAgentHash: hashText(request.headers['user-agent'] || '').toString('base64url'),
-  });
-  return { sessionId, jwtId, token, expiresAt };
-};
-
-const readBearerToken = request => {
-  const authorization = request.headers.authorization;
-  if (typeof authorization !== 'string' || authorization.length > maxJwtBearerLength + 16) return '';
-  const match = authorization.match(/^Bearer ([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)$/i);
-  return match?.[1] || '';
-};
-
-const readAdminSession = async request => {
-  cleanupSessions();
-  const token = readBearerToken(request);
-  if (!token || token.length > maxJwtBearerLength) return null;
-  const jwtPayload = await verifyJwt(token);
-  if (!jwtPayload) return null;
-  const session = adminSessions.get(jwtPayload.jti);
-  if (!session || session.expiresAt <= Date.now()) {
-    if (session) adminSessions.delete(jwtPayload.jti);
-    return null;
-  }
-  if (session.sessionId !== jwtPayload.sid) return null;
-  const expectedTokenHash = Buffer.from(session.tokenHash, 'base64url');
-  if (expectedTokenHash.length !== 32 || !timingSafeEqual(hashText(token), expectedTokenHash)) return null;
-  const requestAgentHash = hashText(request.headers['user-agent'] || '').toString('base64url');
-  if (session.userAgentHash !== requestAgentHash) return null;
-  return { jwtId: jwtPayload.jti, ...session };
-};
 
 const isAuthorized = async request => Boolean(await readAdminSession(request));
 
-const normalizeIpAddress = value => {
-  let address = String(value || '').trim().toLowerCase();
-  if (address.startsWith('[') && address.endsWith(']')) address = address.slice(1, -1);
-  if (address.startsWith('::ffff:') && isIP(address.slice(7)) === 4) address = address.slice(7);
-  return isIP(address) ? address : '';
-};
-
-const isLoopbackAddress = address => address === '127.0.0.1' || address === '::1';
-
-const isTrustedProxyAddress = address => (
-  trustedProxyAddresses.has(address) || (trustLoopbackProxies && isLoopbackAddress(address))
-);
-
-const forwardedClientAddress = (request, peerAddress) => {
-  if (!isTrustedProxyAddress(peerAddress)) return '';
-  const forwarded = request.headers['x-forwarded-for'];
-  if (typeof forwarded !== 'string' || forwarded.length > 2048) return '';
-  const chain = forwarded.split(',').map(normalizeIpAddress);
-  if (!chain.length || chain.some(address => !address)) return '';
-  let resolved = peerAddress;
-  for (let index = chain.length - 1; index >= 0 && isTrustedProxyAddress(resolved); index -= 1) {
-    resolved = chain[index];
-  }
-  return resolved === peerAddress ? '' : resolved;
-};
-
-const clientKey = request => {
-  const peerAddress = normalizeIpAddress(request.socket.remoteAddress) || 'local';
-  return forwardedClientAddress(request, peerAddress) || peerAddress;
-};
-
-const checkRateLimit = (request, response, scope, limit) => {
-  const key = `${scope}:${clientKey(request)}`;
-  const timestamp = Date.now();
-  const bucket = rateBuckets.get(key);
-  const current = bucket && timestamp - bucket.startedAt < limit.windowMs
-    ? bucket
-    : { startedAt: timestamp, count: 0 };
-  current.count += 1;
-  rateBuckets.set(key, current);
-  if (rateBuckets.size > 1_000) {
-    const maxWindow = Math.max(adminRequestLimit.windowMs, failedAuthLimit.windowMs);
-    for (const [itemKey, item] of rateBuckets.entries()) {
-      if (timestamp - item.startedAt >= maxWindow) rateBuckets.delete(itemKey);
-    }
-  }
-  if (current.count <= limit.max) return true;
-  respondTooManyRequests(response, scope, limit);
-  return false;
-};
-
-// 发送 429 但不改变限流计数——用于并发闸等需要廉价拒绝的路径；checkRateLimit 超限时也复用同一响应块。
-const respondTooManyRequests = (response, scope, limit) => {
-  const contentType = scope.includes('login') || scope.includes('admin') ? 'application/json; charset=utf-8' : 'text/plain; charset=utf-8';
-  response.writeHead(429, {
-    ...baseResponseHeaders,
-    'content-type': contentType,
-    'cache-control': 'no-store',
-    'retry-after': String(Math.ceil(limit.windowMs / 1000)),
-  });
-  response.end(contentType.startsWith('application/json') ? JSON.stringify({ error: '请求过于频繁，请稍后再试' }) : 'Too many requests');
-};
-
-const clearRateLimit = (request, scope) => {
-  rateBuckets.delete(`${scope}:${clientKey(request)}`);
-};
 
 const unauthorized = (request, response) => {
   if (request.url && String(request.url).startsWith('/api/')) {
@@ -989,19 +380,18 @@ const handleAdminAuthApi = async (request, response, url) => {
       return true;
     }
     // scrypt 并发闸：错误登录洪水不占满线程池；正确凭据在低并发时仍可正常登录。
-    if (loginVerifyInFlight >= LOGIN_VERIFY_CONCURRENCY) {
+    if (!tryBeginLoginVerify()) {
       respondTooManyRequests(response, 'admin-login-failed', failedLoginLimit);
       return true;
     }
     const body = await parseJsonBody(request, 16_384, { requireJson: true });
     const user = typeof body.username === 'string' ? body.username : '';
     const password = typeof body.password === 'string' ? body.password : '';
-    loginVerifyInFlight += 1;
     let invalidCredentials;
     try {
       invalidCredentials = user.length > 256 || password.length > 1024 || !await validAdminCredentials(user, password);
     } finally {
-      loginVerifyInFlight -= 1;
+      endLoginVerify();
     }
     if (invalidCredentials) {
       if (!checkRateLimit(request, response, 'admin-login-failed', failedLoginLimit)) return true;
@@ -1032,7 +422,7 @@ const handleAdminAuthApi = async (request, response, url) => {
       return true;
     }
     const session = await readAdminSession(request);
-    if (session) adminSessions.delete(session.jwtId);
+    if (session) revokeSession(session.jwtId);
     response.writeHead(200, {
       ...baseResponseHeaders,
       'content-type': 'application/json; charset=utf-8',

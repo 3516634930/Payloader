@@ -321,15 +321,16 @@ test('CI, Docker context, and documentation describe the real runtime', async ()
 });
 
 test('all mutable server artifacts honor the configured data directory', async () => {
-  const [adminServer, clientBuilder] = await Promise.all([
+  const [adminServer, clientBuilder, adminSession] = await Promise.all([
     readProjectFile('server/admin-server.mjs'),
     readProjectFile('server/client-builder.mjs'),
+    readProjectFile('server/admin-session.mjs'),
   ]);
   assert.match(adminServer, /const uploadDir = join\(dataDir, 'uploads'\)/);
   assert.match(clientBuilder, /const dataDir = resolve\(process\.env\.PAYLOADER_DATA_DIR \|\| join\(rootDir, 'data'\)\)/);
   assert.match(clientBuilder, /const clientCacheRoot = process\.env\.PAYLOADER_CLIENT_CACHE_DIR/);
   assert.match(clientBuilder, /XDG_CACHE_HOME: join\(clientCacheRoot, 'xdg-cache'\)/);
-  assert.match(adminServer, /writeFile\(jwtSecretFile,[\s\S]*?mode:\s*0o600/);
+  assert.match(adminSession, /writeFile\(jwtSecretFile,[\s\S]*?mode:\s*0o600/);
 });
 
 test('public metadata does not claim an unconfigured domain or stale inventory', async () => {
