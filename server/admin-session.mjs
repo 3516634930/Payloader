@@ -1,6 +1,6 @@
 // 管理员 JWT 与会话体系（自 admin-server.mjs 拆出）：HS256 JWT 签发/校验、
 // 每安装密钥持久化（0o600）、服务端会话表与清理。状态随实例隔离，
-// 经 createSessionManager() 工厂创建；凭据经 getCredentials 注入（单向，避免循环依赖）。
+// 经 createSessionManager() 工厂创建（隔离粒度同上）；凭据经 getCredentials 注入（单向，避免循环依赖）。
 
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';

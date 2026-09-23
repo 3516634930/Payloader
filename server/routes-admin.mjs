@@ -232,7 +232,7 @@ export const createAdminRoutes = ({
     }, { group: 'admin' });
   };
 
-  function sendText(response, status, body) {
+  const sendText = (response, status, body) => {
     response.writeHead(status, {
       ...baseResponseHeaders,
       'content-type': 'text/plain; charset=utf-8',

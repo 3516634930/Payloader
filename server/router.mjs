@@ -1,6 +1,7 @@
 // 声明式路由注册表（零依赖）：组内匹配优先级固定为 exact > 长前缀 > 短前缀 > pattern。
 // pattern 支持 :name 与 :name(constraint) 参数段；匹配用原始 pathname，参数值 decodeURIComponent。
 // 命中路径但 method 不在集合时自动 405 并携带 Allow；HEAD 从 GET 集合推导。
+// 注意：pattern 组内按注册顺序 first-match-wins，重叠 pattern 的路由应合并方法集或确保顺序（先专用后宽泛）。
 
 const compilePattern = pattern => {
   const names = [];

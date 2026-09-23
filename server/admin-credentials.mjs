@@ -1,6 +1,6 @@
 // 管理员凭据体系（自 admin-server.mjs 拆出）：scrypt 哈希校验、凭据归一化、
 // 读取/保存（经 data-store metadata）与登录验证并发闸。状态随实例隔离，
-// 经 createCredentialStore() 工厂创建；保存成功后经 onCredentialsSaved 通知（单向，供清空会话）。
+// 经 createCredentialStore() 工厂创建（隔离粒度同上）；保存成功后经 onCredentialsSaved 通知（单向，供清空会话）。
 
 import { createHash, randomBytes, randomUUID, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';

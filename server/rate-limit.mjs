@@ -1,5 +1,5 @@
-// 客户端限流与可信代理解析（自 admin-server.mjs 拆出）：状态随实例隔离，
-// 经 createRateLimiter() 工厂创建，避免模块级单例跨服务器实例泄漏。
+// 客户端限流与可信代理解析（自 admin-server.mjs 拆出）：限流桶状态经 createRateLimiter() 工厂创建，
+// 隔离粒度跟随宿主实例的组合（admin-server 模块级单组合根 + 测试侧唯一 URL import 各得独立状态）。
 
 import { isIP } from 'node:net';
 import { baseResponseHeaders } from './http-helpers.mjs';
