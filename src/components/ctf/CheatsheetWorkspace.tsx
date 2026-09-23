@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { useLanguage } from '../../appContext';
 import { ctfCheatSheets } from '../../utils/ctf/cheatsheets';
-import type { CtfWorkspaceProps } from '../../utils/ctf/modules';
+import type { CtfWorkspaceProps } from '../../utils/ctf/moduleContracts';
 import CheatsheetSection from './CheatsheetSection';
 import ModulePlaceholder from './ModulePlaceholder';
 

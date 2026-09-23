@@ -13,7 +13,7 @@ import {
 import { hydrateCodecHeavyData } from '../utils/codec/heavyData';
 import { useDebouncedCallback } from '../utils/debounce';
 import type { OperationId } from '../utils/codec/types';
-import { ctfModules } from '../utils/ctf/modules';
+import { ctfModules } from './ctf/registry';
 import { detectFileTypes, ROUTE_EXT_GROUPS } from '../utils/ctf/fileDetect';
 import CtfHero from './ctf/CtfHero';
 import '../styles/ctf-toolkit.css';
@@ -22,7 +22,8 @@ const AUTO_DECODE_LIMIT = 20000;
 const CIPHER_MODULE_ID = 'cipher';
 
 // CTF 解题工具箱框架壳（批次 J）：题域导航 + 模块插件化。
-// 各题型域由 src/utils/ctf/modules.ts 注册表声明，加新域 = 注册一个模块对象，不改本框架。
+// 各题型域由 src/components/ctf/registry.tsx 注册表组装（契约数据在 utils/ctf/moduleContracts.ts），
+// 加新域 = 追加一条契约并注册工作区组件，不改本框架。
 // 智能识别 hero 按域变形（heroMode 声明，缺省 full）：cipher 完整置顶；文件/速查域折叠为单行条，
 // 工作区升为该域首屏。检测芯片沿用密码与编码域（buildCtfGroups）的操作集合，行为与重构前一致。
 const CtfToolkit = memo(function CtfToolkit() {

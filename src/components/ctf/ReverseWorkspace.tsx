@@ -20,7 +20,7 @@ import { FINGERPRINT_SCAN_LIMIT, scanConstFingerprints } from '../../utils/ctf/c
 import type { FingerprintCategory, FingerprintHit } from '../../utils/ctf/constFingerprints';
 import { recommendTools } from '../../utils/ctf/recommendTools';
 import type { ToolAnchor } from '../../utils/ctf/recommendTools';
-import type { CtfWorkspaceProps } from '../../utils/ctf/modules';
+import type { CtfWorkspaceProps } from '../../utils/ctf/moduleContracts';
 import '../../styles/ctf-forensics.css';
 import '../../styles/reverse-workspace.css';
 

@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { useLanguage } from '../../appContext';
-import type { CtfWorkspaceProps } from '../../utils/ctf/modules';
+import type { CtfWorkspaceProps } from '../../utils/ctf/moduleContracts';
 import '../../styles/module-placeholder.css';
 
 // 题型域轻占位页（批次 J）：如实告知建设中并预告规划能力，批次 K/L/M 各自替换为真实工作区。

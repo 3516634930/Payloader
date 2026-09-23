@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { buildCtfGroups } from '../../utils/codec/audience';
 import type { OperationId } from '../../utils/codec/types';
-import type { CtfWorkspaceProps } from '../../utils/ctf/modules';
+import type { CtfWorkspaceProps } from '../../utils/ctf/moduleContracts';
 import CodecWorkbench from '../CodecWorkbench';
 import type { CodecWorkbenchHandle } from '../CodecWorkbench';
 

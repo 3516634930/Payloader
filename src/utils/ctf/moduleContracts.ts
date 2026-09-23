@@ -1,19 +1,15 @@
-import type { ComponentType } from 'react';
-import type { OperationId } from '../codec';
-import CheatsheetWorkspace from '../../components/ctf/CheatsheetWorkspace';
-import CipherWorkspace from '../../components/ctf/CipherWorkspace';
-import FileForensicsWorkspace from '../../components/ctf/FileForensicsWorkspace';
-import PwnWorkspace from '../../components/ctf/PwnWorkspace';
-import ReverseWorkspace from '../../components/ctf/ReverseWorkspace';
-import TrafficWorkspace from '../../components/ctf/traffic/TrafficWorkspace';
+import type { OperationId } from '../codec/types';
 
-// CTF 解题工具箱模块注册表（批次 J）：加新题型域 = 在 ctfModules 追加一个 ToolkitModule 对象，不改框架代码。
+// CTF 解题工具箱模块契约层（T2 分层解耦）：纯类型 + 纯数据，零运行时 import（type-only 引用
+// 编译后擦除），因此 node 沙箱可直接加载做运行时断言，工具层也能脱离 React 消费。
+// 组件注入在组件层 registry.tsx 完成（contract + Workspace → 完整注册表）。
+// 加新题型域 = 在 ctfModuleContracts 追加一条契约并在 registry 注册工作区组件，不改框架代码。
 // entryKinds 声明该域接受的入口类型，框架据此决定智能识别 hero 上是否显示"拖入文件"第二入口。
 
 export type ModuleEntryKind = 'text' | 'file' | 'cheatsheet';
 
 export interface CtfWorkspaceProps {
-  module: ToolkitModule;
+  module: ModuleContract;
   // 工作区挂载后把"聚焦指定操作"的能力注册给框架，供智能识别 hero 的检测芯片跨域转发；
   // seedInput 为 hero 当前输入（芯片跳转时同步带入工作台，undefined 表示不带数据）。
   registerFocus?: (focus: ((id: OperationId, seedInput?: string) => void) | null) => void;
@@ -27,12 +23,12 @@ export interface CtfWorkspaceProps {
   onSwitchModule?: (moduleId: string) => void;
 }
 
-export interface ToolkitModule {
+// 域契约（声明性数据）：不含任何组件引用，漂移即破坏魔数路由与 hero 形态（verify 运行时守护）。
+export interface ModuleContract {
   id: string;
   name: { zh: string; en: string };
   icon: string;
   entryKinds: ModuleEntryKind[];
-  Workspace: ComponentType<CtfWorkspaceProps>;
   // 切换域时保持挂载（隐藏不卸载），保留工作台输入与选择状态。
   keepMounted?: boolean;
   // 智能识别 hero 形态：full = 完整 hero（输入 + 密钥栏 + 识别 + 输出，缺省）；
@@ -42,13 +38,12 @@ export interface ToolkitModule {
   note?: { zh: string; en: string };
 }
 
-export const ctfModules: ToolkitModule[] = [
+export const ctfModuleContracts: ModuleContract[] = [
   {
     id: 'cipher',
     name: { zh: '密码与编码', en: 'Ciphers & Encoding' },
     icon: '🔐',
     entryKinds: ['text'],
-    Workspace: CipherWorkspace,
     keepMounted: true,
   },
   {
@@ -56,7 +51,6 @@ export const ctfModules: ToolkitModule[] = [
     name: { zh: '杂项取证', en: 'Misc & Forensics' },
     icon: '🧩',
     entryKinds: ['file'],
-    Workspace: FileForensicsWorkspace,
     keepMounted: true,
     heroMode: 'collapsed',
   },
@@ -65,7 +59,6 @@ export const ctfModules: ToolkitModule[] = [
     name: { zh: '流量分析', en: 'Traffic Analysis' },
     icon: '📡',
     entryKinds: ['file'],
-    Workspace: TrafficWorkspace,
     keepMounted: true,
     heroMode: 'collapsed',
   },
@@ -74,7 +67,6 @@ export const ctfModules: ToolkitModule[] = [
     name: { zh: 'Web', en: 'Web' },
     icon: '🌐',
     entryKinds: ['cheatsheet'],
-    Workspace: CheatsheetWorkspace,
     heroMode: 'collapsed',
     note: {
       zh: '规划能力：Web 题交互式工具台（请求重放、编码链分析）。',
@@ -86,7 +78,6 @@ export const ctfModules: ToolkitModule[] = [
     name: { zh: '逆向', en: 'Reverse' },
     icon: '🔍',
     entryKinds: ['file', 'cheatsheet'],
-    Workspace: ReverseWorkspace,
     keepMounted: true,
     heroMode: 'collapsed',
     note: {
@@ -99,7 +90,6 @@ export const ctfModules: ToolkitModule[] = [
     name: { zh: 'Pwn', en: 'Pwn' },
     icon: '⚔️',
     entryKinds: ['text', 'cheatsheet'],
-    Workspace: PwnWorkspace,
     keepMounted: true,
     heroMode: 'collapsed',
     note: {
@@ -112,7 +102,6 @@ export const ctfModules: ToolkitModule[] = [
     name: { zh: 'AI', en: 'AI' },
     icon: '🤖',
     entryKinds: ['cheatsheet'],
-    Workspace: CheatsheetWorkspace,
     heroMode: 'collapsed',
     note: {
       zh: '规划能力：AI 题专属工具（提示注入用例库、系统提示对照）。',
