@@ -12,7 +12,14 @@ test('encoding tools are loaded on demand from App', async () => {
     read('src/components/Header.tsx'),
   ]);
 
-  assert.match(app, /lazy\(\(\)\s*=>\s*import\(['"]\.\/components\/EncodingTools['"]\)\)/);
+  // @contract: 断言"模块图含懒加载边界"而非精确源码串——精确匹配曾把纯格式化改动
+  // （空白/引号风格）误报为契约破坏。契约本体：EncodingTools 必须经 React.lazy + 动态
+  // import 加载（不进主包）；渲染点必须有 Suspense 包裹；Header 不得静态 import 它。
+  assert.match(
+    app,
+    /lazy\s*\(\s*\(\s*\)\s*=>\s*import\s*\(\s*['"][^'"]*\/EncodingTools['"]\s*\)\s*\)/,
+    'App.tsx 必须以 React.lazy(() => import(...EncodingTools)) 形成懒加载边界',
+  );
   assert.match(app, /<Suspense\b/);
   assert.doesNotMatch(header, /import\s+EncodingTools\s+from/);
 });

@@ -1,66 +1,13 @@
 // 批次 K 杂项取证域引擎测试：全部二进制样本程序化自造（无外部 fixture），逐条验证探测结论。
-// 加载方式与 scripts/verify-encoding-tools.mjs 一致：ts.transpileModule + vm 沙箱逐模块加载 src 源码。
+// 加载方式统一走 tests/helpers/compileTsModule.mjs（T4 测试基建收敛）。
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import path from 'node:path';
-import { createRequire } from 'node:module';
 import test from 'node:test';
-import vm from 'node:vm';
-import ts from 'typescript';
+import { createTsModuleLoader, projectRoot } from './helpers/compileTsModule.mjs';
 
-const require_ = createRequire(import.meta.url);
-const srcDir = path.resolve('src');
-
-const context = {
-  module: { exports: {} },
-  exports: {},
-  require: require_,
-  console,
-  process,
-  Buffer,
-  crypto: globalThis.crypto,
-  atob: value => Buffer.from(value, 'base64').toString('binary'),
-  btoa: value => Buffer.from(value, 'binary').toString('base64'),
-  TextEncoder,
-  TextDecoder,
-  Uint8Array,
-  URL,
-  URLSearchParams,
-  Blob,
-  CompressionStream,
-  DecompressionStream,
-  setTimeout,
-  clearTimeout,
-  globalThis: { Blob, CompressionStream, DecompressionStream },
-};
-context.global = context;
-vm.createContext(context);
-
-const moduleCache = new Map();
-const loadModule = fileName => {
-  const key = path.resolve(fileName);
-  if (moduleCache.has(key)) return moduleCache.get(key).exports;
-  const source = fs.readFileSync(key, 'utf8').replace(/^\uFEFF/, '');
-  const compiled = ts.transpileModule(source, {
-    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, esModuleInterop: true },
-    fileName: key,
-  }).outputText;
-  const mod = { exports: {} };
-  moduleCache.set(key, mod);
-  const localRequire = specifier => {
-    if (specifier.startsWith('.')) {
-      const base = path.resolve(path.dirname(key), specifier);
-      for (const candidate of [base, `${base}.ts`, path.join(base, 'index.ts')]) {
-        if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return loadModule(candidate);
-      }
-      throw new Error(`module not found: ${specifier} (from ${key})`);
-    }
-    return require_(specifier);
-  };
-  const wrapper = vm.runInContext(`(function (exports, require, module, __filename, __dirname) {\n${compiled}\n})`, context, { filename: key });
-  wrapper(mod.exports, localRequire, mod, key, path.dirname(key));
-  return mod.exports;
-};
+// 加载方式统一走 tests/helpers/compileTsModule.mjs（T4 测试基建收敛：同一加载语义只写一遍）。
+const srcDir = path.join(projectRoot, 'src');
+const { loadModule } = createTsModuleLoader();
 
 const fileDetect = loadModule(path.join(srcDir, 'utils', 'ctf', 'fileDetect.ts'));
 const { zeroWidthEncode } = loadModule(path.join(srcDir, 'utils', 'codec', 'textEncodings.ts'));

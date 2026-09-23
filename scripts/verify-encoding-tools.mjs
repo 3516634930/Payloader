@@ -1,17 +1,15 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { createRequire } from 'node:module';
 import path from 'node:path';
 import vm from 'node:vm';
 import crypto from 'node:crypto';
 import { deflateSync, gzipSync, gunzipSync, inflateSync } from 'node:zlib';
-import ts from 'typescript';
+import { createTsModuleLoader } from '../tests/helpers/compileTsModule.mjs';
 
 const rootDir = process.cwd();
 const codecDir = path.join(rootDir, 'src', 'utils', 'codec');
 const codecEntryFile = path.join(codecDir, 'index.ts');
 const encodingToolsSourceFile = path.join(rootDir, 'src', 'components', 'EncodingTools.tsx');
-const nodeRequire = createRequire(import.meta.url);
 
 // ---- 断言口径配置区（T3 收敛）：记账快照与样本清单集中声明，语义就地注释 ----
 
@@ -42,78 +40,21 @@ let encodingToolsVmContext = null;
 // 沙箱加载器句柄：run 断言区用它加载 codec 图之外的零 React 模块（如 ctf/fileDetect）做运行时断言。
 let sharedLoadModule = null;
 
+// 沙箱加载器统一走 tests/helpers/compileTsModule.mjs（T4 测试基建收敛）；
+// 白名单注入以 cwd 相对路径键定位 codec 桶入口（getter 型 re-export 无法被 shorthand 引用，
+// hydrateCodecHeavyData 以 require 显式补挂）。
 const compileEncodingToolsModule = () => {
-  const context = {
-    module: { exports: {} },
-    exports: {},
-    require: nodeRequire,
-    console,
-    process,
-    Buffer,
-    crypto: globalThis.crypto || crypto.webcrypto,
-    atob: value => Buffer.from(value, 'base64').toString('binary'),
-    btoa: value => Buffer.from(value, 'binary').toString('base64'),
-    TextEncoder,
-    TextDecoder,
-    Uint8Array,
-    URL,
-    URLSearchParams,
-    Blob,
-    CompressionStream,
-    DecompressionStream,
-    setTimeout,
-    clearTimeout,
-    globalThis: { Blob, CompressionStream, DecompressionStream },
-  };
-  context.global = context;
-  vm.createContext(context);
-
-  const moduleCache = new Map();
-  const loadModule = fileName => {
-    const key = path.resolve(fileName);
-    const cached = moduleCache.get(key);
-    if (cached) return cached.exports;
-    let source = fs.readFileSync(key, 'utf8').replace(/^\uFEFF/, '');
-    if (key === path.resolve(codecEntryFile)) {
-      source += `\nmodule.exports = { ${ENTRY_EXPORTS.join(', ')} };\n`;
-      // hydrateCodecHeavyData 经 `export { x } from './heavyData'` 转译为 getter，无顶层绑定可被
-      // 白名单 shorthand 引用，故以 require 显式补挂（localRequire 的候选解析覆盖 ./heavyData.ts）。
-      source += '\nmodule.exports.hydrateCodecHeavyData = require("./heavyData").hydrateCodecHeavyData;\n';
-    }
-    const compiled = ts.transpileModule(source, {
-      compilerOptions: {
-        target: ts.ScriptTarget.ES2022,
-        module: ts.ModuleKind.CommonJS,
-        jsx: ts.JsxEmit.ReactJSX,
-        esModuleInterop: true,
-      },
-      fileName: key,
-    }).outputText;
-    const mod = { exports: {} };
-    moduleCache.set(key, mod);
-    const localRequire = specifier => {
-      if (specifier.startsWith('.')) {
-        const base = path.resolve(path.dirname(key), specifier);
-        for (const candidate of [base, `${base}.ts`, path.join(base, 'index.ts')]) {
-          if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return loadModule(candidate);
-        }
-        throw new Error(`codec module not found: ${specifier} (from ${key})`);
-      }
-      return nodeRequire(specifier);
-    };
-    const wrapper = vm.runInContext(
-      `(function (exports, require, module, __filename, __dirname) {\n${compiled}\n})`,
-      context,
-      { filename: key },
-    );
-    wrapper(mod.exports, localRequire, mod, key, path.dirname(key));
-    return mod.exports;
-  };
-
-  loadModule(codecEntryFile);
+  const { context, loadModule } = createTsModuleLoader({
+    injectExports: {
+      'src/utils/codec/index.ts':
+        `\nmodule.exports = { ${ENTRY_EXPORTS.join(', ')} };\n`
+        + '\nmodule.exports.hydrateCodecHeavyData = require("./heavyData").hydrateCodecHeavyData;\n',
+    },
+  });
+  const codecExports = loadModule(codecEntryFile);
   encodingToolsVmContext = context;
   sharedLoadModule = loadModule;
-  return moduleCache.get(path.resolve(codecEntryFile)).exports;
+  return codecExports;
 };
 
 const modPow = (base, exponent, modulus) => {
