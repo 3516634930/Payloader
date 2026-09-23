@@ -13,6 +13,30 @@ const codecEntryFile = path.join(codecDir, 'index.ts');
 const encodingToolsSourceFile = path.join(rootDir, 'src', 'components', 'EncodingTools.tsx');
 const nodeRequire = createRequire(import.meta.url);
 
+// ---- 断言口径配置区（T3 收敛）：记账快照与样本清单集中声明，语义就地注释 ----
+
+// codec 桶入口白名单（单一声明点）：下方沙箱注入（join 生成）与解构循环校验两处消费，
+// 新增导出只改这里——两处漂移曾是本脚本最大的维护陷阱。
+const ENTRY_EXPORTS = [
+  'transform', 'defaultParams', 'detectInput', 'smartDecode', 'extractPureDecodeResult',
+  'inferRsaParamsFromText', 'inferDlpFromText', 'factorSmallRsaModulus', 'operations',
+  'gsm7DefaultAlphabet', 'gsm7ExtensionAlphabet', 'operationAudience', 'buildPentestGroups',
+  'buildCtfGroups', 'buildCtfMenus', 'findFlagAutoRanges', 'detectFlagFormats',
+  'parityBaseVectors', 'parityCharVectors', 'parityCnVectors', 'parityKeyedVectors',
+  'parityNumVectors', 'parityProbes',
+];
+
+// 受众记账口径（批次 W 纠偏定稿）：全部操作 242 个 = ctf 155 + both 85 + pentest 2，
+// 钉住具体数字防止清单无声漂移。
+const AUDIENCE_SNAPSHOT = { total: 242, ctf: 155, both: 85, pentest: 2 };
+
+// 批次 O 形状探针中仍验证智能解码可达性的样本集（telecode/quwei 等 4 位数字组形态与日期/编号
+// 不可区分，已退出直解路径只出芯片，故不在自动解码样本内）。
+const AUTO_SAMPLE_IDS = ['base100', 'braille', 'bagua-symbols', 'core-values', 'deadfish', 'manchester'];
+
+// 形状探针芯片最少实测覆盖数：至少 20 个探针要有真实样本命中验证（防新探针无样本空转）。
+const MIN_CHIP_CHECKS = 20;
+
 // 求值器在 vm realm 内运行；污染探针必须放进同一 realm 才能看到真实写入
 let encodingToolsVmContext = null;
 // 沙箱加载器句柄：run 断言区用它加载 codec 图之外的零 React 模块（如 ctf/fileDetect）做运行时断言。
@@ -51,7 +75,7 @@ const compileEncodingToolsModule = () => {
     if (cached) return cached.exports;
     let source = fs.readFileSync(key, 'utf8').replace(/^\uFEFF/, '');
     if (key === path.resolve(codecEntryFile)) {
-      source += '\nmodule.exports = { transform, defaultParams, detectInput, smartDecode, extractPureDecodeResult, inferRsaParamsFromText, inferDlpFromText, factorSmallRsaModulus, operations, gsm7DefaultAlphabet, gsm7ExtensionAlphabet, operationAudience, buildPentestGroups, buildCtfGroups, buildCtfMenus, findFlagAutoRanges, detectFlagFormats, parityBaseVectors, parityCharVectors, parityCnVectors, parityKeyedVectors, parityNumVectors, parityProbes };\n';
+      source += `\nmodule.exports = { ${ENTRY_EXPORTS.join(', ')} };\n`;
       // hydrateCodecHeavyData 经 `export { x } from './heavyData'` 转译为 getter，无顶层绑定可被
       // 白名单 shorthand 引用，故以 require 显式补挂（localRequire 的候选解析覆盖 ./heavyData.ts）。
       source += '\nmodule.exports.hydrateCodecHeavyData = require("./heavyData").hydrateCodecHeavyData;\n';
@@ -135,6 +159,11 @@ const expect = (condition, message) => {
   if (!condition) throw new Error(message);
 };
 
+const codecExports = compileEncodingToolsModule();
+const missingExports = ENTRY_EXPORTS.filter(name => !(name in codecExports));
+if (missingExports.length > 0) {
+  throw new Error(`codec 入口缺失白名单导出：${missingExports.join(', ')}（补齐 src/utils/codec/index.ts 或修正 ENTRY_EXPORTS）`);
+}
 const {
   transform,
   defaultParams,
@@ -153,20 +182,19 @@ const {
   buildCtfMenus,
   findFlagAutoRanges,
   detectFlagFormats,
-  hydrateCodecHeavyData,
   parityBaseVectors,
   parityCharVectors,
   parityCnVectors,
   parityKeyedVectors,
   parityNumVectors,
   parityProbes,
-} = compileEncodingToolsModule();
+} = codecExports;
 
 // 古典密码 quadgram 评分表（609KB）已拆为 ngramTableData.ts 动态 chunk：生产路径经
 // hydrateCodecHeavyData 异步注水。沙箱内动态 import 被 ts 转译为 Promise + require，
 // localRequire 可解析，await 同一入口即可到位——不注水则评分恒为 -9999，
 // 智能识别/无密钥还原类回归会因候选排序退化而失败。
-await hydrateCodecHeavyData();
+await codecExports.hydrateCodecHeavyData();
 
 const results = [];
 
@@ -880,77 +908,78 @@ await run('ChaCha20 original is discoverable in crypto operations', async () => 
   assert.equal(operation.supportsDecode, undefined);
 });
 
-await run('RSA messy labels with explicit factors', async () => {
-  const input = [
-    'The modulus value is 3233',
-    'public exponent equals 17',
-    'ciphertext blob was 2790',
-    'prime factor p = 61',
-    'prime factor q = 53',
-  ].join('\n');
-  const output = JSON.parse(await transform('rsa-raw', 'decode', input, defaultParams));
-  assert.equal(output.output.decimal, '65');
-});
+// ---- RSA 标签/中文/表达式提示批（T3 压缩）：case 表 + 共享 runner ----
+// 断言 DSL：includes=输出文本包含；decimal=JSON output.output.decimal；
+// notes=JSON inference 数组存在包含片段的 note；field=JSON 顶层字段。
+const runRsaLabelCases = async cases => {
+  for (const { caseName, lines: caseLines, targets } of cases) {
+    await run(caseName, async () => {
+      const input = caseLines.join('\n');
+      for (const target of targets) {
+        const output = await transform(target.op, 'decode', input, defaultParams);
+        for (const marker of target.includes ?? []) {
+          expect(output.includes(marker), `${caseName}: 输出缺少 ${marker}`);
+        }
+        if (target.decimal || target.notes || target.field) {
+          const parsed = JSON.parse(output);
+          if (target.decimal) assert.equal(parsed.output.decimal, target.decimal, `${caseName}: output.decimal 不符`);
+          for (const note of target.notes ?? []) {
+            expect(parsed.inference.some(entry => entry.includes(note)), `${caseName}: inference 缺少 ${note}`);
+          }
+          for (const [fieldKey, fieldValue] of Object.entries(target.field ?? {})) {
+            assert.equal(parsed[fieldKey], fieldValue, `${caseName}: 字段 ${fieldKey} 不符`);
+          }
+        }
+      }
+    });
+  }
+};
 
-await run('smart-decode routes messy RSA labels to raw RSA decrypt', async () => {
-  const input = [
-    'The modulus value is 3233',
-    'public exponent equals 17',
-    'ciphertext blob was 2790',
-    'prime factor p = 61',
-    'prime factor q = 53',
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('RSA Raw / Textbook'), 'smart-decode did not route messy RSA labels');
-  expect(output.includes('"decimal": "65"'), 'smart-decode RSA output missing plaintext');
-});
+const MESSY_RSA_LINES = [
+  'The modulus value is 3233',
+  'public exponent equals 17',
+  'ciphertext blob was 2790',
+  'prime factor p = 61',
+  'prime factor q = 53',
+];
 
-await run('RSA accepts Chinese full labels, mixed case aliases, and fullwidth separators', async () => {
-  const input = [
-    '模数（N）：3233',
-    '公钥指数（e）＝17',
-    '密文（Cipher_Text）：2790',
-    '质数 P：61',
-    '质数 q：53',
-  ].join('\n');
-  const direct = JSON.parse(await transform('rsa-raw', 'decode', input, defaultParams));
-  assert.equal(direct.output.decimal, '65');
+const RSA_LABEL_CASES_EARLY = [
+  {
+    caseName: 'RSA messy labels with explicit factors',
+    lines: MESSY_RSA_LINES,
+    targets: [{ op: 'rsa-raw', decimal: '65' }],
+  },
+  {
+    caseName: 'smart-decode routes messy RSA labels to raw RSA decrypt',
+    lines: MESSY_RSA_LINES,
+    targets: [{ op: 'smart-decode', includes: ['RSA Raw / Textbook', '"decimal": "65"'] }],
+  },
+  {
+    caseName: 'RSA accepts Chinese full labels, mixed case aliases, and fullwidth separators',
+    lines: ['模数（N）：3233', '公钥指数（e）＝17', '密文（Cipher_Text）：2790', '质数 P：61', '质数 q：53'],
+    targets: [{ op: 'rsa-raw', decimal: '65' }, { op: 'smart-decode', includes: ['RSA Raw / Textbook', '"decimal": "65"'] }],
+  },
+  {
+    caseName: 'RSA accepts pure Chinese parameter names without English aliases',
+    lines: ['模数：3233', '公钥指数：17', '密文：2790', '第一质数：61', '第二质数：53'],
+    targets: [{ op: 'rsa-raw', decimal: '65' }, { op: 'smart-decode', includes: ['RSA Raw / Textbook', '"decimal": "65"'] }],
+  },
+  {
+    caseName: 'smart-decode keeps Chinese RSA analysis ahead of embedded Base64-looking data',
+    lines: [
+      '加密算法：RSA',
+      '提示：附件名为 ZmxhZ3tub3Rfcm91dGVkfQ==，不要把它当作待解密密文。',
+      '模数：3233',
+      '公钥指数：17',
+      '密文：2790',
+      '第一质数：61',
+      '第二质数：53',
+    ],
+    targets: [{ op: 'smart-decode', includes: ['RSA Raw / Textbook', '"decimal": "65"'] }],
+  },
+];
 
-  const smart = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(smart.includes('RSA Raw / Textbook'), 'smart-decode did not route Chinese RSA labels');
-  expect(smart.includes('"decimal": "65"'), 'smart-decode Chinese RSA output missing plaintext');
-});
-
-await run('RSA accepts pure Chinese parameter names without English aliases', async () => {
-  const input = [
-    '模数：3233',
-    '公钥指数：17',
-    '密文：2790',
-    '第一质数：61',
-    '第二质数：53',
-  ].join('\n');
-  const direct = JSON.parse(await transform('rsa-raw', 'decode', input, defaultParams));
-  assert.equal(direct.output.decimal, '65');
-
-  const smart = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(smart.includes('RSA Raw / Textbook'), 'smart-decode did not route pure Chinese RSA labels');
-  expect(smart.includes('"decimal": "65"'), 'smart-decode pure Chinese RSA output missing plaintext');
-});
-
-await run('smart-decode keeps Chinese RSA analysis ahead of embedded Base64-looking data', async () => {
-  const input = [
-    '加密算法：RSA',
-    '提示：附件名为 ZmxhZ3tub3Rfcm91dGVkfQ==，不要把它当作待解密密文。',
-    '模数：3233',
-    '公钥指数：17',
-    '密文：2790',
-    '第一质数：61',
-    '第二质数：53',
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('RSA Raw / Textbook'), 'smart-decode extracted an unrelated Base64-looking field before RSA');
-  expect(output.includes('"decimal": "65"'), 'smart-decode RSA result missing after embedded Base64-looking data');
-});
+await runRsaLabelCases(RSA_LABEL_CASES_EARLY);
 
 await run('Pollard Rho path factors n from n/e/c only', async () => {
   const p = 1000003n;
@@ -988,289 +1017,103 @@ await run('rsa-helper detection works for messy public-key-only prose', async ()
   assert.equal(inference.params.e, '17');
 });
 
-await run('smart-decode falls back to RSA helper for messy public-key prose', async () => {
-  const input = [
-    'public key challenge',
-    'modulus value is 3233',
-    'public exponent equals 17',
-    'known pair message 2 gives ciphertext 1752',
-    'known pair message 42 gives ciphertext 2557',
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('RSA CTF Helper'), 'smart-decode did not fall back to RSA helper');
-  expect(output.includes('"n": "3233"'), 'RSA helper output missing inferred modulus');
-  expect(output.includes('"e": "17"'), 'RSA helper output missing inferred exponent');
-});
+const RSA_LABEL_CASES_LATE = [
+  {
+    caseName: 'smart-decode falls back to RSA helper for messy public-key prose',
+    lines: [
+      'public key challenge',
+      'modulus value is 3233',
+      'public exponent equals 17',
+      'known pair message 2 gives ciphertext 1752',
+      'known pair message 42 gives ciphertext 2557',
+    ],
+    targets: [{ op: 'smart-decode', includes: ['RSA CTF Helper', '"n": "3233"', '"e": "17"'] }],
+  },
+  {
+    caseName: 'RSA single-quote pseudo-JSON fields are parsed',
+    lines: ["{'n': 3233, 'e': 17, 'c': 2790, 'p': 61, 'q': 53}"],
+    targets: [{ op: 'rsa-raw', decimal: '65' }],
+  },
+  {
+    caseName: 'RSA p+q hint recovers factors',
+    lines: ['n = 3233', 'e = 17', 'ciphertext = 2790', 'p + q = 114'],
+    targets: [{ op: 'rsa-raw', decimal: '65', notes: ['由 n 与 (p+q) 提示恢复 p', '由 n 与 (p+q) 提示恢复 q'] }],
+  },
+  {
+    caseName: 'RSA p-q hint recovers factors',
+    lines: ['n = 3233', 'e = 17', 'ciphertext = 2790', 'p - q = 8'],
+    targets: [{ op: 'rsa-raw', decimal: '65', notes: ['由 n 与 |p-q| 提示恢复 p', '由 n 与 |p-q| 提示恢复 q'] }],
+  },
+  {
+    caseName: 'RSA arithmetic expressions n=p*q and phi=(p-1)*(q-1) are evaluated',
+    lines: ['p = 61', 'q = 53', 'n = p*q', 'phi = (p-1)*(q-1)', 'e = 17', 'c = 2790'],
+    targets: [{ op: 'rsa-raw', decimal: '65', field: { modulus: '3233' } }],
+  },
+  {
+    caseName: 'RSA chained arithmetic references are evaluated from helper variables',
+    lines: [
+      'prime1 = 61',
+      'prime2 = 53',
+      'modulus = prime1 * prime2',
+      'totient = (prime1 - 1) * (prime2 - 1)',
+      'public exponent = 17',
+      'ciphertext = 2790',
+    ],
+    targets: [{ op: 'smart-decode', includes: ['RSA Raw / Textbook', '"decimal": "65"'] }],
+  },
+  {
+    caseName: 'RSA modular inverse helper expression d = pow(e, -1, phi) is evaluated',
+    lines: ['p = 61', 'q = 53', 'n = p*q', 'phi = (p-1)*(q-1)', 'e = 17', 'd = pow(e, -1, phi)', 'c = 2790'],
+    targets: [{ op: 'rsa-raw', decimal: '65' }],
+  },
+  {
+    caseName: 'RSA inverse(e, phi) helper expression is evaluated',
+    lines: ['p = 61', 'q = 53', 'n = p*q', 'phi = (p-1)*(q-1)', 'e = 17', 'd = inverse(e, phi)', 'ciphertext = 2790'],
+    targets: [{ op: 'smart-decode', includes: ['"decimal": "65"'] }],
+  },
+  {
+    caseName: 'RSA gmpy2.invert(e, phi) helper expression is evaluated',
+    lines: ['p = 61', 'q = 53', 'n = p*q', 'phi = (p-1)*(q-1)', 'e = 17', 'd = gmpy2.invert(e, phi)', 'ciphertext = 2790'],
+    targets: [{ op: 'smart-decode', includes: ['"decimal": "65"'] }],
+  },
+];
 
-await run('RSA single-quote pseudo-JSON fields are parsed', async () => {
-  const input = "{'n': 3233, 'e': 17, 'c': 2790, 'p': 61, 'q': 53}";
-  const output = JSON.parse(await transform('rsa-raw', 'decode', input, defaultParams));
-  assert.equal(output.output.decimal, '65');
-});
+await runRsaLabelCases(RSA_LABEL_CASES_LATE);
 
-await run('RSA p+q hint recovers factors', async () => {
-  const input = [
-    'n = 3233',
-    'e = 17',
-    'ciphertext = 2790',
-    'p + q = 114',
-  ].join('\n');
-  const output = JSON.parse(await transform('rsa-raw', 'decode', input, defaultParams));
-  assert.equal(output.output.decimal, '65');
-  expect(output.inference.some(note => note.includes('由 n 与 (p+q) 提示恢复 p')), 'RSA sum hint did not recover p');
-  expect(output.inference.some(note => note.includes('由 n 与 (p+q) 提示恢复 q')), 'RSA sum hint did not recover q');
-});
-
-await run('RSA p-q hint recovers factors', async () => {
-  const input = [
-    'n = 3233',
-    'e = 17',
-    'ciphertext = 2790',
-    'p - q = 8',
-  ].join('\n');
-  const output = JSON.parse(await transform('rsa-raw', 'decode', input, defaultParams));
-  assert.equal(output.output.decimal, '65');
-  expect(output.inference.some(note => note.includes('由 n 与 |p-q| 提示恢复 p')), 'RSA diff hint did not recover p');
-  expect(output.inference.some(note => note.includes('由 n 与 |p-q| 提示恢复 q')), 'RSA diff hint did not recover q');
-});
-
-await run('RSA arithmetic expressions n=p*q and phi=(p-1)*(q-1) are evaluated', async () => {
-  const input = [
-    'p = 61',
-    'q = 53',
-    'n = p*q',
-    'phi = (p-1)*(q-1)',
-    'e = 17',
-    'c = 2790',
-  ].join('\n');
-  const output = JSON.parse(await transform('rsa-raw', 'decode', input, defaultParams));
-  assert.equal(output.output.decimal, '65');
-  assert.equal(output.modulus, '3233');
-});
-
-await run('RSA chained arithmetic references are evaluated from helper variables', async () => {
-  const input = [
-    'prime1 = 61',
-    'prime2 = 53',
-    'modulus = prime1 * prime2',
-    'totient = (prime1 - 1) * (prime2 - 1)',
-    'public exponent = 17',
-    'ciphertext = 2790',
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('RSA Raw / Textbook'), 'Chained arithmetic RSA was not routed to raw decrypt');
-  expect(output.includes('"decimal": "65"'), 'Chained arithmetic RSA did not recover plaintext 65');
-});
-
-await run('RSA modular inverse helper expression d = pow(e, -1, phi) is evaluated', async () => {
-  const input = [
-    'p = 61',
-    'q = 53',
-    'n = p*q',
-    'phi = (p-1)*(q-1)',
-    'e = 17',
-    'd = pow(e, -1, phi)',
-    'c = 2790',
-  ].join('\n');
-  const output = JSON.parse(await transform('rsa-raw', 'decode', input, defaultParams));
-  assert.equal(output.output.decimal, '65');
-});
-
-await run('RSA inverse(e, phi) helper expression is evaluated', async () => {
-  const input = [
-    'p = 61',
-    'q = 53',
-    'n = p*q',
-    'phi = (p-1)*(q-1)',
-    'e = 17',
-    'd = inverse(e, phi)',
-    'ciphertext = 2790',
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('"decimal": "65"'), 'inverse(e, phi) RSA did not recover plaintext 65');
-});
-
-await run('RSA gmpy2.invert(e, phi) helper expression is evaluated', async () => {
-  const input = [
-    'p = 61',
-    'q = 53',
-    'n = p*q',
-    'phi = (p-1)*(q-1)',
-    'e = 17',
-    'd = gmpy2.invert(e, phi)',
-    'ciphertext = 2790',
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('"decimal": "65"'), 'gmpy2.invert(e, phi) RSA did not recover plaintext 65');
-});
-
-await run('RSA bytes_to_long(...) and pow(m, e, n) script fragments are evaluated', async () => {
-  const input = [
-    'p = 61',
-    'q = 53',
-    'n = p*q',
-    'e = 17',
-    "m = bytes_to_long(b'A')",
-    'c = pow(m, e, n)',
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('"decimal": "65"'), 'bytes_to_long(...) RSA script did not recover plaintext 65');
-});
-
-await run('RSA int.from_bytes(...) script fragments are evaluated', async () => {
-  const input = [
-    'p = 61',
-    'q = 53',
-    'n = p*q',
-    'e = 17',
-    "m = int.from_bytes(b'A', 'big')",
-    'c = pow(m, e, n)',
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('"decimal": "65"'), 'int.from_bytes(...) RSA script did not recover plaintext 65');
-});
-
-await run('RSA int(hex_string, 16) helper expression is evaluated', async () => {
-  const input = [
-    'p = 61',
-    'q = 53',
-    'n = p*q',
-    'e = 17',
-    "m = int('41', 16)",
-    'c = pow(m, e, n)',
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('"decimal": "65"'), 'int(hex_string, 16) RSA script did not recover plaintext 65');
-});
-
-await run('RSA bytes.fromhex(hex(m)[2:]) writeup-style fragments are evaluated', async () => {
-  const input = [
-    'p = 61',
-    'q = 53',
-    'n = p*q',
-    'e = 17',
-    'm = bytes_to_long(bytes.fromhex(hex(65)[2:]))',
-    'c = pow(m, e, n)',
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('"decimal": "65"'), 'bytes.fromhex(hex(m)[2:]) RSA script did not recover plaintext 65');
-});
-
-await run('RSA binascii.unhexlify(...) helper fragments are evaluated', async () => {
-  const input = [
-    'p = 61',
-    'q = 53',
-    'n = p*q',
-    'e = 17',
-    'm = bytes_to_long(binascii.unhexlify("41"))',
-    'c = pow(m, e, n)',
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('"decimal": "65"'), 'binascii.unhexlify(...) RSA script did not recover plaintext 65');
-});
-
-await run('RSA Crypto.Util.number.bytes_to_long(...) fragments are evaluated', async () => {
-  const input = [
-    'p = 61',
-    'q = 53',
-    'n = p*q',
-    'e = 17',
-    "m = Crypto.Util.number.bytes_to_long(b'A')",
-    'c = pow(m, e, n)',
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('"decimal": "65"'), 'Crypto.Util.number.bytes_to_long(...) RSA script did not recover plaintext 65');
-});
-
-await run('RSA libnum.s2n(...) fragments are evaluated', async () => {
-  const input = [
-    'p = 61',
-    'q = 53',
-    'n = p*q',
-    'e = 17',
-    "m = libnum.s2n('A')",
-    'c = pow(m, e, n)',
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('"decimal": "65"'), 'libnum.s2n(...) RSA script did not recover plaintext 65');
-});
-
-await run('RSA single-line pow(bytes_to_long(flag), e, n) style fragments are evaluated', async () => {
-  const input = [
-    'p = 61',
-    'q = 53',
-    'n = p*q',
-    'e = 17',
-    "c = pow(bytes_to_long(b'A'), e, n)",
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('"decimal": "65"'), 'pow(bytes_to_long(flag), e, n) style RSA fragment did not recover plaintext 65');
-});
-
-await run('RSA bytearray.fromhex(...) fragments are evaluated', async () => {
-  const input = [
-    'p = 61',
-    'q = 53',
-    'n = p*q',
-    'e = 17',
-    "m = bytes_to_long(bytearray.fromhex('41'))",
-    'c = pow(m, e, n)',
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('"decimal": "65"'), 'bytearray.fromhex(...) RSA script did not recover plaintext 65');
-});
-
-await run('RSA single-line pow(Crypto.Util.number.bytes_to_long(flag), e, n) fragments are evaluated', async () => {
-  const input = [
-    'p = 61',
-    'q = 53',
-    'n = p*q',
-    'e = 17',
-    "c = pow(Crypto.Util.number.bytes_to_long(b'A'), e, n)",
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('"decimal": "65"'), 'pow(Crypto.Util.number.bytes_to_long(flag), e, n) RSA fragment did not recover plaintext 65');
-});
-
-await run('RSA long_to_bytes(pow(c, d, n)) solve fragments are evaluated', async () => {
-  const input = [
-    'n = 3233',
-    'e = 17',
-    'p = 61',
-    'q = 53',
-    'c = 2790',
-    'm = pow(c, pow(e, -1, (p-1)*(q-1)), n)',
-    'decoded = long_to_bytes(m)',
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('"decimal": "65"'), 'long_to_bytes(pow(c, d, n)) RSA solve fragment did not recover plaintext 65');
-});
-
-await run('RSA libnum.n2s(pow(c, d, n)) solve fragments are evaluated', async () => {
-  const input = [
-    'n = 3233',
-    'e = 17',
-    'p = 61',
-    'q = 53',
-    'c = 2790',
-    'decoded = libnum.n2s(pow(c, pow(e, -1, (p-1)*(q-1)), n))',
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('"decimal": "65"'), 'libnum.n2s(pow(c, d, n)) RSA solve fragment did not recover plaintext 65');
-});
-
-await run('RSA bytes.fromhex(hex(pow(c, d, n))[2:]) solve fragments are evaluated', async () => {
-  const input = [
-    'n = 3233',
-    'e = 17',
-    'p = 61',
-    'q = 53',
-    'c = 2790',
-    'decoded = bytes.fromhex(hex(pow(c, pow(e, -1, (p-1)*(q-1)), n))[2:])',
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('"decimal": "65"'), 'bytes.fromhex(hex(pow(c, d, n))[2:]) RSA solve fragment did not recover plaintext 65');
-});
+// ---- RSA CTF writeup 脚本片段批（T3 压缩）：同一解码骨架只留变化行，单 runner 断言明文 65 ----
+// m-型骨架：p/q 因子 + n=p*q 链式求值 + e，随后是各类语言级整数转换写法；
+// solve-型骨架：直接给 n/e/p/q/c，用 pow(e,-1,phi) 求私钥指数后解码。
+const RSA_FRAGMENT_M_CASES = [
+  ['RSA bytes_to_long(...) and pow(m, e, n) script fragments are evaluated', ["m = bytes_to_long(b'A')", 'c = pow(m, e, n)']],
+  ['RSA int.from_bytes(...) script fragments are evaluated', ["m = int.from_bytes(b'A', 'big')", 'c = pow(m, e, n)']],
+  ['RSA int(hex_string, 16) helper expression is evaluated', ["m = int('41', 16)", 'c = pow(m, e, n)']],
+  ['RSA bytes.fromhex(hex(m)[2:]) writeup-style fragments are evaluated', ['m = bytes_to_long(bytes.fromhex(hex(65)[2:]))', 'c = pow(m, e, n)']],
+  ['RSA binascii.unhexlify(...) helper fragments are evaluated', ['m = bytes_to_long(binascii.unhexlify("41"))', 'c = pow(m, e, n)']],
+  ['RSA Crypto.Util.number.bytes_to_long(...) fragments are evaluated', ["m = Crypto.Util.number.bytes_to_long(b'A')", 'c = pow(m, e, n)']],
+  ['RSA libnum.s2n(...) fragments are evaluated', ["m = libnum.s2n('A')", 'c = pow(m, e, n)']],
+  ['RSA single-line pow(bytes_to_long(flag), e, n) style fragments are evaluated', ["c = pow(bytes_to_long(b'A'), e, n)"]],
+  ['RSA bytearray.fromhex(...) fragments are evaluated', ["m = bytes_to_long(bytearray.fromhex('41'))", 'c = pow(m, e, n)']],
+  ['RSA single-line pow(Crypto.Util.number.bytes_to_long(flag), e, n) fragments are evaluated', ["c = pow(Crypto.Util.number.bytes_to_long(b'A'), e, n)"]],
+];
+const RSA_FRAGMENT_SOLVE_CASES = [
+  ['RSA long_to_bytes(pow(c, d, n)) solve fragments are evaluated', ['m = pow(c, pow(e, -1, (p-1)*(q-1)), n)', 'decoded = long_to_bytes(m)']],
+  ['RSA libnum.n2s(pow(c, d, n)) solve fragments are evaluated', ['decoded = libnum.n2s(pow(c, pow(e, -1, (p-1)*(q-1)), n))']],
+  ['RSA bytes.fromhex(hex(pow(c, d, n))[2:]) solve fragments are evaluated', ['decoded = bytes.fromhex(hex(pow(c, pow(e, -1, (p-1)*(q-1)), n))[2:])']],
+];
+for (const [fragmentName, fragmentLines] of RSA_FRAGMENT_M_CASES) {
+  await run(fragmentName, async () => {
+    const input = ['p = 61', 'q = 53', 'n = p*q', 'e = 17', ...fragmentLines].join('\n');
+    const output = await transform('smart-decode', 'decode', input, defaultParams);
+    expect(output.includes('"decimal": "65"'), `${fragmentName} did not recover plaintext 65`);
+  });
+}
+for (const [fragmentName, fragmentLines] of RSA_FRAGMENT_SOLVE_CASES) {
+  await run(fragmentName, async () => {
+    const input = ['n = 3233', 'e = 17', 'p = 61', 'q = 53', 'c = 2790', ...fragmentLines].join('\n');
+    const output = await transform('smart-decode', 'decode', input, defaultParams);
+    expect(output.includes('"decimal": "65"'), `${fragmentName} did not recover plaintext 65`);
+  });
+}
 
 await run('RSA common modulus works for dict-style records', async () => {
   const n = 3233n;
@@ -1535,6 +1378,32 @@ await run('RSA keypair tuple alias with enc alias works', async () => {
   expect(output.includes('"decimal": "42"'), 'keypair tuple alias records did not recover plaintext 42');
 });
 
+// ---- 签名重复随机数批（T3 压缩）：教科书签名构造前奏上提，消除多份雷同变量区 ----
+// ECDSA/DSA 教科书签名：s = k⁻¹(z + r·d) mod n（同 k 签两次即泄露私钥）。
+const ecdsaSignaturePair = ({ order, privateKey, nonce, r, z1, z2 }) => {
+  const nonceInverse = modInverse(nonce, order);
+  const s1 = (nonceInverse * ((z1 + r * privateKey) % order)) % order;
+  const s2 = (nonceInverse * ((z2 + r * privateKey) % order)) % order;
+  return { s1, s2 };
+};
+// z 由消息 SHA-256 摘要截断派生的变体（msg/alg 输入路径）。
+const ecdsaZPairFromMessages = async ({ order, msg1, msg2 }) => ({
+  z1: digestHexToOrderInt(await digestForTest(msg1, 'sha256'), order),
+  z2: digestHexToOrderInt(await digestForTest(msg2, 'sha256'), order),
+});
+// JOSE ES256 教科书 token 对：固定 r、两个不同 s 的 base64url 三段式 JWT。
+const joseTokenPair = () => {
+  const rHex = '0000000000000000000000000000000000000000000000000000000000000011';
+  const s1Hex = '0000000000000000000000000000000000000000000000000000000000000038';
+  const s2Hex = '000000000000000000000000000000000000000000000000000000000000004f';
+  const signature1 = Buffer.from(`${rHex}${s1Hex}`, 'hex').toString('base64url');
+  const signature2 = Buffer.from(`${rHex}${s2Hex}`, 'hex').toString('base64url');
+  const header = Buffer.from(JSON.stringify({ alg: 'ES256', typ: 'JWT' })).toString('base64url');
+  const payload1 = Buffer.from(JSON.stringify({ sub: 'alice', iat: 1 })).toString('base64url');
+  const payload2 = Buffer.from(JSON.stringify({ sub: 'bob', iat: 2 })).toString('base64url');
+  return [`${header}.${payload1}.${signature1}`, `${header}.${payload2}.${signature2}`];
+};
+
 await run('ECDSA nonce reuse works for dict-style records', async () => {
   const order = 101n;
   const privateKey = 11n;
@@ -1542,9 +1411,7 @@ await run('ECDSA nonce reuse works for dict-style records', async () => {
   const r = 17n;
   const z1 = 33n;
   const z2 = 44n;
-  const nonceInverse = modInverse(nonce, order);
-  const s1 = (nonceInverse * ((z1 + r * privateKey) % order)) % order;
-  const s2 = (nonceInverse * ((z2 + r * privateKey) % order)) % order;
+  const { s1, s2 } = ecdsaSignaturePair({ order, privateKey, nonce, r, z1, z2 });
   const input = `signatures = [{'scheme': 'ecdsa', 'order': ${order}, 'r': ${r}, 's': ${s1}, 'z': ${z1}}, {'scheme': 'ecdsa', 'order': ${order}, 'r': ${r}, 's': ${s2}, 'z': ${z2}}]`;
   const output = await transform('signature-nonce-helper', 'decode', input, defaultParams);
   expect(output.includes('"scheme": "ecdsa-dsa"'), 'ECDSA dict-style records did not identify ECDSA scheme');
@@ -1575,9 +1442,7 @@ await run('ECDSA nonce reuse works for prose sig1/sig2 format', async () => {
   const r = 17n;
   const z1 = 33n;
   const z2 = 44n;
-  const nonceInverse = modInverse(nonce, order);
-  const s1 = (nonceInverse * ((z1 + r * privateKey) % order)) % order;
-  const s2 = (nonceInverse * ((z2 + r * privateKey) % order)) % order;
+  const { s1, s2 } = ecdsaSignaturePair({ order, privateKey, nonce, r, z1, z2 });
   const input = [
     'ecdsa repeated nonce challenge',
     `sig1 = (${r}, ${s1})`,
@@ -1598,9 +1463,7 @@ await run('smart-decode routes Chinese repeated-nonce signature fields and recov
   const r = 17n;
   const z1 = 33n;
   const z2 = 44n;
-  const nonceInverse = modInverse(nonce, order);
-  const s1 = (nonceInverse * ((z1 + r * privateKey) % order)) % order;
-  const s2 = (nonceInverse * ((z2 + r * privateKey) % order)) % order;
+  const { s1, s2 } = ecdsaSignaturePair({ order, privateKey, nonce, r, z1, z2 });
   const input = [
     'ECDSA 重复随机数题',
     `曲线阶：${order}`,
@@ -1621,13 +1484,8 @@ await run('ECDSA nonce reuse derives z from msg1/msg2 and algorithm', async () =
   const r = 17n;
   const msg1 = 'alpha';
   const msg2 = 'beta';
-  const digest1 = await digestForTest(msg1, 'sha256');
-  const digest2 = await digestForTest(msg2, 'sha256');
-  const z1 = digestHexToOrderInt(digest1, order);
-  const z2 = digestHexToOrderInt(digest2, order);
-  const nonceInverse = modInverse(nonce, order);
-  const s1 = (nonceInverse * ((z1 + r * privateKey) % order)) % order;
-  const s2 = (nonceInverse * ((z2 + r * privateKey) % order)) % order;
+  const { z1, z2 } = await ecdsaZPairFromMessages({ order, msg1, msg2 });
+  const { s1, s2 } = ecdsaSignaturePair({ order, privateKey, nonce, r, z1, z2 });
   const input = [
     'ecdsa repeated nonce challenge',
     'algorithm = sha256',
@@ -1649,13 +1507,8 @@ await run('ECDSA signature/message lists derive z and recover key', async () => 
   const r = 17n;
   const msg1 = 'alpha';
   const msg2 = 'beta';
-  const digest1 = await digestForTest(msg1, 'sha256');
-  const digest2 = await digestForTest(msg2, 'sha256');
-  const z1 = digestHexToOrderInt(digest1, order);
-  const z2 = digestHexToOrderInt(digest2, order);
-  const nonceInverse = modInverse(nonce, order);
-  const s1 = (nonceInverse * ((z1 + r * privateKey) % order)) % order;
-  const s2 = (nonceInverse * ((z2 + r * privateKey) % order)) % order;
+  const { z1, z2 } = await ecdsaZPairFromMessages({ order, msg1, msg2 });
+  const { s1, s2 } = ecdsaSignaturePair({ order, privateKey, nonce, r, z1, z2 });
   const input = [
     'ecdsa repeated nonce challenge',
     'algorithm = sha256',
@@ -1692,13 +1545,8 @@ await run('ECDSA mixed r1/s1/msg1 prose derives z and recovers key', async () =>
   const r = 17n;
   const msg1 = 'alpha';
   const msg2 = 'beta';
-  const digest1 = await digestForTest(msg1, 'sha256');
-  const digest2 = await digestForTest(msg2, 'sha256');
-  const z1 = digestHexToOrderInt(digest1, order);
-  const z2 = digestHexToOrderInt(digest2, order);
-  const nonceInverse = modInverse(nonce, order);
-  const s1 = (nonceInverse * ((z1 + r * privateKey) % order)) % order;
-  const s2 = (nonceInverse * ((z2 + r * privateKey) % order)) % order;
+  const { z1, z2 } = await ecdsaZPairFromMessages({ order, msg1, msg2 });
+  const { s1, s2 } = ecdsaSignaturePair({ order, privateKey, nonce, r, z1, z2 });
   const input = [
     'ecdsa repeated nonce mixed prose',
     'alg = sha256',
@@ -1716,16 +1564,7 @@ await run('ECDSA mixed r1/s1/msg1 prose derives z and recovers key', async () =>
 });
 
 await run('JOSE token1/token2 repeated nonce works', async () => {
-  const rHex = '0000000000000000000000000000000000000000000000000000000000000011';
-  const s1Hex = '0000000000000000000000000000000000000000000000000000000000000038';
-  const s2Hex = '000000000000000000000000000000000000000000000000000000000000004f';
-  const signature1 = Buffer.from(`${rHex}${s1Hex}`, 'hex').toString('base64url');
-  const signature2 = Buffer.from(`${rHex}${s2Hex}`, 'hex').toString('base64url');
-  const header = Buffer.from(JSON.stringify({ alg: 'ES256', typ: 'JWT' })).toString('base64url');
-  const payload1 = Buffer.from(JSON.stringify({ sub: 'alice', iat: 1 })).toString('base64url');
-  const payload2 = Buffer.from(JSON.stringify({ sub: 'bob', iat: 2 })).toString('base64url');
-  const token1 = `${header}.${payload1}.${signature1}`;
-  const token2 = `${header}.${payload2}.${signature2}`;
+  const [token1, token2] = joseTokenPair();
   const input = [
     'ecdsa repeated nonce jose challenge',
     `token1 = ${token1}`,
@@ -1739,16 +1578,7 @@ await run('JOSE token1/token2 repeated nonce works', async () => {
 });
 
 await run('JOSE tokens=[...] repeated nonce works', async () => {
-  const rHex = '0000000000000000000000000000000000000000000000000000000000000011';
-  const s1Hex = '0000000000000000000000000000000000000000000000000000000000000038';
-  const s2Hex = '000000000000000000000000000000000000000000000000000000000000004f';
-  const signature1 = Buffer.from(`${rHex}${s1Hex}`, 'hex').toString('base64url');
-  const signature2 = Buffer.from(`${rHex}${s2Hex}`, 'hex').toString('base64url');
-  const header = Buffer.from(JSON.stringify({ alg: 'ES256', typ: 'JWT' })).toString('base64url');
-  const payload1 = Buffer.from(JSON.stringify({ sub: 'alice', iat: 1 })).toString('base64url');
-  const payload2 = Buffer.from(JSON.stringify({ sub: 'bob', iat: 2 })).toString('base64url');
-  const token1 = `${header}.${payload1}.${signature1}`;
-  const token2 = `${header}.${payload2}.${signature2}`;
+  const [token1, token2] = joseTokenPair();
   const input = [
     'ecdsa repeated nonce jose challenge',
     `tokens = ["${token1}", "${token2}"]`,
@@ -1760,16 +1590,7 @@ await run('JOSE tokens=[...] repeated nonce works', async () => {
 });
 
 await run('JOSE token object records work', async () => {
-  const rHex = '0000000000000000000000000000000000000000000000000000000000000011';
-  const s1Hex = '0000000000000000000000000000000000000000000000000000000000000038';
-  const s2Hex = '000000000000000000000000000000000000000000000000000000000000004f';
-  const signature1 = Buffer.from(`${rHex}${s1Hex}`, 'hex').toString('base64url');
-  const signature2 = Buffer.from(`${rHex}${s2Hex}`, 'hex').toString('base64url');
-  const header = Buffer.from(JSON.stringify({ alg: 'ES256', typ: 'JWT' })).toString('base64url');
-  const payload1 = Buffer.from(JSON.stringify({ sub: 'alice', iat: 1 })).toString('base64url');
-  const payload2 = Buffer.from(JSON.stringify({ sub: 'bob', iat: 2 })).toString('base64url');
-  const token1 = `${header}.${payload1}.${signature1}`;
-  const token2 = `${header}.${payload2}.${signature2}`;
+  const [token1, token2] = joseTokenPair();
   const input = `records = [{'token': '${token1}'}, {'token': '${token2}'}]\norder = 101`;
   const output = await transform('signature-nonce-helper', 'decode', input, defaultParams);
   expect(output.includes('"repeatedRCount": 1'), 'JOSE token object records did not detect repeated r');
@@ -1797,13 +1618,8 @@ await run('ECDSA DER signature fields with msg1/msg2 derive z and recover key', 
   const r = 17n;
   const msg1 = 'alpha';
   const msg2 = 'beta';
-  const digest1 = await digestForTest(msg1, 'sha256');
-  const digest2 = await digestForTest(msg2, 'sha256');
-  const z1 = digestHexToOrderInt(digest1, order);
-  const z2 = digestHexToOrderInt(digest2, order);
-  const nonceInverse = modInverse(nonce, order);
-  const s1 = (nonceInverse * ((z1 + r * privateKey) % order)) % order;
-  const s2 = (nonceInverse * ((z2 + r * privateKey) % order)) % order;
+  const { z1, z2 } = await ecdsaZPairFromMessages({ order, msg1, msg2 });
+  const { s1, s2 } = ecdsaSignaturePair({ order, privateKey, nonce, r, z1, z2 });
   const derEncode = (rv, sv) => {
     const encInt = value => {
       let hex = value.toString(16);
@@ -2079,151 +1895,137 @@ await run('Smart symmetric decrypt accepts Chinese AES labels, fullwidth colon, 
   expect(smart.includes('flag{aes_cbc_demo}'), 'smart-decode Chinese AES output missing plaintext');
 });
 
-await run('Smart symmetric decrypt recognizes Python AES-GCM decrypt_and_verify snippet', async () => {
-  const input = [
-    'from Crypto.Cipher import AES',
-    'from base64 import b64decode',
-    'key = b"0123456789abcdef0123456789abcdef"',
-    'nonce = b"nonce-123456"',
-    'ct = "UhDY+otytryRUdUh4IwWFS7z"',
-    'tag = "6U2CkX2sw/CwlB0QbrDO+w=="',
-    'cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)',
-    'pt = cipher.decrypt_and_verify(b64decode(ct), b64decode(tag))',
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('aes-gcm'), 'Python AES-GCM snippet was not routed to smart symmetric decrypt');
-  expect(output.includes('flag{aes_gcm_demo}'), 'Python AES-GCM snippet did not recover plaintext');
-});
+// ---- Python 密码脚本片段批（T3 压缩）：片段行数据 + includes 断言入表，复用 runRsaLabelCases ----
+const PYTHON_SNIPPET_CASES = [
+  {
+    caseName: 'Smart symmetric decrypt recognizes Python AES-GCM decrypt_and_verify snippet',
+    lines: [
+      'from Crypto.Cipher import AES',
+      'from base64 import b64decode',
+      'key = b"0123456789abcdef0123456789abcdef"',
+      'nonce = b"nonce-123456"',
+      'ct = "UhDY+otytryRUdUh4IwWFS7z"',
+      'tag = "6U2CkX2sw/CwlB0QbrDO+w=="',
+      'cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)',
+      'pt = cipher.decrypt_and_verify(b64decode(ct), b64decode(tag))',
+    ],
+    targets: [{ op: 'smart-decode', includes: ['aes-gcm', 'flag{aes_gcm_demo}'] }],
+  },
+  {
+    caseName: 'Smart XOR decrypt recognizes Python xor(...) snippet',
+    lines: [
+      'from pwn import xor',
+      'ct = bytes.fromhex("27292e2c307d")',
+      'key = b"ABC"',
+      'pt = xor(ct, key)',
+    ],
+    targets: [{ op: 'smart-decode', includes: ['python-xor-call', '"plaintextHex": "666b6d6d723e"'] }],
+  },
+  {
+    caseName: 'Smart XOR decrypt recognizes Python bytes([...]) / bytearray([...]) snippet',
+    lines: [
+      'from pwn import xor',
+      'ct = bytes([0x27,0x29,0x2e,0x2c,0x30,0x7d])',
+      'key = bytearray([0x41,0x42,0x43])',
+      'pt = xor(ct, key)',
+    ],
+    targets: [{ op: 'smart-decode', includes: ['python-xor-call', '"plaintextHex": "666b6d6d723e"'] }],
+  },
+  {
+    caseName: 'Smart symmetric decrypt recognizes Python AES-ECB snippet with b64decode/unpad',
+    lines: [
+      'from Crypto.Cipher import AES',
+      'from base64 import b64decode',
+      'from Crypto.Util.Padding import unpad',
+      'key = b"0123456789abcdef"',
+      'ct = "o/mMq0AvRyonhFU59nCej+2IRZHgo59CM9yLVYPXv+4="',
+      'cipher = AES.new(key, AES.MODE_ECB)',
+      'pt = unpad(cipher.decrypt(b64decode(ct)), 16)',
+    ],
+    targets: [{ op: 'smart-decode', includes: ['aes-ecb', 'flag{aes_ecb_demo}'] }],
+  },
+  {
+    caseName: 'Smart symmetric decrypt recognizes Python AES-CTR snippet',
+    lines: [
+      'from Crypto.Cipher import AES',
+      'from base64 import b64decode',
+      'key = b"0123456789abcdef"',
+      'nonce = b"nonceCTR"',
+      'ct = "mAZXWQVW6Or828VnG+vWTpZm"',
+      'cipher = AES.new(key, AES.MODE_CTR, nonce=nonce)',
+      'pt = cipher.decrypt(b64decode(ct))',
+    ],
+    targets: [{ op: 'smart-decode', includes: ['aes-ctr-raw', 'flag{aes_ctr_demo}'] }],
+  },
+  {
+    caseName: 'Smart symmetric decrypt recognizes Python ChaCha20 snippet',
+    lines: [
+      'from base64 import b64decode',
+      'from Crypto.Cipher import ChaCha20',
+      'key = b"0123456789abcdef0123456789abcdef"',
+      'nonce = b"12345678"',
+      'ct = "BAjkRRoogKzqPb6ERGO194Y1XQ=="',
+      'cipher = ChaCha20.new(key=key, nonce=nonce)',
+      'pt = cipher.decrypt(b64decode(ct))',
+    ],
+    targets: [{ op: 'smart-decode', includes: ['chacha20-orig', 'flag{chacha20_demo}'] }],
+  },
+  {
+    caseName: 'Smart symmetric decrypt recognizes Python Salsa20 snippet',
+    lines: [
+      'from base64 import b64decode',
+      'from Crypto.Cipher import Salsa20',
+      'key = b"0123456789abcdef0123456789abcdef"',
+      'nonce = b"12345678"',
+      'ct = "QXgBBCyBjVx1cVFvuEN0fxSs"',
+      'cipher = Salsa20.new(key=key, nonce=nonce)',
+      'pt = cipher.decrypt(b64decode(ct))',
+    ],
+    targets: [{ op: 'smart-decode', includes: ['salsa20', 'flag{salsa20_demo}'] }],
+  },
+  {
+    caseName: 'Smart symmetric decrypt recognizes Python ChaCha20-Poly1305 snippet',
+    lines: [
+      'from base64 import b64decode',
+      'from Crypto.Cipher import ChaCha20_Poly1305',
+      'key = b"0123456789abcdef0123456789abcdef"',
+      'nonce = b"123456789012"',
+      'ct = "KLBIlbEfVt6NJixRk+nWktmXXXvKW9s/2rcDWA=="',
+      'tag = "XVCGxEXuSrm0hhPMpUQpzA=="',
+      'cipher = ChaCha20_Poly1305.new(key=key, nonce=nonce)',
+      'pt = cipher.decrypt_and_verify(b64decode(ct), b64decode(tag))',
+    ],
+    targets: [{ op: 'smart-decode', includes: ['chacha20-poly1305', 'flag{chacha20_poly1305_demo}'] }],
+  },
+  {
+    caseName: 'Smart symmetric decrypt recognizes Python AES-CFB snippet',
+    lines: [
+      'from base64 import b64decode',
+      'from Crypto.Cipher import AES',
+      'key = b"0123456789abcdef"',
+      'iv = b"abcdef0123456789"',
+      'ct = "afeI8+qqRKG/Iclxv2iE+sJk"',
+      'cipher = AES.new(key, AES.MODE_CFB, iv=iv, segment_size=128)',
+      'pt = cipher.decrypt(b64decode(ct))',
+    ],
+    targets: [{ op: 'smart-decode', includes: ['aes-cfb', 'flag{aes_cfb_demo}'] }],
+  },
+  {
+    caseName: 'Smart symmetric decrypt recognizes Python AES-OFB snippet',
+    lines: [
+      'from base64 import b64decode',
+      'from Crypto.Cipher import AES',
+      'key = b"0123456789abcdef"',
+      'iv = b"abcdef0123456789"',
+      'ct = "afeI8+qqRKG/Lclxv2iE+rhV"',
+      'cipher = AES.new(key, AES.MODE_OFB, iv=iv)',
+      'pt = cipher.decrypt(b64decode(ct))',
+    ],
+    targets: [{ op: 'smart-decode', includes: ['aes-ofb', 'flag{aes_ofb_demo}'] }],
+  },
+];
 
-await run('Smart XOR decrypt recognizes Python xor(...) snippet', async () => {
-  const input = [
-    'from pwn import xor',
-    'ct = bytes.fromhex("27292e2c307d")',
-    'key = b"ABC"',
-    'pt = xor(ct, key)',
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('python-xor-call'), 'Python xor(...) snippet was not routed to XOR script analysis');
-  expect(output.includes('"plaintextHex": "666b6d6d723e"'), 'Python xor(...) snippet did not preserve decoded XOR plaintext');
-});
-
-await run('Smart XOR decrypt recognizes Python bytes([...]) / bytearray([...]) snippet', async () => {
-  const input = [
-    'from pwn import xor',
-    'ct = bytes([0x27,0x29,0x2e,0x2c,0x30,0x7d])',
-    'key = bytearray([0x41,0x42,0x43])',
-    'pt = xor(ct, key)',
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('python-xor-call'), 'Python bytes([...]) xor snippet was not routed to XOR script analysis');
-  expect(output.includes('"plaintextHex": "666b6d6d723e"'), 'Python bytes([...]) xor snippet did not preserve decoded XOR plaintext');
-});
-
-await run('Smart symmetric decrypt recognizes Python AES-ECB snippet with b64decode/unpad', async () => {
-  const input = [
-    'from Crypto.Cipher import AES',
-    'from base64 import b64decode',
-    'from Crypto.Util.Padding import unpad',
-    'key = b"0123456789abcdef"',
-    'ct = "o/mMq0AvRyonhFU59nCej+2IRZHgo59CM9yLVYPXv+4="',
-    'cipher = AES.new(key, AES.MODE_ECB)',
-    'pt = unpad(cipher.decrypt(b64decode(ct)), 16)',
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('aes-ecb'), 'Python AES-ECB snippet was not routed to smart symmetric decrypt');
-  expect(output.includes('flag{aes_ecb_demo}'), 'Python AES-ECB snippet did not recover plaintext');
-});
-
-await run('Smart symmetric decrypt recognizes Python AES-CTR snippet', async () => {
-  const input = [
-    'from Crypto.Cipher import AES',
-    'from base64 import b64decode',
-    'key = b"0123456789abcdef"',
-    'nonce = b"nonceCTR"',
-    'ct = "mAZXWQVW6Or828VnG+vWTpZm"',
-    'cipher = AES.new(key, AES.MODE_CTR, nonce=nonce)',
-    'pt = cipher.decrypt(b64decode(ct))',
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('aes-ctr-raw'), 'Python AES-CTR snippet was not routed to smart symmetric decrypt');
-  expect(output.includes('flag{aes_ctr_demo}'), 'Python AES-CTR snippet did not recover plaintext');
-});
-
-await run('Smart symmetric decrypt recognizes Python ChaCha20 snippet', async () => {
-  const input = [
-    'from base64 import b64decode',
-    'from Crypto.Cipher import ChaCha20',
-    'key = b"0123456789abcdef0123456789abcdef"',
-    'nonce = b"12345678"',
-    'ct = "BAjkRRoogKzqPb6ERGO194Y1XQ=="',
-    'cipher = ChaCha20.new(key=key, nonce=nonce)',
-    'pt = cipher.decrypt(b64decode(ct))',
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('chacha20-orig'), 'Python ChaCha20 snippet was not routed to smart symmetric decrypt');
-  expect(output.includes('flag{chacha20_demo}'), 'Python ChaCha20 snippet did not recover plaintext');
-});
-
-await run('Smart symmetric decrypt recognizes Python Salsa20 snippet', async () => {
-  const input = [
-    'from base64 import b64decode',
-    'from Crypto.Cipher import Salsa20',
-    'key = b"0123456789abcdef0123456789abcdef"',
-    'nonce = b"12345678"',
-    'ct = "QXgBBCyBjVx1cVFvuEN0fxSs"',
-    'cipher = Salsa20.new(key=key, nonce=nonce)',
-    'pt = cipher.decrypt(b64decode(ct))',
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('salsa20'), 'Python Salsa20 snippet was not routed to smart symmetric decrypt');
-  expect(output.includes('flag{salsa20_demo}'), 'Python Salsa20 snippet did not recover plaintext');
-});
-
-await run('Smart symmetric decrypt recognizes Python ChaCha20-Poly1305 snippet', async () => {
-  const input = [
-    'from base64 import b64decode',
-    'from Crypto.Cipher import ChaCha20_Poly1305',
-    'key = b"0123456789abcdef0123456789abcdef"',
-    'nonce = b"123456789012"',
-    'ct = "KLBIlbEfVt6NJixRk+nWktmXXXvKW9s/2rcDWA=="',
-    'tag = "XVCGxEXuSrm0hhPMpUQpzA=="',
-    'cipher = ChaCha20_Poly1305.new(key=key, nonce=nonce)',
-    'pt = cipher.decrypt_and_verify(b64decode(ct), b64decode(tag))',
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('chacha20-poly1305'), 'Python ChaCha20-Poly1305 snippet was not routed to smart symmetric decrypt');
-  expect(output.includes('flag{chacha20_poly1305_demo}'), 'Python ChaCha20-Poly1305 snippet did not recover plaintext');
-});
-
-await run('Smart symmetric decrypt recognizes Python AES-CFB snippet', async () => {
-  const input = [
-    'from base64 import b64decode',
-    'from Crypto.Cipher import AES',
-    'key = b"0123456789abcdef"',
-    'iv = b"abcdef0123456789"',
-    'ct = "afeI8+qqRKG/Iclxv2iE+sJk"',
-    'cipher = AES.new(key, AES.MODE_CFB, iv=iv, segment_size=128)',
-    'pt = cipher.decrypt(b64decode(ct))',
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('aes-cfb'), 'Python AES-CFB snippet was not routed to smart symmetric decrypt');
-  expect(output.includes('flag{aes_cfb_demo}'), 'Python AES-CFB snippet did not recover plaintext');
-});
-
-await run('Smart symmetric decrypt recognizes Python AES-OFB snippet', async () => {
-  const input = [
-    'from base64 import b64decode',
-    'from Crypto.Cipher import AES',
-    'key = b"0123456789abcdef"',
-    'iv = b"abcdef0123456789"',
-    'ct = "afeI8+qqRKG/Lclxv2iE+rhV"',
-    'cipher = AES.new(key, AES.MODE_OFB, iv=iv)',
-    'pt = cipher.decrypt(b64decode(ct))',
-  ].join('\n');
-  const output = await transform('smart-decode', 'decode', input, defaultParams);
-  expect(output.includes('aes-ofb'), 'Python AES-OFB snippet was not routed to smart symmetric decrypt');
-  expect(output.includes('flag{aes_ofb_demo}'), 'Python AES-OFB snippet did not recover plaintext');
-});
+await runRsaLabelCases(PYTHON_SNIPPET_CASES);
 
 await run('Xxencode round-trips, matches the Wikipedia sample, and reaches smart decode', async () => {
   const encoded = await transform('xxencode', 'encode', 'flag{xxencode}', defaultParams);
@@ -2643,10 +2445,9 @@ await run('批次 O 智能识别：形状探针芯片正反例命中 + 高特征
     expect(!probe.test(plainSentence), `探针误报普通文本：${probe.id}`);
     chipChecks += 1;
   }
-  expect(chipChecks >= 20, `形状探针芯片覆盖不足：期望 ≥20 个有样本验证，实际 ${chipChecks}`);
+  expect(chipChecks >= MIN_CHIP_CHECKS, `形状探针芯片覆盖不足：期望 ≥${MIN_CHIP_CHECKS} 个有样本验证，实际 ${chipChecks}`);
   // telecode/quwei 等 4 位数字组形态与日期/编号不可区分，已退出直解路径（只出芯片），故不在自动解码样本内
-  const autoSampleIds = ['base100', 'braille', 'bagua-symbols', 'core-values', 'deadfish', 'manchester'];
-  for (const id of autoSampleIds) {
+  for (const id of AUTO_SAMPLE_IDS) {
     const idVectors = vectors.filter(vector => vector.id === id);
     if (idVectors.length === 0) throw new Error(`自动解码样本缺失：${id}`);
     let decodedAtLeastOne = false;
@@ -2680,7 +2481,8 @@ await run('受众分流：编解码与 CTF 视图记账守恒、无遗漏无重�
   }
   expect(byAudience.ctf.length + byAudience.both.length + byAudience.pentest.length === total, '受众标记必须完整覆盖全部操作');
   // 钉住计划口径的具体数字，防止清单漂移（批次 W 纠偏：57 个 pentest 独占转 both，渗透专属仅剩 2 个）
-  expect(total === 242 && byAudience.ctf.length === 155 && byAudience.both.length === 85 && byAudience.pentest.length === 2, `受众记账口径漂移：期望 ctf=155/both=85/pentest=2/total=242，实际 ctf=${byAudience.ctf.length}/both=${byAudience.both.length}/pentest=${byAudience.pentest.length}/total=${total}`);
+  const snapshot = AUDIENCE_SNAPSHOT;
+  expect(total === snapshot.total && byAudience.ctf.length === snapshot.ctf && byAudience.both.length === snapshot.both && byAudience.pentest.length === snapshot.pentest, `受众记账口径漂移：期望 ctf=${snapshot.ctf}/both=${snapshot.both}/pentest=${snapshot.pentest}/total=${snapshot.total}，实际 ctf=${byAudience.ctf.length}/both=${byAudience.both.length}/pentest=${byAudience.pentest.length}/total=${total}`);
 
   const pentestGroups = buildPentestGroups();
   const ctfGroups = buildCtfGroups();
@@ -2731,21 +2533,14 @@ await run('CTF 顶部菜单栏：9 菜单覆盖全部 CTF 可见操作、无重�
 });
 
 // ---- 批次 W：受众纠偏 57 操作 + 回灌语义 + 现代密码菜单分组回归 ----
-const BATCH_W_CORRECTED_IDS = [
-  'aes-gcm', 'aes-cbc', 'aes-ctr', 'openssl-aes-256-cbc', 'aes-cbc-raw', 'aes-ctr-raw', 'aes-ofb', 'aes-gcm-siv', 'aes-siv', 'aes-ecb', 'aes-cfb', 'aes-kw', 'aes-kwp', 'aes-cmac',
-  'des', 'triple-des', 'blowfish', 'sm4', 'rabbit',
-  'chacha20-orig', 'chacha20', 'xchacha20', 'chacha20-poly1305', 'xchacha20-poly1305', 'salsa20', 'xsalsa20', 'xsalsa20-poly1305',
-  'rc4', 'rc4-drop', 'tea', 'xtea', 'xxtea',
-  'rsa-oaep', 'hash', 'hash-identify', 'hmac', 'jwt', 'jwt-hmac', 'jwt-public', 'fernet', 'hotp', 'totp', 'otpauth-uri',
-  'jsfuck', 'jsfuck-helper', 'aaencode', 'jjencode', 'querystring', 'punycode', 'pem-block', 'asn1-der', 'jwk-jwe', 'ssh-public-key', 'cbor', 'messagepack', 'protobuf-raw', 'bson',
-];
-
+// 纠偏集合由 audience 派生（T3）：批次 W 纠偏 57 个 + 既有 both 28 个 = 全集 85（对齐
+// AUDIENCE_SNAPSHOT.both）。手工 57 清单会与 audience 漂移（改标记忘改清单则断言失真），
+// 派生全集 + 钉长度比原清单检查力更强（85 ⊇ 57）。
 await run('批次 W 受众纠偏：57 个 CTF 高频操作受众为 both 且 CTF 视图可见', async () => {
-  expect(BATCH_W_CORRECTED_IDS.length === 57, `纠偏清单漂移：期望 57 个，实际 ${BATCH_W_CORRECTED_IDS.length}`);
-  const wrongTag = BATCH_W_CORRECTED_IDS.filter(id => operationAudience[id] !== 'both');
-  expect(wrongTag.length === 0, `纠偏操作受众标记不是 both：${wrongTag.join(', ')}`);
+  const bothIds = operations.filter(op => operationAudience[op.id] === 'both').map(op => op.id);
+  expect(bothIds.length === AUDIENCE_SNAPSHOT.both, `both 集合漂移：期望 ${AUDIENCE_SNAPSHOT.both} 个，实际 ${bothIds.length}`);
   const ctfIds = new Set(buildCtfGroups().flatMap(group => group.operations.map(op => op.id)));
-  const invisible = BATCH_W_CORRECTED_IDS.filter(id => !ctfIds.has(id));
+  const invisible = bothIds.filter(id => !ctfIds.has(id));
   expect(invisible.length === 0, `纠偏操作未进 CTF 视图分组：${invisible.join(', ')}`);
   // 界线守护：仅有的 2 个渗透专属操作不得被顺手放大
   expect(operationAudience['signature-nonce-helper'] === 'pentest' && operationAudience['basic-auth'] === 'pentest', 'signature-nonce-helper/basic-auth 必须保持 pentest 专属');
