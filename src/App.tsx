@@ -1,5 +1,7 @@
 import { lazy, Suspense, useState, useEffect, useMemo, useCallback, useDeferredValue } from 'react';
 import { useMantineColorScheme } from '@mantine/core';
+// 全局样式必须在组件 import 之前，保证 bundle 中先于组件 CSS（组件 <style> 迁出后级联改由 import 顺序决定）
+import './styles/global.css';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import MainContent from './components/MainContent';
@@ -17,7 +19,6 @@ import type { GlobalVariable, PublicClientBuildInfo, PublicData } from './types'
 import type { Language } from './i18n';
 import { getText } from './i18n';
 import { buildSearchIndex, matchSearchIndex } from './searchIndex';
-import './styles/global.css';
 
 const LazyEncodingTools = lazy(() => import('./components/EncodingTools'));
 
