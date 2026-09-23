@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
+import { loadTsModule } from './helpers/compileTsModule.mjs';
 
 const read = relativePath => readFile(new URL(`../${relativePath}`, import.meta.url), 'utf8');
 
@@ -571,4 +572,27 @@ test('CTF file modules stay mounted across domain switches and hero mode default
   // 推荐工具条跨域动作接线：handoff 走框架魔数路由，纯导航直接切域。
   assert.match(toolkit, /onHandOffFile/);
   assert.match(toolkit, /onSwitchModule: setActiveModuleId/);
+});
+
+test('CTF magic routing derives from the authoritative route table', async () => {
+  // 运行时加载 fileDetect.ts 真实断言（不再正则源码）——扩展名→题型域这一事实只允许写在 ROUTE_EXT_GROUPS。
+  const fileDetect = loadTsModule('src/utils/ctf/fileDetect.ts');
+  const [toolkit, recommend] = await Promise.all([
+    read('src/components/CtfToolkit.tsx'),
+    read('src/utils/ctf/recommendTools.ts'),
+  ]);
+
+  assert.deepEqual([...fileDetect.ROUTE_EXT_GROUPS.traffic], ['pcap', 'pcapbe', 'pcapng']);
+  assert.deepEqual([...fileDetect.ROUTE_EXT_GROUPS.reverse], ['elf', 'exe', 'macho', 'machobe']);
+  // 路由组内扩展名必须都有魔数签名（fileDetect 模块自检兜底，这里显式钉住口径）。
+  const magicExts = new Set(fileDetect.MAGIC_TABLE.map(rule => rule.ext));
+  for (const ext of [...fileDetect.ROUTE_EXT_GROUPS.traffic, ...fileDetect.ROUTE_EXT_GROUPS.reverse]) {
+    assert.ok(magicExts.has(ext), `route ext missing from MAGIC_TABLE: ${ext}`);
+  }
+  // 消费方只允许 import 权威表，禁止本地重声明集合（历史上三方漂移的根源）。
+  assert.match(toolkit, /ROUTE_EXT_GROUPS/);
+  assert.doesNotMatch(toolkit, /new Set\(\['pcap', 'pcapbe', 'pcapng'\]\)/);
+  assert.doesNotMatch(toolkit, /new Set\(\['elf', 'exe', 'macho', 'machobe'\]\)/);
+  assert.match(recommend, /ROUTE_EXT_GROUPS/);
+  assert.doesNotMatch(recommend, /new Set\(\['elf', 'exe', 'macho'\]\)/);
 });

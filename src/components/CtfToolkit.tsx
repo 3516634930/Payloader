@@ -14,15 +14,12 @@ import { hydrateCodecHeavyData } from '../utils/codec/heavyData';
 import { useDebouncedCallback } from '../utils/debounce';
 import type { OperationId } from '../utils/codec/types';
 import { ctfModules } from '../utils/ctf/modules';
-import { detectFileTypes } from '../utils/ctf/fileDetect';
+import { detectFileTypes, ROUTE_EXT_GROUPS } from '../utils/ctf/fileDetect';
 import CtfHero from './ctf/CtfHero';
 import '../styles/ctf-toolkit.css';
 
 const AUTO_DECODE_LIMIT = 20000;
 const CIPHER_MODULE_ID = 'cipher';
-// 魔数路由表（批次 L 起，逆向域批次扩展）：抓包格式 → 流量分析域，可执行格式 → 逆向域。
-const PCAP_EXTS = new Set(['pcap', 'pcapbe', 'pcapng']);
-const BINARY_EXTS = new Set(['elf', 'exe', 'macho', 'machobe']);
 
 // CTF 解题工具箱框架壳（批次 J）：题域导航 + 模块插件化。
 // 各题型域由 src/utils/ctf/modules.ts 注册表声明，加新域 = 注册一个模块对象，不改本框架。
@@ -157,8 +154,9 @@ const CtfToolkit = memo(function CtfToolkit() {
       // 读不出头部就按普通文件走原路由，不阻断入口。
     }
     const active = ctfModules.find(module => module.id === activeModuleId);
-    const targetId = exts.some(ext => PCAP_EXTS.has(ext)) ? 'traffic'
-      : exts.some(ext => BINARY_EXTS.has(ext)) ? 'reverse'
+    // 魔数路由：抓包格式 → 流量分析域，可执行格式 → 逆向域（扩展名集合以 fileDetect.ROUTE_EXT_GROUPS 为权威）。
+    const targetId = exts.some(ext => ROUTE_EXT_GROUPS.traffic.includes(ext)) ? 'traffic'
+      : exts.some(ext => ROUTE_EXT_GROUPS.reverse.includes(ext)) ? 'reverse'
         : active?.entryKinds.includes('file') ? active.id : 'misc';
     fileTokenRef.current += 1;
     setPendingFile({ file, token: fileTokenRef.current, targetModuleId: targetId });

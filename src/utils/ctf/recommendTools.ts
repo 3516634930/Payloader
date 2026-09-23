@@ -1,3 +1,4 @@
+import { ROUTE_EXT_GROUPS } from './fileDetect';
 import type { DetectedType } from './fileDetect';
 
 // 推荐工具映射（文件探测结果驱动工具呈现）：按探测出的文件类型给出适用操作锚点。
@@ -18,9 +19,9 @@ export interface ToolAnchor {
   soon?: boolean;
 }
 
+// 可执行/抓包组复用魔数路由的权威定义（ROUTE_EXT_GROUPS）；压缩包组只服务杂项取证域的修复类工具，
+// 不参与跨域路由，故保留本地声明。
 const ARCHIVE_EXTS = new Set(['jar', 'apk', '7z', 'rar4', 'rar5']);
-const EXECUTABLE_EXTS = new Set(['elf', 'exe', 'macho']);
-const PCAP_EXTS = new Set(['pcap', 'pcapbe', 'pcapng']);
 
 const PNG_TOOLS: ToolAnchor[] = [
   {
@@ -156,7 +157,7 @@ export const recommendTools = (types: DetectedType[]): ToolAnchor[] => {
     ]);
   }
 
-  if ([...exts].some(ext => EXECUTABLE_EXTS.has(ext))) {
+  if ([...exts].some(ext => ROUTE_EXT_GROUPS.reverse.includes(ext))) {
     pushUnique(tools, [
       {
         id: 'exe-strings',
@@ -188,7 +189,7 @@ export const recommendTools = (types: DetectedType[]): ToolAnchor[] => {
     ]);
   }
 
-  if ([...exts].some(ext => PCAP_EXTS.has(ext))) {
+  if ([...exts].some(ext => ROUTE_EXT_GROUPS.traffic.includes(ext))) {
     pushUnique(tools, [
       {
         id: 'pcap-traffic',

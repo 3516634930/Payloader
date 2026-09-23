@@ -15,6 +15,8 @@ const nodeRequire = createRequire(import.meta.url);
 
 // 求值器在 vm realm 内运行；污染探针必须放进同一 realm 才能看到真实写入
 let encodingToolsVmContext = null;
+// 沙箱加载器句柄：run 断言区用它加载 codec 图之外的零 React 模块（如 ctf/fileDetect）做运行时断言。
+let sharedLoadModule = null;
 
 const compileEncodingToolsModule = () => {
   const context = {
@@ -86,6 +88,7 @@ const compileEncodingToolsModule = () => {
 
   loadModule(codecEntryFile);
   encodingToolsVmContext = context;
+  sharedLoadModule = loadModule;
   return moduleCache.get(path.resolve(codecEntryFile)).exports;
 };
 
@@ -2800,10 +2803,18 @@ await run('逆向/Pwn 注册表 entryKinds：reverse=file+cheatsheet、pwn=text+
   const pwn = parseEntryKinds('pwn');
   expect(JSON.stringify(reverse) === JSON.stringify(['file', 'cheatsheet']), `reverse entryKinds 漂移：${JSON.stringify(reverse)}`);
   expect(JSON.stringify(pwn) === JSON.stringify(['text', 'cheatsheet']), `pwn entryKinds 漂移：${JSON.stringify(pwn)}`);
-  // 魔数路由扩展守护：ELF/PE/MachO → 逆向域
+  // 魔数路由扩展改为运行时断言：ROUTE_EXT_GROUPS（fileDetect.ts）是扩展名→题型域的唯一权威，
+  // CtfToolkit/recommendTools 只允许 import 消费，禁止本地重声明（历史上同一事实四处漂移）。
+  const routeGroups = sharedLoadModule(path.join(rootDir, 'src', 'utils', 'ctf', 'fileDetect.ts')).ROUTE_EXT_GROUPS;
+  expect(JSON.stringify(routeGroups.traffic) === JSON.stringify(['pcap', 'pcapbe', 'pcapng']), `traffic 路由漂移：${JSON.stringify(routeGroups.traffic)}`);
+  expect(JSON.stringify(routeGroups.reverse) === JSON.stringify(['elf', 'exe', 'macho', 'machobe']), `reverse 路由漂移：${JSON.stringify(routeGroups.reverse)}`);
   const toolkitSource = fs.readFileSync(path.join(rootDir, 'src', 'components', 'CtfToolkit.tsx'), 'utf8');
-  expect(/BINARY_EXTS = new Set\(\['elf', 'exe', 'macho', 'machobe'\]\)/.test(toolkitSource), 'CtfToolkit 魔数路由 BINARY_EXTS 漂移');
-  expect(/BINARY_EXTS\.has\(ext\)\) \? 'reverse'/.test(toolkitSource), 'CtfToolkit ELF/PE/MachO → reverse 路由漂移');
+  expect(/import \{[^}]*ROUTE_EXT_GROUPS[^}]*\} from '[^']*fileDetect'/.test(toolkitSource), 'CtfToolkit 未消费权威路由表 ROUTE_EXT_GROUPS');
+  expect(!/new Set\(\['pcap', 'pcapbe', 'pcapng'\]\)/.test(toolkitSource), 'CtfToolkit 不得本地重声明抓包扩展名集合');
+  expect(!/new Set\(\['elf', 'exe', 'macho', 'machobe'\]\)/.test(toolkitSource), 'CtfToolkit 不得本地重声明可执行扩展名集合');
+  const recommendSource = fs.readFileSync(path.join(rootDir, 'src', 'utils', 'ctf', 'recommendTools.ts'), 'utf8');
+  expect(/ROUTE_EXT_GROUPS/.test(recommendSource), 'recommendTools 未消费权威路由表 ROUTE_EXT_GROUPS');
+  expect(!/new Set\(\['elf', 'exe', 'macho'\]\)/.test(recommendSource), 'recommendTools 不得本地重声明可执行扩展名集合');
 });
 
 console.log(`\nVerified ${results.length} EncodingTools regression checks.`);
