@@ -1,11 +1,28 @@
 // CODEC-IMPORTS
 import { cleanSymmetricFieldValue, digest, looseField, normalizeLooseBytesLabel, normalizeLooseFieldName, parseHexBase64OrUtf8Bytes, parseLooseCtfFields, parseLooseIndexedRecords, parseLooseObjectBlocks } from './crypto';
-import { asn1IntegerValue, bigintFromBytes, bigintMod, bigintModInverse, bigintModPow, bigintPow, bitLength, crtCombinePair, factorSmallCompositeModulus, parseNamedIndexedSequence, parseNumericList, parseNumericTuple, parseNumericValue, parseRsaFieldNumericValue, rsaModPowSigned, rsaNumberResult, stripPrngScalarAssignments } from './rsa';
+import { asn1IntegerValue, parseNamedIndexedSequence, parseNumericList, parseNumericTuple, parseNumericValue, rsaNumberResult, stripPrngScalarAssignments } from './textUtils';
+import { bigintFromBytes, bigintMod, bigintModInverse, bigintModPow, bigintPow, bitLength, crtCombinePair, factorSmallCompositeModulus, rsaModPowSigned } from './math';
 import { decodeBase64UrlJson, parseAsn1Input, parseAsn1TopLevel } from './binaryFormats';
 import { base64ToBytes, bytesToHex } from './bases';
 import { utf8Decoder } from './alphabets';
 import { inferLcgFromText, inferLfsrBitsFromText, lcgHelper, lfsrHelper } from './attacks';
 // CODEC-IMPORTS-END
+
+
+
+import {
+  extractBracketedAssignment,
+  getObjectAliasValue,
+  parseNumberishUnknown,
+} from './textUtils';
+
+// 以下函数已下沉 src/utils/codec/textUtils.ts（T5 解环）；re-export 保持既有导出面。
+export {
+  escapeRegexLiteral,
+  extractBracketedAssignment,
+  getObjectAliasValue,
+  parseNumberishUnknown,
+} from './textUtils';
 export const splitPackedMtWords = (value: bigint, wordBits: number) => {
   if (value < 0n) return [];
   if (wordBits <= 32 || wordBits % 32 !== 0) return [];
@@ -285,19 +302,7 @@ export const digestHexToSignatureZ = (digestHex: string, order: bigint | null) =
   return extraBits > 0 ? (numeric >> BigInt(extraBits)) : numeric;
 };
 
-export const parseNumberishUnknown = (value: unknown, fields: Record<string, string> = {}) => {
-  if (typeof value === 'bigint') return value;
-  if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) return BigInt(value);
-  if (typeof value === 'string') return parseRsaFieldNumericValue('n', value, fields);
-  return null;
-};
 
-export const getObjectAliasValue = (value: Record<string, unknown>, aliases: string[]) => {
-  for (const [key, entry] of Object.entries(value)) {
-    if (aliases.some(alias => normalizeLooseFieldName(alias) === normalizeLooseFieldName(key))) return entry;
-  }
-  return undefined;
-};
 
 export const parseSignatureBlobToRS = (value: string) => {
   const text = String(value || '').trim();
@@ -405,7 +410,6 @@ export const parseJoseTokenList = (value: string) => {
   if (direct.length) return direct;
   return parseLooseTextList(value).flatMap(entry => entry.match(/\b[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g) || []);
 };
-export const escapeRegexLiteral = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export const mergeSignatureTokenRecord = (
   index: string,
@@ -427,26 +431,6 @@ export const mergeSignatureTokenRecord = (
   };
 };
 
-export const extractBracketedAssignment = (value: string, aliases: string[]) => {
-  for (const alias of aliases) {
-    const aliasPattern = alias.split('').map(char => escapeRegexLiteral(char)).join('[_\\s-]*');
-    const pattern = new RegExp(`\\b${aliasPattern}\\b\\s*[:=]\\s*\\[`, 'i');
-    const match = pattern.exec(value);
-    if (!match) continue;
-    let cursor = match.index + match[0].length;
-    let depth = 1;
-    while (cursor < value.length) {
-      const char = value[cursor];
-      if (char === '[') depth += 1;
-      else if (char === ']') {
-        depth -= 1;
-        if (depth === 0) return value.slice(match.index + match[0].length, cursor);
-      }
-      cursor += 1;
-    }
-  }
-  return '';
-};
 
 export const collectSignatureLooseObjectBlocks = (value: string, output: SignatureNonceRecord[]) => {
   for (const { index, fields } of parseLooseObjectBlocks(value, 200)) {

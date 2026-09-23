@@ -1,6 +1,7 @@
 // CODEC-IMPORTS
 import { looseField, parseLooseCtfFields, parseSymmetricFieldBytes, parseSymmetricFields } from './crypto';
-import { bigintAbs, bigintGcd, bigintModInverse, parseIndexedSequence, parseNumericList, parseNumericValue, parseOptionalModulus, parsePowerOrNumeric, stripPrngScalarAssignments } from './rsa';
+import { parseIndexedSequence, parseNumericList, parseNumericValue, parseOptionalModulus, parsePowerOrNumeric, stripPrngScalarAssignments } from './textUtils';
+import { bigintAbs, bigintGcd, bigintModInverse } from './math';
 import { brainfuckToOok, ookToBrainfuck, utf8Decoder, utf8Encoder } from './alphabets';
 import { bytesToHex } from './bases';
 import { cStringDecode } from './textEncodings';
@@ -547,16 +548,8 @@ export const cryptoAttackHelper = (value: string) => {
   }, null, 2);
 };
 
-export const bigIntSqrt = (value: bigint) => {
-  if (value < 0n) throw new Error('平方根输入不能为负数');
-  if (value < 2n) return value;
-  let small = 1n;
-  let large = value;
-  while (large - small > 1n) {
-    const mid = (small + large) >> 1n;
-    if (mid * mid <= value) small = mid;
-    else large = mid;
-  }
-  return small;
-};
+// bigIntSqrt 已下沉 codec/math.ts（T5 解环）；rsa 借用路径改指 math。
+import { bigIntSqrt } from './math';
+export { bigIntSqrt };
+
 

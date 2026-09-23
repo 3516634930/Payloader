@@ -1,7 +1,7 @@
 // CODEC-IMPORTS
 import { utf8Decoder, utf8Encoder } from './alphabets';
 import { base64ToBase64Url, base64ToBytes, base64ToText, bytesToBase64, bytesToBuffer, bytesToHex, hexToBytes, textToBase64 } from './bases';
-import { bitLength } from './rsa';
+import { bitLength } from './math';
 import { gsm7SeptetsToText, unpackGsm7Septets } from './textEncodings';
 // CODEC-IMPORTS-END
 export const safeJsonValue = (value: unknown, depth = 0, seen = new WeakSet<object>()): unknown => {
