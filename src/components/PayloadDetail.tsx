@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import type { JSX } from 'react';
-import { useAppContext } from '../appContext';
+import { useLanguage, useNav, useSession, useStaticData } from '../appContext';
 import { getText } from '../i18n';
 import type { AttackChainStep, I18nText, PayloadExecution, SyntaxPart, TutorialContent } from '../types';
 import { resolveVariableParts, resolveVariableText } from '../utils/variables';
+import { useCopyFeedback } from '../utils/clipboard';
 import SyntaxModal from './SyntaxModal';
 
 interface PayloadDetailProps {
@@ -93,8 +94,11 @@ const tutorialIsSubstantive = (tutorial?: TutorialContent) => Boolean(
 );
 
 function PayloadDetail({ payloadId }: PayloadDetailProps) {
-  const { globalVariables, bypassMode, setBypassMode, language, allPayloads } = useAppContext();
-  const [copiedIndex, setCopiedIndex] = useState<string | null>(null);
+  const { globalVariables } = useSession();
+  const { bypassMode, setBypassMode } = useNav();
+  const { language } = useLanguage();
+  const { allPayloads } = useStaticData();
+  const { copiedKey: copiedIndex, copy } = useCopyFeedback();
   const [selectedSyntax, setSelectedSyntax] = useState<{ syntax: SyntaxPart[]; title: I18nText } | null>(null);
   const [sectionSelection, setSectionSelection] = useState<{ payloadId: string; section: DetailSection }>({
     payloadId,
@@ -172,28 +176,13 @@ function PayloadDetail({ payloadId }: PayloadDetailProps) {
     return label('normalMode', language);
   })();
 
-  const copyText = async (text: string, index: string) => {
-    const processedText = resolveVariableText(text, globalVariables);
-    try {
-      await navigator.clipboard.writeText(processedText);
-    } catch {
-      const textarea = document.createElement('textarea');
-      textarea.value = processedText;
-      textarea.style.position = 'fixed';
-      textarea.style.opacity = '0';
-      document.body.appendChild(textarea);
-      textarea.focus();
-      textarea.select();
-      document.execCommand('copy');
-      textarea.remove();
-    }
-    setCopiedIndex(index);
-    window.setTimeout(() => setCopiedIndex(null), 1800);
+  const copyText = (text: string, index: string) => {
+    void copy(resolveVariableText(text, globalVariables), index);
   };
 
-  const copyVisible = async () => {
+  const copyVisible = () => {
     if (!filteredExecutionItems.length) return;
-    await copyText(filteredExecutionItems.map(item => item.command).join('\n\n'), 'all');
+    copyText(filteredExecutionItems.map(item => item.command).join('\n\n'), 'all');
   };
 
   const renderCommandWithHighlights = (command: string) => {

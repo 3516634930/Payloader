@@ -1,21 +1,16 @@
-import { useMemo, useCallback, useState } from 'react';
-import { useAppContext } from '../appContext';
+import { useMemo } from 'react';
+import { useLanguage, useStaticData } from '../appContext';
 import { getText } from '../i18n';
+import { useCopyFeedback } from '../utils/clipboard';
 
 function SimpleTextDetail({ payloadId }: { payloadId: string }) {
-  const { allPayloads, language } = useAppContext();
+  const { allPayloads } = useStaticData();
+  const { language } = useLanguage();
   const payload = useMemo(() => allPayloads.find(p => p.id === payloadId), [allPayloads, payloadId]);
-  const [copied, setCopied] = useState(false);
+  const { copiedKey, copy } = useCopyFeedback();
 
   const content = useMemo(() => payload?.execution[0]?.command ?? '', [payload]);
   const name = useMemo(() => payload ? getText(payload.name, language) : '', [payload, language]);
-
-  const copy = useCallback(() => {
-    navigator.clipboard.writeText(content).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
-  }, [content]);
 
   if (!payload) return null;
 
@@ -24,10 +19,10 @@ function SimpleTextDetail({ payloadId }: { payloadId: string }) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
         <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 700 }}>{name}</h1>
         <button
-          onClick={copy}
+          onClick={() => { void copy(content); }}
           style={{ padding: '6px 16px', borderRadius: '6px', border: '1px solid var(--border-color)', background: 'transparent', color: 'inherit', cursor: 'pointer', fontSize: '13px' }}
         >
-          {copied ? '✓ 已复制' : '复制全文'}
+          {copiedKey !== null ? '✓ 已复制' : '复制全文'}
         </button>
       </div>
       <pre style={{

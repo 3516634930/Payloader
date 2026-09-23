@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { notifications } from '@mantine/notifications';
-import { useAppContext } from '../../appContext';
+import { useLanguage } from '../../appContext';
 import StringsCard from './StringsCard';
 import HexdumpCard from './HexdumpCard';
 import EntropyMapCard from './EntropyMapCard';
@@ -60,7 +60,7 @@ const CATEGORY_LABEL: Record<FingerprintCategory, { zh: string; en: string }> = 
 // 逆向域工作台（逆向域批次）：拿二进制 → 常量指纹/熵图/strings 第一公里。
 // 文件仅在本浏览器内分析（前 8MB），不上传、不执行；反编译（Ghidra 类）保持指导页形态不在本批次。
 function ReverseWorkspace({ pendingFile, onFileConsumed, onSwitchModule }: CtfWorkspaceProps) {
-  const { language } = useAppContext();
+  const { language } = useLanguage();
   const zh = language === 'zh';
   const [analysis, setAnalysis] = useState<ReverseAnalysis | null>(null);
   const [report, setReport] = useState<ReverseReport | null>(null);
@@ -318,4 +318,4 @@ const reverseStyles = `
   }
 `;
 
-export default ReverseWorkspace;
+export default memo(ReverseWorkspace);

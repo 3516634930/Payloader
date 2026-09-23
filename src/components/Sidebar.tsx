@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useAppContext } from '../appContext';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { useLanguage, useNav, useSearch, useStaticData } from '../appContext';
 import { t, getText } from '../i18n';
 import { openProtectedExternalLink } from '../protectedLinks';
 import { groupDenseLeaves } from '../utils/navigationGrouping';
@@ -10,8 +10,27 @@ interface TreeNodeProps {
   level: number;
   matchedIds: ReadonlySet<string>;
   forceExpand: boolean;
+  isSelected: boolean;
+  // 本节点子树内是否包含当前选中叶子：选择跨枝移动时祖先链借此感知并重渲染，
+  // 未受影响子树在 memo 比较器处整体 bail（原始选中 id 只供递归计算，不进比较面）。
+  branchSelected: boolean;
+  onSelect: (item: NavItem) => void;
   isFirst?: boolean;
   onNavigate?: () => void;
+  selectedPayloadId: string | null;
+  selectedToolId: string | null;
+  // 当前选中叶子的统一 id（payload 优先）：比较器用它感知"同枝内移动选中"——
+  // 该场景下祖先链 branchSelected 恒为 true、自身 isSelected 不变，没有它祖先会整体 bail。
+  selectedLeafId: string | null;
+}
+
+// 递归判断子树是否包含选中叶子（Nav 数据为静态引用，按值比较即可）。
+function subtreeContains(item: NavItem, selectedPayloadId: string | null, selectedToolId: string | null): boolean {
+  if ((item.payloadId != null && item.payloadId === selectedPayloadId)
+    || (item.toolId != null && item.toolId === selectedToolId)) {
+    return true;
+  }
+  return Boolean(item.children?.some(child => subtreeContains(child, selectedPayloadId, selectedToolId)));
 }
 
 const visibleTreeItems = (tree: Element | null) => (
@@ -69,9 +88,22 @@ function handleTreeKeyDown(event: KeyboardEvent) {
   }
 }
 
-function TreeNode({ item, level, matchedIds, forceExpand, isFirst = false, onNavigate }: TreeNodeProps) {
+const TreeNode = memo(function TreeNode({
+  item,
+  level,
+  matchedIds,
+  forceExpand,
+  isSelected,
+  onSelect,
+  isFirst = false,
+  onNavigate,
+  selectedPayloadId,
+  selectedToolId,
+  selectedLeafId,
+}: TreeNodeProps) {
+  // branchSelected 不解构：它是 memo 比较器的传播信号（见比较器），组件体无需读取。
   const [isExpanded, setIsExpanded] = useState(false);
-  const { selectedPayloadId, setSelectedPayloadId, selectedToolId, setSelectedToolId, allToolCommands, language } = useAppContext();
+  const { language } = useLanguage();
 
   const hasChildren = item.children && item.children.length > 0;
   // 叶子过多的层级插入虚拟分组节点（二级菜单），避免几十个条目平铺在一层。
@@ -85,9 +117,6 @@ function TreeNode({ item, level, matchedIds, forceExpand, isFirst = false, onNav
       : []),
     [item, hasChildren],
   );
-  const isSelected = item.payloadId === selectedPayloadId || item.toolId === selectedToolId;
-
-  // Check if this node or any descendant matches the search
   const isMatched = matchedIds.has(item.payloadId || item.toolId || '');
   const hasMatchedDescendant = hasChildren && hasDescendantMatch(item, matchedIds);
 
@@ -105,19 +134,8 @@ function TreeNode({ item, level, matchedIds, forceExpand, isFirst = false, onNav
   const handleClick = () => {
     if (hasChildren) {
       setIsExpanded(!isExpanded);
-    } else if (item.payloadId) {
-      setSelectedPayloadId(item.payloadId);
-      setSelectedToolId(null);
-      onNavigate?.();
-    } else if (item.toolId) {
-      const tool = allToolCommands.find(candidate => candidate.id === item.toolId);
-      if (tool?.externalUrl && openProtectedExternalLink(tool.externalUrl)) {
-        onNavigate?.();
-        return;
-      }
-      setSelectedToolId(item.toolId);
-      setSelectedPayloadId(null);
-      onNavigate?.();
+    } else {
+      onSelect(item);
     }
   };
 
@@ -151,13 +169,41 @@ function TreeNode({ item, level, matchedIds, forceExpand, isFirst = false, onNav
       {hasChildren && effectiveExpanded && (
         <div className="tree-children" role="group">
           {displayChildren.map(child => (
-            <TreeNode key={child.id} item={child} level={level + 1} matchedIds={matchedIds} forceExpand={forceExpand} onNavigate={onNavigate} />
+            <TreeNode
+              key={child.id}
+              item={child}
+              level={level + 1}
+              matchedIds={matchedIds}
+              forceExpand={forceExpand}
+              isSelected={(child.payloadId != null && child.payloadId === selectedPayloadId)
+                || (child.toolId != null && child.toolId === selectedToolId)}
+              branchSelected={subtreeContains(child, selectedPayloadId, selectedToolId)}
+              onSelect={onSelect}
+              onNavigate={onNavigate}
+              selectedPayloadId={selectedPayloadId}
+              selectedToolId={selectedToolId}
+              selectedLeafId={selectedLeafId}
+            />
           ))}
         </div>
       )}
     </div>
   );
-}
+}, (prev, next) =>
+  // 规则一：选中叶子 id 变化且本枝（前或后）含选中 → 同枝内移动/进出，祖先链必须重渲染，
+  // 否则新旧叶子的 isSelected 翻转永远无法下发（这是纯 branchSelected 方案的盲区）。
+  // 规则二：其余情况按显示相关 props 逐项相等才 bail，未受影响子树整体跳过。
+  !(prev.selectedLeafId !== next.selectedLeafId && (prev.branchSelected || next.branchSelected))
+  && prev.item === next.item
+  && prev.level === next.level
+  && prev.matchedIds === next.matchedIds
+  && prev.forceExpand === next.forceExpand
+  && prev.isSelected === next.isSelected
+  && prev.branchSelected === next.branchSelected
+  && prev.onSelect === next.onSelect
+  && prev.isFirst === next.isFirst
+  && prev.onNavigate === next.onNavigate
+);
 
 function hasDescendantMatch(item: NavItem, matchedIds: ReadonlySet<string>): boolean {
   if (!item.children) return false;
@@ -181,8 +227,9 @@ function isCustomCategory(value: I18nText): boolean {
   return value.zh === '自定义' || value.en === 'Custom';
 }
 
-function CustomSection({ items, matchedIds, onNavigate, language, isFirst = false }: { items: NavItem[]; matchedIds: ReadonlySet<string>; onNavigate?: () => void; language: string; isFirst?: boolean }) {
+function CustomSection({ items, matchedIds, onNavigate, language, selectedPayloadId, selectedToolId, onSelect, isFirst = false }: { items: NavItem[]; matchedIds: ReadonlySet<string>; onNavigate?: () => void; language: string; selectedPayloadId: string | null; selectedToolId: string | null; onSelect: (item: NavItem) => void; isFirst?: boolean }) {
   const [expanded, setExpanded] = useState(false);
+  const selectedLeafId = selectedPayloadId ?? selectedToolId;
   return (
     <div className="tree-node" role="none">
       <button
@@ -202,7 +249,21 @@ function CustomSection({ items, matchedIds, onNavigate, language, isFirst = fals
       {expanded && (
         <div className="tree-children" role="group">
           {items.map(item => (
-            <TreeNode key={item.id} item={item} level={1} matchedIds={matchedIds} forceExpand={false} onNavigate={onNavigate} />
+            <TreeNode
+              key={item.id}
+              item={item}
+              level={1}
+              matchedIds={matchedIds}
+              forceExpand={false}
+              isSelected={(item.payloadId != null && item.payloadId === selectedPayloadId)
+                || (item.toolId != null && item.toolId === selectedToolId)}
+              branchSelected={subtreeContains(item, selectedPayloadId, selectedToolId)}
+              onSelect={onSelect}
+              onNavigate={onNavigate}
+              selectedPayloadId={selectedPayloadId}
+              selectedToolId={selectedToolId}
+              selectedLeafId={selectedLeafId}
+            />
           ))}
         </div>
       )}
@@ -217,16 +278,11 @@ interface SidebarProps {
 }
 
 function Sidebar({ collapsed, onClose, onNavigate }: SidebarProps) {
-  const {
-    activeTab,
-    deferredSearchQuery,
-    searchMatches,
-    language,
-    allPayloads,
-    allToolCommands,
-    allPayloadNavigation,
-    allToolNavigation,
-  } = useAppContext();
+  const { activeTab, selectedPayloadId, selectedToolId, setSelectedPayloadId, setSelectedToolId } = useNav();
+  const selectedLeafId = selectedPayloadId ?? selectedToolId;
+  const { deferredSearchQuery, searchMatches } = useSearch();
+  const { language } = useLanguage();
+  const { allPayloads, allToolCommands, allPayloadNavigation, allToolNavigation } = useStaticData();
 
   const customNavItems: NavItem[] = useMemo(() => {
     if (activeTab === 'payloads') {
@@ -254,6 +310,27 @@ function Sidebar({ collapsed, onClose, onNavigate }: SidebarProps) {
     () => activeTab === 'payloads' ? allPayloadNavigation : activeTab === 'tools' ? allToolNavigation : [],
     [activeTab, allPayloadNavigation, allToolNavigation],
   );
+
+  // 选中处理（TreeNode 原 context 直读迁移而来）：叶子点击统一走这里。
+  // useCallback 保证引用稳定，TreeNode 的 memo 比较器因此可通过。
+  const handleSelect = useCallback((item: NavItem) => {
+    if (item.payloadId) {
+      setSelectedPayloadId(item.payloadId);
+      setSelectedToolId(null);
+      onNavigate?.();
+      return;
+    }
+    if (item.toolId) {
+      const tool = allToolCommands.find(candidate => candidate.id === item.toolId);
+      if (tool?.externalUrl && openProtectedExternalLink(tool.externalUrl)) {
+        onNavigate?.();
+        return;
+      }
+      setSelectedToolId(item.toolId);
+      setSelectedPayloadId(null);
+      onNavigate?.();
+    }
+  }, [allToolCommands, onNavigate, setSelectedPayloadId, setSelectedToolId]);
 
   const matchedIds = activeTab === 'payloads' ? searchMatches.payloadIds : searchMatches.toolIds;
   const matchCount = matchedIds.size;
@@ -306,10 +383,34 @@ function Sidebar({ collapsed, onClose, onNavigate }: SidebarProps) {
           ) : (
             <>
               {data.map(item => (
-                <TreeNode key={item.id} item={item} level={0} matchedIds={matchedIds} forceExpand={isSearching} isFirst={item.id === firstVisibleRootId} onNavigate={onNavigate} />
+                <TreeNode
+                  key={item.id}
+                  item={item}
+                  level={0}
+                  matchedIds={matchedIds}
+                  forceExpand={isSearching}
+                  isSelected={(item.payloadId != null && item.payloadId === selectedPayloadId)
+                    || (item.toolId != null && item.toolId === selectedToolId)}
+                  branchSelected={subtreeContains(item, selectedPayloadId, selectedToolId)}
+                  onSelect={handleSelect}
+                  isFirst={item.id === firstVisibleRootId}
+                  onNavigate={onNavigate}
+                  selectedPayloadId={selectedPayloadId}
+                  selectedToolId={selectedToolId}
+                  selectedLeafId={selectedLeafId}
+                />
               ))}
               {(activeTab === 'payloads' || activeTab === 'tools') && customNavItems.length > 0 && !isSearching && (
-                <CustomSection items={customNavItems} matchedIds={matchedIds} onNavigate={onNavigate} language={language} isFirst={data.length === 0} />
+                <CustomSection
+                  items={customNavItems}
+                  matchedIds={matchedIds}
+                  onNavigate={onNavigate}
+                  language={language}
+                  selectedPayloadId={selectedPayloadId}
+                  selectedToolId={selectedToolId}
+                  onSelect={handleSelect}
+                  isFirst={data.length === 0}
+                />
               )}
             </>
           )}

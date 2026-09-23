@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { notifications } from '@mantine/notifications';
-import { useAppContext } from '../../appContext';
+import { useLanguage } from '../../appContext';
 import { FlagAutoText } from '../codec/FlagAutoText';
 import { WorkbenchMenuBar } from '../codec/WorkbenchMenuBar';
 import type { WorkbenchMenuDef } from '../codec/WorkbenchMenuBar';
@@ -35,6 +35,7 @@ import {
 import type { PngChunkList } from "../../utils/ctf/embedScan";
 import { MAX_ANALYSIS_PIXELS } from '../../utils/ctf/imagePlanes';
 import { recommendTools } from '../../utils/ctf/recommendTools';
+import { copyToClipboard } from '../../utils/clipboard';
 import { ffStyles } from './ffStyles';
 import type { ToolAnchor } from '../../utils/ctf/recommendTools';
 
@@ -108,7 +109,7 @@ const toBinaryString = (bytes: Uint8Array): string => {
 // 杂项取证域工作区（批次 K）：文件拖入/选择 → 本地探测 → 按需分析。
 // 文件只读字节、不执行、不上传；超过 20MB 直接拒绝并说明原因。
 function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, onSwitchModule }: FileForensicsWorkspaceProps) {
-  const { language } = useAppContext();
+  const { language } = useLanguage();
   const [analysis, setAnalysis] = useState<FileAnalysis | null>(null);
   const [report, setReport] = useState<FileReport | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
@@ -522,7 +523,7 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
                       type="button"
                       className="ff-code ff-code-click"
                       title={language === 'zh' ? '点击复制' : 'Click to copy'}
-                      onClick={() => { void navigator.clipboard.writeText(candidate); }}
+                      onClick={() => { void copyToClipboard(candidate); }}
                     >
                       {candidate.length > 96 ? `${candidate.slice(0, 96)}…` : candidate}
                     </button>
@@ -553,7 +554,7 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
                 <button
                   type="button"
                   className="ff-button"
-                  onClick={() => { void navigator.clipboard.writeText(imagePreviewUrl); }}
+                  onClick={() => { void copyToClipboard(imagePreviewUrl); }}
                 >
                   {language === 'zh' ? '复制 data URL' : 'Copy data URL'}
                 </button>
@@ -610,4 +611,4 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
   );
 }
 
-export default FileForensicsWorkspace;
+export default memo(FileForensicsWorkspace);

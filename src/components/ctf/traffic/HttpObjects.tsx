@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import type { HttpTransaction } from '../../../utils/ctf/pcap/analyze';
 import { formatBytes } from '../../../utils/ctf/pcap/format';
+import { copyToClipboard } from '../../../utils/clipboard';
+import { downloadBytes } from '../../../utils/download';
 
 const BODY_PREVIEW_CHARS = 4096;
 const MAX_DOWNLOAD_BYTES = 5 * 1024 * 1024;
@@ -10,15 +12,6 @@ interface HttpObjectsProps {
   httpTotal: number;
   language: 'zh' | 'en';
 }
-
-const downloadBytes = (bytes: Uint8Array, filename: string) => {
-  const url = URL.createObjectURL(new Blob([bytes.slice()], { type: 'application/octet-stream' }));
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  setTimeout(() => URL.revokeObjectURL(url), 4000);
-};
 
 // HTTP 对象视图（批次 L）：请求-响应事务列表，展开看参数、头与响应体；flag 命中显式徽标。
 function HttpObjects({ transactions, httpTotal, language }: HttpObjectsProps) {
@@ -71,7 +64,7 @@ function HttpObjects({ transactions, httpTotal, language }: HttpObjectsProps) {
                         <span className="pw-note">{zh ? 'URL 无查询参数。' : 'No query parameters.'}</span>
                       )}
                       <div className="pw-row">
-                        <button type="button" className="pw-button" onClick={() => { void navigator.clipboard.writeText(transaction.request!.bodyText); }}>
+                        <button type="button" className="pw-button" onClick={() => { void copyToClipboard(transaction.request!.bodyText); }}>
                           {zh ? '复制请求体' : 'Copy request body'}
                         </button>
                         <span className="pw-note">{zh ? `请求体 ${formatBytes(transaction.request.bodyBytes.length)}` : `Body ${formatBytes(transaction.request.bodyBytes.length)}`}</span>
@@ -92,7 +85,7 @@ function HttpObjects({ transactions, httpTotal, language }: HttpObjectsProps) {
                       </div>
                       <pre className="pw-code">{transaction.response.bodyText.slice(0, BODY_PREVIEW_CHARS) || (zh ? '（空响应体）' : '(empty body)')}</pre>
                       <div className="pw-row">
-                        <button type="button" className="pw-button" onClick={() => { void navigator.clipboard.writeText(transaction.response!.bodyText); }}>
+                        <button type="button" className="pw-button" onClick={() => { void copyToClipboard(transaction.response!.bodyText); }}>
                           {zh ? '复制响应体' : 'Copy response body'}
                         </button>
                         {transaction.response.bodyBytes.length > 0 && transaction.response.bodyBytes.length <= MAX_DOWNLOAD_BYTES && (

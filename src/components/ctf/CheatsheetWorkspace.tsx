@@ -1,4 +1,5 @@
-import { useAppContext } from '../../appContext';
+import { memo } from 'react';
+import { useLanguage } from '../../appContext';
 import { ctfCheatSheets } from '../../utils/ctf/cheatsheets';
 import type { CtfWorkspaceProps } from '../../utils/ctf/modules';
 import CheatsheetSection from './CheatsheetSection';
@@ -7,8 +8,8 @@ import ModulePlaceholder from './ModulePlaceholder';
 // 题型速查工作区（批次 M，逆向/Pwn 专属工作台上线后收薄为占位壳）：
 // 仅服务仍以速查为主体的域（Web/AI）。速查网格与跳转逻辑由 CheatsheetSection 承载；
 // .cs-hint 样式来自 CheatsheetSection 注入的 cheatsheetStyles，本壳不再重复。
-function CheatsheetWorkspace({ module }: CtfWorkspaceProps) {
-  const { language } = useAppContext();
+const CheatsheetWorkspace = memo(function CheatsheetWorkspace({ module }: CtfWorkspaceProps) {
+  const { language } = useLanguage();
   const zh = language === 'zh';
 
   const sheet = ctfCheatSheets[module.id];
@@ -31,6 +32,6 @@ function CheatsheetWorkspace({ module }: CtfWorkspaceProps) {
       <CheatsheetSection moduleId={module.id} variant="placeholder" />
     </div>
   );
-}
+});
 
 export default CheatsheetWorkspace;

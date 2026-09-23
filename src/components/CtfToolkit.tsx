@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent } from 'react';
 import { SegmentedControl } from '@mantine/core';
-import { useAppContext } from '../appContext';
+import { useLanguage } from '../appContext';
 import { buildCtfGroups, isOperationVisible } from '../utils/codec/audience';
 import {
   detectFlagFormats,
@@ -11,6 +11,7 @@ import {
   stripCandidateSection,
 } from '../utils/codec/smartDecode';
 import { hydrateCodecHeavyData } from '../utils/codec/heavyData';
+import { useDebouncedCallback } from '../utils/debounce';
 import type { OperationId } from '../utils/codec/types';
 import { ctfModules } from '../utils/ctf/modules';
 import { detectFileTypes } from '../utils/ctf/fileDetect';
@@ -26,8 +27,8 @@ const BINARY_EXTS = new Set(['elf', 'exe', 'macho', 'machobe']);
 // 各题型域由 src/utils/ctf/modules.ts 注册表声明，加新域 = 注册一个模块对象，不改本框架。
 // 智能识别 hero 按域变形（heroMode 声明，缺省 full）：cipher 完整置顶；文件/速查域折叠为单行条，
 // 工作区升为该域首屏。检测芯片沿用密码与编码域（buildCtfGroups）的操作集合，行为与重构前一致。
-function CtfToolkit() {
-  const { language } = useAppContext();
+const CtfToolkit = memo(function CtfToolkit() {
+  const { language } = useLanguage();
   const [activeModuleId, setActiveModuleId] = useState<string>(ctfModules[0]?.id ?? CIPHER_MODULE_ID);
   // pendingFile 定向投递：targetModuleId 标记路由目标域，框架只把它投给目标面板——
   // 常驻（keepMounted）的其它文件域不会误消费并弹出"解析失败"假告警。
@@ -81,13 +82,16 @@ function CtfToolkit() {
   }, []);
 
   // 智能识别置顶体验：粘贴后 350ms 防抖自动解码；超长输入不自动跑（结果区给出手动提示）。
+  const debouncedSmartDecode = useDebouncedCallback(() => {
+    void runSmartDecode();
+  }, 350);
   useEffect(() => {
-    if (!input.trim() || input.length > AUTO_DECODE_LIMIT) return;
-    const timer = window.setTimeout(() => {
-      void runSmartDecode();
-    }, 350);
-    return () => window.clearTimeout(timer);
-  }, [input, runSmartDecode]);
+    if (!input.trim() || input.length > AUTO_DECODE_LIMIT) {
+      debouncedSmartDecode.cancel();
+      return;
+    }
+    debouncedSmartDecode.run();
+  }, [input, runSmartDecode, debouncedSmartDecode]);
 
   const registerFocus = useCallback((focus: ((id: OperationId, seedInput?: string) => void) | null) => {
     focusApiRef.current = focus;
@@ -170,6 +174,9 @@ function CtfToolkit() {
     if (!Array.from(event.dataTransfer.types).includes('Files')) return;
     event.preventDefault();
   }, []);
+
+  // 引用稳定：内联箭头每次渲染换引用，会击穿 5 个 keepMounted 工作区的 memo。
+  const handOffFile = useCallback((file: File) => { void handleFileSelected(file); }, [handleFileSelected]);
 
   return (
     <div
@@ -254,7 +261,7 @@ function CtfToolkit() {
           onFileConsumed: clearPendingFile,
           // 推荐工具条的跨域动作：handoff 走 handleFileSelected 复用魔数路由（PCAP → 流量分析域），
           // 纯导航直接切域（ELF 常量扫描引导 → 逆向速查域）。
-          onHandOffFile: (file: File) => { void handleFileSelected(file); },
+          onHandOffFile: handOffFile,
           onSwitchModule: setActiveModuleId,
         };
         if (module.keepMounted) {
@@ -332,6 +339,6 @@ function CtfToolkit() {
       `}</style>
     </div>
   );
-}
+});
 
 export default CtfToolkit;

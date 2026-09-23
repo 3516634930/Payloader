@@ -8,3 +8,4 @@
 - **兄弟组件 key 重复会导致 React DOM 残留复用错乱**（症状：同一卡片渲染多份、console 报 `Encountered two children with the same key`）→ 条件渲染的相邻兄弟组件 key 必须带组件前缀区分（如 `planes-`/`embedded-`），不要共用同一个 `${name}:${size}`。位置：`FileForensicsWorkspace.tsx` 卡片区。
 - **PNG 解码验证不能把每行首字节当像素**（症状：自造 PNG 比对时行 1+ "全 0"）→ PNG 每行前置 filter byte，且浏览器 toBlob 编码常用 Up/Paeth filter（内容相同时 diff 为 0）；验证脚本必须按 PNG 规范还原 filter 再比对。
 - **dev server 端口残留**：`TaskStop` 杀掉 npm 外壳后 vite 子进程可能残留占用端口（strictPort 再启报 `Port already in use`）→ 残留的 vite 仍服务最新磁盘代码（按需编译），可直接复用该端口测试；彻底清理需杀 node 进程。
+- **memo 化树节点仅按"子树含选中"传播会在同枝移动选中时全部 bail**（症状：选中从枝内叶子 A 点到叶子 B，主内容切换了但树上高亮冻结在 A，生产构建同样复现）→ 自定义比较器必须加"叶子 id 变化且本枝（前或后）含选中 → 强制重渲染"规则（selectedLeafId 信号），仅 branchSelected 布尔翻转只覆盖跨枝场景，覆盖不了"祖先链 containment 恒 true、自身 isSelected 不变"的同枝移动。位置：`src/components/Sidebar.tsx` TreeNode 比较器。

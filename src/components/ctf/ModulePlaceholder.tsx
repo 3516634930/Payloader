@@ -1,9 +1,10 @@
-import { useAppContext } from '../../appContext';
+import { memo } from 'react';
+import { useLanguage } from '../../appContext';
 import type { CtfWorkspaceProps } from '../../utils/ctf/modules';
 
 // 题型域轻占位页（批次 J）：如实告知建设中并预告规划能力，批次 K/L/M 各自替换为真实工作区。
-function ModulePlaceholder({ module }: CtfWorkspaceProps) {
-  const { language } = useAppContext();
+const ModulePlaceholder = memo(function ModulePlaceholder({ module }: CtfWorkspaceProps) {
+  const { language } = useLanguage();
   return (
     <section className="ctf-module-placeholder" aria-label={module.name[language]}>
       <div className="ctf-module-placeholder-icon" aria-hidden="true">{module.icon}</div>
@@ -17,7 +18,7 @@ function ModulePlaceholder({ module }: CtfWorkspaceProps) {
       <style>{placeholderStyles}</style>
     </section>
   );
-}
+});
 
 // 占位页样式跟随组件：同一时刻仅一个域工作区挂载，不会重复注入。
 const placeholderStyles = `

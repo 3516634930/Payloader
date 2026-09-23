@@ -1,6 +1,6 @@
 import type { SyntaxPart, I18nText } from '../types';
 import { useEffect, useId, useRef } from 'react';
-import { useAppContext } from '../appContext';
+import { useLanguage, useSession } from '../appContext';
 import { t, getText } from '../i18n';
 import { resolveVariableText } from '../utils/variables';
 
@@ -11,7 +11,8 @@ interface SyntaxModalProps {
 }
 
 function SyntaxModal({ syntax, title, onClose }: SyntaxModalProps) {
-  const { globalVariables, language } = useAppContext();
+  const { globalVariables } = useSession();
+  const { language } = useLanguage();
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);

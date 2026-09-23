@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { notifications } from '@mantine/notifications';
-import { useAppContext } from '../../appContext';
+import { useLanguage } from '../../appContext';
+import { copyToClipboard } from '../../utils/clipboard';
+import { useDebouncedCallback } from '../../utils/debounce';
 import CheatsheetSection from './CheatsheetSection';
 import { ffStyles } from './ffStyles';
 import {
@@ -23,7 +25,7 @@ const toHexByte = (value: number): string => `\\x${value.toString(16).padStart(2
 type CyclicLookup = { input: string; result: CyclicLookupResult | CyclicLookupFailure };
 
 function CyclicCard() {
-  const { language } = useAppContext();
+  const { language } = useLanguage();
   const zh = language === 'zh';
   const [length, setLength] = useState(200);
   const [period, setPeriod] = useState<CyclicPeriod>(4);
@@ -32,21 +34,24 @@ function CyclicCard() {
 
   const pattern = useMemo(() => buildDeBruijn(period, Math.max(1, Math.min(length, 1_000_000))), [period, length]);
 
-  // 反查防抖 350ms：深 offset 反查需要生成较长序列，不能每次按键同步跑（setState 仅在异步回调内）。
+  // 反查防抖 350ms：深 offset 反查需要生成较长序列，不能每次按键同步跑（setState 仅在防抖回调内）。
   // lookup 带产生它的输入指纹：输入变化后的 350ms 窗口内渲染层显示"计算中"，不留陈旧结果。
+  const debouncedLookup = useDebouncedCallback(() => {
+    setLookup({ input: crashInput, result: findCyclicOffset(crashInput, period, { withinBytes: pattern.length }) });
+  }, 350);
   useEffect(() => {
-    if (!crashInput.trim()) return;
-    const timer = window.setTimeout(() => {
-      setLookup({ input: crashInput, result: findCyclicOffset(crashInput, period, { withinBytes: pattern.length }) });
-    }, 350);
-    return () => window.clearTimeout(timer);
-  }, [crashInput, period, pattern]);
+    if (!crashInput.trim()) {
+      debouncedLookup.cancel();
+      return;
+    }
+    debouncedLookup.run();
+  }, [crashInput, period, pattern, debouncedLookup]);
 
   const copyPattern = () => {
-    void navigator.clipboard.writeText(pattern).then(
-      () => notifications.show({ message: zh ? `已复制 ${pattern.length} 字符 pattern。` : `Copied ${pattern.length}-char pattern.`, color: 'teal', autoClose: 1600 }),
-      () => notifications.show({ message: zh ? '复制失败，请手动全选。' : 'Copy failed; select manually.', color: 'red' }),
-    );
+    void copyToClipboard(pattern).then(ok => {
+      if (!ok) notifications.show({ message: zh ? '复制失败，请手动全选。' : 'Copy failed; select manually.', color: 'red' });
+      else notifications.show({ message: zh ? `已复制 ${pattern.length} 字符 pattern。` : `Copied ${pattern.length}-char pattern.`, color: 'teal', autoClose: 1600 });
+    });
   };
 
   const staleLookup = lookup !== null && lookup.input !== crashInput;
@@ -155,7 +160,7 @@ function CyclicCard() {
 // ---- 坏字符检查 ----
 
 function BadCharCard() {
-  const { language } = useAppContext();
+  const { language } = useLanguage();
   const zh = language === 'zh';
   const [payload, setPayload] = useState('');
   const [selected, setSelected] = useState<number[]>(COMMON_BAD_CHARS.map(entry => entry.byte));
@@ -259,7 +264,7 @@ function BadCharCard() {
 // ---- 格式化字符串 offset ----
 
 function FormatStringCard() {
-  const { language } = useAppContext();
+  const { language } = useLanguage();
   const zh = language === 'zh';
   const [leak, setLeak] = useState('');
   const [target, setTarget] = useState('');
@@ -298,10 +303,10 @@ function FormatStringCard() {
             type="button"
             className="ff-button ff-button-primary"
             onClick={() => {
-              void navigator.clipboard.writeText(`%${matched}$p`).then(
-                () => notifications.show({ message: zh ? `已复制 %${matched}$p。` : `Copied %${matched}$p.`, color: 'teal', autoClose: 1600 }),
-                () => notifications.show({ message: zh ? '复制失败，请手动选择文本复制。' : 'Copy failed; select the text manually.', color: 'red' }),
-              );
+              void copyToClipboard(`%${matched}$p`).then(ok => {
+                if (!ok) notifications.show({ message: zh ? '复制失败，请手动选择文本复制。' : 'Copy failed; select the text manually.', color: 'red' });
+                else notifications.show({ message: zh ? `已复制 %${matched}$p。` : `Copied %${matched}$p.`, color: 'teal', autoClose: 1600 });
+              });
             }}
             title={zh ? '点击复制' : 'Click to copy'}
           >
@@ -343,7 +348,7 @@ function FormatStringCard() {
 // Pwn 域工作台：纯计算三件套（cyclic 反查 / 坏字符 / 格式化字符串）+ 底部题型速查。
 // gadget 检索、交互式调试等依赖外部环境的工具不在本批次（见注册表 note）。
 function PwnWorkspace() {
-  const { language } = useAppContext();
+  const { language } = useLanguage();
   const zh = language === 'zh';
 
   return (
@@ -416,4 +421,4 @@ const pwnStyles = `
   }
 `;
 
-export default PwnWorkspace;
+export default memo(PwnWorkspace);

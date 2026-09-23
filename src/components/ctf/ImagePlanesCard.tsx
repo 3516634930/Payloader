@@ -11,6 +11,8 @@ import {
   grayToRgba,
 } from '../../utils/ctf/imagePlanes';
 import type { RgbaChannel } from '../../utils/ctf/imagePlanes';
+import { copyToClipboard } from '../../utils/clipboard';
+import { downloadBlob, downloadBytes } from '../../utils/download';
 
 export interface PlaneImage {
   rgba: Uint8ClampedArray<ArrayBuffer>;
@@ -42,12 +44,7 @@ const downloadCanvasPng = async (rgba: Uint8ClampedArray<ArrayBuffer>, width: nu
   ctx.putImageData(new ImageData(rgba, width, height), 0, 0);
   const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
   if (!blob) return false;
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  downloadBlob(blob, filename);
   return true;
 };
 
@@ -163,10 +160,10 @@ function ImagePlanesCard({ fileName, image, status, language }: ImagePlanesCardP
 
   const copyLsbText = () => {
     if (!lsbResult) return;
-    void navigator.clipboard.writeText(lsbResult.text).then(
-      () => notifications.show({ message: zh ? '提取结果已复制。' : 'Extraction copied.', color: 'teal', autoClose: 1600 }),
-      () => notifications.show({ message: zh ? '复制失败，请手动选择文本。' : 'Copy failed; select the text manually.', color: 'red' }),
-    );
+    void copyToClipboard(lsbResult.text).then(ok => {
+      if (!ok) notifications.show({ message: zh ? '复制失败，请手动选择文本。' : 'Copy failed; select the text manually.', color: 'red' });
+      else notifications.show({ message: zh ? '提取结果已复制。' : 'Extraction copied.', color: 'teal', autoClose: 1600 });
+    });
   };
 
   const exportChannel = (channel: RgbaChannel, label: string) => {
@@ -267,14 +264,7 @@ function ImagePlanesCard({ fileName, image, status, language }: ImagePlanesCardP
                     <button
                       type="button"
                       className="ff-button"
-                      onClick={() => {
-                        const url = URL.createObjectURL(new Blob([lsbResult.bytes.slice()], { type: 'application/octet-stream' }));
-                        const anchor = document.createElement('a');
-                        anchor.href = url;
-                        anchor.download = `${baseName}-lsb.bin`;
-                        anchor.click();
-                        setTimeout(() => URL.revokeObjectURL(url), 4000);
-                      }}
+                      onClick={() => downloadBytes(lsbResult.bytes, `${baseName}-lsb.bin`)}
                     >
                       {zh ? '下载原始字节' : 'Download raw bytes'}
                     </button>

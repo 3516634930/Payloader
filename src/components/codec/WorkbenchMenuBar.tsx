@@ -1,5 +1,6 @@
+import { memo } from 'react';
 import { Menu } from '@mantine/core';
-import { useAppContext } from '../../appContext';
+import { useLanguage } from '../../appContext';
 import { label } from '../../utils/codec/bases';
 
 export interface WorkbenchMenuEntry {
@@ -27,8 +28,8 @@ interface WorkbenchMenuBarProps {
 // 顶部菜单栏（随波逐流形态）：顶部横排菜单 + 下拉操作列表，点击菜单项由调用方立即执行。
 // withinPortal 让下拉脱离横向滚动容器渲染，移动端小屏不被裁剪；Mantine Menu 自带
 // 方向键 + Enter 键盘导航与 Esc 收起。
-function WorkbenchMenuBar({ menus, ariaLabel, current }: WorkbenchMenuBarProps) {
-  const { language } = useAppContext();
+const WorkbenchMenuBar = memo(function WorkbenchMenuBar({ menus, ariaLabel, current }: WorkbenchMenuBarProps) {
+  const { language } = useLanguage();
   return (
     <div className="wb-menubar" role="toolbar" aria-label={ariaLabel}>
       <div className="wb-menubar-track">
@@ -125,7 +126,7 @@ function WorkbenchMenuBar({ menus, ariaLabel, current }: WorkbenchMenuBarProps) 
       `}</style>
     </div>
   );
-}
+});
 
 // 下拉内分组（小节标签 + 条目）：用 Fragment 包装避免额外 DOM 干扰 Mantine 菜单键盘导航。
 function FragmentMenuGroup({

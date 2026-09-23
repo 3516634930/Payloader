@@ -162,14 +162,19 @@ test('payload tutorial and WAF states are content driven', async () => {
 });
 
 test('payload filtering is keyed to selection and tool copy has a clipboard fallback', async () => {
-  const [payloadDetail, toolDetail] = await Promise.all([
+  const [payloadDetail, toolDetail, clipboardUtil] = await Promise.all([
     read('src/components/PayloadDetail.tsx'),
     read('src/components/ToolDetail.tsx'),
+    read('src/utils/clipboard.ts'),
   ]);
 
   assert.match(payloadDetail, /payloadQueryState\.payloadId === payloadId \? payloadQueryState\.value : ''/);
   assert.match(payloadDetail, /setPayloadQueryState\(\{ payloadId, value: event\.target\.value \}\)/);
-  assert.match(toolDetail, /navigator\.clipboard\.writeText\(processedText\)[\s\S]*?document\.execCommand\('copy'\)/);
+  // 剪贴板写入与 execCommand 降级统一收敛在 utils/clipboard.ts；组件层只经 useCopyFeedback 消费。
+  assert.match(clipboardUtil, /navigator\.clipboard\.writeText\(text\)/);
+  assert.match(clipboardUtil, /document\.execCommand\('copy'\)/);
+  assert.match(toolDetail, /useCopyFeedback\(\)/);
+  assert.match(toolDetail, /copy\(resolveVariableText\(text, globalVariables\), index\)/);
 });
 
 test('generated-review placeholders are editable global variables', async () => {

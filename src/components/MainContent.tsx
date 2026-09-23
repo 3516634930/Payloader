@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo } from 'react';
-import { useAppContext } from '../appContext';
+import { useLanguage, useNav, useSearch, useStaticData } from '../appContext';
 import { getText, t } from '../i18n';
 import { openProtectedExternalLink } from '../protectedLinks';
 import PayloadDetail from './PayloadDetail';
@@ -21,19 +21,12 @@ function MainContent({ clientBuildInfo }: MainContentProps) {
     setSelectedPayloadId,
     setSelectedToolId,
     activeTab,
-    language,
-    dataLoading,
-    dataError,
-    deferredSearchQuery,
-    searchMatches,
-    setSearchQuery,
-    allPayloads,
-    allToolCommands,
-    allPayloadNavigation,
-    allToolNavigation,
     activeView,
     setActiveView,
-  } = useAppContext();
+  } = useNav();
+  const { dataLoading, dataError, allPayloads, allToolCommands, allPayloadNavigation, allToolNavigation } = useStaticData();
+  const { deferredSearchQuery, searchMatches, setSearchQuery } = useSearch();
+  const { language } = useLanguage();
 
   const query = deferredSearchQuery.trim();
 

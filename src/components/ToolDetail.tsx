@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { useAppContext } from '../appContext';
+import { useLanguage, useSession, useStaticData } from '../appContext';
 import { t, getText } from '../i18n';
 import { isProtectedExternalUrl, openProtectedExternalLink } from '../protectedLinks';
 import type { SyntaxPart, I18nText } from '../types';
 import { resolveVariableParts, resolveVariableText } from '../utils/variables';
+import { useCopyFeedback } from '../utils/clipboard';
 import SyntaxModal from './SyntaxModal';
 
 interface ToolDetailProps {
@@ -11,8 +12,10 @@ interface ToolDetailProps {
 }
 
 function ToolDetail({ toolId }: ToolDetailProps) {
-  const { globalVariables, language, allToolCommands } = useAppContext();
-  const [copiedIndex, setCopiedIndex] = useState<string | null>(null);
+  const { globalVariables } = useSession();
+  const { language } = useLanguage();
+  const { allToolCommands } = useStaticData();
+  const { copiedKey: copiedIndex, copy } = useCopyFeedback();
   const [selectedSyntax, setSelectedSyntax] = useState<{syntax: SyntaxPart[], title: I18nText} | null>(null);
 
   const tool = allToolCommands.find(t => t.id === toolId);
@@ -26,23 +29,8 @@ function ToolDetail({ toolId }: ToolDetailProps) {
     );
   }
 
-  const copyToClipboard = async (text: string, index: string) => {
-    const processedText = resolveVariableText(text, globalVariables);
-    try {
-      await navigator.clipboard.writeText(processedText);
-    } catch {
-      const textarea = document.createElement('textarea');
-      textarea.value = processedText;
-      textarea.style.position = 'fixed';
-      textarea.style.opacity = '0';
-      document.body.appendChild(textarea);
-      textarea.focus();
-      textarea.select();
-      document.execCommand('copy');
-      textarea.remove();
-    }
-    setCopiedIndex(index);
-    setTimeout(() => setCopiedIndex(null), 2000);
+  const copyToClipboard = (text: string, index: string) => {
+    void copy(resolveVariableText(text, globalVariables), index);
   };
 
   const renderCommand = (command: string) => {

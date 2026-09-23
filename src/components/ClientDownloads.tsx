@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useAppContext } from '../appContext';
+import { useLanguage, useNav } from '../appContext';
 import type { PublicClientBuildInfo, PublicClientBuildItem, PublicClientTargetInfo } from '../types';
 
 interface ClientDownloadsProps {
@@ -57,7 +57,8 @@ const getReleaseState = (info: PublicClientBuildInfo | null): ReleaseState => {
 };
 
 function ClientDownloads({ clientBuildInfo }: ClientDownloadsProps) {
-  const { language, setActiveView } = useAppContext();
+  const { language } = useLanguage();
+  const { setActiveView } = useNav();
   const items = useMemo(() => {
     const list = clientBuildInfo?.items?.length
       ? clientBuildInfo.items

@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SegmentedControl } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { useAppContext } from '../../../appContext';
+import { useLanguage } from '../../../appContext';
 import { MAX_FILE_BYTES, scanSuspiciousContent, type SuspiciousScan } from '../../../utils/ctf/fileDetect';
 import { WorkbenchMenuBar } from '../../codec/WorkbenchMenuBar';
 import { formatBytes, formatDuration, formatTimestamp } from '../../../utils/ctf/pcap/format';
 import { parseCapture } from '../../../utils/ctf/pcap/parser';
 import { buildPacketViews, type PacketView } from '../../../utils/ctf/pcap/protocols';
 import { analyzeCapture, type CaptureAnalysis } from '../../../utils/ctf/pcap/analyze';
+import { copyToClipboard } from '../../../utils/clipboard';
 import PacketTable from './PacketTable';
 import StreamView from './StreamView';
 import HttpObjects from './HttpObjects';
@@ -53,7 +54,7 @@ const VIEW_MENU_NAMES: Record<ViewKey, { zh: string; en: string }> = {
 // 流量分析域工作区（批次 L）：pcap/pcapng 拖入 → 本地解析 → 包列表 / 协议统计 / TCP 流 / HTTP 对象 / 可疑内容。
 // 文件只读解析、不上传、不执行；超过 20MB 直接拒绝；解析限量见 parser.ts（超限显示已解析部分）。
 function TrafficWorkspace({ pendingFile, onFileConsumed }: TrafficWorkspaceProps) {
-  const { language } = useAppContext();
+  const { language } = useLanguage();
   const [report, setReport] = useState<TrafficReport | null>(null);
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState<ViewKey>('packets');
@@ -320,7 +321,7 @@ function TrafficWorkspace({ pendingFile, onFileConsumed }: TrafficWorkspaceProps
                       type="button"
                       className="pw-code pw-code-click"
                       title={zh ? '点击复制' : 'Click to copy'}
-                      onClick={() => { void navigator.clipboard.writeText(candidate); }}
+                      onClick={() => { void copyToClipboard(candidate); }}
                     >
                       {candidate.length > 96 ? `${candidate.slice(0, 96)}…` : candidate}
                     </button>
@@ -560,4 +561,4 @@ function TrafficWorkspace({ pendingFile, onFileConsumed }: TrafficWorkspaceProps
   );
 }
 
-export default TrafficWorkspace;
+export default memo(TrafficWorkspace);

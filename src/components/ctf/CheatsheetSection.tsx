@@ -1,9 +1,10 @@
 import { useCallback } from 'react';
 import { notifications } from '@mantine/notifications';
-import { useAppContext } from '../../appContext';
+import { useLanguage, useNav, useStaticData } from '../../appContext';
 import { openProtectedExternalLink } from '../../protectedLinks';
 import { ctfCheatSheets } from '../../utils/ctf/cheatsheets';
 import type { CheatEntry } from '../../utils/ctf/cheatsheets';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface CheatsheetSectionProps {
   moduleId: string;
@@ -14,13 +15,9 @@ interface CheatsheetSectionProps {
 // 题型速查网格（逆向/Pwn 工作台底部与速查占位域共享）：条目来自 src/utils/ctf/cheatsheets/ 静态种子，
 // 点击卡片按钮直达载荷库 / 工具命令库对应条目，snippet 点击复制。
 function CheatsheetSection({ moduleId, variant }: CheatsheetSectionProps) {
-  const {
-    language,
-    setActiveTab,
-    setSelectedPayloadId,
-    setSelectedToolId,
-    allToolCommands,
-  } = useAppContext();
+  const { language } = useLanguage();
+  const { setActiveTab, setSelectedPayloadId, setSelectedToolId } = useNav();
+  const { allToolCommands } = useStaticData();
   const sheet = ctfCheatSheets[moduleId];
   const zh = language === 'zh';
 
@@ -78,10 +75,10 @@ function CheatsheetSection({ moduleId, variant }: CheatsheetSectionProps) {
                 className="cs-snippet"
                 title={zh ? '点击复制' : 'Click to copy'}
                 onClick={() => {
-                  void navigator.clipboard.writeText(entry.snippet!).then(
-                    () => notifications.show({ message: zh ? '片段已复制。' : 'Snippet copied.', color: 'teal', autoClose: 1400 }),
-                    () => notifications.show({ message: zh ? '复制失败，请手动选择文本复制。' : 'Copy failed; select the text manually.', color: 'red' }),
-                  );
+                  void copyToClipboard(entry.snippet!).then(ok => {
+                    if (!ok) notifications.show({ message: zh ? '复制失败，请手动选择文本复制。' : 'Copy failed; select the text manually.', color: 'red' });
+                    else notifications.show({ message: zh ? '片段已复制。' : 'Snippet copied.', color: 'teal', autoClose: 1400 });
+                  });
                 }}
               >
                 {entry.snippet}

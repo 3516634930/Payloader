@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { hexdumpPreview } from '../../../utils/ctf/fileDetect';
 import { formatBytes } from '../../../utils/ctf/pcap/format';
 import type { TcpStream } from '../../../utils/ctf/pcap/analyze';
+import { copyToClipboard } from '../../../utils/clipboard';
 
 const HEX_PREVIEW_BYTES = 64 * 1024;
 const ASCII_PREVIEW_CHARS = 256 * 1024;
@@ -105,7 +106,7 @@ function StreamView({ streams, streamTotal, language }: StreamViewProps) {
             <button
               type="button"
               className="pw-button"
-              onClick={() => { void navigator.clipboard.writeText(content); }}
+              onClick={() => { void copyToClipboard(content); }}
             >
               {zh ? '复制当前视图' : 'Copy view'}
             </button>

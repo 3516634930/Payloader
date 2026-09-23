@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { useAppContext } from '../appContext';
+import { useLanguage, useNav, useSearch, useSession, useStaticData } from '../appContext';
 import type { ActiveTab } from '../appContext';
 import { t, getText } from '../i18n';
 import { protectedExternalLinks } from '../protectedLinks';
@@ -46,23 +46,11 @@ const focusableSelector = [
 ].join(',');
 
 function Header({ sidebarCollapsed, setSidebarCollapsed, clientBuildInfo, showClientDownloads = true, encodingTools, onOpenClientDownloads }: HeaderProps) {
-  const {
-    globalVariables,
-    setGlobalVariables,
-    bypassMode,
-    setBypassMode,
-    activeTab,
-    setActiveTab,
-    setActiveView,
-    setSelectedPayloadId,
-    setSelectedToolId,
-    theme,
-    setTheme,
-    searchQuery,
-    setSearchQuery,
-    settings,
-    language,
-  } = useAppContext();
+  const { globalVariables, setGlobalVariables, theme, setTheme } = useSession();
+  const { bypassMode, setBypassMode, activeTab, setActiveTab, setActiveView, setSelectedPayloadId, setSelectedToolId } = useNav();
+  const { searchQuery, setSearchQuery } = useSearch();
+  const { settings } = useStaticData();
+  const { language } = useLanguage();
   const [showVariables, setShowVariables] = useState(false);
   const [showEncoding, setShowEncoding] = useState(false);
   const [showMobileUtilities, setShowMobileUtilities] = useState(false);

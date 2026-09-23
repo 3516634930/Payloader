@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { RefObject } from 'react';
 import { useId } from 'react';
-import { useAppContext } from '../../appContext';
+import { useLanguage, useSession } from '../../appContext';
 import { detectFlagFormats } from '../../utils/codec/smartDecode';
 import type { Detection, OperationId } from '../../utils/codec/types';
 import { formatTextStats } from '../codec/outputPanelUtils';
@@ -61,7 +61,8 @@ function CtfHero({
   onUseAsInput,
   onClear,
 }: CtfHeroProps) {
-  const { language, globalSecret, setGlobalSecret } = useAppContext();
+  const { language } = useLanguage();
+  const { globalSecret, setGlobalSecret } = useSession();
   const secretFieldId = useId();
   const [expanded, setExpanded] = useState(false);
   const collapsed = heroMode === 'collapsed' && !expanded;

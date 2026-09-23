@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { notifications } from '@mantine/notifications';
 import { FlagAutoText } from '../codec/FlagAutoText';
 import { extractStrings } from '../../utils/ctf/fileDetect';
+import { copyToClipboard } from '../../utils/clipboard';
 import { downloadBytes } from './ffDownload';
 
 interface StringsCardProps {
@@ -56,10 +57,10 @@ function StringsCard({ fileName, bytes, language }: StringsCardProps) {
     if (filtered.length === 0) return;
     const text = filtered.join('\n');
     if (mode === 'copy') {
-      void navigator.clipboard.writeText(text).then(
-        () => notifications.show({ message: zh ? `已复制 ${filtered.length} 条字符串。` : `Copied ${filtered.length} strings.`, color: 'teal', autoClose: 1600 }),
-        () => notifications.show({ message: zh ? '复制失败，请改用导出。' : 'Copy failed; use export instead.', color: 'red' }),
-      );
+      void copyToClipboard(text).then(ok => {
+        if (!ok) notifications.show({ message: zh ? '复制失败，请改用导出。' : 'Copy failed; use export instead.', color: 'red' });
+        else notifications.show({ message: zh ? `已复制 ${filtered.length} 条字符串。` : `Copied ${filtered.length} strings.`, color: 'teal', autoClose: 1600 });
+      });
       return;
     }
     downloadBytes(new TextEncoder().encode(text), `${fileName.replace(/\.[^.]+$/, '')}-strings.txt`);

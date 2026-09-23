@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useAppContext } from '../../appContext';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { useLanguage } from '../../appContext';
+import { useCopyFeedback } from '../../utils/clipboard';
 import { findFlagAutoRanges } from '../../utils/codec/smartDecode';
 import type { FlagAutoRange } from '../../utils/codec/smartDecode';
 import { candidateHighlightKey, formatTextStats, parseCandidateLayers } from './outputPanelUtils';
@@ -128,12 +129,12 @@ export interface WorkbenchOutputPanelProps {
   onClear?: () => void;
 }
 
-export function WorkbenchOutputPanel({ value, rawOutput, error, running, minHeight = 'normal', onUseAsInput, useAsInputDisabled, onClear }: WorkbenchOutputPanelProps) {
-  const { language } = useAppContext();
+export const WorkbenchOutputPanel = memo(function WorkbenchOutputPanel({ value, rawOutput, error, running, minHeight = 'normal', onUseAsInput, useAsInputDisabled, onClear }: WorkbenchOutputPanelProps) {
+  const { language } = useLanguage();
   const [query, setQuery] = useState('');
   const [hitIndex, setHitIndex] = useState(0);
   const [rawMode, setRawMode] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const { copiedKey, copy } = useCopyFeedback();
   const [candidateIndex, setCandidateIndex] = useState(-1);
   const viewRef = useRef<HTMLDivElement | null>(null);
   const candidatesRef = useRef<HTMLDetailsElement | null>(null);
@@ -190,14 +191,9 @@ export function WorkbenchOutputPanel({ value, rawOutput, error, running, minHeig
     });
   };
 
-  const copyOutput = async () => {
-    try {
-      await navigator.clipboard.writeText(error || value);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
-    } catch {
-      // 非安全上下文（如 http 内网部署）下剪贴板 API 不可用：静默降级，按钮保持可手动选中文本复制。
-    }
+  const copyOutput = () => {
+    // copy 内部含 execCommand 降级；失败时 copiedKey 保持不变，按钮不误报"已复制"。
+    void copy(error || value);
   };
 
   const currentCandidate = candidateIndex >= 0 ? flatCandidates[candidateIndex] : null;
@@ -218,8 +214,8 @@ export function WorkbenchOutputPanel({ value, rawOutput, error, running, minHeig
           <button type="button" className="copy-btn" onClick={onUseAsInput} disabled={useAsInputDisabled || !value} title={language === 'zh' ? '把输出放回输入框，继续下一步处理' : 'Feed the output back as input for the next step'}>
             {language === 'zh' ? '输出回灌输入' : 'Use as input'}
           </button>
-          <button type="button" className={`copy-btn ${copied ? 'copied' : ''}`} onClick={() => { void copyOutput(); }} disabled={!value && !error}>
-            {copied ? (language === 'zh' ? '已复制' : 'Copied') : (language === 'zh' ? '复制' : 'Copy')}
+          <button type="button" className={`copy-btn ${copiedKey !== null ? 'copied' : ''}`} onClick={() => { void copyOutput(); }} disabled={!value && !error}>
+            {copiedKey !== null ? (language === 'zh' ? '已复制' : 'Copied') : (language === 'zh' ? '复制' : 'Copy')}
           </button>
           {onClear ? (
             <button type="button" className="clear-btn" onClick={onClear}>{language === 'zh' ? '清空' : 'Clear'}</button>
@@ -605,4 +601,4 @@ export function WorkbenchOutputPanel({ value, rawOutput, error, running, minHeig
       `}</style>
     </div>
   );
-}
+});

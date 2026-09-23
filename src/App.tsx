@@ -3,7 +3,13 @@ import { useMantineColorScheme } from '@mantine/core';
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
 import MainContent from './components/MainContent';
-import { AppContext } from './appContext';
+import {
+  LanguageContext,
+  NavContext,
+  SearchContext,
+  SessionContext,
+  StaticDataContext,
+} from './appContext';
 import type { ActiveTab, ActiveView, PayloadMode, ThemeMode } from './appContext';
 import { emptyPublicData, parsePublicData } from './data/publicData';
 import { defaultGlobalVariables } from './data/globalVariables';
@@ -190,10 +196,9 @@ function App() {
     };
   }, [refreshClientBuildInfo, isPackagedOfflineClient]);
 
-  return (
-    <AppContext.Provider value={{
-      globalVariables,
-      setGlobalVariables,
+  // 5 个 context value 按域 useMemo：域内字段不变时保持引用稳定，消费组件据此跳过重渲染。
+  const staticDataValue = useMemo(
+    () => ({
       allPayloads,
       allToolCommands,
       allPayloadNavigation,
@@ -201,72 +206,92 @@ function App() {
       settings,
       dataLoading,
       dataError,
+    }),
+    [allPayloads, allToolCommands, allPayloadNavigation, allToolNavigation, settings, dataLoading, dataError],
+  );
+  const languageValue = useMemo(() => ({ language, setLanguage }), [language]);
+  const navValue = useMemo(
+    () => ({
+      activeTab,
+      setActiveTab,
+      activeView,
+      setActiveView,
       selectedPayloadId,
       setSelectedPayloadId,
       selectedToolId,
       setSelectedToolId,
       bypassMode,
       setBypassMode,
-      activeTab,
-      setActiveTab,
-      activeView,
-      setActiveView,
-      theme,
-      setTheme,
-      searchQuery,
-      setSearchQuery,
-      deferredSearchQuery,
-      searchMatches,
-      language,
-      setLanguage,
-      globalSecret,
-      setGlobalSecret
-    }}>
-      <div className="app-container">
-        <a className="skip-link" href="#main-content">跳到主要内容</a>
-        <Header 
-          sidebarCollapsed={sidebarCollapsed}
-          setSidebarCollapsed={setSidebarCollapsed}
-          clientBuildInfo={clientBuildInfo}
-          showClientDownloads={!isPackagedOfflineClient}
-          encodingTools={(
-            <Suspense fallback={<div className="lazy-loading" role="status" aria-live="polite">正在加载编解码工具...</div>}>
-              <LazyEncodingTools />
-            </Suspense>
-          )}
-          onOpenClientDownloads={() => {
-            setActiveView('clientDownloads');
-            setSelectedPayloadId(null);
-            setSelectedToolId(null);
-            setSearchQuery('');
-          }}
-        />
-        <div className="main-layout">
-          {activeTab !== 'ctf' && (
-            <>
-              <Sidebar
-                collapsed={sidebarCollapsed}
-                onClose={closeSidebar}
-                onNavigate={() => {
-                  setActiveView('workspace');
-                  if (window.matchMedia('(max-width: 900px)').matches) {
-                    setSidebarCollapsed(true);
-                  }
-                }}
-              />
-              {!sidebarCollapsed && (
-                <button
-                  className="sidebar-backdrop"
-                  onClick={closeSidebar}
-                  aria-label="关闭导航"
+    }),
+    [activeTab, activeView, selectedPayloadId, selectedToolId, bypassMode],
+  );
+  const searchValue = useMemo(
+    () => ({ searchQuery, setSearchQuery, deferredSearchQuery, searchMatches }),
+    [searchQuery, deferredSearchQuery, searchMatches],
+  );
+  const sessionValue = useMemo(
+    () => ({ globalVariables, setGlobalVariables, theme, setTheme, globalSecret, setGlobalSecret }),
+    [globalVariables, theme, globalSecret],
+  );
+  // 引用稳定回调：内联箭头会在 App 每次渲染（含搜索键入）时换引用，击穿下游 memo。
+  const openClientDownloads = useCallback(() => {
+    setActiveView('clientDownloads');
+    setSelectedPayloadId(null);
+    setSelectedToolId(null);
+    setSearchQuery('');
+  }, [setActiveView, setSelectedPayloadId, setSelectedToolId, setSearchQuery]);
+  const handleSidebarNavigate = useCallback(() => {
+    setActiveView('workspace');
+    if (window.matchMedia('(max-width: 900px)').matches) {
+      setSidebarCollapsed(true);
+    }
+  }, [setActiveView]);
+
+  return (
+    <StaticDataContext.Provider value={staticDataValue}>
+      <LanguageContext.Provider value={languageValue}>
+        <NavContext.Provider value={navValue}>
+          <SearchContext.Provider value={searchValue}>
+            <SessionContext.Provider value={sessionValue}>
+              <div className="app-container">
+                <a className="skip-link" href="#main-content">跳到主要内容</a>
+                <Header
+                  sidebarCollapsed={sidebarCollapsed}
+                  setSidebarCollapsed={setSidebarCollapsed}
+                  clientBuildInfo={clientBuildInfo}
+                  showClientDownloads={!isPackagedOfflineClient}
+                  encodingTools={(
+                    <Suspense fallback={<div className="lazy-loading" role="status" aria-live="polite">正在加载编解码工具...</div>}>
+                      <LazyEncodingTools />
+                    </Suspense>
+                  )}
+                  onOpenClientDownloads={openClientDownloads}
                 />
-              )}
-            </>
-          )}
-          <MainContent clientBuildInfo={clientBuildInfo} />
-        </div>
-      </div>
-    </AppContext.Provider>
+                <div className="main-layout">
+                  {activeTab !== 'ctf' && (
+                    <>
+                      <Sidebar
+                        collapsed={sidebarCollapsed}
+                        onClose={closeSidebar}
+                        onNavigate={handleSidebarNavigate}
+                      />
+                      {!sidebarCollapsed && (
+                        <button
+                          className="sidebar-backdrop"
+                          onClick={closeSidebar}
+                          aria-label="关闭导航"
+                        />
+                      )}
+                    </>
+                  )}
+                  <MainContent clientBuildInfo={clientBuildInfo} />
+                </div>
+              </div>
+            </SessionContext.Provider>
+          </SearchContext.Provider>
+        </NavContext.Provider>
+      </LanguageContext.Provider>
+    </StaticDataContext.Provider>
   );
 }
 

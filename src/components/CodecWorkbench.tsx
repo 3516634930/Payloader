@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { useAppContext } from '../appContext';
+import { useLanguage, useSession } from '../appContext';
 import {
   buildCtfMenus,
   cryptoJsBlockCipherOperationIds,
@@ -125,7 +125,8 @@ const primaryActionOfOperation = (operation: Operation, language: 'zh' | 'en'): 
 };
 
 function CodecWorkbench({ ref, groups, heading, description, registerTestApi = false, mode = 'pentest' }: CodecWorkbenchProps) {
-  const { language, globalSecret, setGlobalSecret } = useAppContext();
+  const { language } = useLanguage();
+  const { globalSecret, setGlobalSecret } = useSession();
   const [input, setInput] = useState('');
   const [output, setOutput] = useState('');
   const [activeGroupId, setActiveGroupId] = useState<string>(() => groups[0]?.id ?? '');
