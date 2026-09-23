@@ -21,11 +21,14 @@ const CIPHER_MODULE_ID = 'cipher';
 
 // CTF 解题工具箱框架壳（批次 J）：题域导航 + 模块插件化。
 // 各题型域由 src/utils/ctf/modules.ts 注册表声明，加新域 = 注册一个模块对象，不改本框架。
-// 智能识别 hero 全域置顶；检测芯片沿用密码与编码域（buildCtfGroups）的操作集合，行为与重构前一致。
+// 智能识别 hero 按域变形（heroMode 声明，缺省 full）：cipher 完整置顶；文件/速查域折叠为单行条，
+// 工作区升为该域首屏。检测芯片沿用密码与编码域（buildCtfGroups）的操作集合，行为与重构前一致。
 function CtfToolkit() {
   const { language } = useAppContext();
   const [activeModuleId, setActiveModuleId] = useState<string>(ctfModules[0]?.id ?? CIPHER_MODULE_ID);
-  const [pendingFile, setPendingFile] = useState<{ file: File; token: number } | null>(null);
+  // pendingFile 定向投递：targetModuleId 标记路由目标域，框架只把它投给目标面板——
+  // 常驻（keepMounted）的其它文件域不会误消费并弹出"解析失败"假告警。
+  const [pendingFile, setPendingFile] = useState<{ file: File; token: number; targetModuleId: string } | null>(null);
   const [input, setInput] = useState('');
   const [output, setOutput] = useState('');
   const [error, setError] = useState('');
@@ -116,9 +119,11 @@ function CtfToolkit() {
 
   const activeModule = ctfModules.find(module => module.id === activeModuleId) ?? ctfModules[0];
   const showFileEntry = activeModule?.entryKinds.includes('file') ?? false;
+  // hero 按域变形：注册表未声明 heroMode 的域（如 cipher）缺省完整形态。
+  const heroMode = activeModule?.heroMode ?? 'full';
 
-  // 工作区消费文件后回调清空：pendingFile 残留会在域重挂载（misc/traffic 不 keepMounted）时被
-  // 重新当成新文件重放，导致无关域弹出上一次文件的解析提示。
+  // 工作区消费文件后回调清空：pendingFile 只投递给路由目标域（targetModuleId 过滤），
+  // 消费即清空防残留；token 单调递增保证同一文件不会被再次投递。
   const clearPendingFile = useCallback(() => setPendingFile(null), []);
 
   // 文件入口（批次 K 起，批次 L 增加魔数路由）：hero 按钮与页面级拖拽统一走这里。
@@ -137,7 +142,7 @@ function CtfToolkit() {
     const active = ctfModules.find(module => module.id === activeModuleId);
     const targetId = routed ? 'traffic' : active?.entryKinds.includes('file') ? active.id : 'misc';
     fileTokenRef.current += 1;
-    setPendingFile({ file, token: fileTokenRef.current });
+    setPendingFile({ file, token: fileTokenRef.current, targetModuleId: targetId });
     setActiveModuleId(targetId);
   }, [activeModuleId]);
 
@@ -207,6 +212,11 @@ function CtfToolkit() {
           }
           : undefined}
         heroRef={heroRef}
+        heroMode={heroMode}
+        // "需要解编码？"引导只在速查域折叠条出现（文件域首屏是文件工作区，无需引导）。
+        onSwitchToCipher={activeModule?.entryKinds.includes('cheatsheet')
+          ? () => setActiveModuleId(CIPHER_MODULE_ID)
+          : undefined}
         onInputChange={handleHeroInput}
         onDetection={applyDetection}
         onFileEntry={() => fileInputRef.current?.click()}
@@ -218,8 +228,13 @@ function CtfToolkit() {
         const workspaceProps = {
           module,
           registerFocus,
-          pendingFile: module.entryKinds.includes('file') ? pendingFile : undefined,
+          // 定向投递：文件只发给路由目标域的面板，其它常驻文件域（hidden）不感知。
+          pendingFile: module.id === pendingFile?.targetModuleId ? pendingFile : undefined,
           onFileConsumed: clearPendingFile,
+          // 推荐工具条的跨域动作：handoff 走 handleFileSelected 复用魔数路由（PCAP → 流量分析域），
+          // 纯导航直接切域（ELF 常量扫描引导 → 逆向速查域）。
+          onHandOffFile: (file: File) => { void handleFileSelected(file); },
+          onSwitchModule: setActiveModuleId,
         };
         if (module.keepMounted) {
           const Workspace = module.Workspace;

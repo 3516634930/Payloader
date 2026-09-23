@@ -538,3 +538,31 @@ test('CTF workbench renders the menubar mode while the pentest view stays unchan
   assert.doesNotMatch(workbench, /action-fold/);
   assert.match(menuBar, /withinPortal/);
 });
+
+test('CTF file modules stay mounted across domain switches and hero mode defaults to full', async () => {
+  const [modules, toolkit, hero] = await Promise.all([
+    read('src/utils/ctf/modules.ts'),
+    read('src/components/CtfToolkit.tsx'),
+    read('src/components/ctf/CtfHero.tsx'),
+  ]);
+
+  // misc/traffic keepMounted：文件与报告跨域切换保留（hidden 不卸载）。
+  assert.match(modules, /id: 'misc'[\s\S]{0,200}?keepMounted: true/);
+  assert.match(modules, /id: 'traffic'[\s\S]{0,200}?keepMounted: true/);
+  // heroMode 缺省 full：未声明 collapsed 的域（cipher）保持完整智能识别 hero。
+  assert.match(modules, /heroMode\?:/);
+  assert.match(toolkit, /heroMode \?\? 'full'/);
+  assert.match(toolkit, /heroMode=\{heroMode\}/);
+  // 六个域显式注册 collapsed（misc/traffic + web/reverse/pwn/ai），cipher 保持缺省 full。
+  assert.equal((modules.match(/heroMode: 'collapsed'/g) || []).length, 6);
+  assert.doesNotMatch(modules, /id: 'cipher'[\s\S]{0,200}?heroMode/);
+  // 折叠形态由 CtfHero 实现并记忆展开状态（单实例跨域保留）。
+  assert.match(hero, /ctf-hero-strip/);
+  assert.match(hero, /setExpanded/);
+  // pendingFile 定向投递：只发给路由目标域，常驻隐藏面板不感知（回灌污染修复的接线本体）。
+  assert.match(toolkit, /module\.id === pendingFile\?\.targetModuleId/);
+  assert.doesNotMatch(toolkit, /entryKinds\.includes\('file'\) \? pendingFile/);
+  // 推荐工具条跨域动作接线：handoff 走框架魔数路由，纯导航直接切域。
+  assert.match(toolkit, /onHandOffFile/);
+  assert.match(toolkit, /onSwitchModule: setActiveModuleId/);
+});

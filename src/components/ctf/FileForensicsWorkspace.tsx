@@ -19,11 +19,15 @@ import {
   scanSuspiciousContent,
   shannonEntropy,
 } from '../../utils/ctf/fileDetect';
+import { recommendTools } from '../../utils/ctf/recommendTools';
+import type { ToolAnchor } from '../../utils/ctf/recommendTools';
 
 interface FileAnalysis {
   name: string;
   size: number;
   bytes: Uint8Array;
+  // 保留原始 File 句柄：推荐工具条跨域移交（PCAP → 流量分析域）时交回框架重走魔数路由。
+  file: File;
 }
 
 interface FileReport {
@@ -43,6 +47,10 @@ export interface FileForensicsWorkspaceProps {
   pendingFile?: { file: File; token: number } | null;
   // 通知框架文件已被取走，框架清空 pendingFile 防止残留重放。
   onFileConsumed?: () => void;
+  // 推荐工具条：把当前文件交回框架重走魔数路由（PCAP → 流量分析域，文件跟人走）。
+  onHandOffFile?: (file: File) => void;
+  // 推荐工具条：纯导航切域（ELF 常量扫描引导 → 逆向速查域）。
+  onSwitchModule?: (moduleId: string) => void;
 }
 
 interface PngFixState {
@@ -83,7 +91,7 @@ const downloadBytes = (bytes: Uint8Array, filename: string) => {
 
 // 杂项取证域工作区（批次 K）：文件拖入/选择 → 本地探测 → 按需分析。
 // 文件只读字节、不执行、不上传；超过 20MB 直接拒绝并说明原因。
-function FileForensicsWorkspace({ pendingFile, onFileConsumed }: FileForensicsWorkspaceProps) {
+function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, onSwitchModule }: FileForensicsWorkspaceProps) {
   const { language } = useAppContext();
   const [analysis, setAnalysis] = useState<FileAnalysis | null>(null);
   const [report, setReport] = useState<FileReport | null>(null);
@@ -109,7 +117,7 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed }: FileForensicsWo
     setAnalyzing(false);
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      setAnalysis({ name: file.name, size: file.size, bytes });
+      setAnalysis({ name: file.name, size: file.size, bytes, file });
       setPngFix({ status: 'idle' });
       setZipFix(null);
       setBusy(false);
@@ -149,6 +157,8 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed }: FileForensicsWo
 
   // 顶部菜单栏（域联动）：文件与图片类菜单只在杂项取证域展示（工作区仅在本域挂载，天然满足）。
   // 未加载文件时一律先打开选择器；目标卡未渲染（该文件没有对应内容）时给出说明。
+  // 注意：推荐工具条渲染在 analysis 非空分支内，因此 scrollToCard 的"无文件开选择器"分支
+  // 对推荐条不可达——若把推荐条移出 ff-layout，需先给 soon 工具补显式守卫。
   const scrollToCard = useCallback((cardId: string, missingMessage: { zh: string; en: string }) => {
     if (!analysis) {
       inputRef.current?.click();
@@ -158,6 +168,25 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed }: FileForensicsWo
     if (node) node.scrollIntoView({ behavior: 'smooth', block: 'start' });
     else notifications.show({ message: missingMessage[language] });
   }, [analysis, language]);
+
+  // 推荐工具条（文件探测驱动）：按探测类型映射适用操作，报告头部直达；纯映射在 recommendTools.ts。
+  const recommendedTools = useMemo(
+    () => (report ? recommendTools(report.types) : []),
+    [report],
+  );
+
+  const runToolAnchor = (tool: ToolAnchor) => {
+    if (tool.handoffFile) {
+      if (analysis) onHandOffFile?.(analysis.file);
+      else notifications.show({ message: tool.missingMessage[language] });
+      return;
+    }
+    if (tool.targetModuleId) {
+      onSwitchModule?.(tool.targetModuleId);
+      return;
+    }
+    if (tool.cardId) scrollToCard(tool.cardId, tool.missingMessage);
+  };
 
   const fileMenus: WorkbenchMenuDef[] = useMemo(() => [{
     id: 'file-tools',
@@ -261,6 +290,28 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed }: FileForensicsWo
         </div>
       ) : (
         <div className="ff-layout">
+          {recommendedTools.length > 0 && (
+            <nav className="ff-recommend" aria-label={language === 'zh' ? '推荐工具' : 'Recommended tools'}>
+              <span className="ff-recommend-label">{language === 'zh' ? '推荐工具' : 'Recommended'}</span>
+              <div className="ff-recommend-tools">
+                {recommendedTools.map(tool => (
+                  <button
+                    key={tool.id}
+                    type="button"
+                    className={tool.soon ? 'ff-button ff-recommend-soon' : 'ff-button ff-recommend-hit'}
+                    onClick={() => runToolAnchor(tool)}
+                    title={tool.soon
+                      ? (language === 'zh' ? '该工具在后续版本提供' : 'This tool is coming in a later release')
+                      : tool.label[language]}
+                  >
+                    {tool.label[language]}
+                    {tool.soon && <span className="ff-recommend-soon-tag">{language === 'zh' ? '即将上线' : 'soon'}</span>}
+                  </button>
+                ))}
+              </div>
+            </nav>
+          )}
+
           <section id="ff-card-summary" className="ff-card" aria-label={language === 'zh' ? '文件概要' : 'File summary'}>
             <div className="ff-card-head">
               <strong>{language === 'zh' ? '文件概要' : 'Summary'}</strong>
@@ -490,6 +541,52 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed }: FileForensicsWo
         .ff-layout {
           display: grid;
           gap: 14px;
+        }
+
+        /* 推荐工具条：按探测类型直达适用操作，紧跟报告头部 */
+        .ff-recommend {
+          min-width: 0;
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 8px;
+          border: 1px solid rgba(0, 240, 255, 0.35);
+          border-radius: 8px;
+          background: rgba(0, 240, 255, 0.045);
+          padding: 10px 12px;
+        }
+
+        .ff-recommend-label {
+          color: var(--neon-cyan);
+          font-size: 12px;
+          font-weight: 800;
+          white-space: nowrap;
+        }
+
+        .ff-recommend-tools {
+          min-width: 0;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 7px;
+        }
+
+        .ff-recommend-hit {
+          border-color: rgba(0, 240, 255, 0.45);
+          color: var(--neon-cyan);
+        }
+
+        .ff-recommend-soon {
+          opacity: 0.72;
+        }
+
+        .ff-recommend-soon-tag {
+          margin-left: 5px;
+          padding: 1px 5px;
+          border: 1px solid var(--border-color);
+          border-radius: 999px;
+          font-size: 10px;
+          font-weight: 700;
+          color: var(--text-muted);
         }
 
         .ff-card {

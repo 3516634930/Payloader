@@ -250,3 +250,35 @@ test('零宽字符从文本中提取并解码', () => {
 test('文件大小上限为 20MB', () => {
   assert.equal(fileDetect.MAX_FILE_BYTES, 20 * 1024 * 1024);
 });
+
+// ---- 推荐工具映射（recommendTools）----
+
+const recommend = loadModule(path.join(srcDir, 'utils', 'ctf', 'recommendTools.ts'));
+
+test('recommendTools PNG 给修复与位面组并追加通用组', () => {
+  const tools = recommend.recommendTools([{ ext: 'png', name: 'PNG image' }]);
+  assert.deepEqual(Array.from(tools, tool => tool.id), ['png-dimensions', 'png-bitplanes', 'png-channels', 'png-chunks', 'gen-strings', 'gen-hexdump', 'gen-entropy']);
+  assert.equal(tools[0].cardId, 'ff-card-repair');
+  assert.ok(tools[1].soon);
+});
+
+test('recommendTools pcap 给文件移交动作', () => {
+  const tools = recommend.recommendTools([{ ext: 'pcap', name: 'PCAP capture' }]);
+  const handoff = tools.find(tool => tool.handoffFile);
+  assert.ok(handoff, 'pcap must hand off the file for magic routing');
+});
+
+test('recommendTools ELF 组含跨域引导并与通用组去重', () => {
+  const tools = recommend.recommendTools([{ ext: 'elf', name: 'ELF executable' }]);
+  const labels = Array.from(tools, tool => tool.label.zh);
+  assert.equal(labels.filter(label => label === '可读字符串').length, 1);
+  assert.equal(labels.filter(label => label === '信息熵').length, 1);
+  const constantScan = tools.find(tool => tool.targetModuleId);
+  assert.equal(constantScan.targetModuleId, 'reverse');
+  assert.ok(labels.includes('hexdump'), 'generic hexdump still appended');
+});
+
+test('recommendTools 未知类型只给通用组', () => {
+  const tools = recommend.recommendTools([]);
+  assert.deepEqual(Array.from(tools, tool => tool.id), ['gen-strings', 'gen-hexdump', 'gen-entropy']);
+});

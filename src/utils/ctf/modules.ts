@@ -19,6 +19,10 @@ export interface CtfWorkspaceProps {
   pendingFile?: { file: File; token: number } | null;
   // 工作区消费掉 pendingFile 后回调；框架据此清空入口，避免残留文件在域切换/重挂载时重放。
   onFileConsumed?: () => void;
+  // 工作区把当前文件交回框架重走魔数路由（推荐工具条的跨域按钮，如 PCAP → 流量分析域）。
+  onHandOffFile?: (file: File) => void;
+  // 工作区请求切到目标题型域（纯导航，不带文件，如 ELF 常量扫描引导 → 逆向速查域）。
+  onSwitchModule?: (moduleId: string) => void;
 }
 
 export interface ToolkitModule {
@@ -29,6 +33,9 @@ export interface ToolkitModule {
   Workspace: ComponentType<CtfWorkspaceProps>;
   // 切换域时保持挂载（隐藏不卸载），保留工作台输入与选择状态。
   keepMounted?: boolean;
+  // 智能识别 hero 形态：full = 完整 hero（输入 + 密钥栏 + 识别 + 输出，缺省）；
+  // collapsed = 首屏折叠为单行紧凑条，展开后才是完整 hero（文件/速查工作区升为该域首屏主体）。
+  heroMode?: 'full' | 'collapsed';
   // 建设中域的规划能力预告，显示在占位页。
   note?: { zh: string; en: string };
 }
@@ -48,6 +55,8 @@ export const ctfModules: ToolkitModule[] = [
     icon: '🧩',
     entryKinds: ['file'],
     Workspace: FileForensicsWorkspace,
+    keepMounted: true,
+    heroMode: 'collapsed',
   },
   {
     id: 'traffic',
@@ -55,6 +64,8 @@ export const ctfModules: ToolkitModule[] = [
     icon: '📡',
     entryKinds: ['file'],
     Workspace: TrafficWorkspace,
+    keepMounted: true,
+    heroMode: 'collapsed',
   },
   {
     id: 'web',
@@ -62,6 +73,7 @@ export const ctfModules: ToolkitModule[] = [
     icon: '🌐',
     entryKinds: ['cheatsheet'],
     Workspace: CheatsheetWorkspace,
+    heroMode: 'collapsed',
     note: {
       zh: '规划能力：Web 题交互式工具台（请求重放、编码链分析）。',
       en: 'Planned: an interactive Web workbench (request replay, encoding chain analysis).',
@@ -73,6 +85,7 @@ export const ctfModules: ToolkitModule[] = [
     icon: '🔍',
     entryKinds: ['cheatsheet'],
     Workspace: CheatsheetWorkspace,
+    heroMode: 'collapsed',
     note: {
       zh: '规划能力：逆向域专属工具（反编译辅助、字符串/签名增强扫描）。',
       en: 'Planned: dedicated reversing tools (decompiler helpers, enhanced string/signature scans).',
@@ -84,6 +97,7 @@ export const ctfModules: ToolkitModule[] = [
     icon: '⚔️',
     entryKinds: ['cheatsheet'],
     Workspace: CheatsheetWorkspace,
+    heroMode: 'collapsed',
     note: {
       zh: '规划能力：Pwn 域专属工具（gadget 检索、payload 布局生成器）。',
       en: 'Planned: dedicated Pwn tools (gadget lookup, payload layout builders).',
@@ -95,6 +109,7 @@ export const ctfModules: ToolkitModule[] = [
     icon: '🤖',
     entryKinds: ['cheatsheet'],
     Workspace: CheatsheetWorkspace,
+    heroMode: 'collapsed',
     note: {
       zh: '规划能力：AI 题专属工具（提示注入用例库、系统提示对照）。',
       en: 'Planned: dedicated AI tools (prompt injection case library, system prompt diffing).',

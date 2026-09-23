@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { RefObject } from 'react';
 import { useId } from 'react';
 import { useAppContext } from '../../appContext';
@@ -19,6 +20,11 @@ interface CtfHeroProps {
   flagHits: FlagHits;
   displayOutput: string;
   showFileEntry: boolean;
+  // hero 形态（注册表 heroMode 声明，缺省 full）：collapsed 时首屏只渲染单行紧凑条，
+  // 展开后才是完整 hero；展开状态在组件内部记忆（hero 为框架层单实例，跨域切换自然保留）。
+  heroMode?: 'full' | 'collapsed';
+  // 折叠条上的"需要解编码？"引导：点击切回密码与编码域（速查域折叠条专用）。
+  onSwitchToCipher?: () => void;
   // 文件入口按钮的按域文案（批次 L）：不传时用杂项取证域的默认文案。
   fileEntryLabel?: { zh: string; en: string };
   fileEntryHint?: { zh: string; en: string };
@@ -32,6 +38,7 @@ interface CtfHeroProps {
 
 // 智能识别 hero（批次 J 自单一工作台抽出）：全域置顶，粘贴即自动解码。
 // 批次 M：全局密钥栏（与密码工作台共享同一把钥匙）+ 富输出面板（搜索/flag 高亮/候选导航/字数统计/回灌）。
+// hero 按域变形：cipher 保持完整形态；misc/traffic 与速查域折叠为单行条，文件/速查工作区升为该域首屏。
 function CtfHero({
   input,
   output,
@@ -43,6 +50,8 @@ function CtfHero({
   flagHits,
   displayOutput,
   showFileEntry,
+  heroMode = 'full',
+  onSwitchToCipher,
   fileEntryLabel,
   fileEntryHint,
   heroRef,
@@ -54,8 +63,61 @@ function CtfHero({
 }: CtfHeroProps) {
   const { language, globalSecret, setGlobalSecret } = useAppContext();
   const secretFieldId = useId();
+  const [expanded, setExpanded] = useState(false);
+  const collapsed = heroMode === 'collapsed' && !expanded;
+  const isZh = language === 'zh';
+
+  // 折叠条状态摘要：一眼看到当前识别进展，决定要不要展开。
+  let stripStatus: string;
+  if (running) {
+    stripStatus = isZh ? '识别中…' : 'Identifying…';
+  } else if (!input.trim()) {
+    stripStatus = isZh ? '粘贴密文或编码内容，自动识别' : 'Paste ciphertext or encoded text to identify';
+  } else if (autoDisabled) {
+    stripStatus = isZh ? `超过 ${autoDecodeLimit} 字符，已暂停自动识别` : `Over ${autoDecodeLimit} chars; auto-identify paused`;
+  } else if (flagHits.length) {
+    stripStatus = isZh ? '🚩 已识别 flag 格式' : '🚩 Flag format detected';
+  } else if (detections.length) {
+    const labels = detections.slice(0, 3).map(detection => detection.label).join('、');
+    stripStatus = isZh ? `识别到 ${detections.length} 种：${labels}` : `${detections.length} detected: ${labels}`;
+  } else if (displayOutput.trim()) {
+    stripStatus = isZh ? '已有解码结果' : 'Decode result ready';
+  } else {
+    stripStatus = isZh ? '暂无识别结果' : 'No result yet';
+  }
+
+  // 折叠条（heroMode === 'collapsed' 且未展开时替换整个 hero，文件/速查工作区升为该域首屏）。
+  const foldedHero = collapsed ? (
+    <section className="ctf-hero ctf-hero-folded" ref={heroRef} aria-label={isZh ? '智能识别' : 'Smart identify'}>
+      <div className="ctf-hero-strip">
+        <button
+          type="button"
+          className="ctf-hero-strip-main"
+          onClick={() => setExpanded(true)}
+          aria-expanded={false}
+          title={isZh ? '展开完整智能识别（粘贴即自动解码）' : 'Expand full Smart Identify (auto-decodes on paste)'}
+        >
+          <strong>⚡ {isZh ? '快速文本识别' : 'Quick Identify'}</strong>
+          <span className="ctf-hero-strip-status">{stripStatus}</span>
+          <span className="ctf-hero-strip-toggle" aria-hidden="true">{isZh ? '展开 ▾' : 'Expand ▾'}</span>
+        </button>
+        {onSwitchToCipher ? (
+          <button
+            type="button"
+            className="ctf-hero-strip-guide"
+            onClick={onSwitchToCipher}
+            title={isZh ? '切到密码与编码域使用完整智能识别' : 'Switch to Ciphers & Encoding for full Smart Identify'}
+          >
+            {isZh ? '需要解编码？→' : 'Need decoding? →'}
+          </button>
+        ) : null}
+      </div>
+    </section>
+  ) : null;
+
   return (
     <>
+      {foldedHero ?? (
       <section className="ctf-hero" ref={heroRef} aria-label={language === 'zh' ? '智能识别' : 'Smart identify'}>
         <div className="ctf-hero-head">
           <strong>{language === 'zh' ? '智能识别' : 'Smart Identify'}</strong>
@@ -70,6 +132,16 @@ function CtfHero({
                 : language === 'zh' ? '选择或拖入文件，在杂项取证域本地分析（上限 20MB，不上传）' : 'Pick or drop a file for local analysis in Misc & Forensics (20MB limit, never uploaded)'}
             >
               📎 {fileEntryLabel ? fileEntryLabel[language] : language === 'zh' ? '文件分析' : 'File analysis'}
+            </button>
+          ) : null}
+          {heroMode === 'collapsed' ? (
+            <button
+              type="button"
+              className="ctf-hero-fold"
+              onClick={() => setExpanded(false)}
+              title={language === 'zh' ? '收起为一行，把首屏让给当前工作区' : 'Collapse to one line and give the workspace the top spot'}
+            >
+              {language === 'zh' ? '收起' : 'Collapse'}
             </button>
           ) : null}
         </div>
@@ -130,7 +202,8 @@ function CtfHero({
           onUseAsInput={onUseAsInput}
           onClear={onClear}
         />
-      </section>
+        </section>
+      )}
       <style>{`
         .ctf-hero {
           min-width: 0;
@@ -141,6 +214,101 @@ function CtfHero({
           background: var(--bg-card);
           padding: 14px;
           scroll-margin-top: 16px;
+        }
+
+        /* 折叠条（hero 按域变形）：单行紧凑条，总高 ≤48px，点击展开完整 hero */
+        .ctf-hero.ctf-hero-folded {
+          display: block;
+          padding: 6px;
+        }
+
+        .ctf-hero-strip {
+          display: flex;
+          align-items: stretch;
+          gap: 6px;
+        }
+
+        .ctf-hero-strip-main {
+          flex: 1;
+          min-width: 0;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          min-height: 34px;
+          border: none;
+          border-radius: 6px;
+          background: transparent;
+          color: var(--text-secondary);
+          padding: 4px 6px;
+          font-size: 12px;
+          cursor: pointer;
+          text-align: left;
+        }
+
+        .ctf-hero-strip-main:hover {
+          background: rgba(255, 255, 255, 0.045);
+        }
+
+        .ctf-hero-strip-main strong {
+          color: var(--neon-cyan);
+          font-size: 13px;
+          font-weight: 800;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+
+        .ctf-hero-strip-status {
+          flex: 1;
+          min-width: 0;
+          color: var(--text-muted);
+          font-size: 12px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .ctf-hero-strip-toggle {
+          color: var(--text-muted);
+          font-size: 11px;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+
+        .ctf-hero-strip-guide {
+          flex-shrink: 0;
+          min-height: 34px;
+          padding: 4px 10px;
+          border: 1px solid var(--border-color);
+          border-radius: 6px;
+          background: rgba(255, 255, 255, 0.035);
+          color: var(--text-secondary);
+          font-size: 12px;
+          font-weight: 700;
+          white-space: nowrap;
+          cursor: pointer;
+          transition: border-color var(--transition-fast), color var(--transition-fast);
+        }
+
+        .ctf-hero-strip-guide:hover {
+          border-color: var(--neon-cyan);
+          color: var(--neon-cyan);
+        }
+
+        .ctf-hero-fold {
+          min-height: 30px;
+          padding: 5px 9px;
+          border: 1px solid var(--border-color);
+          border-radius: 6px;
+          background: rgba(255, 255, 255, 0.035);
+          color: var(--text-muted);
+          font-size: 12px;
+          white-space: nowrap;
+          cursor: pointer;
+          transition: color var(--transition-fast);
+        }
+
+        .ctf-hero-fold:hover {
+          color: var(--text-primary);
         }
 
         .ctf-hero-head {
@@ -317,6 +485,15 @@ function CtfHero({
         @media (max-width: 680px) {
           .ctf-hero {
             padding: 10px;
+          }
+
+          .ctf-hero.ctf-hero-folded {
+            padding: 5px;
+          }
+
+          /* 窄屏收起"展开"字样省空间：整条仍是展开按钮，状态摘要截断兜底 */
+          .ctf-hero-strip-toggle {
+            display: none;
           }
 
           .ctf-hero-input {
