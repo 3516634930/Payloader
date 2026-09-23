@@ -9,3 +9,4 @@
 - **PNG 解码验证不能把每行首字节当像素**（症状：自造 PNG 比对时行 1+ "全 0"）→ PNG 每行前置 filter byte，且浏览器 toBlob 编码常用 Up/Paeth filter（内容相同时 diff 为 0）；验证脚本必须按 PNG 规范还原 filter 再比对。
 - **dev server 端口残留**：`TaskStop` 杀掉 npm 外壳后 vite 子进程可能残留占用端口（strictPort 再启报 `Port already in use`）→ 残留的 vite 仍服务最新磁盘代码（按需编译），可直接复用该端口测试；彻底清理需杀 node 进程。
 - **memo 化树节点仅按"子树含选中"传播会在同枝移动选中时全部 bail**（症状：选中从枝内叶子 A 点到叶子 B，主内容切换了但树上高亮冻结在 A，生产构建同样复现）→ 自定义比较器必须加"叶子 id 变化且本枝（前或后）含选中 → 强制重渲染"规则（selectedLeafId 信号），仅 branchSelected 布尔翻转只覆盖跨枝场景，覆盖不了"祖先链 containment 恒 true、自身 isSelected 不变"的同枝移动。位置：`src/components/Sidebar.tsx` TreeNode 比较器。
+- **组件 `<style>` 迁出为 CSS 文件后，级联胜负改由 bundle 内 import 顺序决定**（症状：`global.css` 的 `.code-block`（4px 圆角）反压 PayloadDetail/ToolDetail 自身的 6px 圆角规则，代码块圆角/内边距/溢出回归；生产构建产物可复现）→ 旧内联 `<style>` 渲染在 body 天然压过 head 样式表，迁移后这层保护消失：全局 CSS（`src/styles/global.css`）的 import 必须置于 `App.tsx` 组件 import **之前**；同一组件引多张 CSS 时保持原 `<style>` 注入顺序（同 specificity 后者胜）。位置：`src/App.tsx:3-4`（修复 commit c699589）。
