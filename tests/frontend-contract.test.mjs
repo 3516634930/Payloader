@@ -65,16 +65,16 @@ test('deployed HTML exposes the existing Xeye link to non-JavaScript crawlers', 
 });
 
 test('the production server removes static Xeye metadata after an administrator deletes the entry', async () => {
-  const [server, html] = await Promise.all([
-    read('server/admin-server.mjs'),
+  const [staticServer, html] = await Promise.all([
+    read('server/static.mjs'),
     read('index.html'),
   ]);
 
   assert.match(html, /id=["']xeye-structured-data["']/);
   assert.match(html, /data-xeye-platform-link/);
-  assert.match(server, /settings\.xeyeEnabled/);
-  assert.match(server, /xeye-structured-data/);
-  assert.match(server, /data-xeye-platform-link/);
+  assert.match(staticServer, /settings\.xeyeEnabled/);
+  assert.match(staticServer, /xeye-structured-data/);
+  assert.match(staticServer, /data-xeye-platform-link/);
 });
 
 test('sidebar uses an accessible tree with semantic controls', async () => {
@@ -453,6 +453,7 @@ test('admin shell is public while admin data uses explicit Bearer authorization'
   const login = await read('admin/login.html');
   const loginScript = await read('admin/login.js');
   const server = await read('server/admin-server.mjs');
+  const staticServer = await read('server/static.mjs');
   const session = await read('server/admin-session.mjs');
   const admin = await read('admin/admin.js');
 
@@ -462,8 +463,10 @@ test('admin shell is public while admin data uses explicit Bearer authorization'
   assert.match(loginScript, /body\.tokenType !== 'Bearer'/);
   assert.match(loginScript, /sessionStorage\.setItem\(tokenStorageKey, body\.accessToken\)/);
   assert.doesNotMatch(loginScript, /正在建立安全会话|登录成功，正在进入后台|进入后台/);
-  assert.match(server, /url\.pathname === '\/admin'[\s\S]*?serveStatic\(request, response, adminPath\)/);
-  assert.match(server, /handleAdminApi[\s\S]*?requireAuth\(request, response\)/);
+  assert.match(staticServer, /'\/admin\/login'[\s\S]*?serveStatic\(request, response, join\(adminDir, 'login\.html'\)\)/);
+  assert.match(staticServer, /adminStaticPath\(url\.pathname\)[\s\S]*?serveStatic\(request, response, adminPath\)/);
+  assert.match(staticServer, /checkRateLimit\(request, response, 'admin-page', adminRequestLimit\)/);
+  assert.match(server, /api\/admin\/[\s\S]*?requireAuth\(request, response\)/);
   assert.match(session, /authorization\.match\(\/\^Bearer/);
   assert.match(admin, /sessionStorage\.getItem\(adminTokenStorageKey\)/);
   assert.match(admin, /headers\.authorization = `Bearer \$\{state\.accessToken\}`/);
