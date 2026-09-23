@@ -57,10 +57,10 @@ export interface DetectedType {
 
 // 魔数路由组（框架层扩展名→题型域的唯一权威定义）：命中抓包格式 → 流量分析域，可执行格式 → 逆向域。
 // CtfToolkit 的文件入口路由与 recommendTools 的推荐工具条都从这里消费，禁止本地重声明（历史上三方漂移）。
-export const ROUTE_EXT_GROUPS: { traffic: readonly string[]; reverse: readonly string[] } = {
-  traffic: ['pcap', 'pcapbe', 'pcapng'],
-  reverse: ['elf', 'exe', 'macho', 'machobe'],
-};
+export const ROUTE_EXT_GROUPS: { traffic: readonly string[]; reverse: readonly string[] } = Object.freeze({
+  traffic: Object.freeze(['pcap', 'pcapbe', 'pcapng']),
+  reverse: Object.freeze(['elf', 'exe', 'macho', 'machobe']),
+});
 
 // 路由组与魔数表的一致性自检：组内扩展名必须都能被 MAGIC_TABLE 探测出来，否则路由永不命中。
 for (const routeExt of [...ROUTE_EXT_GROUPS.traffic, ...ROUTE_EXT_GROUPS.reverse]) {

@@ -2483,6 +2483,10 @@ await run('批次 W 受众纠偏：57 个 CTF 高频操作受众为 both 且 CTF
   const ctfIds = new Set(buildCtfGroups().flatMap(group => group.operations.map(op => op.id)));
   const invisible = bothIds.filter(id => !ctfIds.has(id));
   expect(invisible.length === 0, `纠偏操作未进 CTF 视图分组：${invisible.join(', ')}`);
+  // 代表性 ID 钉住：数量守恒的"双重受众互换"可逃逸计数检查，钉 3 个批次 W 纠偏代表 + 全部 85 的抽查面
+  for (const representative of ['aes-gcm', 'hash', 'jsfuck', 'cbor', 'totp']) {
+    expect(operationAudience[representative] === 'both', `代表性纠偏操作 ${representative} 受众漂移`);
+  }
   // 界线守护：仅有的 2 个渗透专属操作不得被顺手放大
   expect(operationAudience['signature-nonce-helper'] === 'pentest' && operationAudience['basic-auth'] === 'pentest', 'signature-nonce-helper/basic-auth 必须保持 pentest 专属');
   expect(!ctfIds.has('signature-nonce-helper') && !ctfIds.has('basic-auth'), 'pentest 专属操作不得出现在 CTF 视图');
