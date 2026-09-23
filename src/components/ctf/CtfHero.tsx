@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import type { RefObject } from 'react';
-import { useId } from 'react';
 import { useLanguage, useSession } from '../../appContext';
 import { detectFlagFormats } from '../../utils/codec/smartDecode';
 import type { Detection, OperationId } from '../../utils/codec/types';
 import { formatTextStats } from '../codec/outputPanelUtils';
 import { WorkbenchOutputPanel } from '../codec/WorkbenchOutputPanel';
+import { DetectStrip } from '../codec/DetectStrip';
+import { GlobalSecretBar } from '../codec/GlobalSecretBar';
+import { CtfHeroStrip } from './CtfHeroStrip';
 import '../../styles/ctf-hero.css';
 
 type FlagHits = ReturnType<typeof detectFlagFormats>;
@@ -64,7 +66,6 @@ function CtfHero({
 }: CtfHeroProps) {
   const { language } = useLanguage();
   const { globalSecret, setGlobalSecret } = useSession();
-  const secretFieldId = useId();
   const [expanded, setExpanded] = useState(false);
   const collapsed = heroMode === 'collapsed' && !expanded;
   const isZh = language === 'zh';
@@ -90,31 +91,14 @@ function CtfHero({
 
   // 折叠条（heroMode === 'collapsed' 且未展开时替换整个 hero，文件/速查工作区升为该域首屏）。
   const foldedHero = collapsed ? (
-    <section className="ctf-hero ctf-hero-folded" ref={heroRef} aria-label={isZh ? '智能识别' : 'Smart identify'}>
-      <div className="ctf-hero-strip">
-        <button
-          type="button"
-          className="ctf-hero-strip-main"
-          onClick={() => setExpanded(true)}
-          aria-expanded={false}
-          title={isZh ? '展开完整智能识别（粘贴即自动解码）' : 'Expand full Smart Identify (auto-decodes on paste)'}
-        >
-          <strong>⚡ {isZh ? '快速文本识别' : 'Quick Identify'}</strong>
-          <span className="ctf-hero-strip-status">{stripStatus}</span>
-          <span className="ctf-hero-strip-toggle" aria-hidden="true">{isZh ? '展开 ▾' : 'Expand ▾'}</span>
-        </button>
-        {onSwitchToCipher ? (
-          <button
-            type="button"
-            className="ctf-hero-strip-guide"
-            onClick={onSwitchToCipher}
-            title={isZh ? '切到密码与编码域使用完整智能识别' : 'Switch to Ciphers & Encoding for full Smart Identify'}
-          >
-            {isZh ? '需要解编码？→' : 'Need decoding? →'}
-          </button>
-        ) : null}
-      </div>
-    </section>
+    <CtfHeroStrip
+      status={stripStatus}
+      expanded={expanded}
+      onExpand={() => setExpanded(true)}
+      onSwitchToCipher={onSwitchToCipher}
+      language={language}
+      heroRef={heroRef}
+    />
   ) : null;
 
   return (
@@ -163,29 +147,15 @@ function CtfHero({
             <span>{language === 'zh' ? `输入超过 ${autoDecodeLimit} 字符，已暂停自动识别，请在下方选择具体算法处理。` : `Input exceeds ${autoDecodeLimit} chars; auto-identify paused. Pick a specific tool below.`}</span>
           ) : null}
         </div>
-        <div className="global-secret-bar">
-          <label htmlFor={secretFieldId}>{language === 'zh' ? '🔑 全局密钥' : '🔑 Global key'}</label>
-          <input
-            id={secretFieldId}
-            value={globalSecret}
-            onChange={event => setGlobalSecret(event.target.value)}
-            placeholder={language === 'zh'
-              ? '多步解密共用一把钥匙；下方工作台自动读取，填了私有密钥则优先用私有值'
-              : 'One key for the whole chain; the workbench below reads it, per-operation keys take precedence'}
-            spellCheck={false}
-            autoComplete="off"
-          />
-        </div>
-        {detections.length ? (
-          <div className="detect-strip" aria-label={language === 'zh' ? '自动识别结果' : 'Detected formats'}>
-            <span>{language === 'zh' ? '识别' : 'Detected'}</span>
-            {detections.map(detection => (
-              <button key={`${detection.id}-${detection.label}`} type="button" onClick={() => onDetection(detection.id)}>
-                {detection.label}
-              </button>
-            ))}
-          </div>
-        ) : null}
+        <GlobalSecretBar
+          value={globalSecret}
+          onChange={setGlobalSecret}
+          placeholder={{
+            zh: '多步解密共用一把钥匙；下方工作台自动读取，填了私有密钥则优先用私有值',
+            en: 'One key for the whole chain; the workbench below reads it, per-operation keys take precedence',
+          }}
+        />
+        <DetectStrip detections={detections} onDetect={onDetection} />
         {flagHits.length ? (
           <div className="ctf-flag-strip" aria-label={language === 'zh' ? '识别到 flag 格式' : 'Flag formats found'}>
             {flagHits.map(hit => (
