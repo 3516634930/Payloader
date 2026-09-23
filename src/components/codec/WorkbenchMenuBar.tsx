@@ -1,6 +1,6 @@
 import { Menu } from '@mantine/core';
 import { useAppContext } from '../../appContext';
-import { label } from '../../utils/codec';
+import { label } from '../../utils/codec/bases';
 
 export interface WorkbenchMenuEntry {
   key: string;

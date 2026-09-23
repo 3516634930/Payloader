@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import CodecWorkbench from './CodecWorkbench';
-import { buildPentestGroups } from '../utils/codec';
+import { buildPentestGroups } from '../utils/codec/audience';
 
 // 渗透编解码视图：只渲染 pentest + both 受众的操作；CTF 解题专属工具在顶部导航「CTF 解题」标签页。
 function EncodingTools() {

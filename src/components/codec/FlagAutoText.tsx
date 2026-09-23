@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { findFlagAutoRanges } from '../../utils/codec';
+import { findFlagAutoRanges } from '../../utils/codec/smartDecode';
 
 interface FlagAutoTextProps {
   text: string;

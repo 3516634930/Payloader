@@ -50,6 +50,9 @@ const compileEncodingToolsModule = () => {
     let source = fs.readFileSync(key, 'utf8').replace(/^\uFEFF/, '');
     if (key === path.resolve(codecEntryFile)) {
       source += '\nmodule.exports = { transform, defaultParams, detectInput, smartDecode, extractPureDecodeResult, inferRsaParamsFromText, inferDlpFromText, factorSmallRsaModulus, operations, gsm7DefaultAlphabet, gsm7ExtensionAlphabet, operationAudience, buildPentestGroups, buildCtfGroups, buildCtfMenus, findFlagAutoRanges, detectFlagFormats, parityBaseVectors, parityCharVectors, parityCnVectors, parityKeyedVectors, parityNumVectors, parityProbes };\n';
+      // hydrateCodecHeavyData 经 `export { x } from './heavyData'` 转译为 getter，无顶层绑定可被
+      // 白名单 shorthand 引用，故以 require 显式补挂（localRequire 的候选解析覆盖 ./heavyData.ts）。
+      source += '\nmodule.exports.hydrateCodecHeavyData = require("./heavyData").hydrateCodecHeavyData;\n';
     }
     const compiled = ts.transpileModule(source, {
       compilerOptions: {
@@ -147,6 +150,7 @@ const {
   buildCtfMenus,
   findFlagAutoRanges,
   detectFlagFormats,
+  hydrateCodecHeavyData,
   parityBaseVectors,
   parityCharVectors,
   parityCnVectors,
@@ -154,6 +158,12 @@ const {
   parityNumVectors,
   parityProbes,
 } = compileEncodingToolsModule();
+
+// 古典密码 quadgram 评分表（609KB）已拆为 ngramTableData.ts 动态 chunk：生产路径经
+// hydrateCodecHeavyData 异步注水。沙箱内动态 import 被 ts 转译为 Promise + require，
+// localRequire 可解析，await 同一入口即可到位——不注水则评分恒为 -9999，
+// 智能识别/无密钥还原类回归会因候选排序退化而失败。
+await hydrateCodecHeavyData();
 
 const results = [];
 

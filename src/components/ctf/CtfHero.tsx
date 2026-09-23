@@ -2,8 +2,8 @@ import { useState } from 'react';
 import type { RefObject } from 'react';
 import { useId } from 'react';
 import { useAppContext } from '../../appContext';
-import { detectFlagFormats } from '../../utils/codec';
-import type { Detection, OperationId } from '../../utils/codec';
+import { detectFlagFormats } from '../../utils/codec/smartDecode';
+import type { Detection, OperationId } from '../../utils/codec/types';
 import { formatTextStats } from '../codec/outputPanelUtils';
 import { WorkbenchOutputPanel } from '../codec/WorkbenchOutputPanel';
 

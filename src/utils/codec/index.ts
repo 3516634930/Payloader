@@ -17,6 +17,11 @@ import { parityNumVectors } from './parityNumeric';
 import { parityProbes } from './smartDecode';
 import { label } from './bases';
 
+// 重数据注水：609KB 的古典密码 quadgram 评分表拆在 ngramTableData.ts（仅被动态 import，
+// vite 拆为并行异步 chunk，不进 CodecWorkbench 主 chunk）。实现放在 heavyData.ts 与桶解耦，
+// 组件可绕开桶直接 import；此处 re-export 保持既有导出面（verify:codec 白名单不变）。
+export { hydrateCodecHeavyData } from './heavyData';
+
 export {
   buildCtfGroups,
   buildCtfMenus,

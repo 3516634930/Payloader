@@ -6,10 +6,12 @@
 
 ## P1（高价值，建议 v2.0.2 之前插入）
 
-### 1. codec 注册表动态化 —— 拆 1.4MB 懒加载 chunk
-- 现状：`src/utils/codec/index.ts` 桶文件静态 import 全部 30 个运算模块（含 smartHelpers 673KB 大字表、rsa 3432 行、crypto 1976 行），点开编解码/CTF 工具即拉 **1307KB（gzip 394KB）** chunk。
-- 方案：注册表按运算组拆分（crypto/古典/parity 中文/智能识别/基础），`operations` 数组改异步装配；首开只加载基础组，其余按需。
-- 风险：中（注册是同步数组，verify:codec 沙箱依赖 index.ts 导出白名单，需同步改造）。工作量 ~12h。收益：CTF 工具首开体积 -70%。
+### 1. codec 注册表动态化 —— 拆 1.4MB 懒加载 chunk（✅ 2026-09-23 已实施，实测优于预期）
+- 原方案"operations 异步装配"经调研否决：与全仓同步 run 约束冲突，需改 30 模块。实际构成 = 自研代码 ~700KB + 单常量 609KB（`smartHelpers` 的 `CLASSICAL_NGRAM_TABLE_B64` quadgram 评分表）。
+- **已落地**：①评分表拆 `ngramTableData.ts`（纯数据，仅动态 import）+ `smartHelpers` 注水接口 `injectClassicalNgramTable` + 无表回退 -9999（与"无可读信号"同语义，零特殊分支）；②注水通道独立 `heavyData.ts`（与桶解耦），桶 re-export 保持导出面；③消费方 `CodecWorkbench.run` / `CtfToolkit.runSmartDecode` 执行前 ensure + mount 预热；④7 组件桶解引用（CtfHero/FlagAutoText/WorkbenchOutputPanel/WorkbenchMenuBar/CipherWorkspace/CtfToolkit/EncodingTools 直 import audience/smartDecode/bases/types/heavyData）；⑤verify 沙箱以 require 显式补挂 hydrate 并 await 注水（re-export 转译为 getter 无顶层绑定，shorthand 白名单会 ReferenceError——已记入实现注释）。
+- **实测**：CodecWorkbench 1309KB(gzip 394) → **700KB(gzip 256)**；评分表 609KB(gzip 138) 独立异步并行 chunk 不阻塞首屏；主包 164KB 不变；CtfToolkit 119→200KB（smartDecode 链两侧共享被复制，rolldown 归属策略，可接受）。关键路径 gzip ~430→~320KB。
+- 门禁：verify:codec 133 / test 236 / typecheck / lint / build 全绿；浏览器回归：CTF 芯片自执行、智能识别 caesar 评分选优、工作台 transform、console 零错误。
+- 遗留：rsa(140KB)/crypto(88KB)/sandbox(74KB)/prng(68KB) 代码惰性化需异步 run 改造，转 P3。
 
 ### 2. Context 拆分 + 渲染隔离
 - 现状：`appContext.ts` 单 context 29 字段，Provider value 未 useMemo（App.tsx:194-224），全仓 `React.memo` 为 0；搜索框每键入一字（Header.tsx:328）→ PayloadDetail（1156 行）/Sidebar（545 行）全树重渲染。

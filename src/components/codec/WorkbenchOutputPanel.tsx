@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAppContext } from '../../appContext';
-import { findFlagAutoRanges } from '../../utils/codec';
-import type { FlagAutoRange } from '../../utils/codec';
+import { findFlagAutoRanges } from '../../utils/codec/smartDecode';
+import type { FlagAutoRange } from '../../utils/codec/smartDecode';
 import { candidateHighlightKey, formatTextStats, parseCandidateLayers } from './outputPanelUtils';
 import { CodecCandidateList } from './CodecCandidates';
 

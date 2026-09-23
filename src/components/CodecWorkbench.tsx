@@ -6,6 +6,7 @@ import {
   defaultParams,
   detectInput,
   extractPureDecodeResult,
+  hydrateCodecHeavyData,
   isCryptoJsCipherOperation,
   isNobleAesOperation,
   isNobleNonceOperation,
@@ -163,6 +164,11 @@ function CodecWorkbench({ ref, groups, heading, description, registerTestApi = f
   );
   const activeOperationIdForTest = operation?.id;
 
+  // 重数据预热：工作台挂载即并行拉起古典密码评分表 chunk（609KB，独立异步 chunk），不阻塞首屏。
+  useEffect(() => {
+    void hydrateCodecHeavyData();
+  }, []);
+
   useEffect(() => {
     if (!registerTestApi) return;
     if (typeof window === 'undefined' || !/^(localhost|127\.0\.0\.1|::1)$/i.test(window.location.hostname)) return;
@@ -209,6 +215,8 @@ function CodecWorkbench({ ref, groups, heading, description, registerTestApi = f
     setError('');
     setRunning(true);
     try {
+      // 古典密码评分表（609KB 异步 chunk）就绪后再执行：幂等，mount 预热后此处几乎总是立即返回。
+      await hydrateCodecHeavyData();
       const result = await transform(operationId, direction, inputOverride ?? input, effectiveParams);
       setOutput(result);
     } catch (reason) {

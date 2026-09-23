@@ -2,16 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent } from 'react';
 import { SegmentedControl } from '@mantine/core';
 import { useAppContext } from '../appContext';
+import { buildCtfGroups, isOperationVisible } from '../utils/codec/audience';
 import {
-  buildCtfGroups,
   detectFlagFormats,
   detectInput,
   extractPureDecodeResult,
-  isOperationVisible,
   smartDecode,
   stripCandidateSection,
-} from '../utils/codec';
-import type { OperationId } from '../utils/codec';
+} from '../utils/codec/smartDecode';
+import { hydrateCodecHeavyData } from '../utils/codec/heavyData';
+import type { OperationId } from '../utils/codec/types';
 import { ctfModules } from '../utils/ctf/modules';
 import { detectFileTypes } from '../utils/ctf/fileDetect';
 import CtfHero from './ctf/CtfHero';
@@ -60,6 +60,9 @@ function CtfToolkit() {
     setRunning(true);
     setError('');
     try {
+      // 评分表（609KB 异步 chunk）就绪后再跑：幂等，mount 预热后此处几乎总是立即返回。
+      await hydrateCodecHeavyData();
+      if (runTokenRef.current !== token) return;
       const result = await smartDecode(input);
       if (runTokenRef.current !== token) return;
       setOutput(result);
@@ -71,6 +74,11 @@ function CtfToolkit() {
       if (runTokenRef.current === token) setRunning(false);
     }
   }, [input]);
+
+  // 重数据预热：进 CTF tab 即并行拉起评分表 chunk，不阻塞首屏渲染。
+  useEffect(() => {
+    void hydrateCodecHeavyData();
+  }, []);
 
   // 智能识别置顶体验：粘贴后 350ms 防抖自动解码；超长输入不自动跑（结果区给出手动提示）。
   useEffect(() => {
