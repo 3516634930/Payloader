@@ -259,7 +259,7 @@ test('recommendTools PNG 给修复与位面组并追加通用组', () => {
   const tools = recommend.recommendTools([{ ext: 'png', name: 'PNG image' }]);
   assert.deepEqual(Array.from(tools, tool => tool.id), ['png-dimensions', 'png-bitplanes', 'png-channels', 'png-chunks', 'gen-strings', 'gen-hexdump', 'gen-entropy']);
   assert.equal(tools[0].cardId, 'ff-card-repair');
-  assert.ok(tools[1].soon);
+  assert.ok(tools[1] && !tools[1].soon, '位平面工具应已上线');
 });
 
 test('recommendTools pcap 给文件移交动作', () => {
@@ -281,4 +281,227 @@ test('recommendTools ELF 组含跨域引导并与通用组去重', () => {
 test('recommendTools 未知类型只给通用组', () => {
   const tools = recommend.recommendTools([]);
   assert.deepEqual(Array.from(tools, tool => tool.id), ['gen-strings', 'gen-hexdump', 'gen-entropy']);
+});
+
+// ---- 位平面与色道（imagePlanes）----
+
+const imagePlanes = loadModule(path.join(srcDir, 'utils', 'ctf', 'imagePlanes.ts'));
+
+// 8 像素一行，R 通道低位嵌 0x41（'A' = 01000001，MSB-first）：位序 0,1,0,0,0,0,0,1。
+const makeRgbaWithByte = () => {
+  const bits = [0, 1, 0, 0, 0, 0, 0, 1];
+  const rgba = new Uint8Array(8 * 4);
+  for (let index = 0; index < 8; index += 1) {
+    rgba[index * 4] = bits[index];       // R
+    rgba[index * 4 + 1] = 0x80;          // G 固定值，验证通道选择
+    rgba[index * 4 + 2] = 0x20;          // B 固定值
+    rgba[index * 4 + 3] = 0xff;          // A
+  }
+  return rgba;
+};
+
+test('extractLsbBytes 按行序 MSB-first 组字节提取', () => {
+  const rgba = makeRgbaWithByte();
+  const extracted = imagePlanes.extractLsbBytes(rgba, { channel: 0, bit: 0 });
+  assert.equal(extracted.length, 1);
+  assert.equal(extracted[0], 0x41, `R 通道 bit0 应提取出 'A'，实际 0x${extracted[0].toString(16)}`);
+
+  // G 通道低位全 0 → 提取全零字节（通道选择未串位）。
+  assert.deepEqual(Array.from(imagePlanes.extractLsbBytes(rgba, { channel: 1, bit: 0 })), [0]);
+
+  // bit=7 时 R 值（0/1）的高位恒 0 → 全零；非目标位不影响结果。
+  assert.deepEqual(Array.from(imagePlanes.extractLsbBytes(rgba, { channel: 0, bit: 7 })), [0]);
+});
+
+test('extractBitPlane 二值化与 extractChannelPlane 取通道', () => {
+  const rgba = new Uint8Array([0x05, 0, 0, 255, 0x05, 0, 0, 255]);
+  assert.deepEqual(Array.from(imagePlanes.extractBitPlane(rgba, 0, 2)), [255, 255], '0x05 的 bit2=1 → 白');
+  assert.deepEqual(Array.from(imagePlanes.extractBitPlane(rgba, 0, 1)), [0, 0], '0x05 的 bit1=0 → 黑');
+  assert.deepEqual(Array.from(imagePlanes.extractChannelPlane(rgba, 0)), [0x05, 0x05]);
+  assert.equal(imagePlanes.MAX_ANALYSIS_PIXELS, 4_000_000, '4MP 红线常量');
+});
+
+test('bytesToPreviewText 转义不可打印字符', () => {
+  const bytes = Uint8Array.from(Buffer.from('flag{ok}\x01\x00', 'binary'));
+  assert.equal(imagePlanes.bytesToPreviewText(bytes), 'flag{ok}\\x01\\x00');
+});
+
+// ---- 嵌入扫描（embedScan）----
+
+const embedScan = loadModule(path.join(srcDir, 'utils', 'ctf', 'embedScan.ts'));
+
+test('scanEmbeddedSignatures 检出 IEND 后的 zip 且不报文件自身', () => {
+  const png = makePng(300, 200);
+  const zip = makeZip({ lfhEnc: false, cdEnc: false });
+  const carrier = Uint8Array.from(Buffer.concat([png, zip, Buffer.from('junk')]));
+  const hits = embedScan.scanEmbeddedSignatures(carrier);
+  const zipHit = hits.find(hit => hit.ext === 'zip');
+  assert.ok(zipHit, '应检出嵌入 zip');
+  assert.equal(zipHit.offset, png.length, `zip 应在 PNG 结束处（${png.length}），实际 ${zipHit?.offset}`);
+  assert.ok(!hits.some(hit => hit.ext === 'png'), 'offset 0 的文件自身签名不得报为嵌入');
+  assert.equal(embedScan.scanEmbeddedSignatures(Uint8Array.from(png)).length, 0, '干净 PNG 无嵌入命中');
+});
+
+test('scanEmbeddedSignatures 文件本身是 zip 时不报自身 local header（噪声抑制）', () => {
+  const zip = Uint8Array.from(makeZip({ lfhEnc: false, cdEnc: false }));
+  const hits = embedScan.scanEmbeddedSignatures(zip);
+  assert.equal(hits.filter(hit => hit.ext === 'zip').length, 0, 'zip 自身的 PK 头不得报为嵌入');
+  // 非 zip 容器里的多个 PK 头仍应照报（限流 4 条）。
+  const png = makePng(64, 32);
+  const twoZips = Uint8Array.from(Buffer.concat([png, Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.alloc(10), Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.alloc(10)]));
+  const pngHits = embedScan.scanEmbeddedSignatures(twoZips);
+  assert.equal(pngHits.filter(hit => hit.ext === 'zip').length, 2, '非 zip 容器中的两个 PK 头都应检出');
+});
+
+test('findPngTrailer 检出 IEND 后尾附字节', () => {
+  const png = makePng(300, 200);
+  const trailer = Buffer.from('PK\x03\x04hidden-zip-bytes-here');
+  const carrier = Uint8Array.from(Buffer.concat([png, trailer]));
+  const hit = embedScan.findPngTrailer(carrier);
+  assert.ok(hit, 'IEND 后有数据应检出尾附');
+  assert.equal(hit.offset, png.length);
+  assert.equal(hit.trailing.length, trailer.length);
+  assert.equal(embedScan.findPngTrailer(Uint8Array.from(png)), null, '干净 PNG 无尾附');
+});
+
+test('findJpegTrailer 解析 marker 链到 EOI 且不误判 FF00 填充', () => {
+  const jpeg = Buffer.concat([
+    Buffer.from([0xff, 0xd8]),                                     // SOI
+    Buffer.from([0xff, 0xe0, 0x00, 0x10]), Buffer.from('JFIF\0'), Buffer.from([1, 1, 0, 0, 1, 0, 1, 0, 0]), // APP0
+    Buffer.from([0xff, 0xda, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3f, 0x00]), // SOS
+    Buffer.from('AB\xff\x00CD'),                                   // 熵编码（FF00 是填充不是 EOI）
+    Buffer.from([0xff, 0xd9]),                                     // EOI
+  ]);
+  const trailer = Buffer.from('tail-data');
+  const carrier = Uint8Array.from(Buffer.concat([jpeg, trailer]));
+  const hit = embedScan.findJpegTrailer(carrier);
+  assert.ok(hit, 'EOI 后有数据应检出尾附');
+  assert.equal(hit.offset, jpeg.length, `尾附应从 EOI 结束处开始，实际 ${hit?.offset}`);
+  assert.equal(hit.trailing.length, trailer.length);
+  assert.equal(embedScan.findJpegTrailer(Uint8Array.from(jpeg)), null, '无尾附 JPEG 返回 null');
+  assert.equal(embedScan.findJpegTrailer(Uint8Array.from(Buffer.from('not jpeg'))), null, '非 JPEG 返回 null');
+});
+
+test('enumeratePngChunks 列出 tEXt/zTXt/iTXt 内容与 CRC 状态', () => {
+  const textData = Buffer.concat([Buffer.from('Comment', 'ascii'), Buffer.from([0]), Buffer.from('flag{chunk_test}', 'ascii')]);
+  const textChunk = Buffer.alloc(12 + textData.length);
+  textChunk.writeUInt32BE(textData.length, 0);
+  textChunk.write('tEXt', 4, 'ascii');
+  textData.copy(textChunk, 8);
+  textChunk.writeUInt32BE(crc32Of(textChunk.subarray(4, 8 + textData.length)), 8 + textData.length);
+
+  const ztxData = Buffer.concat([Buffer.from('Note', 'ascii'), Buffer.from([0]), Buffer.from([0]), Buffer.from([0x78, 0x9c, 0x03, 0x00])]);
+  const ztxChunk = Buffer.alloc(12 + ztxData.length);
+  ztxChunk.writeUInt32BE(ztxData.length, 0);
+  ztxChunk.write('zTXt', 4, 'ascii');
+  ztxData.copy(ztxChunk, 8);
+  ztxChunk.writeUInt32BE(crc32Of(ztxChunk.subarray(4, 8 + ztxData.length)), 8 + ztxData.length);
+
+  // iTXt 未压缩：keyword\0 flag(0)\0 method(0)\0 lang\0 translated\0 text
+  const itxData = Buffer.concat([
+    Buffer.from('Title', 'ascii'), Buffer.from([0]),
+    Buffer.from([0, 0]),
+    Buffer.from('en', 'ascii'), Buffer.from([0]),
+    Buffer.from([0]),
+    Buffer.from('flag{itxt_plain}', 'ascii'),
+  ]);
+  const itxChunk = Buffer.alloc(12 + itxData.length);
+  itxChunk.writeUInt32BE(itxData.length, 0);
+  itxChunk.write('iTXt', 4, 'ascii');
+  itxData.copy(itxChunk, 8);
+  itxChunk.writeUInt32BE(crc32Of(itxChunk.subarray(4, 8 + itxData.length)), 8 + itxData.length);
+
+  // iTXt 压缩：flag=1，压缩数据本体不解析（解压由 UI 层做），只验结构标记。
+  const itxCData = Buffer.concat([
+    Buffer.from('Cmd', 'ascii'), Buffer.from([0]),
+    Buffer.from([1, 0]),
+    Buffer.from('zh', 'ascii'), Buffer.from([0]),
+    Buffer.from([0]),
+    Buffer.from([0x78, 0x9c, 0x03, 0x00]),
+  ]);
+  const itxCChunk = Buffer.alloc(12 + itxCData.length);
+  itxCChunk.writeUInt32BE(itxCData.length, 0);
+  itxCChunk.write('iTXt', 4, 'ascii');
+  itxCData.copy(itxCChunk, 8);
+  itxCChunk.writeUInt32BE(crc32Of(itxCChunk.subarray(4, 8 + itxCData.length)), 8 + itxCData.length);
+
+  // 文本 chunk 插在 IHDR 与 IEND 之间（PNG 规范位置；IEND 之后的字节属于"尾附数据"职责）。
+  const basePng = makePng(64, 32);
+  const head = basePng.subarray(0, 33);   // 签名 + IHDR
+  const tail = basePng.subarray(33);      // IEND
+  const carrier = Uint8Array.from(Buffer.concat([head, textChunk, ztxChunk, itxChunk, itxCChunk, tail]));
+  const { chunks, truncated } = embedScan.enumeratePngChunks(carrier);
+  const types = Array.from(chunks, chunk => chunk.type);
+  assert.deepEqual(types, ['IHDR', 'tEXt', 'zTXt', 'iTXt', 'iTXt', 'IEND'], `chunk 序列不符: ${types.join(',')}`);
+  assert.equal(truncated, false, '未达上限不得标截断');
+  assert.ok(Array.from(chunks, chunk => chunk.crcOk).every(ok => ok), '构造 chunk 的 CRC 应全部通过');
+
+  const text = chunks.find(chunk => chunk.type === 'tEXt').text;
+  assert.equal(text.keyword, 'Comment');
+  assert.equal(text.text, 'flag{chunk_test}', 'tEXt 应解出隐藏文本');
+
+  const ztxt = chunks.find(chunk => chunk.type === 'zTXt').text;
+  assert.equal(ztxt.keyword, 'Note');
+  assert.equal(ztxt.compressed, true);
+  assert.equal(ztxt.compressedBytes.length, 4, '压缩数据长度应为 4 字节');
+
+  const itxPlain = Array.from(chunks, c => c.text).filter(t => t && t.keyword === 'Title')[0];
+  assert.equal(itxPlain.text, 'flag{itxt_plain}', '未压缩 iTXt 应解出文本');
+  assert.equal(itxPlain.compressed, undefined, '未压缩 iTXt 不标 compressed');
+
+  const itxComp = Array.from(chunks, c => c.text).filter(t => t && t.keyword === 'Cmd')[0];
+  assert.equal(itxComp.keyword, 'Cmd');
+  assert.equal(itxComp.compressed, true, '压缩 iTXt 应标 compressed');
+  assert.equal(itxComp.compressedBytes.length, 4);
+
+  // CRC 破坏检测：翻转 tEXt 数据第一个字节后该 chunk 应标 crcOk=false，其余不受影响。
+  const tampered = Uint8Array.from(carrier);
+  tampered[33 + 8] ^= 0xff;
+  const tamperedChunks = embedScan.enumeratePngChunks(tampered).chunks;
+  assert.equal(tamperedChunks.find(chunk => chunk.type === 'tEXt').crcOk, false, '被篡改 chunk 应标 CRC 失败');
+});
+
+test('enumeratePngChunks 截断 PNG 保留已解析部分且损坏 chunk 可截断提示', () => {
+  // 非法 length 的 chunk（声称 0xFFFFFF 字节）→ 在此处停止，保留 IHDR。
+  const basePng = makePng(64, 32);
+  const bogus = Buffer.alloc(12);
+  bogus.writeUInt32BE(0xffffff, 0);
+  bogus.write('IDAT', 4, 'ascii');
+  const carrier = Uint8Array.from(Buffer.concat([basePng.subarray(0, 33), bogus]));
+  const { chunks, truncated } = embedScan.enumeratePngChunks(carrier);
+  assert.deepEqual(Array.from(chunks, chunk => chunk.type), ['IHDR'], '损坏处应截断并保留已解析 chunk');
+  assert.equal(truncated, false, '结构损坏不是数量截断');
+
+  // 数量截断：maxChunks=2 时 IHDR/tEXt 保留且 truncated=true。
+  const textData = Buffer.concat([Buffer.from('K', 'ascii'), Buffer.from([0]), Buffer.from('v', 'ascii')]);
+  const textChunk = Buffer.alloc(12 + textData.length);
+  textChunk.writeUInt32BE(textData.length, 0);
+  textChunk.write('tEXt', 4, 'ascii');
+  textData.copy(textChunk, 8);
+  textChunk.writeUInt32BE(crc32Of(textChunk.subarray(4, 8 + textData.length)), 8 + textData.length);
+  const capped = embedScan.enumeratePngChunks(Uint8Array.from(Buffer.concat([basePng.subarray(0, 33), textChunk, basePng.subarray(33)])), { maxChunks: 2 });
+  assert.equal(capped.chunks.length, 2, '应按 maxChunks 截断');
+  assert.equal(capped.truncated, true, '应标 truncated');
+});
+
+// ---- recommendTools 上线状态 ----
+
+test('recommendTools 位平面/色道/chunk/嵌入/EOI 工具已上线（无 soon 占位）', () => {
+  const pngTools = recommend.recommendTools([{ ext: 'png', name: 'PNG image' }]);
+  assert.deepEqual(Array.from(pngTools, tool => tool.id), ['png-dimensions', 'png-bitplanes', 'png-channels', 'png-chunks', 'gen-strings', 'gen-hexdump', 'gen-entropy']);
+  assert.ok(pngTools.every(tool => !tool.soon), 'PNG 组不应再有 soon 占位');
+  assert.equal(pngTools.find(tool => tool.id === 'png-bitplanes').cardId, 'ff-card-bitplanes');
+  assert.equal(pngTools.find(tool => tool.id === 'png-channels').cardId, 'ff-card-channels');
+  assert.equal(pngTools.find(tool => tool.id === 'png-chunks').cardId, 'ff-card-chunks');
+
+  const jpgTools = recommend.recommendTools([{ ext: 'jpg', name: 'JPEG image' }]);
+  const eoi = jpgTools.find(tool => tool.id === 'jpg-eoi');
+  assert.ok(eoi && !eoi.soon, 'jpg-eoi 应已上线');
+  assert.equal(eoi.cardId, 'ff-card-embedded', 'jpg-eoi 应指向统一嵌入卡');
+  assert.ok(jpgTools.find(tool => tool.id === 'jpg-metadata').soon, 'jpg-metadata 不在本批次，保持 soon');
+
+  const zipTools = recommend.recommendTools([{ ext: 'zip', name: 'ZIP archive' }]);
+  const embedded = zipTools.find(tool => tool.id === 'archive-embedded');
+  assert.ok(embedded && !embedded.soon, 'archive-embedded 应已上线');
+  assert.equal(embedded.cardId, 'ff-card-embedded');
 });

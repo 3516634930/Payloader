@@ -4,6 +4,13 @@ import { useAppContext } from '../../appContext';
 import { FlagAutoText } from '../codec/FlagAutoText';
 import { WorkbenchMenuBar } from '../codec/WorkbenchMenuBar';
 import type { WorkbenchMenuDef } from '../codec/WorkbenchMenuBar';
+import EmbeddedCard from './EmbeddedCard';
+import type { EmbeddedReport } from './EmbeddedCard';
+import ImagePlanesCard from './ImagePlanesCard';
+import type { PlaneImage } from './ImagePlanesCard';
+import StringsCard from './StringsCard';
+import HexdumpCard from './HexdumpCard';
+import { downloadBytes } from './ffDownload';
 import {
   MAX_FILE_BYTES,
   detectFileTypes,
@@ -19,6 +26,14 @@ import {
   scanSuspiciousContent,
   shannonEntropy,
 } from '../../utils/ctf/fileDetect';
+import {
+  enumeratePngChunks,
+  findJpegTrailer,
+  findPngTrailer,
+  scanEmbeddedSignatures,
+} from '../../utils/ctf/embedScan';
+import type { PngChunkList } from "../../utils/ctf/embedScan";
+import { MAX_ANALYSIS_PIXELS } from '../../utils/ctf/imagePlanes';
 import { recommendTools } from '../../utils/ctf/recommendTools';
 import type { ToolAnchor } from '../../utils/ctf/recommendTools';
 
@@ -40,6 +55,8 @@ interface FileReport {
   png: ReturnType<typeof parsePngIhdr>;
   zip: ReturnType<typeof detectZipEncryption> | null;
   zeroWidth: ReturnType<typeof extractZeroWidthFromText>;
+  embedded: EmbeddedReport;
+  chunks: PngChunkList | null;
 }
 
 export interface FileForensicsWorkspaceProps {
@@ -71,6 +88,13 @@ const formatBytes = (value: number): string => {
   return `${(value / (1024 * 1024)).toFixed(2)} MB`;
 };
 
+// 浏览器可原生解码的图片类型：位平面/色道卡只对这些文件渲染。
+const IMAGE_MIME_MAP: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp', webp: 'image/webp', ico: 'image/x-icon' };
+
+// strings 提取上限（与 StringsCard 内常量同值）；hexdump 每页 512B（与 HexdumpCard 同值）。
+const STRINGS_EXTRACT_LIMIT = 20000;
+const HEX_PAGE_BYTES = 512;
+
 const toBinaryString = (bytes: Uint8Array): string => {
   let binary = '';
   const chunkSize = 0x8000;
@@ -78,15 +102,6 @@ const toBinaryString = (bytes: Uint8Array): string => {
     binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
   }
   return binary;
-};
-
-const downloadBytes = (bytes: Uint8Array, filename: string) => {
-  const url = URL.createObjectURL(new Blob([bytes.slice()], { type: 'application/octet-stream' }));
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  setTimeout(() => URL.revokeObjectURL(url), 4000);
 };
 
 // 杂项取证域工作区（批次 K）：文件拖入/选择 → 本地探测 → 按需分析。
@@ -99,6 +114,9 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
   const [pngFix, setPngFix] = useState<PngFixState>({ status: 'idle' });
   const [zipFix, setZipFix] = useState<ZipFixState | null>(null);
   const [busy, setBusy] = useState(false);
+  // 位平面卡：浏览器异步解码出的 RGBA 像素（>4MP 自动降采样）。
+  const [planeImage, setPlaneImage] = useState<PlaneImage | null>(null);
+  const [planeStatus, setPlaneStatus] = useState<'idle' | 'loading' | 'ready' | 'failed'>('idle');
   const inputRef = useRef<HTMLInputElement | null>(null);
   const lastTokenRef = useRef(0);
 
@@ -120,6 +138,9 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
       setAnalysis({ name: file.name, size: file.size, bytes, file });
       setPngFix({ status: 'idle' });
       setZipFix(null);
+      // 重置位平面卡状态：其余卡片的过滤/翻页/搜索状态随 key remount 自行重置。
+      setPlaneImage(null);
+      setPlaneStatus('idle');
       setBusy(false);
       // 让文件概要先渲染一帧，再做同步分析（接近 20MB 的文件约 0.5-2s）；
       // 判读文案等语言相关内容在渲染层现算，切换语言不会触发重分析。
@@ -129,16 +150,25 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
       const entropy = shannonEntropy(bytes);
       const latin1 = new TextDecoder('latin1').decode(bytes);
       const utf8Text = new TextDecoder('utf-8', { fatal: false }).decode(bytes.subarray(0, 512 * 1024));
+      // 嵌入扫描：首字节跳转式滑窗（前 8MB），尾附检测与 chunk 枚举是 O(n) 单遍。
+      const pngTrailer = findPngTrailer(bytes);
+      const jpgTrailer = pngTrailer ? null : findJpegTrailer(bytes);
       setReport({
         types,
         entropy,
         level: entropyLevel(entropy, bytes.length),
-        strings: extractStrings(bytes, { limit: 200 }),
+        strings: extractStrings(bytes, { limit: STRINGS_EXTRACT_LIMIT }),
         suspicious: scanSuspiciousContent(latin1),
-        hexdump: hexdumpPreview(bytes, { length: 512 }),
+        hexdump: hexdumpPreview(bytes, { length: HEX_PAGE_BYTES }),
         png: parsePngIhdr(bytes),
         zip: types.some(type => type.ext === 'zip' || type.ext === 'jar' || type.ext === 'apk') || (bytes.length > 4 && bytes[0] === 0x50 && bytes[1] === 0x4b) ? detectZipEncryption(bytes) : null,
         zeroWidth: extractZeroWidthFromText(utf8Text),
+        embedded: {
+          hits: scanEmbeddedSignatures(bytes),
+          pngTrailer: pngTrailer ? { offset: pngTrailer.offset, size: pngTrailer.trailing.length } : null,
+          jpgTrailer: jpgTrailer ? { offset: jpgTrailer.offset, size: jpgTrailer.trailing.length } : null,
+        },
+        chunks: types.some(type => type.ext === 'png') ? enumeratePngChunks(bytes) : null,
       });
       setAnalyzing(false);
     } catch {
@@ -197,6 +227,9 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
         { key: 'pick', label: language === 'zh' ? '【选择文件】' : '[Choose file]', onSelect: () => inputRef.current?.click() },
         { key: 'summary', label: language === 'zh' ? '【文件概要】' : '[Summary]', onSelect: () => scrollToCard('ff-card-summary', { zh: '请先选择文件。', en: 'Choose a file first.' }) },
         { key: 'suspicious', label: language === 'zh' ? '【可疑内容】' : '[Suspicious]', onSelect: () => scrollToCard('ff-card-suspicious', { zh: '当前文件未发现可疑内容，没有可展示的部分。', en: 'No suspicious content was found in this file.' }) },
+        { key: 'bitplanes', label: language === 'zh' ? '【位平面】' : '[Bit planes]', onSelect: () => scrollToCard('ff-card-bitplanes', { zh: '位平面分析仅支持图片文件，请先选择一张图片。', en: 'Bit-plane analysis applies to image files; choose an image first.' }) },
+        { key: 'embedded', label: language === 'zh' ? '【嵌入数据】' : '[Embedded data]', onSelect: () => scrollToCard('ff-card-embedded', { zh: '当前文件没有检出嵌入文件或尾附数据。', en: 'No embedded files or trailing data were detected in this file.' }) },
+        { key: 'chunks', label: language === 'zh' ? '【PNG chunk】' : '[PNG chunks]', onSelect: () => scrollToCard('ff-card-chunks', { zh: 'chunk 枚举仅支持 PNG 文件。', en: 'Chunk enumeration applies to PNG files only.' }) },
         { key: 'strings', label: language === 'zh' ? '【可读字符串】' : '[Strings]', onSelect: () => scrollToCard('ff-card-strings', { zh: '当前文件没有提取到可读字符串。', en: 'No readable strings were extracted from this file.' }) },
         { key: 'hexdump', label: language === 'zh' ? '【HEX 转储】' : '[Hexdump]', onSelect: () => scrollToCard('ff-card-hexdump', { zh: '当前文件没有 hexdump 预览。', en: 'No hexdump preview for this file.' }) },
       ],
@@ -234,12 +267,65 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
 
   const imagePreviewUrl = useMemo(() => {
     if (!analysis || !report || report.types.length === 0) return null;
-    const ext = report.types[0].ext;
-    const mimeMap: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', gif: 'image/gif', bmp: 'image/bmp', webp: 'image/webp', ico: 'image/x-icon' };
-    const mime = mimeMap[ext];
+    const mime = IMAGE_MIME_MAP[report.types[0].ext];
     if (!mime || analysis.size > 5 * 1024 * 1024) return null;
     return `data:${mime};base64,${btoa(toBinaryString(analysis.bytes))}`;
   }, [analysis, report]);
+
+  // 位平面/色道卡的图片解码：createImageBitmap 统一解成 RGBA（>4MP 降采样，内存红线 16MB）。
+  // 状态重置在 loadFile 换文件时完成；这里非图片文件直接不启动解码。
+  // 失败（浏览器不支持该格式）时卡片给出说明，不阻塞其它卡。
+  useEffect(() => {
+    if (!analysis || !report || report.types.length === 0) return;
+    const mime = IMAGE_MIME_MAP[report.types[0].ext];
+    if (!mime) return;
+    let cancelled = false;
+    const decode = async () => {
+      try {
+        setPlaneStatus('loading');
+        const blob = new Blob([analysis.bytes.slice()], { type: mime });
+        let bitmap = await createImageBitmap(blob);
+        const originalWidth = bitmap.width;
+        const originalHeight = bitmap.height;
+        let width = originalWidth;
+        let height = originalHeight;
+        let downsampled = false;
+        if (originalWidth * originalHeight > MAX_ANALYSIS_PIXELS) {
+          const scale = Math.sqrt(MAX_ANALYSIS_PIXELS / (originalWidth * originalHeight));
+          width = Math.max(1, Math.floor(originalWidth * scale));
+          height = Math.max(1, Math.floor(originalHeight * scale));
+          bitmap.close();
+          bitmap = await createImageBitmap(blob, { resizeWidth: width, resizeHeight: height, resizeQuality: 'medium' });
+          downsampled = true;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('no 2d context');
+        ctx.drawImage(bitmap, 0, 0);
+        // ImageBitmap.close() 后宽高按规范归零，必须先取出再关。
+        const decodedWidth = bitmap.width;
+        const decodedHeight = bitmap.height;
+        const imageData = ctx.getImageData(0, 0, decodedWidth, decodedHeight);
+        bitmap.close();
+        if (cancelled) return;
+        setPlaneImage({ rgba: imageData.data, width: decodedWidth, height: decodedHeight, downsampled, originalWidth, originalHeight });
+        setPlaneStatus('ready');
+      } catch {
+        if (!cancelled) {
+          setPlaneImage(null);
+          setPlaneStatus('failed');
+        }
+      }
+    };
+    void decode();
+    return () => {
+      cancelled = true;
+    };
+  }, [analysis, report]);
+
+  // strings 提取在 StringsCard 内完成；hexdump 渲染在 HexdumpCard 内完成。
 
   const runPngFix = async () => {
     if (!analysis) return;
@@ -475,29 +561,43 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
             </section>
           )}
 
+          {planeStatus !== 'idle' && (
+            <ImagePlanesCard
+              key={`planes-${analysis.name}:${analysis.size}`}
+              fileName={analysis.name}
+              image={planeImage}
+              status={planeStatus}
+              language={language}
+            />
+          )}
+
+          {report && (
+            <EmbeddedCard
+              key={`embedded-${analysis.name}:${analysis.size}`}
+              fileName={analysis.name}
+              bytes={analysis.bytes}
+              embedded={report.embedded}
+              chunks={report.chunks}
+              language={language}
+            />
+          )}
+
           {report && report.strings.total > 0 && (
-            <section id="ff-card-strings" className="ff-card" aria-label={language === 'zh' ? '可读字符串' : 'Strings'}>
-              <div className="ff-card-head">
-                <strong>{language === 'zh' ? `可读字符串（${report.strings.total} 条）` : `Strings (${report.strings.total})`}</strong>
-              </div>
-              <div className="ff-strings">
-                {report.strings.values.map((value, index) => (
-                  <code key={`${index}-${value}`} className="ff-code"><FlagAutoText text={value.length > 160 ? `${value.slice(0, 160)}…` : value} /></code>
-                ))}
-                {report.strings.total > report.strings.values.length && (
-                  <span className="ff-note">{language === 'zh' ? `仅显示前 ${report.strings.values.length} 条。` : `Showing first ${report.strings.values.length}.`}</span>
-                )}
-              </div>
-            </section>
+            <StringsCard
+              key={`strings-${analysis.name}:${analysis.size}`}
+              fileName={analysis.name}
+              bytes={analysis.bytes}
+              language={language}
+            />
           )}
 
           {report && report.hexdump && (
-            <section id="ff-card-hexdump" className="ff-card" aria-label={language === 'zh' ? 'hexdump 预览' : 'Hexdump'}>
-              <div className="ff-card-head">
-                <strong>{language === 'zh' ? 'hexdump 预览（前 512 字节）' : 'Hexdump (first 512 bytes)'}</strong>
-              </div>
-              <pre className="ff-code ff-code-dump"><FlagAutoText text={report.hexdump} /></pre>
-            </section>
+            <HexdumpCard
+              key={`hexdump-${analysis.name}:${analysis.size}`}
+              bytes={analysis.bytes}
+              size={analysis.size}
+              language={language}
+            />
           )}
         </div>
       )}
@@ -761,6 +861,142 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
           object-fit: contain;
         }
 
+        /* 卡片控件行：搜索框 / 下拉 / 按钮成组排布，窄屏自动换行 */
+        .ff-controls {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 7px;
+          min-width: 0;
+        }
+
+        .ff-input,
+        .ff-select {
+          min-height: 30px;
+          padding: 4px 9px;
+          border: 1px solid var(--border-color);
+          border-radius: 6px;
+          background: var(--bg-secondary);
+          color: var(--text-primary);
+          font-size: 12px;
+          min-width: 0;
+        }
+
+        .ff-input {
+          flex: 1 1 180px;
+        }
+
+        .ff-input-narrow {
+          flex: 0 1 200px;
+        }
+
+        .ff-input::placeholder {
+          color: var(--text-muted);
+        }
+
+        .ff-input:focus-visible,
+        .ff-select:focus-visible {
+          outline: none;
+          border-color: var(--neon-cyan);
+        }
+
+        .ff-select option {
+          background: var(--bg-secondary);
+          color: var(--text-primary);
+        }
+
+        /* 位平面网格：通道分组横向滚动（手机端不挤压缩略图） */
+        .ff-plane-grid {
+          display: grid;
+          gap: 8px;
+          min-width: 0;
+        }
+
+        .ff-plane-group {
+          display: grid;
+          grid-template-columns: 18px 1fr;
+          align-items: start;
+          gap: 8px;
+          min-width: 0;
+        }
+
+        .ff-plane-group-label {
+          color: var(--text-muted);
+          font-size: 12px;
+          font-weight: 800;
+          padding-top: 26px;
+        }
+
+        .ff-plane-row {
+          display: flex;
+          gap: 6px;
+          overflow-x: auto;
+          padding-bottom: 4px;
+        }
+
+        .ff-plane-cell {
+          flex: 0 0 auto;
+          display: grid;
+          justify-items: center;
+          gap: 3px;
+          padding: 4px;
+          border: 1px solid var(--border-color);
+          border-radius: 6px;
+          background: rgba(255, 255, 255, 0.02);
+          cursor: zoom-in;
+          transition: border-color var(--transition-fast);
+        }
+
+        .ff-plane-cell:hover,
+        .ff-plane-cell-active {
+          border-color: var(--neon-cyan);
+        }
+
+        .ff-plane-cell-label {
+          color: var(--text-muted);
+          font-size: 10px;
+          font-weight: 700;
+        }
+
+        .ff-plane-canvas {
+          width: 76px;
+          height: 76px;
+          object-fit: contain;
+          background:
+            repeating-conic-gradient(rgba(255, 255, 255, 0.06) 0% 25%, transparent 0% 50%) 0 0 / 12px 12px;
+          image-rendering: pixelated;
+        }
+
+        .ff-plane-zoom {
+          max-width: 100%;
+          max-height: 420px;
+          border: 1px solid var(--border-color);
+          border-radius: 6px;
+          image-rendering: pixelated;
+        }
+
+        .ff-chunk-row {
+          display: grid;
+          gap: 4px;
+          padding: 6px 0;
+          border-bottom: 1px dashed var(--border-color);
+        }
+
+        .ff-chunk-row:last-child {
+          border-bottom: none;
+        }
+
+        .ff-dump-line {
+          min-height: 1.5em;
+          white-space: pre;
+        }
+
+        .ff-dump-hit {
+          background: rgba(255, 61, 61, 0.24);
+          box-shadow: 0 0 0 1px rgba(255, 61, 61, 0.5);
+          border-radius: 2px;
+        }
+
         .ff-busy {
           color: var(--text-muted);
           font-size: 12px;
@@ -790,6 +1026,20 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
         @media (max-width: 680px) {
           .ff-dropzone {
             padding: 30px 14px;
+          }
+
+          /* 手机端：位平面缩略缩小、横向滚动保留（验收红线：网格可横向滚动） */
+          .ff-plane-cell {
+            padding: 3px;
+          }
+
+          .ff-plane-canvas {
+            width: 56px;
+            height: 56px;
+          }
+
+          .ff-input {
+            flex: 1 1 100%;
           }
         }
       `}</style>

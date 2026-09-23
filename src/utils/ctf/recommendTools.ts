@@ -36,30 +36,27 @@ const PNG_TOOLS: ToolAnchor[] = [
     id: 'png-bitplanes',
     label: { zh: '位平面', en: 'Bit planes' },
     cardId: 'ff-card-bitplanes',
-    soon: true,
     missingMessage: {
-      zh: '位平面分析在后续版本提供，当前可先用 strings 与 hexdump 继续。',
-      en: 'Bit-plane analysis is coming in a later release; strings and hexdump still work.',
+      zh: '位平面分析仅支持图片文件；当前文件没有可分析的内容。',
+      en: 'Bit-plane analysis applies to image files only; nothing to analyze here.',
     },
   },
   {
     id: 'png-channels',
     label: { zh: '色道分离', en: 'Color channels' },
     cardId: 'ff-card-channels',
-    soon: true,
     missingMessage: {
-      zh: '色道分离在后续版本提供，当前可先用 strings 与 hexdump 继续。',
-      en: 'Channel splitting is coming in a later release; strings and hexdump still work.',
+      zh: '色道分离仅支持图片文件；当前文件没有可分离的通道。',
+      en: 'Channel splitting applies to image files only; no channels to split.',
     },
   },
   {
     id: 'png-chunks',
     label: { zh: 'chunk 枚举', en: 'Chunk list' },
     cardId: 'ff-card-chunks',
-    soon: true,
     missingMessage: {
-      zh: 'chunk 枚举在后续版本提供，当前可先用 hexdump 查看文件头。',
-      en: 'Chunk enumeration is coming in a later release; use the hexdump to inspect the header.',
+      zh: 'chunk 枚举仅对可解析的 PNG 文件可用；当前文件缺少 PNG 结构。',
+      en: 'Chunk enumeration applies to parseable PNG files only; this file lacks PNG structure.',
     },
   },
 ];
@@ -68,11 +65,10 @@ const JPG_TOOLS: ToolAnchor[] = [
   {
     id: 'jpg-eoi',
     label: { zh: 'EOI 后附加扫描', en: 'After-EOI scan' },
-    cardId: 'ff-card-jpg-eoi',
-    soon: true,
+    cardId: 'ff-card-embedded',
     missingMessage: {
-      zh: 'EOI 后附加数据扫描在后续版本提供，当前可先用 strings 与 hexdump 继续。',
-      en: 'After-EOI scanning is coming in a later release; strings and hexdump still work.',
+      zh: '当前文件没有检测到 EOI 后附加数据。',
+      en: 'No data was found after the JPEG EOI marker.',
     },
   },
   {
@@ -152,10 +148,9 @@ export const recommendTools = (types: DetectedType[]): ToolAnchor[] => {
         id: 'archive-embedded',
         label: { zh: '嵌入提取', en: 'Embedded files' },
         cardId: 'ff-card-embedded',
-        soon: true,
         missingMessage: {
-          zh: '嵌入文件提取在后续版本提供，当前可先用 strings 与 hexdump 继续。',
-          en: 'Embedded-file extraction is coming in a later release; strings and hexdump still work.',
+          zh: '当前压缩包没有检测到嵌入的其它文件。',
+          en: 'No embedded files were detected in this archive.',
         },
       },
     ]);

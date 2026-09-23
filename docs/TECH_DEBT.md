@@ -29,3 +29,9 @@
 - [ ] TD-批次UX-5 | onHandOffFile/onSwitchModule 每渲染新建闭包，3 个 keepMounted 面板随框架任意 state 变化 reconcile | 发现于 2026-09-23 批次 U/V/W/X（reviewer P2） | 影响 `src/components/CtfToolkit.tsx` workspaceProps | 建议修法：useCallback 稳定 + React.memo 包 Workspace | P3
 - [ ] TD-批次UX-6 | 契约测试 cipher 负向断言窗口偏脆：`id: 'cipher'[\s\S]{0,200}?heroMode` 依赖 cipher→misc.heroMode 实测 347 字符距离（余量约 147），未来 cipher/misc 定义加字段可能误报 | 发现于 2026-09-23 批次 U/V/W/X（reviewer P2） | 影响 `tests/frontend-contract.test.mjs` | 建议修法：改为按对象块解析或缩小匹配窗口 | P3
 - [ ] TD-批次UX-7 | PCAP handoff 后 misc 报告保留，重复点击重复 handoff（幂等无害，仅记录） | 发现于 2026-09-23 批次 U/V/W/X（reviewer P2） | 影响 `src/components/ctf/FileForensicsWorkspace.tsx` runToolAnchor | 建议修法：handoff 成功后清空 misc analysis 或接受现状 | P3
+
+## 技术债（批次 MF 附带盘点：misc 域图片取证能力包）
+- [ ] TD-批次MF-1 | StringsCard 大文件场景：minLength 切换同步重扫全文件（20MB 上限约 300ms）无 loading 遮罩；过滤已预算 lowercase 但 6 万条仍每次按键全量 includes | 发现于 2026-09-23 批次 MF（reviewer P2，实测无感故记账不修） | 影响 `src/components/ctf/StringsCard.tsx` | 建议修法：minLength 切换走 useDeferredValue 或加 analyzing 复用态；过滤改分片/防抖 | P3
+- [ ] TD-批次MF-2 | zTXt/iTXt 解压为整段 inflate（已加 10MB 输入上限拦截解压炸弹巨流），10MB 内高膨胀比压缩流仍可能占内存 | 发现于 2026-09-23 批次 MF（reviewer P2） | 影响 `src/components/ctf/EmbeddedCard.tsx` inflateDeflate | 建议修法：如遇真实题目的超大 zTXt 再改流式截断（DecompressionStream + 读取上限） | P3
+- [ ] TD-批次MF-3 | FileForensicsWorkspace.tsx 1051 行仍超 400 行阈值（基线 800 + 内联 CSS 约 550 行为项目既有"样式随组件"模式），本批次已拆出 6 个卡片/helper 组件、净增逻辑有限 | 发现于 2026-09-23 批次 MF | 影响 `src/components/ctf/FileForensicsWorkspace.tsx` | 建议修法：随 TD-批次UX-1 一并做内联 CSS 迁移后回落 | P3
+- [ ] TD-批次MF-4 | hexdump 搜索只从当前页向后线性查找，无环形回绕与全部命中列表 | 发现于 2026-09-23 批次 MF（实现取舍） | 影响 `src/components/ctf/HexdumpCard.tsx` | 建议修法：如有需求加"从头搜索"按钮与命中计数 | P3
