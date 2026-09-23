@@ -16,6 +16,7 @@ import type { OperationId } from '../utils/codec/types';
 import { ctfModules } from '../utils/ctf/modules';
 import { detectFileTypes } from '../utils/ctf/fileDetect';
 import CtfHero from './ctf/CtfHero';
+import '../styles/ctf-toolkit.css';
 
 const AUTO_DECODE_LIMIT = 20000;
 const CIPHER_MODULE_ID = 'cipher';
@@ -276,67 +277,6 @@ const CtfToolkit = memo(function CtfToolkit() {
         const Workspace = module.Workspace;
         return <Workspace key={module.id} {...workspaceProps} />;
       })}
-
-      <style>{`
-        .ctf-toolkit {
-          width: min(100%, 1180px);
-          min-width: 0;
-          margin: 0 auto;
-          padding: 20px;
-          display: grid;
-          gap: 16px;
-        }
-
-        .ctf-domain-nav-wrap {
-          min-width: 0;
-          display: flex;
-        }
-
-        .ctf-domain-nav {
-          width: max-content;
-          max-width: 100%;
-          flex-shrink: 0;
-          border: 1px solid var(--border-color);
-          background: var(--bg-secondary);
-        }
-
-        .ctf-domain-nav label {
-          white-space: nowrap;
-        }
-
-        .ctf-module-panel[hidden] {
-          display: none;
-        }
-
-        @media (max-width: 900px) {
-          .ctf-toolkit {
-            padding: 14px;
-          }
-        }
-
-        @media (max-width: 680px) {
-          .ctf-toolkit {
-            padding: 10px;
-          }
-
-          .encoding-header h2 {
-            font-size: 18px;
-          }
-        }
-
-        @media (max-width: 520px) {
-          .ctf-domain-nav-wrap {
-            overflow-x: auto;
-            scrollbar-width: thin;
-            -webkit-overflow-scrolling: touch;
-            padding-bottom: 2px;
-          }
-
-          .ctf-domain-nav {
-            max-width: none;
-          }
-        }
-      `}</style>
     </div>
   );
 });

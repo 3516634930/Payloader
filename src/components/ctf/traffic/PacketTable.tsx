@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { hexdumpPreview } from '../../../utils/ctf/fileDetect';
 import { formatRelativeTime } from '../../../utils/ctf/pcap/format';
 import type { PacketView } from '../../../utils/ctf/pcap/protocols';
+import '../../../styles/packet-table.css';
 
 const PAGE_SIZE = 100;
 
@@ -92,124 +93,6 @@ function PacketTable({ views, baseSeconds, language }: PacketTableProps) {
           <pre className="pw-hexdump">{hexdumpPreview(selectedView.frame, { length: 512 })}</pre>
         </div>
       )}
-      <style>{`
-        .pw-table-block {
-          min-width: 0;
-        }
-        .pw-table-scroll {
-          overflow-x: auto;
-          scrollbar-width: thin;
-          -webkit-overflow-scrolling: touch;
-          border: 1px solid var(--border-color);
-          border-radius: 8px;
-          background: var(--bg-card);
-        }
-        .pw-table {
-          width: 100%;
-          min-width: 720px;
-          border-collapse: collapse;
-          font-size: 12px;
-        }
-        .pw-table th, .pw-table td {
-          padding: 5px 9px;
-          border-bottom: 1px solid var(--border-color);
-          text-align: left;
-          white-space: nowrap;
-          color: var(--text-secondary);
-        }
-        .pw-table th {
-          color: var(--text-muted);
-          font-weight: 700;
-          position: sticky;
-          top: 0;
-          background: var(--bg-card);
-        }
-        .pw-table td.pw-info {
-          white-space: normal;
-          word-break: break-all;
-          min-width: 200px;
-        }
-        .pw-table tbody tr {
-          cursor: pointer;
-        }
-        .pw-table tbody tr:hover {
-          background: rgba(0, 240, 255, 0.05);
-        }
-        .pw-row-http-req td { color: var(--neon-cyan); }
-        .pw-row-http-res td { color: rgb(80, 235, 170); }
-        .pw-row-selected td { background: rgba(0, 240, 255, 0.08); }
-        .pw-pager {
-          display: flex;
-          flex-wrap: wrap;
-          align-items: center;
-          gap: 10px;
-        }
-        .pw-detail {
-          border: 1px solid var(--border-color);
-          border-radius: 8px;
-          background: var(--bg-card);
-          padding: 11px;
-          display: grid;
-          gap: 8px;
-        }
-        .pw-card-head {
-          display: flex;
-          flex-wrap: wrap;
-          align-items: center;
-          gap: 8px;
-        }
-        .pw-card-head strong {
-          color: var(--neon-cyan);
-          font-size: 13px;
-          font-weight: 800;
-        }
-        .pw-card-head .pw-button { margin-left: auto; }
-        .pw-row {
-          display: flex;
-          flex-wrap: wrap;
-          align-items: center;
-          gap: 7px;
-        }
-        .pw-label {
-          color: var(--text-muted);
-          font-size: 12px;
-        }
-        .pw-mono {
-          font-family: var(--font-mono, monospace);
-          font-size: 12px;
-          color: var(--text-secondary);
-        }
-        .pw-note {
-          color: var(--text-muted);
-          font-size: 12px;
-        }
-        .pw-button {
-          min-height: 30px;
-          padding: 5px 11px;
-          border: 1px solid var(--border-color);
-          border-radius: 6px;
-          background: rgba(255, 255, 255, 0.035);
-          color: var(--text-secondary);
-          font-size: 12px;
-          font-weight: 700;
-          cursor: pointer;
-          transition: border-color var(--transition-fast), color var(--transition-fast);
-        }
-        .pw-button:hover { border-color: var(--neon-cyan); color: var(--neon-cyan); }
-        .pw-button:disabled { opacity: 0.45; cursor: not-allowed; }
-        .pw-hexdump {
-          margin: 0;
-          padding: 8px;
-          border: 1px solid var(--border-color);
-          border-radius: 6px;
-          background: var(--bg-secondary);
-          color: var(--text-secondary);
-          font-family: var(--font-mono, monospace);
-          font-size: 11px;
-          overflow: auto;
-          max-height: 280px;
-        }
-      `}</style>
     </div>
   );
 }

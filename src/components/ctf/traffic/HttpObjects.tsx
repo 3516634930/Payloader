@@ -3,6 +3,7 @@ import type { HttpTransaction } from '../../../utils/ctf/pcap/analyze';
 import { formatBytes } from '../../../utils/ctf/pcap/format';
 import { copyToClipboard } from '../../../utils/clipboard';
 import { downloadBytes } from '../../../utils/download';
+import '../../../styles/http-objects.css';
 
 const BODY_PREVIEW_CHARS = 4096;
 const MAX_DOWNLOAD_BYTES = 5 * 1024 * 1024;
@@ -106,133 +107,6 @@ function HttpObjects({ transactions, httpTotal, language }: HttpObjectsProps) {
           );
         })}
       </div>
-      <style>{`
-        .pw-http {
-          display: grid;
-          gap: 10px;
-          min-width: 0;
-        }
-        .pw-http-list {
-          display: grid;
-          gap: 8px;
-        }
-        .pw-http-item {
-          border: 1px solid var(--border-color);
-          border-radius: 8px;
-          background: var(--bg-card);
-          overflow: hidden;
-        }
-        .pw-http-item-flag {
-          border-color: rgba(0, 240, 255, 0.55);
-        }
-        .pw-http-head {
-          width: 100%;
-          display: flex;
-          flex-wrap: wrap;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 11px;
-          background: transparent;
-          border: none;
-          cursor: pointer;
-          text-align: left;
-        }
-        .pw-http-line {
-          font-family: var(--font-mono, monospace);
-          font-size: 12px;
-          word-break: break-all;
-        }
-        .pw-http-req { color: var(--neon-cyan); }
-        .pw-http-res { color: rgb(80, 235, 170); }
-        .pw-http-arrow {
-          margin-left: auto;
-          color: var(--text-muted);
-        }
-        .pw-http-body {
-          display: grid;
-          gap: 12px;
-          padding: 0 11px 11px;
-        }
-        .pw-http-section {
-          display: grid;
-          gap: 7px;
-          border-top: 1px dashed var(--border-color);
-          padding-top: 9px;
-          min-width: 0;
-        }
-        .pw-http-section strong {
-          color: var(--text-primary);
-          font-size: 12px;
-        }
-        .pw-kv {
-          border-collapse: collapse;
-          font-size: 12px;
-        }
-        .pw-kv td {
-          padding: 3px 12px 3px 0;
-          color: var(--text-secondary);
-          word-break: break-all;
-        }
-        .pw-row {
-          display: flex;
-          flex-wrap: wrap;
-          align-items: center;
-          gap: 8px;
-        }
-        .pw-badge {
-          display: inline-flex;
-          align-items: center;
-          padding: 2px 8px;
-          border: 1px solid var(--border-color);
-          border-radius: 999px;
-          font-size: 11px;
-          font-weight: 700;
-        }
-        .pw-badge-flag {
-          border-color: var(--neon-cyan);
-          color: var(--neon-cyan);
-        }
-        .pw-badge-warn {
-          border-color: rgba(255, 190, 70, 0.55);
-          color: rgb(255, 205, 100);
-        }
-        .pw-button {
-          min-height: 30px;
-          padding: 5px 11px;
-          border: 1px solid var(--border-color);
-          border-radius: 6px;
-          background: rgba(255, 255, 255, 0.035);
-          color: var(--text-secondary);
-          font-size: 12px;
-          font-weight: 700;
-          cursor: pointer;
-        }
-        .pw-button:hover { border-color: var(--neon-cyan); color: var(--neon-cyan); }
-        .pw-code {
-          margin: 0;
-          padding: 8px;
-          border: 1px solid var(--border-color);
-          border-radius: 6px;
-          background: var(--bg-secondary);
-          color: var(--text-secondary);
-          font-family: var(--font-mono, monospace);
-          font-size: 11px;
-          overflow: auto;
-          max-height: 300px;
-          white-space: pre-wrap;
-          word-break: break-all;
-        }
-        .pw-mono {
-          font-family: var(--font-mono, monospace);
-          font-size: 12px;
-          color: var(--text-secondary);
-        }
-        .pw-note {
-          margin: 0;
-          color: var(--text-muted);
-          font-size: 12px;
-        }
-      `}</style>
     </div>
   );
 }

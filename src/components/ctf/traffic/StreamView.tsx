@@ -3,6 +3,7 @@ import { hexdumpPreview } from '../../../utils/ctf/fileDetect';
 import { formatBytes } from '../../../utils/ctf/pcap/format';
 import type { TcpStream } from '../../../utils/ctf/pcap/analyze';
 import { copyToClipboard } from '../../../utils/clipboard';
+import '../../../styles/stream-view.css';
 
 const HEX_PREVIEW_BYTES = 64 * 1024;
 const ASCII_PREVIEW_CHARS = 256 * 1024;
@@ -114,119 +115,6 @@ function StreamView({ streams, streamTotal, language }: StreamViewProps) {
           <pre className="pw-stream-content">{content}</pre>
         </div>
       )}
-      <style>{`
-        .pw-stream {
-          display: grid;
-          gap: 10px;
-          min-width: 0;
-        }
-        .pw-stream-list {
-          display: grid;
-          gap: 6px;
-          max-height: 300px;
-          overflow-y: auto;
-          scrollbar-width: thin;
-        }
-        .pw-stream-item {
-          display: flex;
-          flex-wrap: wrap;
-          align-items: center;
-          gap: 8px;
-          padding: 7px 10px;
-          border: 1px solid var(--border-color);
-          border-radius: 6px;
-          background: var(--bg-card);
-          color: var(--text-secondary);
-          font-size: 12px;
-          cursor: pointer;
-          text-align: left;
-        }
-        .pw-stream-item:hover { border-color: var(--neon-cyan); }
-        .pw-stream-item-active {
-          border-color: var(--neon-cyan);
-          background: rgba(0, 240, 255, 0.06);
-        }
-        .pw-stream-id {
-          font-family: var(--font-mono, monospace);
-          color: var(--neon-cyan);
-          font-weight: 700;
-        }
-        .pw-stream-endpoints {
-          font-family: var(--font-mono, monospace);
-          word-break: break-all;
-        }
-        .pw-stream-meta {
-          color: var(--text-muted);
-        }
-        .pw-badge {
-          display: inline-flex;
-          align-items: center;
-          padding: 2px 8px;
-          border: 1px solid var(--border-color);
-          border-radius: 999px;
-          font-size: 11px;
-          font-weight: 700;
-        }
-        .pw-badge-flag {
-          border-color: var(--neon-cyan);
-          color: var(--neon-cyan);
-        }
-        .pw-badge-warn {
-          border-color: rgba(255, 190, 70, 0.55);
-          color: rgb(255, 205, 100);
-        }
-        .pw-stream-detail {
-          display: grid;
-          gap: 8px;
-        }
-        .pw-stream-controls {
-          display: flex;
-          flex-wrap: wrap;
-          align-items: center;
-          gap: 6px;
-        }
-        .pw-stream-sep {
-          width: 1px;
-          height: 18px;
-          background: var(--border-color);
-        }
-        .pw-button {
-          min-height: 30px;
-          padding: 5px 11px;
-          border: 1px solid var(--border-color);
-          border-radius: 6px;
-          background: rgba(255, 255, 255, 0.035);
-          color: var(--text-secondary);
-          font-size: 12px;
-          font-weight: 700;
-          cursor: pointer;
-        }
-        .pw-button:hover { border-color: var(--neon-cyan); color: var(--neon-cyan); }
-        .pw-button-active {
-          border-color: var(--neon-cyan);
-          color: var(--neon-cyan);
-        }
-        .pw-stream-content {
-          margin: 0;
-          padding: 10px;
-          border: 1px solid var(--border-color);
-          border-radius: 6px;
-          background: var(--bg-secondary);
-          color: var(--text-secondary);
-          font-family: var(--font-mono, monospace);
-          font-size: 11px;
-          line-height: 1.5;
-          overflow: auto;
-          max-height: 420px;
-          white-space: pre-wrap;
-          word-break: break-all;
-        }
-        .pw-note {
-          margin: 0;
-          color: var(--text-muted);
-          font-size: 12px;
-        }
-      `}</style>
     </div>
   );
 }
