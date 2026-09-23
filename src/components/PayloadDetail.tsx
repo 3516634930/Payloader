@@ -2,101 +2,25 @@ import { useMemo, useState } from 'react';
 import type { JSX } from 'react';
 import { useLanguage, useNav, useSession, useStaticData } from '../appContext';
 import { getText } from '../i18n';
-import type { AttackChainStep, I18nText, PayloadExecution, SyntaxPart, TutorialContent } from '../types';
+import type { AttackChainStep, I18nText, PayloadExecution, SyntaxPart } from '../types';
 import { resolveVariableParts, resolveVariableText } from '../utils/variables';
 import { useCopyFeedback } from '../utils/clipboard';
 import SyntaxModal from './SyntaxModal';
+import { label, payloadIdAliases, tutorialIsSubstantive } from './payloadDetailText';
+import type { DetailSection } from './payloadDetailText';
+import PayloadDetailHeader from './PayloadDetailHeader';
+import ExecutionListPanel from './ExecutionListPanel';
+import AttackChainPanel from './AttackChainPanel';
+import TutorialPanel from './TutorialPanel';
 import '../styles/payload-detail.css';
 
 interface PayloadDetailProps {
   payloadId: string;
 }
 
-type DetailSection = 'payloads' | 'chain' | 'tutorial';
-
-const uiText = {
-  notFound: { zh: 'Payload 未找到', en: 'Payload not found' },
-  category: { zh: '分类', en: 'Category' },
-  subCategory: { zh: '子分类', en: 'Sub-category' },
-  difficulty: { zh: '难度', en: 'Difficulty' },
-  prerequisites: { zh: '使用前确认', en: 'Before use' },
-  tabPayloads: { zh: 'Payload 列表', en: 'Payload list' },
-  tabAttackChain: { zh: '攻击链', en: 'Attack chain' },
-  tabTutorial: { zh: '教程', en: 'Tutorial' },
-  normalMode: { zh: '标准 Payload', en: 'Standard payloads' },
-  wafMode: { zh: 'WAF 绕过 Payload', en: 'WAF bypass payloads' },
-  copyVisible: { zh: '复制当前列表', en: 'Copy visible' },
-  copiedVisible: { zh: '已复制当前列表', en: 'Visible copied' },
-  copy: { zh: '复制', en: 'Copy' },
-  copied: { zh: '已复制', en: 'Copied' },
-  syntax: { zh: '语法解析', en: 'Syntax' },
-  platformAll: { zh: '全平台', en: 'All platforms' },
-  platformWindows: { zh: 'Windows', en: 'Windows' },
-  platformLinux: { zh: 'Linux', en: 'Linux' },
-  admin: { zh: '需要管理员权限', en: 'Requires admin' },
-  chainPayload: { zh: '关联 Payload', en: 'Related payload' },
-  chainFallbackTitle: { zh: '按当前模式验证', en: 'Validate with the selected mode' },
-  chainFallbackDesc: { zh: '先确认授权范围和上传点，再从 Payload 列表复制当前模式下的条目，在测试环境中验证响应、落点和防护效果。', en: 'Confirm authorization and the upload point, copy an item from the current mode, then validate the response, storage path, and defensive effect in a test environment.' },
-  notesTitle: { zh: '结果分析', en: 'Result analysis' },
-  noNotes: { zh: '暂无结果分析。', en: 'No result analysis.' },
-  opsec: { zh: '注意事项', en: 'Tips' },
-  refs: { zh: '参考资料', en: 'References' },
-  overview: { zh: '概述', en: 'Overview' },
-  vulnerability: { zh: '原理', en: 'Principle' },
-  exploitation: { zh: '使用方法', en: 'Usage' },
-  mitigation: { zh: '防护建议', en: 'Mitigation' },
-  searchPlaceholder: { zh: '筛选当前 Payload...', en: 'Filter this payload...' },
-  clearSearch: { zh: '清除', en: 'Clear' },
-  noItemsTitle: { zh: '没有匹配的 Payload', en: 'No matching payloads' },
-  noItemsHint: { zh: '换个关键词试试。', en: 'Try another keyword.' },
-  noWafTitle: { zh: '当前条目暂无 WAF 绕过内容', en: 'No WAF bypass content for this item' },
-  noWafHint: { zh: '这里不会用标准 Payload 冒充绕过方案，可切回标准模式查看已有内容。', en: 'Standard payloads are not presented as bypasses. Switch to standard mode to view available content.' },
-  backToNormal: { zh: '切回标准模式', en: 'Use standard mode' },
-  wafAvailable: { zh: 'WAF 内容可用', en: 'WAF content available' },
-  wafUnavailable: { zh: '无 WAF 内容', en: 'No WAF content' },
-};
-
-const label = (key: keyof typeof uiText, language: 'zh' | 'en') => uiText[key][language];
-
-const countLabel = (count: number, total: number, language: 'zh' | 'en') => (
-  language === 'zh' ? `${count}/${total} 条可复制` : `${count}/${total} copyable`
-);
-
-const payloadIdAliases: Record<string, string> = {
-  'jwt-none-alg': 'jwt-none-attack',
-  'jwt-none-algo': 'jwt-none-attack',
-  'jwt-weak-secret': 'jwt-secret-bruteforce',
-  'jwt-kid-injection': 'jwt-key-confusion',
-  'jwt-jku-spoofing': 'jwt-jku-x5u-injection',
-};
-
-const tutorialPlaceholders = new Set([
-  '选择对应payload测试',
-  '选择对应 payload 测试',
-  '选择绕过技术',
-  'select the corresponding payload to test',
-  'select a bypass technique',
-]);
-
-const tutorialFieldIsSubstantive = (value: I18nText) => {
-  const values = typeof value === 'string' ? [value] : [value.zh, value.en];
-  return values.some(candidate => {
-    const normalized = String(candidate || '').trim().toLowerCase();
-    return normalized.length >= 20 && !tutorialPlaceholders.has(normalized);
-  });
-};
-
-const tutorialIsSubstantive = (tutorial?: TutorialContent) => Boolean(
-  tutorial
-  && tutorialFieldIsSubstantive(tutorial.overview)
-  && tutorialFieldIsSubstantive(tutorial.vulnerability)
-  && tutorialFieldIsSubstantive(tutorial.exploitation)
-  && tutorialFieldIsSubstantive(tutorial.mitigation)
-);
-
 function PayloadDetail({ payloadId }: PayloadDetailProps) {
   const { globalVariables } = useSession();
-  const { bypassMode, setBypassMode } = useNav();
+  const { bypassMode } = useNav();
   const { language } = useLanguage();
   const { allPayloads } = useStaticData();
   const { copiedKey: copiedIndex, copy } = useCopyFeedback();
@@ -203,244 +127,46 @@ function PayloadDetail({ payloadId }: PayloadDetailProps) {
     return <code>{elements}</code>;
   };
 
-  const platformLabel = (platform?: PayloadExecution['platform']) => {
-    if (platform === 'windows') return label('platformWindows', language);
-    if (platform === 'linux') return label('platformLinux', language);
-    return label('platformAll', language);
-  };
-
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case 'beginner': return 'var(--neon-green)';
-      case 'intermediate': return 'var(--neon-cyan)';
-      case 'advanced': return 'var(--neon-orange)';
-      case 'expert': return 'var(--neon-red)';
-      default: return 'var(--text-muted)';
-    }
-  };
-
   return (
     <div className="payload-detail">
-      <div className="payload-header">
-        <div className="payload-title-section">
-          <div className="payload-tags">
-            {payload.tags.map(tag => (
-              <span key={tag} className="tag">{tag}</span>
-            ))}
-          </div>
-          <h1 className="payload-title">{getText(payload.name, language)}</h1>
-          <p className="payload-description">{getText(payload.description, language)}</p>
-        </div>
-        <div className="payload-meta">
-          <div className="meta-item">
-            <span className="meta-label">{label('category', language)}</span>
-            <span className="meta-value">{getText(payload.category, language)}</span>
-          </div>
-          {payload.subCategory && (
-            <div className="meta-item">
-              <span className="meta-label">{label('subCategory', language)}</span>
-              <span className="meta-value">{getText(payload.subCategory, language)}</span>
-            </div>
-          )}
-          {hasSubstantiveTutorial && payload.tutorial && (
-            <div className="meta-item">
-              <span className="meta-label">{label('difficulty', language)}</span>
-              <span className="meta-value difficulty" style={{ color: getDifficultyColor(payload.tutorial.difficulty) }}>
-                {payload.tutorial.difficulty.toUpperCase()}
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {payload.prerequisites?.length ? (
-        <div className="prerequisites-section">
-          <h3>{label('prerequisites', language)}</h3>
-          <ul className="prerequisites-list">
-            {payload.prerequisites.map((prereq, index) => (
-              <li key={index}>{getText(prereq, language)}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      <div className="section-tabs" role="tablist" aria-label="Payload 内容">
-        <button type="button" role="tab" aria-selected={activeSection === 'payloads'} className={`section-tab ${activeSection === 'payloads' ? 'active' : ''}`} onClick={() => setActiveSection('payloads')}>
-          {label('tabPayloads', language)}
-        </button>
-        <button type="button" role="tab" aria-selected={activeSection === 'chain'} className={`section-tab ${activeSection === 'chain' ? 'active' : ''}`} onClick={() => setActiveSection('chain')}>
-          {label('tabAttackChain', language)}
-        </button>
-        {hasSubstantiveTutorial && (
-          <button type="button" role="tab" aria-selected={activeSection === 'tutorial'} className={`section-tab ${activeSection === 'tutorial' ? 'active' : ''}`} onClick={() => setActiveSection('tutorial')}>
-            {label('tabTutorial', language)}
-          </button>
-        )}
-      </div>
-
-      <span className="sr-only" aria-live="polite">
-        {copiedIndex ? (copiedIndex === 'all' ? label('copiedVisible', language) : label('copied', language)) : ''}
-      </span>
+      <PayloadDetailHeader
+        payload={payload}
+        hasSubstantiveTutorial={hasSubstantiveTutorial}
+        language={language}
+        activeSection={activeSection}
+        onSelectSection={setActiveSection}
+        copiedKey={copiedIndex}
+      />
 
       {activeSection === 'payloads' && (
-        <div className="execution-section" role="tabpanel">
-          <div className="execution-toolbar">
-            <div className="payload-list-info">
-              <span className="mode-label">{modeLabel}</span>
-              <span className="item-count">{countLabel(filteredExecutionItems.length, executionItems.length, language)}</span>
-              <span className={`waf-content-status ${hasWafContent ? 'available' : 'unavailable'}`}>
-                {hasWafContent ? label('wafAvailable', language) : label('wafUnavailable', language)}
-              </span>
-            </div>
-            <button
-              className={`copy-all-btn ${copiedIndex === 'all' ? 'copied' : ''}`}
-              onClick={copyVisible}
-              disabled={!filteredExecutionItems.length}
-            >
-              {copiedIndex === 'all' ? label('copiedVisible', language) : label('copyVisible', language)}
-            </button>
-          </div>
-
-          <div className="payload-controls">
-            <div className="payload-search-field">
-              <input
-                type="search"
-                name="payload-command-search"
-                value={payloadQuery}
-                onChange={event => setPayloadQueryState({ payloadId, value: event.target.value })}
-                placeholder={label('searchPlaceholder', language)}
-                aria-label={label('searchPlaceholder', language)}
-              />
-              {payloadQuery && (
-                <button type="button" onClick={() => setPayloadQueryState({ payloadId, value: '' })} aria-label={label('clearSearch', language)}>
-                  ×
-                </button>
-              )}
-            </div>
-          </div>
-
-          {!filteredExecutionItems.length ? (
-            <div className="payload-empty-result">
-              <strong>{bypassMode === 'waf' && !hasWafContent ? label('noWafTitle', language) : label('noItemsTitle', language)}</strong>
-              <span>{bypassMode === 'waf' && !hasWafContent ? label('noWafHint', language) : label('noItemsHint', language)}</span>
-              {bypassMode === 'waf' && !hasWafContent && (
-                <button type="button" onClick={() => setBypassMode('normal')}>{label('backToNormal', language)}</button>
-              )}
-            </div>
-          ) : (
-            <div className="execution-list">
-              {filteredExecutionItems.map((exec, index) => {
-                const copyId = `item-${index}`;
-                return (
-                  <article key={`${getText(exec.title, language)}-${index}-${exec.command}`} className="execution-item">
-                    <div className="execution-content">
-                      <div className="execution-header">
-                        <div className="execution-heading">
-                          <span className="item-index">{String(index + 1).padStart(2, '0')}</span>
-                          <h4 className="execution-title">{getText(exec.title, language)}</h4>
-                        </div>
-                        <div className="execution-badges">
-                          <span className={`badge platform-${exec.platform || 'all'}`}>{platformLabel(exec.platform)}</span>
-                          {exec.requiresAdmin && <span className="badge admin">{label('admin', language)}</span>}
-                        </div>
-                      </div>
-                      {exec.description && <p className="execution-desc">{getText(exec.description, language)}</p>}
-                      <div className="code-block-wrapper">
-                        <pre className="code-block">{renderCommandWithHighlights(exec.command)}</pre>
-                        <div className="code-actions">
-                          {exec.syntaxBreakdown?.length ? (
-                            <button
-                              className="syntax-btn"
-                              onClick={() => setSelectedSyntax({ syntax: exec.syntaxBreakdown!, title: exec.title })}
-                            >
-                              {label('syntax', language)}
-                            </button>
-                          ) : null}
-                          <button className={`copy-btn ${copiedIndex === copyId ? 'copied' : ''}`} onClick={() => copyText(exec.command, copyId)}>
-                            {copiedIndex === copyId ? label('copied', language) : label('copy', language)}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          )}
-        </div>
+        <ExecutionListPanel
+          items={filteredExecutionItems}
+          totalCount={executionItems.length}
+          modeLabel={modeLabel}
+          hasWafContent={hasWafContent}
+          payloadQuery={payloadQuery}
+          onQueryChange={event => setPayloadQueryState({ payloadId, value: event.target.value })}
+          onClearQuery={() => setPayloadQueryState({ payloadId, value: '' })}
+          copiedKey={copiedIndex}
+          onCopy={copyText}
+          onCopyVisible={copyVisible}
+          onSelectSyntax={setSelectedSyntax}
+          renderCommand={renderCommandWithHighlights}
+        />
       )}
 
       {activeSection === 'chain' && (
-        <div className="attack-chain-section" role="tabpanel">
-          <div className="chain-timeline">
-            {attackChainItems.map((step, index) => {
-              const copyId = `chain-${index}`;
-              return (
-                <article key={`${getText(step.title, language)}-${index}`} className="chain-step">
-                  <div className="chain-index">{String(index + 1).padStart(2, '0')}</div>
-                  <div className="chain-body">
-                    <h3>{getText(step.title, language)}</h3>
-                    <p>{getText(step.description, language)}</p>
-                    {step.payload ? (
-                      <div className="code-block-wrapper chain-payload">
-                        <span>{label('chainPayload', language)}</span>
-                        <pre className="code-block">{renderCommandWithHighlights(step.payload)}</pre>
-                        <div className="code-actions">
-                          <button className={`copy-btn ${copiedIndex === copyId ? 'copied' : ''}`} onClick={() => copyText(step.payload!, copyId)}>
-                            {copiedIndex === copyId ? label('copied', language) : label('copy', language)}
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        </div>
+        <AttackChainPanel
+          steps={attackChainItems}
+          language={language}
+          copiedKey={copiedIndex}
+          onCopy={copyText}
+          renderCommand={renderCommandWithHighlights}
+        />
       )}
 
       {activeSection === 'tutorial' && hasSubstantiveTutorial && payload.tutorial && (
-        <div className="tutorial-section" role="tabpanel">
-          <div className="tutorial-card">
-            <h3>{label('overview', language)}</h3>
-            <p>{getText(payload.tutorial.overview, language)}</p>
-          </div>
-          <div className="tutorial-card">
-            <h3>{label('vulnerability', language)}</h3>
-            <p>{getText(payload.tutorial.vulnerability, language)}</p>
-          </div>
-          <div className="tutorial-card">
-            <h3>{label('exploitation', language)}</h3>
-            <p>{getText(payload.tutorial.exploitation, language)}</p>
-          </div>
-          <div className="tutorial-card">
-            <h3>{label('mitigation', language)}</h3>
-            <p>{getText(payload.tutorial.mitigation, language)}</p>
-          </div>
-          <div className="analysis-card">
-            <h3>{label('notesTitle', language)}</h3>
-            <p>{payload.analysis ? getText(payload.analysis, language) : label('noNotes', language)}</p>
-          </div>
-          {payload.opsecTips?.length ? (
-            <div className="analysis-card warning">
-              <h3>{label('opsec', language)}</h3>
-              <ul>
-                {payload.opsecTips.map((tip, index) => <li key={index}>{getText(tip, language)}</li>)}
-              </ul>
-            </div>
-          ) : null}
-          {payload.references?.length ? (
-            <div className="analysis-card">
-              <h3>{label('refs', language)}</h3>
-              <ul className="references-list">
-                {payload.references.map((ref, index) => (
-                  <li key={index}><a href={ref} target="_blank" rel="noopener noreferrer">{ref}</a></li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-        </div>
+        <TutorialPanel payload={payload} tutorial={payload.tutorial} language={language} />
       )}
 
       {selectedSyntax && (

@@ -1,10 +1,15 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { useLanguage, useNav, useSearch, useSession, useStaticData } from '../appContext';
+import { useLanguage, useNav, useSearch, useStaticData } from '../appContext';
 import type { ActiveTab } from '../appContext';
 import { t, getText } from '../i18n';
 import { protectedExternalLinks } from '../protectedLinks';
 import type { PublicClientBuildInfo } from '../types';
+import { useDismissable } from './useDismissable';
+import { useFocusTrap } from './useFocusTrap';
+import HeaderSearch from './HeaderSearch';
+import HeaderActions from './HeaderActions';
+import MobileUtilitiesMenu from './MobileUtilitiesMenu';
 import '../styles/header.css';
 
 interface HeaderProps {
@@ -16,108 +21,21 @@ interface HeaderProps {
   onOpenClientDownloads: () => void;
 }
 
-const variableGroupLabels: Record<string, { zh: string; en: string }> = {
-  target: { zh: '目标信息', en: 'Target' },
-  request: { zh: '请求参数', en: 'Request' },
-  auth: { zh: '认证会话', en: 'Auth' },
-  callback: { zh: '回连与带外', en: 'Callback' },
-  file: { zh: '文件与字典', en: 'Files' },
-  cloud: { zh: '云资源', en: 'Cloud' },
-  infra: { zh: '内网与基础设施', en: 'Infra' },
-  other: { zh: '其它', en: 'Other' },
-};
-
-const pinnedVariableKeys = new Set(['URL', 'TARGET', 'PATH', 'PARAM', 'PARAM_VALUE', 'COOKIE', 'HEADER_AUTH', 'ATTACKER_IP', 'LPORT']);
-
-const formatDownloadSize = (size: number) => {
-  if (!Number.isFinite(size) || size <= 0) return '';
-  if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`;
-  if (size >= 1024) return `${(size / 1024).toFixed(0)} KB`;
-  return `${Math.round(size)} B`;
-};
-
-const focusableSelector = [
-  'a[href]',
-  'button:not([disabled])',
-  'input:not([disabled])',
-  'select:not([disabled])',
-  'textarea:not([disabled])',
-  '[tabindex]:not([tabindex="-1"])',
-].join(',');
-
 function Header({ sidebarCollapsed, setSidebarCollapsed, clientBuildInfo, showClientDownloads = true, encodingTools, onOpenClientDownloads }: HeaderProps) {
-  const { globalVariables, setGlobalVariables, theme, setTheme } = useSession();
-  const { bypassMode, setBypassMode, activeTab, setActiveTab, setActiveView, setSelectedPayloadId, setSelectedToolId } = useNav();
+  const { activeTab, setActiveView, setActiveTab, setSelectedPayloadId, setSelectedToolId } = useNav();
   const { searchQuery, setSearchQuery } = useSearch();
   const { settings } = useStaticData();
   const { language } = useLanguage();
   const [showVariables, setShowVariables] = useState(false);
   const [showEncoding, setShowEncoding] = useState(false);
   const [showMobileUtilities, setShowMobileUtilities] = useState(false);
-  const [variableSearch, setVariableSearch] = useState('');
-  const [collapsedVariableGroups, setCollapsedVariableGroups] = useState<Set<string>>(() => new Set(['cloud', 'infra']));
   const encodingDialogRef = useRef<HTMLDivElement>(null);
-  const previousFocus = useRef<HTMLElement | null>(null);
   const mobileUtilitiesRef = useRef<HTMLDivElement>(null);
   const mobileUtilitiesButtonRef = useRef<HTMLButtonElement>(null);
   const variablesToggleRef = useRef<HTMLButtonElement>(null);
   const variablesPanelRef = useRef<HTMLDivElement>(null);
   const encodingTitleId = useId();
-  const clientDownloadCount = clientBuildInfo?.items?.length || (clientBuildInfo?.latest ? 1 : 0);
   const clientDownloadLabel = language === 'zh' ? '下载客户端' : 'Download Client';
-  const clientDownloadSize = clientBuildInfo?.latest?.size ? formatDownloadSize(clientBuildInfo.latest.size) : '';
-  const clientDownloadTitle = language === 'zh'
-    ? `查看 Payloader 客户端下载列表${clientDownloadCount ? `（${clientDownloadCount} 个版本）` : ''}`
-    : `Open Payloader client downloads${clientDownloadCount ? ` (${clientDownloadCount} builds)` : ''}`;
-
-  const updateVariable = (key: string, value: string) => {
-    setGlobalVariables(prev => 
-      prev.map(v => v.key === key ? { ...v, value } : v)
-    );
-  };
-
-  const toggleVariableGroup = (group: string) => {
-    setCollapsedVariableGroups(prev => {
-      const next = new Set(prev);
-      if (next.has(group)) next.delete(group);
-      else next.add(group);
-      return next;
-    });
-  };
-
-  const variableGroups = (() => {
-    const query = variableSearch.trim().toLowerCase();
-    const groups = new Map<string, typeof globalVariables>();
-
-    for (const variable of globalVariables) {
-      const group = variable.group || 'other';
-      const searchable = [
-        variable.key,
-        variable.value,
-        getText(variable.description, language),
-        getText(variableGroupLabels[group] || variableGroupLabels.other, language),
-      ].join(' ').toLowerCase();
-
-      if (query && !searchable.includes(query)) continue;
-      const existing = groups.get(group) || [];
-      existing.push(variable);
-      groups.set(group, existing);
-    }
-
-    return Array.from(groups.entries()).map(([group, variables]) => ({
-      group,
-      variables: variables.sort((a, b) => {
-        const pinnedA = pinnedVariableKeys.has(a.key) ? 0 : 1;
-        const pinnedB = pinnedVariableKeys.has(b.key) ? 0 : 1;
-        if (pinnedA !== pinnedB) return pinnedA - pinnedB;
-        return a.key.localeCompare(b.key);
-      }),
-    }));
-  })();
-
-  const toggleTheme = () => {
-    setTheme(prev => prev === 'dark' ? 'light' : 'dark');
-  };
 
   const switchTab = (tab: ActiveTab) => {
     setActiveView('workspace');
@@ -156,100 +74,35 @@ function Header({ sidebarCollapsed, setSidebarCollapsed, clientBuildInfo, showCl
     onOpenClientDownloads();
   };
 
-  useEffect(() => {
-    if (!showMobileUtilities) return;
+  useDismissable({
+    enabled: showMobileUtilities,
+    containerRef: mobileUtilitiesRef,
+    buttonRef: mobileUtilitiesButtonRef,
+    onClose: () => setShowMobileUtilities(false),
+    getEscapeFocusTarget: () => mobileUtilitiesButtonRef.current,
+  });
 
-    const closeOnOutsidePointer = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (!mobileUtilitiesRef.current?.contains(target) && !mobileUtilitiesButtonRef.current?.contains(target)) {
-        setShowMobileUtilities(false);
-      }
-    };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      setShowMobileUtilities(false);
-      mobileUtilitiesButtonRef.current?.focus();
-    };
+  useDismissable({
+    enabled: showVariables,
+    containerRef: variablesPanelRef,
+    buttonRef: variablesToggleRef,
+    onClose: () => setShowVariables(false),
+    getEscapeFocusTarget: () => variablesToggleRef.current || mobileUtilitiesButtonRef.current,
+  });
 
-    document.addEventListener('mousedown', closeOnOutsidePointer);
-    document.addEventListener('keydown', closeOnEscape);
-    return () => {
-      document.removeEventListener('mousedown', closeOnOutsidePointer);
-      document.removeEventListener('keydown', closeOnEscape);
-    };
-  }, [showMobileUtilities]);
+  useFocusTrap({
+    enabled: showEncoding,
+    dialogRef: encodingDialogRef,
+    fallbackFocusRef: mobileUtilitiesButtonRef,
+    onClose: () => setShowEncoding(false),
+  });
 
-  useEffect(() => {
-    if (!showVariables) return;
+  const handleSearchChange = useCallback((value: string) => {
+    setActiveView('workspace');
+    setSearchQuery(value);
+  }, [setActiveView, setSearchQuery]);
 
-    const closeVariables = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (!variablesPanelRef.current?.contains(target) && !variablesToggleRef.current?.contains(target)) {
-        setShowVariables(false);
-      }
-    };
-    const closeVariablesOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      setShowVariables(false);
-      (variablesToggleRef.current || mobileUtilitiesButtonRef.current)?.focus();
-    };
-    document.addEventListener('mousedown', closeVariables);
-    document.addEventListener('keydown', closeVariablesOnEscape);
-    return () => {
-      document.removeEventListener('mousedown', closeVariables);
-      document.removeEventListener('keydown', closeVariablesOnEscape);
-    };
-  }, [showVariables]);
-
-  useEffect(() => {
-    if (!showEncoding) return;
-
-    const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    previousFocus.current = activeElement && activeElement !== document.body
-      ? activeElement
-      : mobileUtilitiesButtonRef.current;
-    const dialog = encodingDialogRef.current;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    const focusDialog = window.requestAnimationFrame(() => {
-      const firstFocusable = dialog?.querySelector<HTMLElement>(focusableSelector);
-      (firstFocusable || dialog)?.focus();
-    });
-    const handleDialogKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        setShowEncoding(false);
-        return;
-      }
-      if (event.key !== 'Tab' || !dialog) return;
-
-      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector))
-        .filter(element => element.offsetParent !== null);
-      if (!focusable.length) {
-        event.preventDefault();
-        dialog.focus();
-        return;
-      }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener('keydown', handleDialogKeyDown);
-    return () => {
-      window.cancelAnimationFrame(focusDialog);
-      document.removeEventListener('keydown', handleDialogKeyDown);
-      document.body.style.overflow = previousOverflow;
-      previousFocus.current?.focus();
-    };
-  }, [showEncoding]);
+  const handleSearchClear = useCallback(() => setSearchQuery(''), [setSearchQuery]);
 
   return (
     <>
@@ -303,24 +156,7 @@ function Header({ sidebarCollapsed, setSidebarCollapsed, clientBuildInfo, showCl
         </div>
 
         <div className="header-center">
-          <div className="search-box" role="search">
-            <span className="search-icon" aria-hidden="true">⌕</span>
-            <input
-              type="search"
-              name="content-search"
-              className="search-input"
-              placeholder={t('header.searchPlaceholder', language)}
-              aria-label={t('header.searchPlaceholder', language)}
-              value={searchQuery}
-              onChange={(event) => {
-                setActiveView('workspace');
-                setSearchQuery(event.target.value);
-              }}
-            />
-            {searchQuery && (
-              <button type="button" className="search-clear" onClick={() => setSearchQuery('')} aria-label="清除搜索">×</button>
-            )}
-          </div>
+          <HeaderSearch value={searchQuery} onChange={handleSearchChange} onClear={handleSearchClear} />
           <div className="tab-switcher" role="tablist" aria-label="内容类型">
             <button
               type="button"
@@ -361,188 +197,31 @@ function Header({ sidebarCollapsed, setSidebarCollapsed, clientBuildInfo, showCl
           </div>
         </div>
 
-        <div className="header-right">
-          <button
-            className="theme-toggle"
-            type="button"
-            onClick={toggleTheme}
-            title={theme === 'dark' ? t('header.themeToggleDark', language) : t('header.themeToggleLight', language)}
-            aria-label={theme === 'dark' ? t('header.themeToggleDark', language) : t('header.themeToggleLight', language)}
-          >
-            <span aria-hidden="true">{theme === 'dark' ? '☀' : '☾'}</span>
-          </button>
-
-          <button
-            ref={mobileUtilitiesButtonRef}
-            className="mobile-utilities-toggle"
-            type="button"
-            onClick={() => setShowMobileUtilities(previous => !previous)}
-            aria-label="更多工具"
-            aria-controls="mobile-utilities-menu"
-            aria-expanded={showMobileUtilities}
-          >
-            <span aria-hidden="true">⋮</span>
-          </button>
-
-          {activeTab !== 'ctf' && (
-            <button
-              className="encoding-toggle"
-              type="button"
-              onClick={openEncoding}
-              title={t('header.encodingTitle', language)}
-            >
-              {t('header.encoding', language)}
-            </button>
-          )}
-
-          {showClientDownloads && (
-            <button
-              className="client-download-link"
-              type="button"
-              onClick={openClientDownloads}
-              title={clientDownloadTitle}
-              aria-label={clientDownloadTitle}
-            >
-              <span>{clientDownloadLabel}</span>
-              {clientDownloadCount ? <small>{clientDownloadCount} builds</small> : clientDownloadSize && <small>{clientDownloadSize}</small>}
-            </button>
-          )}
-
-          <div className="mode-switcher" role="group" aria-label={t('header.modeLabel', language)}>
-            <span className="mode-label">{t('header.modeLabel', language)}</span>
-            <button 
-              type="button"
-              aria-pressed={bypassMode === 'normal'}
-              className={`mode-btn ${bypassMode === 'normal' ? 'active' : ''}`}
-              onClick={() => setBypassMode('normal')}
-            >
-              {t('header.modeNormal', language)}
-            </button>
-            <button 
-              type="button"
-              aria-pressed={bypassMode === 'waf'}
-              className={`mode-btn ${bypassMode === 'waf' ? 'active warning' : ''}`}
-              onClick={() => setBypassMode('waf')}
-            >
-              {t('header.modeWaf', language)}
-            </button>
-          </div>
-
-          <div className="variables-dropdown">
-            <button 
-              ref={variablesToggleRef}
-              type="button"
-              className="variables-toggle"
-              onClick={() => setShowVariables(!showVariables)}
-              aria-expanded={showVariables}
-              aria-controls="variables-panel"
-            >
-              {t('header.variables', language)}
-            </button>
-            {showVariables && (
-              <div ref={variablesPanelRef} className="variables-panel" id="variables-panel">
-                <div className="variables-header">
-                  <div>
-                    <h3>{t('header.variablesTitle', language)}</h3>
-                    <span className="variables-hint">{t('header.variablesHint', language)}</span>
-                  </div>
-                  <button type="button" className="variables-close" onClick={() => setShowVariables(false)} aria-label="关闭全局变量">×</button>
-                </div>
-                <div className="variables-tools">
-                  <input
-                    type="search"
-                    name="variable-search"
-                    value={variableSearch}
-                    onChange={event => setVariableSearch(event.target.value)}
-                    placeholder={language === 'zh' ? '搜索变量、说明或当前值' : 'Search variable, note, or value'}
-                    className="variables-search"
-                  />
-                </div>
-                <div className="variables-list">
-                  {variableGroups.length ? variableGroups.map(({ group, variables }) => {
-                    const collapsed = collapsedVariableGroups.has(group) && !variableSearch.trim();
-                    const groupLabel = getText(variableGroupLabels[group] || variableGroupLabels.other, language);
-                    return (
-                      <section key={group} className="variable-group">
-                        <button
-                          type="button"
-                          className="variable-group-toggle"
-                          onClick={() => toggleVariableGroup(group)}
-                          aria-expanded={!collapsed}
-                        >
-                          <span className={`variable-group-icon ${collapsed ? '' : 'expanded'}`}>▶</span>
-                          <span>{groupLabel}</span>
-                          <small>{variables.length}</small>
-                        </button>
-                        {!collapsed && (
-                          <div className="variable-group-body">
-                            {variables.map(variable => (
-                              <div key={variable.key} className={`variable-item ${pinnedVariableKeys.has(variable.key) ? 'pinned' : ''}`}>
-                                <div className="variable-info">
-                                  <span className="variable-key">{`{${variable.key}}`}</span>
-                                  <span className="variable-desc">{getText(variable.description, language)}</span>
-                                </div>
-                                <input
-                                  type="text"
-                                  value={variable.value}
-                                  onChange={(e) => updateVariable(variable.key, e.target.value)}
-                                  className="variable-input"
-                                  aria-label={`${variable.key}：${getText(variable.description, language)}`}
-                                />
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </section>
-                    );
-                  }) : (
-                    <div className="variables-empty">
-                      <strong>{language === 'zh' ? '没有匹配变量' : 'No variables found'}</strong>
-                      <span>{language === 'zh' ? '换个关键词，或清空搜索。' : 'Try another keyword or clear the search.'}</span>
-                    </div>
-                  )}
-                </div>
-                <div className="variables-footer">
-                  {language === 'zh'
-                    ? '后台新增 Payload 或工具命令时，写入 {URL}、{COOKIE}、{ATTACKER_IP} 等占位符即可自动联动。'
-                    : 'Admin-created payloads and tool commands can use placeholders such as {URL}, {COOKIE}, and {ATTACKER_IP}.'}
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        <HeaderActions
+          clientBuildInfo={clientBuildInfo}
+          showClientDownloads={showClientDownloads}
+          clientDownloadLabel={clientDownloadLabel}
+          onOpenClientDownloads={openClientDownloads}
+          mobileUtilitiesButtonRef={mobileUtilitiesButtonRef}
+          mobileUtilitiesOpen={showMobileUtilities}
+          onToggleMobileUtilities={() => setShowMobileUtilities(previous => !previous)}
+          onOpenEncoding={openEncoding}
+          variablesOpen={showVariables}
+          onToggleVariables={() => setShowVariables(!showVariables)}
+          onCloseVariables={() => setShowVariables(false)}
+          variablesToggleRef={variablesToggleRef}
+          variablesPanelRef={variablesPanelRef}
+        />
 
         {showMobileUtilities && (
-          <div ref={mobileUtilitiesRef} className="mobile-utilities-menu" id="mobile-utilities-menu" aria-label="更多工具">
-            <div className="mobile-utilities-mode" role="group" aria-label={t('header.modeLabel', language)}>
-              <span>{t('header.modeLabel', language)}</span>
-              <div>
-                <button
-                  type="button"
-                  className={bypassMode === 'normal' ? 'active' : ''}
-                  aria-pressed={bypassMode === 'normal'}
-                  onClick={() => setBypassMode('normal')}
-                >
-                  {t('header.modeNormal', language)}
-                </button>
-                <button
-                  type="button"
-                  className={bypassMode === 'waf' ? 'active warning' : ''}
-                  aria-pressed={bypassMode === 'waf'}
-                  onClick={() => setBypassMode('waf')}
-                >
-                  {t('header.modeWaf', language)}
-                </button>
-              </div>
-            </div>
-            <button type="button" onClick={openVariables}>{t('header.variables', language)}</button>
-            {activeTab !== 'ctf' && (
-              <button type="button" onClick={openEncoding}>{t('header.encoding', language)}</button>
-            )}
-            {showClientDownloads && (
-              <button type="button" onClick={openClientDownloads}>{clientDownloadLabel}</button>
-            )}
-          </div>
+          <MobileUtilitiesMenu
+            mobileUtilitiesRef={mobileUtilitiesRef}
+            onOpenVariables={openVariables}
+            onOpenEncoding={openEncoding}
+            onOpenClientDownloads={openClientDownloads}
+            showClientDownloads={showClientDownloads}
+            clientDownloadLabel={clientDownloadLabel}
+          />
         )}
 
         
