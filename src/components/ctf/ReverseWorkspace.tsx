@@ -5,7 +5,6 @@ import StringsCard from './StringsCard';
 import HexdumpCard from './HexdumpCard';
 import EntropyMapCard from './EntropyMapCard';
 import CheatsheetSection from './CheatsheetSection';
-import { ffStyles } from './ffStyles';
 import {
   MAX_FILE_BYTES,
   blockEntropy,
@@ -22,6 +21,8 @@ import type { FingerprintCategory, FingerprintHit } from '../../utils/ctf/constF
 import { recommendTools } from '../../utils/ctf/recommendTools';
 import type { ToolAnchor } from '../../utils/ctf/recommendTools';
 import type { CtfWorkspaceProps } from '../../utils/ctf/modules';
+import '../../styles/ctf-forensics.css';
+import '../../styles/reverse-workspace.css';
 
 interface ReverseAnalysis {
   name: string;
@@ -285,37 +286,8 @@ function ReverseWorkspace({ pendingFile, onFileConsumed, onSwitchModule }: CtfWo
       )}
 
       {analyzing && <div className="ff-busy" role="status">{zh ? '正在扫描常量指纹与熵…' : 'Scanning constants and entropy…'}</div>}
-
-      <style>{ffStyles}</style>
-      <style>{reverseStyles}</style>
     </div>
   );
 }
-
-const reverseStyles = `
-  .rv-fingerprint {
-    display: grid;
-    gap: 6px;
-    padding: 10px 0;
-    border-bottom: 1px dashed var(--border-color);
-  }
-
-  .rv-fingerprint:last-child {
-    border-bottom: none;
-  }
-
-  .rv-fingerprint-name {
-    color: var(--text-primary);
-    font-weight: 700;
-    font-size: 13px;
-  }
-
-  .rv-fingerprint-suggest {
-    color: var(--text-secondary);
-    font-size: 12px;
-    line-height: 1.6;
-    min-width: 0;
-  }
-`;
 
 export default memo(ReverseWorkspace);

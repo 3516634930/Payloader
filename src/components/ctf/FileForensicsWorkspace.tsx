@@ -36,8 +36,8 @@ import type { PngChunkList } from "../../utils/ctf/embedScan";
 import { MAX_ANALYSIS_PIXELS } from '../../utils/ctf/imagePlanes';
 import { recommendTools } from '../../utils/ctf/recommendTools';
 import { copyToClipboard } from '../../utils/clipboard';
-import { ffStyles } from './ffStyles';
 import type { ToolAnchor } from '../../utils/ctf/recommendTools';
+import '../../styles/ctf-forensics.css';
 
 interface FileAnalysis {
   name: string;
@@ -606,7 +606,6 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
 
       {(busy || analyzing) && <div className="ff-busy" role="status">{language === 'zh' ? (analyzing ? '正在分析文件…' : '正在读取文件…') : (analyzing ? 'Analyzing file…' : 'Reading file…')}</div>}
 
-<style>{ffStyles}</style>
     </div>
   );
 }

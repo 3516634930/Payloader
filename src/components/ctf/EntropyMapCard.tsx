@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { EntropyBlock, HighEntropyRange } from '../../utils/ctf/fileDetect';
+import '../../styles/entropy-map-card.css';
 
 interface EntropyMapCardProps {
   blocks: EntropyBlock[];
@@ -120,19 +121,8 @@ function EntropyMapCard({ blocks, ranges, language }: EntropyMapCardProps) {
       {!blocks.length && (
         <p className="ff-note">{zh ? '空文件没有可绘制的内容。' : 'Nothing to draw for an empty file.'}</p>
       )}
-      <style>{entropyStyles}</style>
     </section>
   );
 }
-
-const entropyStyles = `
-  .rv-entropy-canvas {
-    width: 100%;
-    height: 96px;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    display: block;
-  }
-`;
 
 export default EntropyMapCard;

@@ -4,7 +4,6 @@ import { useLanguage } from '../../appContext';
 import { copyToClipboard } from '../../utils/clipboard';
 import { useDebouncedCallback } from '../../utils/debounce';
 import CheatsheetSection from './CheatsheetSection';
-import { ffStyles } from './ffStyles';
 import {
   COMMON_BAD_CHARS,
   analyzeFormatStringLeak,
@@ -15,6 +14,8 @@ import {
 import type { BadCharReport, FormatStringLeak } from '../../utils/ctf/pwnTools';
 import { CYCLIC_PERIODS, buildDeBruijn, findCyclicOffset } from '../../utils/ctf/cyclic';
 import type { CyclicLookupResult, CyclicLookupFailure, CyclicPeriod } from '../../utils/ctf/cyclic';
+import '../../styles/ctf-forensics.css';
+import '../../styles/pwn-workspace.css';
 
 const PAYLOAD_RENDER_LIMIT = 4096;
 
@@ -365,60 +366,8 @@ function PwnWorkspace() {
       <BadCharCard />
       <FormatStringCard />
       <CheatsheetSection moduleId="pwn" variant="footer" />
-
-      <style>{ffStyles}</style>
-      <style>{pwnStyles}</style>
     </div>
   );
 }
-
-const pwnStyles = `
-  .pwn-intro {
-    border: 1px dashed rgba(0, 240, 255, 0.3);
-    border-radius: 8px;
-    background: var(--bg-card);
-    padding: 12px 14px;
-    display: grid;
-    gap: 5px;
-  }
-
-  .pwn-intro strong {
-    color: var(--neon-cyan);
-    font-size: 13px;
-    font-weight: 800;
-  }
-
-  .pwn-intro p {
-    margin: 0;
-    color: var(--text-secondary);
-    font-size: 12px;
-    line-height: 1.7;
-  }
-
-  .pwn-offset {
-    color: var(--neon-cyan);
-    font-family: var(--font-mono, monospace);
-    font-size: 26px;
-    font-weight: 800;
-  }
-
-  .pwn-lookup-result {
-    display: grid;
-    gap: 6px;
-  }
-
-  .pwn-leak-table {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    max-height: 220px;
-    overflow-y: auto;
-  }
-
-  .pwn-leak-table .ff-byte {
-    min-width: 0;
-    padding: 3px 7px;
-  }
-`;
 
 export default memo(PwnWorkspace);
