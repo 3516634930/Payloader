@@ -1,4 +1,4 @@
-import type { PayloadItem } from '../types';
+import type { PayloadItem } from '../../src/types';
 
 export const webPayloads: PayloadItem[] = [
   {

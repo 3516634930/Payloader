@@ -1,5 +1,5 @@
 // CTF 题型速查种子数据（批次 M）：Web 域。
-// 条目内容全部指向项目载荷知识库已有条目（src/data/webPayloads.ts），点击跳载荷 tab 对应条目；
+// 条目内容全部指向项目载荷知识库已有条目（scripts/legacy-seed/webPayloads.ts），点击跳载荷 tab 对应条目；
 // 不在此重复建设知识内容，宁缺毋滥。
 
 import type { CheatEntry } from './index';

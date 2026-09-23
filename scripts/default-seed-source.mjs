@@ -10,8 +10,8 @@ const seedDir = join(rootDir, 'data', '.seed-cache');
 const makeSeedArtifactId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
 const seedEntrypoint = `
-import { webPayloads } from '../../src/data/webPayloads.ts';
-import { intranetPayloads } from '../../src/data/intranetPayloads.ts';
+import { webPayloads } from '../../scripts/legacy-seed/webPayloads.ts';
+import { intranetPayloads } from '../../scripts/legacy-seed/intranetPayloads.ts';
 import { toolCommands } from '../../src/data/toolCommands.ts';
 import { navigationData, toolNavigationData } from '../../src/data/navigation.ts';
 
@@ -30,8 +30,8 @@ const compileSeedData = async () => {
   const outputFile = join(seedDir, `seed-data-${artifactId}.mjs`);
   await writeFile(sourceFile, seedEntrypoint, 'utf8');
   const files = [
-    join(rootDir, 'src/data/webPayloads.ts'),
-    join(rootDir, 'src/data/intranetPayloads.ts'),
+    join(rootDir, 'scripts/legacy-seed/webPayloads.ts'),
+    join(rootDir, 'scripts/legacy-seed/intranetPayloads.ts'),
     join(rootDir, 'src/data/commandCatalogTools.ts'),
     join(rootDir, 'src/data/osToolCommandExtensions.ts'),
     join(rootDir, 'src/data/toolCommands.ts'),

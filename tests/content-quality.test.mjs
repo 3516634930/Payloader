@@ -458,7 +458,7 @@ test('seed refresh never publishes partial output and always removes temporary a
 });
 
 test('legacy TypeScript source no longer embeds internal syntax metadata in the four confirmed commands', async () => {
-  const source = await readFile(join(process.cwd(), 'src', 'data', 'webPayloads.ts'), 'utf8');
+  const source = await readFile(join(process.cwd(), 'scripts', 'legacy-seed', 'webPayloads.ts'), 'utf8');
   const confirmedFragments = [
     /Content-Type: application\/json,\r?\n\s*\r?\n\s*syntaxBreakdown\s*:/,
     /<html><body>,\r?\n\s*syntaxBreakdown\s*:/,

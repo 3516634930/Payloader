@@ -1,5 +1,5 @@
 // CTF 题型速查种子数据（批次 M）：AI 域。
-// 知识库现有 AI 方向载荷条目（src/data/webPayloads.ts 的 AI 分类）挂接为可跳转条目；
+// 知识库现有 AI 方向载荷条目（scripts/legacy-seed/webPayloads.ts（原 src/data）的 AI 分类）挂接为可跳转条目；
 // 无知识库覆盖的通用解题思路做文本条目并如实说明，不虚构跳转目标。
 
 import type { CheatEntry } from './index';

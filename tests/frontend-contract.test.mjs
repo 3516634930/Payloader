@@ -105,18 +105,19 @@ test('dialogs are labelled, modal, keyboard closable, and focus managed', async 
 });
 
 test('encoding dialog close control meets the minimum touch target', async () => {
-  const header = await read('src/components/Header.tsx');
-  const closeButtonRule = header.match(/\.close-btn\s*\{([^}]*)\}/)?.[1] || '';
+  // Header 样式已迁出至独立 CSS 文件（架构解耦），触控目标断言跟随样式文件
+  const headerStyles = await read('src/styles/header.css');
+  const closeButtonRule = headerStyles.match(/\.close-btn\s*\{([^}]*)\}/)?.[1] || '';
 
   assert.match(closeButtonRule, /width:\s*44px/);
   assert.match(closeButtonRule, /height:\s*44px/);
 });
 
 test('mobile search input meets the minimum touch target', async () => {
-  const header = await read('src/components/Header.tsx');
+  const headerStyles = await read('src/styles/header.css');
 
-  assert.match(header, /\.search-input\s*\{[^}]*height:\s*44px/s);
-  assert.doesNotMatch(header, /\.search-input\s*\{[^}]*height:\s*42px/s);
+  assert.match(headerStyles, /\.search-input\s*\{[^}]*height:\s*44px/s);
+  assert.doesNotMatch(headerStyles, /\.search-input\s*\{[^}]*height:\s*42px/s);
 });
 
 test('public search controls expose stable form names', async () => {
@@ -533,6 +534,7 @@ test('CTF workbench renders the menubar mode while the pentest view stays unchan
   assert.match(workbench, /mode \? 'pentest'|mode = 'pentest'/);
   assert.match(workbench, /ctf-nav-mode/);
   assert.match(workbench, /【\$\{name\}解密】/);
-  assert.match(workbench, /action-fold/);
+  // CTF 态操作导航只走顶部菜单栏：平铺备选网格（action-fold）必须不存在
+  assert.doesNotMatch(workbench, /action-fold/);
   assert.match(menuBar, /withinPortal/);
 });

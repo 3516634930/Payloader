@@ -273,7 +273,7 @@ function CodecWorkbench({ ref, groups, heading, description, registerTestApi = f
     }))
     : [];
 
-  // 分类内（操作 × 方向）动作区：CTF 态折叠为备选视图，渗透态保持平铺。
+  // 分类内（操作 × 方向）动作区：仅渗透编解码模态使用平铺网格；CTF 态操作导航一律走顶部菜单栏。
   const actionPanel = (
     <div className="action-panel" aria-label={language === 'zh' ? '操作动作列表' : 'Operation actions'}>
       {activeGroup?.subgroups ? (
@@ -426,12 +426,7 @@ function CodecWorkbench({ ref, groups, heading, description, registerTestApi = f
             />
           </div>
 
-          {isCtfMode ? (
-            <details className="action-fold">
-              <summary>{language === 'zh' ? '展开全部操作（平铺备选）' : 'All operations (grid fallback)'}</summary>
-              {actionPanel}
-            </details>
-          ) : actionPanel}
+          {isCtfMode ? null : actionPanel}
 
           <div className="operation-summary">
             <div>
@@ -857,28 +852,6 @@ function CodecWorkbench({ ref, groups, heading, description, registerTestApi = f
         /* CTF 态：菜单栏替代左侧分类栏，主面板占满整行 */
         .encoding-workbench.ctf-nav-mode {
           grid-template-columns: minmax(0, 1fr);
-        }
-
-        /* CTF 态动作网格折叠备选 */
-        .action-fold {
-          min-width: 0;
-          border: 1px dashed var(--border-color);
-          border-radius: 8px;
-          padding: 8px 10px;
-        }
-
-        .action-fold summary {
-          min-height: 32px;
-          cursor: pointer;
-          color: var(--text-muted);
-          font-size: 12px;
-          font-weight: 700;
-          line-height: 32px;
-          user-select: none;
-        }
-
-        .action-fold[open] summary {
-          margin-bottom: 8px;
         }
 
         .encoding-category-panel,
@@ -1443,11 +1416,6 @@ function CodecWorkbench({ ref, groups, heading, description, registerTestApi = f
 
           .action-btn {
             min-height: 44px;
-          }
-
-          .action-fold summary {
-            min-height: 44px;
-            line-height: 44px;
           }
 
           .action-grid {

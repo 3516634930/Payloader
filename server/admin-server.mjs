@@ -38,6 +38,7 @@ import {
 } from './data-store.mjs';
 import { createPublicDataResponder } from './public-data-response.mjs';
 import { officialProjectUrl, publicProjectRoute } from './project-attribution.mjs';
+import { readImageInfo } from './image-inspect.mjs';
 import { createShutdownController } from './server-lifecycle.mjs';
 import { createVersionChecker, VERSION_STATUS_METADATA_KEY } from './version-checker.mjs';
 
@@ -728,18 +729,11 @@ const checkRateLimit = (request, response, scope, limit) => {
     }
   }
   if (current.count <= limit.max) return true;
-  const contentType = scope.includes('login') || scope.includes('admin') ? 'application/json; charset=utf-8' : 'text/plain; charset=utf-8';
-  response.writeHead(429, {
-    ...baseResponseHeaders,
-    'content-type': contentType,
-    'cache-control': 'no-store',
-    'retry-after': String(Math.ceil(limit.windowMs / 1000)),
-  });
-  response.end(contentType.startsWith('application/json') ? JSON.stringify({ error: '请求过于频繁，请稍后再试' }) : 'Too many requests');
+  respondTooManyRequests(response, scope, limit);
   return false;
 };
 
-// 发送 429 但不改变限流计数——用于并发闸等需要廉价拒绝的路径。
+// 发送 429 但不改变限流计数——用于并发闸等需要廉价拒绝的路径；checkRateLimit 超限时也复用同一响应块。
 const respondTooManyRequests = (response, scope, limit) => {
   const contentType = scope.includes('login') || scope.includes('admin') ? 'application/json; charset=utf-8' : 'text/plain; charset=utf-8';
   response.writeHead(429, {
@@ -855,103 +849,6 @@ const serveFrontendIndex = async (request, response, filePath) => {
     text(response, 404, 'Not found');
   }
 };
-
-const readPngDimensions = buffer => {
-  if (
-    buffer.length < 24 ||
-    buffer.readUInt32BE(0) !== 0x89504e47 ||
-    buffer.readUInt32BE(4) !== 0x0d0a1a0a ||
-    buffer.toString('ascii', 12, 16) !== 'IHDR'
-  ) return null;
-  return {
-    ext: 'png',
-    mimeType: 'image/png',
-    width: buffer.readUInt32BE(16),
-    height: buffer.readUInt32BE(20),
-  };
-};
-
-const isJpegSofMarker = marker => (
-  (marker >= 0xc0 && marker <= 0xc3) ||
-  (marker >= 0xc5 && marker <= 0xc7) ||
-  (marker >= 0xc9 && marker <= 0xcb) ||
-  (marker >= 0xcd && marker <= 0xcf)
-);
-
-const readJpegDimensions = buffer => {
-  if (buffer.length < 4 || buffer[0] !== 0xff || buffer[1] !== 0xd8) return null;
-  let offset = 2;
-  while (offset + 4 < buffer.length) {
-    while (offset < buffer.length && buffer[offset] !== 0xff) offset += 1;
-    while (offset < buffer.length && buffer[offset] === 0xff) offset += 1;
-    if (offset >= buffer.length) break;
-    const marker = buffer[offset];
-    offset += 1;
-    if (marker === 0xd9 || marker === 0xda) break;
-    if (offset + 2 > buffer.length) break;
-    const length = buffer.readUInt16BE(offset);
-    if (length < 2 || offset + length > buffer.length) break;
-    if (isJpegSofMarker(marker)) {
-      if (length < 7) break;
-      return {
-        ext: 'jpg',
-        mimeType: 'image/jpeg',
-        height: buffer.readUInt16BE(offset + 3),
-        width: buffer.readUInt16BE(offset + 5),
-      };
-    }
-    offset += length;
-  }
-  return null;
-};
-
-const readWebpDimensions = buffer => {
-  if (
-    buffer.length < 30 ||
-    buffer.toString('ascii', 0, 4) !== 'RIFF' ||
-    buffer.toString('ascii', 8, 12) !== 'WEBP'
-  ) return null;
-  let offset = 12;
-  while (offset + 8 <= buffer.length) {
-    const chunkType = buffer.toString('ascii', offset, offset + 4);
-    const chunkSize = buffer.readUInt32LE(offset + 4);
-    const data = offset + 8;
-    if (data + chunkSize > buffer.length) return null;
-    if (chunkType === 'VP8X' && chunkSize >= 10) {
-      return {
-        ext: 'webp',
-        mimeType: 'image/webp',
-        width: 1 + buffer.readUIntLE(data + 4, 3),
-        height: 1 + buffer.readUIntLE(data + 7, 3),
-      };
-    }
-    if (chunkType === 'VP8L' && chunkSize >= 5) {
-      const bits = buffer.readUInt32LE(data + 1);
-      return {
-        ext: 'webp',
-        mimeType: 'image/webp',
-        width: 1 + (bits & 0x3fff),
-        height: 1 + ((bits >> 14) & 0x3fff),
-      };
-    }
-    if (chunkType === 'VP8 ' && chunkSize >= 10 && buffer[data + 3] === 0x9d && buffer[data + 4] === 0x01 && buffer[data + 5] === 0x2a) {
-      return {
-        ext: 'webp',
-        mimeType: 'image/webp',
-        width: buffer.readUInt16LE(data + 6) & 0x3fff,
-        height: buffer.readUInt16LE(data + 8) & 0x3fff,
-      };
-    }
-    offset = data + chunkSize + (chunkSize % 2);
-  }
-  return null;
-};
-
-const readImageInfo = buffer => (
-  readPngDimensions(buffer) ||
-  readJpegDimensions(buffer) ||
-  readWebpDimensions(buffer)
-);
 
 const normalizeLogoMimeType = value => {
   const mimeType = String(value || '').toLowerCase().trim();
