@@ -18,6 +18,9 @@ import CtfHero from './ctf/CtfHero';
 
 const AUTO_DECODE_LIMIT = 20000;
 const CIPHER_MODULE_ID = 'cipher';
+// 魔数路由表（批次 L 起，逆向域批次扩展）：抓包格式 → 流量分析域，可执行格式 → 逆向域。
+const PCAP_EXTS = new Set(['pcap', 'pcapbe', 'pcapng']);
+const BINARY_EXTS = new Set(['elf', 'exe', 'macho', 'machobe']);
 
 // CTF 解题工具箱框架壳（批次 J）：题域导航 + 模块插件化。
 // 各题型域由 src/utils/ctf/modules.ts 注册表声明，加新域 = 注册一个模块对象，不改本框架。
@@ -126,21 +129,24 @@ function CtfToolkit() {
   // 消费即清空防残留；token 单调递增保证同一文件不会被再次投递。
   const clearPendingFile = useCallback(() => setPendingFile(null), []);
 
-  // 文件入口（批次 K 起，批次 L 增加魔数路由）：hero 按钮与页面级拖拽统一走这里。
-  // 头部字节命中抓包格式 → 流量分析域；当前域接受文件则留在当前域；否则切到杂项取证。
+  // 文件入口（批次 K 起，批次 L 增加魔数路由，逆向域批次扩展 ELF/PE/MachO → 逆向域）：
+  // hero 按钮与页面级拖拽统一走这里。头部字节命中抓包格式 → 流量分析域；命中可执行格式 → 逆向域；
+  // 其余情况下当前域接受文件则留在当前域，否则切到杂项取证。
   // 只在拖拽载荷含文件时接管，避免吞掉纯文本拖放。
   const fileTokenRef = useRef(0);
   const handleFileSelected = useCallback(async (file: File | null | undefined) => {
     if (!file) return;
-    let routed = false;
+    let exts: string[] = [];
     try {
       const head = new Uint8Array(await file.slice(0, 12).arrayBuffer());
-      routed = detectFileTypes(head).some(type => type.ext === 'pcap' || type.ext === 'pcapbe' || type.ext === 'pcapng');
+      exts = detectFileTypes(head).map(type => type.ext);
     } catch {
       // 读不出头部就按普通文件走原路由，不阻断入口。
     }
     const active = ctfModules.find(module => module.id === activeModuleId);
-    const targetId = routed ? 'traffic' : active?.entryKinds.includes('file') ? active.id : 'misc';
+    const targetId = exts.some(ext => PCAP_EXTS.has(ext)) ? 'traffic'
+      : exts.some(ext => BINARY_EXTS.has(ext)) ? 'reverse'
+        : active?.entryKinds.includes('file') ? active.id : 'misc';
     fileTokenRef.current += 1;
     setPendingFile({ file, token: fileTokenRef.current, targetModuleId: targetId });
     setActiveModuleId(targetId);
@@ -177,8 +183,8 @@ function CtfToolkit() {
       <div className="encoding-header">
         <h2>{language === 'zh' ? 'CTF 解题工具箱' : 'CTF Toolkit'}</h2>
         <p>{language === 'zh'
-          ? '按题型域组织：智能识别置顶全域可用，粘贴即自动识别；密码与编码、杂项取证、流量分析已就绪，Web/逆向/Pwn/AI 提供题型速查。'
-          : 'Organized by category: smart identify stays on top and works everywhere. Ciphers & Encoding, Misc & Forensics, and Traffic Analysis are ready; Web, Reverse, Pwn, and AI offer curated cheat sheets.'}</p>
+          ? '按题型域组织：智能识别置顶全域可用，粘贴即自动识别；密码与编码、杂项取证、流量分析、逆向、Pwn 已就绪，Web/AI 提供题型速查。'
+          : 'Organized by category: smart identify stays on top and works everywhere. Ciphers & Encoding, Misc & Forensics, Traffic Analysis, Reverse, and Pwn are ready; Web and AI offer curated cheat sheets.'}</p>
       </div>
 
       <nav className="ctf-domain-nav-wrap" aria-label={language === 'zh' ? '题型域导航' : 'Challenge categories'}>
@@ -204,13 +210,20 @@ function CtfToolkit() {
         showFileEntry={showFileEntry}
         fileEntryLabel={activeModuleId === 'traffic'
           ? { zh: '抓包分析', en: 'Capture analysis' }
-          : undefined}
+          : activeModuleId === 'reverse'
+            ? { zh: '逆向分析', en: 'Reverse analysis' }
+            : undefined}
         fileEntryHint={activeModuleId === 'traffic'
           ? {
             zh: '选择或拖入 pcap / pcapng，在流量分析域本地解析包列表、协议统计、TCP 流与 HTTP 对象（上限 20MB，不上传）',
             en: 'Pick or drop a pcap / pcapng for local parsing in Traffic Analysis: packet list, protocol stats, TCP streams, and HTTP objects (20MB limit, never uploaded)',
           }
-          : undefined}
+          : activeModuleId === 'reverse'
+            ? {
+              zh: '选择或拖入 ELF / PE / Mach-O，自动做常量指纹扫描、块级熵图与字符串分析（上限 20MB，不上传）',
+              en: 'Pick or drop an ELF / PE / Mach-O for constant fingerprints, block entropy, and strings (20MB limit, never uploaded)',
+            }
+            : undefined}
         heroRef={heroRef}
         heroMode={heroMode}
         // "需要解编码？"引导只在速查域折叠条出现（文件域首屏是文件工作区，无需引导）。

@@ -1,0 +1,520 @@
+// 文件分析工作台共享样式（批次 W/逆向域批次）：.ff-* 卡片体系 + 根类 .file-forensics 的 flag 标红规则。
+// 杂项取证、逆向域两个工作台共用；工作台根元素统一挂 file-forensics 类即可获得全部样式。
+export const ffStyles = `
+  .file-forensics {
+    min-width: 0;
+    display: grid;
+    gap: 14px;
+  }
+
+  .ff-dropzone {
+    display: grid;
+    justify-items: center;
+    gap: 10px;
+    padding: 46px 20px;
+    border: 1px dashed var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-card);
+    text-align: center;
+  }
+
+  .ff-dropzone-icon {
+    font-size: 34px;
+  }
+
+  .ff-dropzone strong {
+    color: var(--text-primary);
+    font-size: 15px;
+  }
+
+  .ff-dropzone small {
+    max-width: 460px;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  .ff-layout {
+    display: grid;
+    gap: 14px;
+  }
+
+  /* 推荐工具条：按探测类型直达适用操作，紧跟报告头部 */
+  .ff-recommend {
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid rgba(0, 240, 255, 0.35);
+    border-radius: 8px;
+    background: rgba(0, 240, 255, 0.045);
+    padding: 10px 12px;
+  }
+
+  .ff-recommend-label {
+    color: var(--neon-cyan);
+    font-size: 12px;
+    font-weight: 800;
+    white-space: nowrap;
+  }
+
+  .ff-recommend-tools {
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+  }
+
+  .ff-recommend-hit {
+    border-color: rgba(0, 240, 255, 0.45);
+    color: var(--neon-cyan);
+  }
+
+  .ff-recommend-soon {
+    opacity: 0.72;
+  }
+
+  .ff-recommend-soon-tag {
+    margin-left: 5px;
+    padding: 1px 5px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-muted);
+  }
+
+  .ff-card {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-card);
+    padding: 13px;
+    display: grid;
+    gap: 9px;
+    min-width: 0;
+  }
+
+  .ff-card-flag {
+    border-color: var(--neon-cyan);
+  }
+
+  .ff-card-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .ff-card-head strong {
+    color: var(--neon-cyan);
+    font-size: 13px;
+    font-weight: 800;
+  }
+
+  .ff-card-head .ff-button {
+    margin-left: auto;
+  }
+
+  .ff-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .ff-name {
+    color: var(--text-primary);
+    font-weight: 700;
+    word-break: break-all;
+  }
+
+  .ff-size {
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+
+  .ff-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+  }
+
+  .ff-label {
+    color: var(--text-muted);
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+
+  .ff-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.035);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 700;
+    word-break: break-all;
+  }
+
+  .ff-badge-ok {
+    border-color: rgba(60, 220, 150, 0.55);
+    color: rgb(80, 235, 170);
+  }
+
+  .ff-badge-warn {
+    border-color: rgba(255, 190, 70, 0.55);
+    color: rgb(255, 205, 100);
+  }
+
+  .ff-badge-flag {
+    border-color: var(--neon-cyan);
+    color: var(--neon-cyan);
+    font-size: 12px;
+  }
+
+  .ff-note {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  .ff-mono {
+    color: var(--text-secondary);
+    font-family: var(--font-mono, monospace);
+    font-size: 12px;
+  }
+
+  .ff-button {
+    min-height: 30px;
+    padding: 5px 11px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.035);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: border-color var(--transition-fast), color var(--transition-fast);
+  }
+
+  .ff-button:hover {
+    border-color: var(--neon-cyan);
+    color: var(--neon-cyan);
+  }
+
+  .ff-button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .ff-button-primary {
+    border-color: rgba(0, 240, 255, 0.45);
+    color: var(--neon-cyan);
+  }
+
+  .ff-strings {
+    display: grid;
+    gap: 5px;
+    max-height: 320px;
+    overflow-y: auto;
+  }
+
+  .ff-code {
+    display: block;
+    padding: 6px 9px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    word-break: break-all;
+    white-space: pre-wrap;
+  }
+
+  .ff-code-click {
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .ff-code-click:hover {
+    border-color: var(--neon-cyan);
+    color: var(--neon-cyan);
+  }
+
+  .ff-code-dump {
+    max-height: 320px;
+    overflow: auto;
+  }
+
+  .ff-preview {
+    max-width: 100%;
+    max-height: 320px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    object-fit: contain;
+  }
+
+  /* 卡片控件行：搜索框 / 下拉 / 按钮成组排布，窄屏自动换行 */
+  .ff-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+  }
+
+  .ff-input,
+  .ff-select {
+    min-height: 30px;
+    padding: 4px 9px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 12px;
+    min-width: 0;
+  }
+
+  .ff-input {
+    flex: 1 1 180px;
+  }
+
+  .ff-input-narrow {
+    flex: 0 1 200px;
+  }
+
+  .ff-input::placeholder {
+    color: var(--text-muted);
+  }
+
+  .ff-input:focus-visible,
+  .ff-select:focus-visible,
+  .ff-textarea:focus-visible {
+    outline: none;
+    border-color: var(--neon-cyan);
+  }
+
+  .ff-select option {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+  }
+
+  /* 多行输入（Pwn 域 payload/泄漏输出粘贴框） */
+  .ff-textarea {
+    width: 100%;
+    min-height: 84px;
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-family: var(--font-mono, monospace);
+    font-size: 12px;
+    line-height: 1.6;
+    resize: vertical;
+    min-width: 0;
+  }
+
+  .ff-textarea::placeholder {
+    color: var(--text-muted);
+  }
+
+  /* 复选框组（坏字符集勾选） */
+  .ff-checks {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .ff-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-family: var(--font-mono, monospace);
+    cursor: pointer;
+  }
+
+  .ff-check input {
+    accent-color: var(--neon-cyan);
+    cursor: pointer;
+  }
+
+  /* 坏字符字节网格：命中字节红底高亮 */
+  .ff-bytes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    max-height: 260px;
+    overflow-y: auto;
+    padding: 2px;
+  }
+
+  .ff-byte {
+    flex: 0 0 auto;
+    min-width: 34px;
+    padding: 3px 4px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-secondary);
+    color: var(--text-muted);
+    font-family: var(--font-mono, monospace);
+    font-size: 10px;
+    text-align: center;
+  }
+
+  .ff-byte-hit {
+    border-color: rgba(255, 61, 61, 0.6);
+    background: rgba(255, 61, 61, 0.2);
+    color: #ff8f8f;
+    font-weight: 800;
+  }
+
+  .ff-dump-line {
+    min-height: 1.5em;
+    white-space: pre;
+  }
+
+  .ff-dump-hit {
+    background: rgba(255, 61, 61, 0.24);
+    box-shadow: 0 0 0 1px rgba(255, 61, 61, 0.5);
+    border-radius: 2px;
+  }
+
+  /* 位平面网格：通道分组横向滚动（手机端不挤压缩略图） */
+  .ff-plane-grid {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .ff-plane-group {
+    display: grid;
+    grid-template-columns: 18px 1fr;
+    align-items: start;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .ff-plane-group-label {
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 800;
+    padding-top: 26px;
+  }
+
+  .ff-plane-row {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .ff-plane-cell {
+    flex: 0 0 auto;
+    display: grid;
+    justify-items: center;
+    gap: 3px;
+    padding: 4px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.02);
+    cursor: zoom-in;
+    transition: border-color var(--transition-fast);
+  }
+
+  .ff-plane-cell:hover,
+  .ff-plane-cell-active {
+    border-color: var(--neon-cyan);
+  }
+
+  .ff-plane-cell-label {
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  .ff-plane-canvas {
+    width: 76px;
+    height: 76px;
+    object-fit: contain;
+    background:
+      repeating-conic-gradient(rgba(255, 255, 255, 0.06) 0% 25%, transparent 0% 50%) 0 0 / 12px 12px;
+    image-rendering: pixelated;
+  }
+
+  .ff-plane-zoom {
+    max-width: 100%;
+    max-height: 420px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    image-rendering: pixelated;
+  }
+
+  .ff-chunk-row {
+    display: grid;
+    gap: 4px;
+    padding: 6px 0;
+    border-bottom: 1px dashed var(--border-color);
+  }
+
+  .ff-chunk-row:last-child {
+    border-bottom: none;
+  }
+
+  .ff-busy {
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+
+  /* flag 自动标红（FlagAutoText）：完整格式深红、关键词红 */
+  .file-forensics .flag-auto {
+    background: transparent;
+    color: inherit;
+    padding: 0;
+    border-radius: 2px;
+    font-weight: 700;
+  }
+
+  .file-forensics .flag-auto-format {
+    background: rgba(255, 61, 61, 0.24);
+    color: #ff7b7b;
+    box-shadow: 0 0 0 1px rgba(255, 61, 61, 0.5);
+  }
+
+  .file-forensics .flag-auto-keyword {
+    background: rgba(255, 61, 61, 0.13);
+    color: #ff9b9b;
+    box-shadow: 0 0 0 1px rgba(255, 61, 61, 0.28);
+  }
+
+  @media (max-width: 680px) {
+    .ff-dropzone {
+      padding: 30px 14px;
+    }
+
+    /* 手机端：位平面缩略缩小、横向滚动保留（验收红线：网格可横向滚动） */
+    .ff-plane-cell {
+      padding: 3px;
+    }
+
+    .ff-plane-canvas {
+      width: 56px;
+      height: 56px;
+    }
+
+    .ff-input {
+      flex: 1 1 100%;
+    }
+  }
+`;

@@ -137,6 +137,8 @@ test('detectFileTypes 识别常见魔数', () => {
     ['1F 8B 08 00', 'gz'],
     ['37 7A BC AF 27 1C', '7z'],
     ['52 49 46 46 24 00 00 00 57 45 42 50', 'webp'],
+    ['CF FA ED FE 00 00 00 01', 'macho'],
+    ['CE FA ED FE 00 00 00 01', 'machobe'],
   ];
   for (const [hex, expectedExt] of samples) {
     const bytes = Uint8Array.from(hex.split(' ').map(value => Number.parseInt(value, 16)));
@@ -144,6 +146,9 @@ test('detectFileTypes 识别常见魔数', () => {
     assert.ok(detected.includes(expectedExt), `${expectedExt} 未被识别，实际: ${detected.join(',')}`);
   }
   assert.equal(fileDetect.detectFileTypes(new Uint8Array(16)).length, 0, '全零字节不应命中任何魔数');
+  // CAFEBABE 是 Java class 魔数，不得误报为 Mach-O（fat binary 需更多上下文，暂不收录）
+  const javaClass = Uint8Array.from([0xca, 0xfe, 0xba, 0xbe, 0x00, 0x00, 0x00, 0x02]);
+  assert.ok(!fileDetect.detectFileTypes(javaClass).some(hit => hit.ext.startsWith('macho')), 'Java class 不得误报 Mach-O');
 });
 
 // ---- 信息熵 ----

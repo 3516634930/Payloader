@@ -2777,4 +2777,23 @@ await run('flag 自动标红区间：完整格式深红优先、关键词补位�
   expect(findFlagAutoRanges('').length === 0, '空输入必须返回空区间');
 });
 
+// 逆向域批次：注册表 entryKinds 守护（声明性数据，漂移即破坏魔数路由与 hero 形态）。
+// 注册表 import 整条 React 组件链，vm 沙箱加载成本高，声明层用文本断言足够稳定。
+await run('逆向/Pwn 注册表 entryKinds：reverse=file+cheatsheet、pwn=text+cheatsheet', async () => {
+  const modulesSource = fs.readFileSync(path.join(rootDir, 'src', 'utils', 'ctf', 'modules.ts'), 'utf8');
+  const parseEntryKinds = moduleId => {
+    const block = modulesSource.match(new RegExp(`\\{\\s*id: '${moduleId}',[\\s\\S]*?entryKinds: \\[([^\\]]*)\\]`));
+    if (!block) return null;
+    return block[1].split(',').map(part => part.trim().replace(/['"]/g, '')).filter(Boolean);
+  };
+  const reverse = parseEntryKinds('reverse');
+  const pwn = parseEntryKinds('pwn');
+  expect(JSON.stringify(reverse) === JSON.stringify(['file', 'cheatsheet']), `reverse entryKinds 漂移：${JSON.stringify(reverse)}`);
+  expect(JSON.stringify(pwn) === JSON.stringify(['text', 'cheatsheet']), `pwn entryKinds 漂移：${JSON.stringify(pwn)}`);
+  // 魔数路由扩展守护：ELF/PE/MachO → 逆向域
+  const toolkitSource = fs.readFileSync(path.join(rootDir, 'src', 'components', 'CtfToolkit.tsx'), 'utf8');
+  expect(/BINARY_EXTS = new Set\(\['elf', 'exe', 'macho', 'machobe'\]\)/.test(toolkitSource), 'CtfToolkit 魔数路由 BINARY_EXTS 漂移');
+  expect(/BINARY_EXTS\.has\(ext\)\) \? 'reverse'/.test(toolkitSource), 'CtfToolkit ELF/PE/MachO → reverse 路由漂移');
+});
+
 console.log(`\nVerified ${results.length} EncodingTools regression checks.`);

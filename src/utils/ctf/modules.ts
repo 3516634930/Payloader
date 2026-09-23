@@ -3,6 +3,8 @@ import type { OperationId } from '../codec';
 import CheatsheetWorkspace from '../../components/ctf/CheatsheetWorkspace';
 import CipherWorkspace from '../../components/ctf/CipherWorkspace';
 import FileForensicsWorkspace from '../../components/ctf/FileForensicsWorkspace';
+import PwnWorkspace from '../../components/ctf/PwnWorkspace';
+import ReverseWorkspace from '../../components/ctf/ReverseWorkspace';
 import TrafficWorkspace from '../../components/ctf/traffic/TrafficWorkspace';
 
 // CTF 解题工具箱模块注册表（批次 J）：加新题型域 = 在 ctfModules 追加一个 ToolkitModule 对象，不改框架代码。
@@ -83,24 +85,26 @@ export const ctfModules: ToolkitModule[] = [
     id: 'reverse',
     name: { zh: '逆向', en: 'Reverse' },
     icon: '🔍',
-    entryKinds: ['cheatsheet'],
-    Workspace: CheatsheetWorkspace,
+    entryKinds: ['file', 'cheatsheet'],
+    Workspace: ReverseWorkspace,
+    keepMounted: true,
     heroMode: 'collapsed',
     note: {
-      zh: '规划能力：逆向域专属工具（反编译辅助、字符串/签名增强扫描）。',
-      en: 'Planned: dedicated reversing tools (decompiler helpers, enhanced string/signature scans).',
+      zh: '规划能力：反编译辅助（Ghidra/dogbolt 指导页）、字符串/签名增强扫描。',
+      en: 'Planned: decompiler helpers (Ghidra/dogbolt guides), enhanced string/signature scans.',
     },
   },
   {
     id: 'pwn',
     name: { zh: 'Pwn', en: 'Pwn' },
     icon: '⚔️',
-    entryKinds: ['cheatsheet'],
-    Workspace: CheatsheetWorkspace,
+    entryKinds: ['text', 'cheatsheet'],
+    Workspace: PwnWorkspace,
+    keepMounted: true,
     heroMode: 'collapsed',
     note: {
-      zh: '规划能力：Pwn 域专属工具（gadget 检索、payload 布局生成器）。',
-      en: 'Planned: dedicated Pwn tools (gadget lookup, payload layout builders).',
+      zh: '规划能力：gadget 检索、payload 布局生成器。',
+      en: 'Planned: gadget lookup, payload layout builders.',
     },
   },
   {

@@ -38,7 +38,9 @@ export const MAGIC_TABLE: MagicRule[] = [
   { ext: 'pcapng', name: 'PCAPNG capture', offset: 0, bytes: [0x0a, 0x0d, 0x0d, 0x0a, null, null, null, null, 0x1a, 0x2b, 0x3c, 0x4d] },
   { ext: 'elf', name: 'ELF executable', offset: 0, bytes: [0x7f, 0x45, 0x4c, 0x46] },
   { ext: 'exe', name: 'PE executable (exe/dll)', offset: 0, bytes: [0x4d, 0x5a] },
-  { ext: 'macho', name: 'Mach-O binary', offset: 0, bytes: [0xfe, 0xed, 0xfa, 0xce] },
+  { ext: 'macho', name: 'Mach-O binary (32-bit)', offset: 0, bytes: [0xfe, 0xed, 0xfa, 0xce] },
+  { ext: 'macho', name: 'Mach-O binary (64-bit)', offset: 0, bytes: [0xcf, 0xfa, 0xed, 0xfe] },
+  { ext: 'machobe', name: 'Mach-O binary (byte-swapped)', offset: 0, bytes: [0xce, 0xfa, 0xed, 0xfe] },
   { ext: 'swf', name: 'Adobe Flash SWF', offset: 0, bytes: [0x46, 0x57, 0x53] },
   { ext: 'mp4', name: 'MP4 media', offset: 4, bytes: [0x66, 0x74, 0x79, 0x70] },
   { ext: 'ogg', name: 'OGG media', offset: 0, bytes: [0x4f, 0x67, 0x67, 0x53] },
@@ -113,6 +115,95 @@ export const entropyVerdictText = (level: EntropyLevel, language: 'zh' | 'en'): 
     ? '熵值在常见文本区间：内容大概率可直接阅读或含可读字符串。'
     : 'Entropy in the typical text range: content is likely readable or contains readable strings.';
   return language === 'zh' ? '熵值很低：内容高度重复或有大量填充字节。' : 'Very low entropy: highly repetitive content or padding bytes.';
+};
+
+// ---- 块级熵（逆向域熵图）----
+
+export const ENTROPY_BLOCK_SIZE = 256;
+// 与常量指纹扫描同一条 8MB 红线（constFingerprints.FINGERPRINT_SCAN_LIMIT），本地常量避免模块反向依赖。
+const ENTROPY_SCAN_LIMIT = 8 * 1024 * 1024;
+
+export interface EntropyBlock {
+  offset: number;
+  length: number;
+  entropy: number;
+}
+
+// 按 256B 块计算香农熵（0-8 bits/byte）：8MB 上限内 O(n) 单遍，渲染与区段标注都在调用方完成。
+export const blockEntropy = (bytes: Uint8Array, options?: { blockSize?: number; maxBytes?: number }): EntropyBlock[] => {
+  const blockSize = options?.blockSize ?? ENTROPY_BLOCK_SIZE;
+  const limit = Math.min(bytes.length, options?.maxBytes ?? ENTROPY_SCAN_LIMIT);
+  const blocks: EntropyBlock[] = [];
+  const buckets = new Array<number>(256).fill(0);
+  let blockStart = 0;
+  let blockCount = 0;
+  const flush = () => {
+    if (!blockCount) return;
+    let entropy = 0;
+    for (const count of buckets) {
+      if (!count) continue;
+      const probability = count / blockCount;
+      entropy -= probability * Math.log2(probability);
+    }
+    blocks.push({ offset: blockStart, length: blockCount, entropy });
+    buckets.fill(0);
+    blockStart += blockCount;
+    blockCount = 0;
+  };
+  for (let position = 0; position < limit; position += 1) {
+    if (blockCount === blockSize) flush();
+    if (blockCount === 0) blockStart = position;
+    buckets[bytes[position]] += 1;
+    blockCount += 1;
+  }
+  flush();
+  return blocks;
+};
+
+export interface HighEntropyRange {
+  startOffset: number;
+  endOffset: number;
+  blocks: number;
+  average: number;
+}
+
+// 连续高熵块合并成区段，最多返回 maxRanges 个（按起始偏移排序）——定位加密区/压缩资源区。
+// 阈值缺省 6.8：256B 块的随机数据熵期望约 7.2-7.4（样本方差下限更低），沿用整文件的 7.5 会系统性漏报；
+// 6.8 仍能干净区分代码/文本段（典型 4-6.5）与加密/压缩段。
+export const highEntropyRanges = (
+  blocks: EntropyBlock[],
+  options?: { threshold?: number; maxRanges?: number },
+): HighEntropyRange[] => {
+  const threshold = options?.threshold ?? 6.8;
+  const maxRanges = options?.maxRanges ?? 12;
+  const ranges: HighEntropyRange[] = [];
+  let current: { start: number; end: number; total: number; count: number } | null = null;
+  const closeCurrent = () => {
+    if (!current) return;
+    ranges.push({
+      startOffset: current.start,
+      endOffset: current.end,
+      blocks: current.count,
+      average: current.total / current.count,
+    });
+    current = null;
+  };
+  for (const block of blocks) {
+    if (block.entropy >= threshold) {
+      if (current && current.end === block.offset) {
+        current.end = block.offset + block.length;
+        current.total += block.entropy;
+        current.count += 1;
+      } else {
+        closeCurrent();
+        current = { start: block.offset, end: block.offset + block.length, total: block.entropy, count: 1 };
+      }
+    } else {
+      closeCurrent();
+    }
+  }
+  closeCurrent();
+  return ranges.slice(0, maxRanges);
 };
 
 export interface StringsResult {
