@@ -49,7 +49,7 @@ const compileEncodingToolsModule = () => {
     if (cached) return cached.exports;
     let source = fs.readFileSync(key, 'utf8').replace(/^\uFEFF/, '');
     if (key === path.resolve(codecEntryFile)) {
-      source += '\nmodule.exports = { transform, defaultParams, detectInput, smartDecode, inferRsaParamsFromText, inferDlpFromText, factorSmallRsaModulus, operations, gsm7DefaultAlphabet, gsm7ExtensionAlphabet, operationAudience, buildPentestGroups, buildCtfGroups, buildCtfMenus, findFlagAutoRanges, detectFlagFormats, parityBaseVectors, parityCharVectors, parityCnVectors, parityKeyedVectors, parityNumVectors, parityProbes };\n';
+      source += '\nmodule.exports = { transform, defaultParams, detectInput, smartDecode, extractPureDecodeResult, inferRsaParamsFromText, inferDlpFromText, factorSmallRsaModulus, operations, gsm7DefaultAlphabet, gsm7ExtensionAlphabet, operationAudience, buildPentestGroups, buildCtfGroups, buildCtfMenus, findFlagAutoRanges, detectFlagFormats, parityBaseVectors, parityCharVectors, parityCnVectors, parityKeyedVectors, parityNumVectors, parityProbes };\n';
     }
     const compiled = ts.transpileModule(source, {
       compilerOptions: {
@@ -134,6 +134,7 @@ const {
   defaultParams,
   detectInput,
   smartDecode,
+  extractPureDecodeResult,
   inferRsaParamsFromText,
   inferDlpFromText,
   factorSmallRsaModulus,
@@ -2665,8 +2666,8 @@ await run('受众分流：编解码与 CTF 视图记账守恒、无遗漏无重�
     byAudience[tag].push(op.id);
   }
   expect(byAudience.ctf.length + byAudience.both.length + byAudience.pentest.length === total, '受众标记必须完整覆盖全部操作');
-  // 钉住计划口径的具体数字，防止清单漂移
-  expect(total === 242 && byAudience.ctf.length === 155 && byAudience.both.length === 28 && byAudience.pentest.length === 59, `受众记账口径漂移：期望 ctf=155/both=28/pentest=59/total=242，实际 ctf=${byAudience.ctf.length}/both=${byAudience.both.length}/pentest=${byAudience.pentest.length}/total=${total}`);
+  // 钉住计划口径的具体数字，防止清单漂移（批次 W 纠偏：57 个 pentest 独占转 both，渗透专属仅剩 2 个）
+  expect(total === 242 && byAudience.ctf.length === 155 && byAudience.both.length === 85 && byAudience.pentest.length === 2, `受众记账口径漂移：期望 ctf=155/both=85/pentest=2/total=242，实际 ctf=${byAudience.ctf.length}/both=${byAudience.both.length}/pentest=${byAudience.pentest.length}/total=${total}`);
 
   const pentestGroups = buildPentestGroups();
   const ctfGroups = buildCtfGroups();
@@ -2714,6 +2715,54 @@ await run('CTF 顶部菜单栏：9 菜单覆盖全部 CTF 可见操作、无重�
   const unknown = menuIds.filter(id => !ctfSet.has(id));
   expect(unknown.length === 0, `菜单包含 CTF 视图之外的操作：${unknown.join(', ')}`);
   expect(menus[0].id === 'smart' && menuIds[0] === 'smart-decode', '智能识别必须是第一菜单且含 smart-decode');
+});
+
+// ---- 批次 W：受众纠偏 57 操作 + 回灌语义 + 现代密码菜单分组回归 ----
+const BATCH_W_CORRECTED_IDS = [
+  'aes-gcm', 'aes-cbc', 'aes-ctr', 'openssl-aes-256-cbc', 'aes-cbc-raw', 'aes-ctr-raw', 'aes-ofb', 'aes-gcm-siv', 'aes-siv', 'aes-ecb', 'aes-cfb', 'aes-kw', 'aes-kwp', 'aes-cmac',
+  'des', 'triple-des', 'blowfish', 'sm4', 'rabbit',
+  'chacha20-orig', 'chacha20', 'xchacha20', 'chacha20-poly1305', 'xchacha20-poly1305', 'salsa20', 'xsalsa20', 'xsalsa20-poly1305',
+  'rc4', 'rc4-drop', 'tea', 'xtea', 'xxtea',
+  'rsa-oaep', 'hash', 'hash-identify', 'hmac', 'jwt', 'jwt-hmac', 'jwt-public', 'fernet', 'hotp', 'totp', 'otpauth-uri',
+  'jsfuck', 'jsfuck-helper', 'aaencode', 'jjencode', 'querystring', 'punycode', 'pem-block', 'asn1-der', 'jwk-jwe', 'ssh-public-key', 'cbor', 'messagepack', 'protobuf-raw', 'bson',
+];
+
+await run('批次 W 受众纠偏：57 个 CTF 高频操作受众为 both 且 CTF 视图可见', async () => {
+  expect(BATCH_W_CORRECTED_IDS.length === 57, `纠偏清单漂移：期望 57 个，实际 ${BATCH_W_CORRECTED_IDS.length}`);
+  const wrongTag = BATCH_W_CORRECTED_IDS.filter(id => operationAudience[id] !== 'both');
+  expect(wrongTag.length === 0, `纠偏操作受众标记不是 both：${wrongTag.join(', ')}`);
+  const ctfIds = new Set(buildCtfGroups().flatMap(group => group.operations.map(op => op.id)));
+  const invisible = BATCH_W_CORRECTED_IDS.filter(id => !ctfIds.has(id));
+  expect(invisible.length === 0, `纠偏操作未进 CTF 视图分组：${invisible.join(', ')}`);
+  // 界线守护：仅有的 2 个渗透专属操作不得被顺手放大
+  expect(operationAudience['signature-nonce-helper'] === 'pentest' && operationAudience['basic-auth'] === 'pentest', 'signature-nonce-helper/basic-auth 必须保持 pentest 专属');
+  expect(!ctfIds.has('signature-nonce-helper') && !ctfIds.has('basic-auth'), 'pentest 专属操作不得出现在 CTF 视图');
+});
+
+await run('批次 W 回灌语义：纯结果提取剥离识别链路标头与候选区', async () => {
+  expect(extractPureDecodeResult('识别链路: Base64\n\nSGVsbG8=') === 'SGVsbG8=', '未剥离识别链路标头');
+  expect(extractPureDecodeResult('识别链路: Base64 -> Hex\n\n666c6167\n\n=== 候选列表 ===\n[{"layer":1}]') === '666c6167', '未同时剥离标头与候选区');
+  expect(extractPureDecodeResult('plain result') === 'plain result', '无标头输出被误改');
+  expect(extractPureDecodeResult('没有识别到可安全自动解码的格式。') === '没有识别到可安全自动解码的格式。', '无解码结果说明被误改');
+  // 正文首尾空白必须原样保留：零宽/空白符类载荷的空白是数据本身
+  expect(extractPureDecodeResult('识别链路: Zero-width\n\n ​​abc ​​') === ' ​​abc ​​', '正文空白被误裁');
+  // 端到端：真实 smartDecode 输出提取后即干净密文（可再识别），不再夹带标头
+  const chained = await smartDecode('ZmxhZ3t0ZXN0fQ==');
+  expect(chained.startsWith('识别链路: Base64'), `智能解码应产出识别链路输出：${JSON.stringify(chained.slice(0, 60))}`);
+  expect(extractPureDecodeResult(chained) === 'flag{test}', `回灌提取结果不符：${JSON.stringify(extractPureDecodeResult(chained))}`);
+});
+
+await run('批次 W 现代密码菜单：分组 ≥5、单组 ≤15 条、五命名组齐备', async () => {
+  const modernMenu = buildCtfMenus().find(menu => menu.id === 'modern');
+  expect(modernMenu, '现代密码菜单缺失');
+  expect(modernMenu.sections.length >= 5, `现代密码菜单分组不足：期望 ≥5，实际 ${modernMenu.sections.length}`);
+  const oversized = modernMenu.sections.filter(section => section.operations.length > 15);
+  expect(oversized.length === 0, `现代密码菜单单组超 15 条：${oversized.map(section => section.label?.zh ?? '(无标签)').join(', ')}`);
+  const labels = modernMenu.sections.map(section => section.label?.zh);
+  for (const required of ['非对称与签名', '分组密码', '流密码与序列', '散列与 JWT', 'PRNG 与格']) {
+    expect(labels.includes(required), `现代密码菜单缺命名组：${required}`);
+  }
+  expect(modernMenu.sections.every(section => section.operations.length > 0), '现代密码菜单不得出现空分组');
 });
 
 await run('flag 自动标红区间：完整格式深红优先、关键词补位、词边界不误报', async () => {

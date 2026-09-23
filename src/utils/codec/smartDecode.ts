@@ -822,4 +822,13 @@ export const stripCandidateSection = (output: string): string => {
   const sectionStart = output.indexOf('=== 候选列表 ===');
   return sectionStart >= 0 ? output.slice(0, sectionStart).trimEnd() : output;
 };
+
+// 回灌辅助：在 stripCandidateSection 之上再剥掉「识别链路: xxx」标头行（含其后的分隔空行），
+// 只留结果正文——展示文本回灌输入时若带标头，二次识别必然失败，多层解码链第一步就断。
+// 正文不额外 trim：零宽/空白符类解码结果的首尾空白是载荷本身，剥掉会破坏回灌。
+export const extractPureDecodeResult = (output: string): string => {
+  const text = stripCandidateSection(output);
+  const headerMatch = text.match(/^识别链路:[^\n]*\n+/);
+  return headerMatch ? text.slice(headerMatch[0].length) : text;
+};
 

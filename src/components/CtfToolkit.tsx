@@ -6,6 +6,7 @@ import {
   buildCtfGroups,
   detectFlagFormats,
   detectInput,
+  extractPureDecodeResult,
   isOperationVisible,
   smartDecode,
   stripCandidateSection,
@@ -209,7 +210,7 @@ function CtfToolkit() {
         onInputChange={handleHeroInput}
         onDetection={applyDetection}
         onFileEntry={() => fileInputRef.current?.click()}
-        onUseAsInput={() => { setInput(displayOutput); setOutput(''); setError(''); }}
+        onUseAsInput={() => { setInput(extractPureDecodeResult(output)); setOutput(''); setError(''); }}
         onClear={() => { handleHeroInput(''); }}
       />
 

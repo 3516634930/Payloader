@@ -1,10 +1,11 @@
-import { useEffect, useId, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { useAppContext } from '../appContext';
 import {
   buildCtfMenus,
   cryptoJsBlockCipherOperationIds,
   defaultParams,
   detectInput,
+  extractPureDecodeResult,
   isCryptoJsCipherOperation,
   isNobleAesOperation,
   isNobleNonceOperation,
@@ -115,6 +116,13 @@ const actionsOfOperation = (operation: Operation, language: 'zh' | 'en'): Workbe
   return actions;
 };
 
+// 现代密码菜单的单方向条目：解密优先（CTF 主链路），仅支持编码侧的操作（hash/hmac/aes-cmac 等）
+// 回退唯一方向——条目数减半，方向切换保留在工作台的编码/解码按钮。
+const primaryActionOfOperation = (operation: Operation, language: 'zh' | 'en'): WorkbenchAction => {
+  const actions = actionsOfOperation(operation, language);
+  return actions.find(action => action.direction === 'decode') ?? actions[0];
+};
+
 function CodecWorkbench({ ref, groups, heading, description, registerTestApi = false, mode = 'pentest' }: CodecWorkbenchProps) {
   const { language, globalSecret, setGlobalSecret } = useAppContext();
   const [input, setInput] = useState('');
@@ -195,12 +203,13 @@ function CodecWorkbench({ ref, groups, heading, description, registerTestApi = f
     [params, globalSecret],
   );
 
-  const run = async (direction: Direction, operationId: OperationId = activeOperationIdForTest) => {
+  // inputOverride：focusOperation 携带 seed 直跑时用（setInput 是异步的，闭包 input 还是旧值）。
+  const run = useCallback(async (direction: Direction, operationId: OperationId = activeOperationIdForTest, inputOverride?: string) => {
     if (!operationId) return;
     setError('');
     setRunning(true);
     try {
-      const result = await transform(operationId, direction, input, effectiveParams);
+      const result = await transform(operationId, direction, inputOverride ?? input, effectiveParams);
       setOutput(result);
     } catch (reason) {
       setOutput('');
@@ -208,7 +217,7 @@ function CodecWorkbench({ ref, groups, heading, description, registerTestApi = f
     } finally {
       setRunning(false);
     }
-  };
+  }, [input, effectiveParams, activeOperationIdForTest]);
 
   // 动作入口：一次点击 = 选中操作（含所属分类同步）+ 立即执行（显式传 id，不受 setState 异步影响）。
   // 菜单栏跨分类直达时同步 activeGroupId，保证工具栏下拉/摘要/参数区与当前操作一致。
@@ -229,26 +238,34 @@ function CodecWorkbench({ ref, groups, heading, description, registerTestApi = f
   const applyDetection = (operationId: OperationId) => {
     const group = groups.find(item => item.operations.some(candidate => candidate.id === operationId));
     if (!group) return;
+    const target = group.operations.find(item => item.id === operationId);
+    const autoRun = Boolean(target && target.supportsDecode !== false);
     setActiveGroupId(group.id);
     setActiveOperationId(operationId);
-    setActiveActionKey(null);
+    setActiveActionKey(autoRun ? `${operationId}-decode` : null);
     setError('');
     setOutput('');
+    // 识别芯片与菜单条目行为对齐：点击即执行解密方向，即时出结果。
+    if (autoRun) void run('decode', operationId);
   };
 
   useImperativeHandle(ref, () => ({
     focusOperation: (id: OperationId, seedInput?: string) => {
       const group = groups.find(item => item.operations.some(candidate => candidate.id === id));
       if (!group) return;
+      const target = group.operations.find(item => item.id === id);
+      const autoRun = Boolean(target && target.supportsDecode !== false);
       setActiveGroupId(group.id);
       setActiveOperationId(id);
-      setActiveActionKey(null);
+      setActiveActionKey(autoRun ? `${id}-decode` : null);
       if (seedInput !== undefined) setInput(seedInput);
       setError('');
       setOutput('');
       workbenchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // 芯片点击 = 聚焦 + 立即执行（与菜单 runAction 对齐）；带 seed 以 seed 为输入（闭包 input 是旧值）。
+      if (autoRun) void run('decode', id, seedInput);
     },
-  }), [groups]);
+  }), [groups, run]);
 
   if (!operation) return null;
 
@@ -262,7 +279,7 @@ function CodecWorkbench({ ref, groups, heading, description, registerTestApi = f
       name: menu.name,
       groups: menu.sections.map(section => ({
         label: section.label,
-        entries: section.operations.flatMap(item => actionsOfOperation(item, language)).map(action => ({
+        entries: section.operations.flatMap(item => (menu.id === 'modern' ? [primaryActionOfOperation(item, language)] : actionsOfOperation(item, language))).map(action => ({
           key: `${action.id}-${action.direction}`,
           label: action.mark,
           title: label(action.summary, language),
@@ -412,19 +429,22 @@ function CodecWorkbench({ ref, groups, heading, description, registerTestApi = f
             </div>
           </div>
 
-          <div className="global-secret-bar">
-            <label htmlFor={secretFieldId}>{language === 'zh' ? '🔑 全局密钥' : '🔑 Global key'}</label>
-            <input
-              id={secretFieldId}
-              value={globalSecret}
-              onChange={event => setGlobalSecret(event.target.value)}
-              placeholder={language === 'zh'
-                ? '多步解密共用一把钥匙；在下方参数里填了私有密钥则优先用私有值'
-                : 'One key for the whole chain; a per-operation key in the options takes precedence'}
-              spellCheck={false}
-              autoComplete="off"
-            />
-          </div>
+          {/* 全局密钥栏：仅渗透视图常驻（该视图无 hero，这里是唯一入口）；CTF 视图与 hero 全局密钥栏重复，不再渲染 */}
+          {!isCtfMode && (
+            <div className="global-secret-bar">
+              <label htmlFor={secretFieldId}>{language === 'zh' ? '🔑 全局密钥' : '🔑 Global key'}</label>
+              <input
+                id={secretFieldId}
+                value={globalSecret}
+                onChange={event => setGlobalSecret(event.target.value)}
+                placeholder={language === 'zh'
+                  ? '多步解密共用一把钥匙；在下方参数里填了私有密钥则优先用私有值'
+                  : 'One key for the whole chain; a per-operation key in the options takes precedence'}
+                spellCheck={false}
+                autoComplete="off"
+              />
+            </div>
+          )}
 
           {isCtfMode ? null : actionPanel}
 
@@ -802,7 +822,7 @@ function CodecWorkbench({ ref, groups, heading, description, registerTestApi = f
                 error={error}
                 running={running}
                 minHeight="normal"
-                onUseAsInput={() => { setInput(stripCandidateSection(output)); setOutput(''); setError(''); }}
+                onUseAsInput={() => { setInput(extractPureDecodeResult(output)); setOutput(''); setError(''); }}
                 onClear={clearAll}
               />
             </div>

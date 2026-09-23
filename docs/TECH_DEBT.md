@@ -15,3 +15,8 @@
 
 ## 技术债（批次 O 附带盘点）
 - [ ] TD-批次O-1 | verify:codec bifid 无密钥破译块（scripts/verify-encoding-tools.mjs ≈:2294）为模拟退火概率性测试，偶发首跑失败、复跑即绿 | 发现于 2026-09-22 批次 O 全量门禁 | 影响 CI 稳定性（非本批次成因，隔离复现确认） | 建议修法：钉随机种子或降低断言严格度 | 优先级 P2
+
+## 技术债（批次 W 附带盘点）
+- [ ] TD-批次W-1 | primaryActionOfOperation 在操作同时缺 decode/encode 两侧时返回 undefined，modern 菜单整栏崩溃（当前 5 个单侧操作均有另一侧，不可达） | 发现于 2026-09-23 批次 W（reviewer P2） | 影响 `src/components/CodecWorkbench.tsx` modern 菜单条目映射 | 建议修法：空数组兜底跳过该条目或在 verify 加 operations 单侧互斥断言 | P2
+- [ ] TD-批次W-2 | 三条批次 W 回归只钉纯函数，不钉 UI 接线：回灌调用点换成 stripCandidateSection、modern 条目单方向映射被改回双方向时 verify 依旧全绿（靠浏览器实测兜底） | 发现于 2026-09-23 批次 W（reviewer P2） | 影响 `src/components/CtfToolkit.tsx`/`CodecWorkbench.tsx` 接线 | 建议修法：接线路径补组件级测试或在 __PAYLOADER_CODEC_TEST_API 暴露菜单条目映射断言 | P2
+- [ ] TD-批次W-3 | 工作台 run 无 token 防护，连点两个芯片/菜单时慢 transform 后 resolve 会覆盖后点结果（last-resolve-wins，菜单 runAction 既有模式，hero 侧有 runTokenRef 而工作台没有） | 发现于 2026-09-23 批次 W（reviewer P2） | 影响 `src/components/CodecWorkbench.tsx` run/focusOperation | 建议修法：工作台引入与 CtfToolkit 同款 runTokenRef 序号守卫 | P3
