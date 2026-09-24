@@ -13,6 +13,7 @@ import GifInspectCard from './GifInspectCard';
 import ZipBruteCard from './ZipBruteCard';
 import ChallengePickerCard from './ChallengePickerCard';
 import PdfInspectCard from './PdfInspectCard';
+import RarInspectCard from './RarInspectCard';
 import StringsCard from './StringsCard';
 import HexdumpCard from './HexdumpCard';
 import { downloadBytes } from './ffDownload';
@@ -617,6 +618,15 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
           {report && report.types.some(type => type.ext === 'pdf') && (
             <PdfInspectCard
               key={`pdf-${analysis.name}:${analysis.size}`}
+              fileName={analysis.name}
+              bytes={analysis.bytes}
+              language={language}
+            />
+          )}
+
+          {report && report.types.some(type => type.ext === 'rar4' || type.ext === 'rar5') && (
+            <RarInspectCard
+              key={`rar-${analysis.name}:${analysis.size}`}
               fileName={analysis.name}
               bytes={analysis.bytes}
               language={language}

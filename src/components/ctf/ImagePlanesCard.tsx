@@ -13,6 +13,7 @@ import {
 import type { RgbaChannel } from '../../utils/ctf/imagePlanes';
 import { scanBitPlanes } from '../../utils/ctf/bitPlaneScan';
 import type { BitPlaneHit } from '../../utils/ctf/bitPlaneScan';
+import { decodeQrCodes } from '../../utils/ctf/qrDecode';
 import { copyToClipboard } from '../../utils/clipboard';
 import { downloadBlob, downloadBytes } from '../../utils/download';
 
@@ -127,6 +128,7 @@ function ImagePlanesCard({ fileName, image, status, language }: ImagePlanesCardP
   const [lsbBit, setLsbBit] = useState(0);
   const [lsbResult, setLsbResult] = useState<{ text: string; bytes: Uint8Array; truncated: boolean } | null>(null);
   const [scanHits, setScanHits] = useState<BitPlaneHit[] | null>(null);
+  const [qrHits, setQrHits] = useState<Array<{ plane: string; text: string }>>([]);
 
   const zh = language === 'zh';
   const baseName = fileName.replace(/\.[^.]+$/, '');
@@ -165,10 +167,38 @@ function ImagePlanesCard({ fileName, image, status, language }: ImagePlanesCardP
   };
 
   // zsteg 式全组合扫描（9 通道组 × 8 位 × 2 位序 × 2 像素序 = 288 次 256B 提取，10ms 级），
-  // 只列带命中理由（zlib 魔数 / flag 格式 / 可打印率 / base64）的组合，按分降序。
+  // 只列带命中理由（zlib 魔数 / flag 格式 / 可打印率 / base64 特征）的组合，按分降序。
   const runAutoScan = () => {
     if (!image) return;
     setScanHits(scanBitPlanes(image.rgba, image.width, image.height));
+  };
+
+  // 二维码全平面扫描：原图 + 32 个位平面（LSB 隐写的二维码平面化为黑白图后可解），
+  // 命中平面名 + 解码文本；引擎自带反色与自适应二值化。
+  const runQrScan = () => {
+    if (!image) return;
+    const found: Array<{ plane: string; text: string }> = [];
+    const tryRgba = (rgba: ArrayLike<number>, label: string) => {
+      for (const result of decodeQrCodes(rgba, image.width, image.height)) {
+        found.push({ plane: label, text: result.text });
+      }
+    };
+    tryRgba(image.rgba, zh ? '原图' : 'image');
+    for (const { channel, label } of PLANE_CHANNELS) {
+      for (let bit = 0; bit < 8; bit += 1) {
+        const plane = extractBitPlane(image.rgba, channel, bit);
+        const rgba = new Uint8ClampedArray(plane.length * 4);
+        for (let index = 0; index < plane.length; index += 1) {
+          rgba[index * 4] = rgba[index * 4 + 1] = rgba[index * 4 + 2] = plane[index];
+          rgba[index * 4 + 3] = 255;
+        }
+        tryRgba(rgba, `${label}${bit}`);
+      }
+    }
+    setQrHits(found);
+    if (!found.length) {
+      notifications.show({ message: zh ? '原图与 32 个位平面均未识别到二维码。' : 'No QR code found in the image or its 32 bit planes.' });
+    }
   };
 
   const deepDiveHit = (hit: BitPlaneHit) => {
@@ -255,7 +285,24 @@ function ImagePlanesCard({ fileName, image, status, language }: ImagePlanesCardP
                 <button type="button" className="ff-button ff-button-primary" onClick={runAutoScan}>
                   {zh ? '自动扫描' : 'Auto-scan'}
                 </button>
+                <button type="button" className="ff-button" onClick={runQrScan} title={zh ? '原图 + 32 个位平面逐个识别二维码（LSB 隐写的二维码可解）' : 'Scan the image plus all 32 bit planes for QR codes'}>
+                  {zh ? '二维码扫描' : 'QR scan'}
+                </button>
               </div>
+              {qrHits.length > 0 && (
+                <div className="ff-tool">
+                  <span className="ff-label">{zh ? `二维码命中 ${qrHits.length} 处：` : `${qrHits.length} QR hit(s):`}</span>
+                  {qrHits.map((hit, index) => (
+                    <div key={`qr-${index}`} className="ff-row">
+                      <span className="ff-badge ff-badge-ok">{hit.plane}</span>
+                      <code className="ff-code" style={{ flex: 1 }}><FlagAutoText text={hit.text} /></code>
+                      <button type="button" className="ff-button" onClick={() => { void copyToClipboard(hit.text); }}>
+                        {zh ? '复制' : 'Copy'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
               {scanHits && (
                 scanHits.length === 0 ? (
                   <p className="ff-note">

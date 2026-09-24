@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { notifications } from '@mantine/notifications';
 import { FlagAutoText } from '../codec/FlagAutoText';
 import { decodeGifFrames, inspectGif } from '../../utils/ctf/gifInspect';
 import type { GifInspectResult } from '../../utils/ctf/gifInspect';
+import { decodeQrCodes } from '../../utils/ctf/qrDecode';
 import { downloadBlob } from '../../utils/download';
 import { copyToClipboard } from '../../utils/clipboard';
 
@@ -34,6 +35,51 @@ function GifInspectCard({ fileName, bytes, language }: GifInspectCardProps) {
   const frames = useMemo(() => ('inspected' in result ? result.inspected.frames : []), [result]);
   const rawDelays = useMemo(() => frames.map(frame => Math.round(frame.delayMs / 10)).slice(0, 128).join(','), [frames]);
   const thumbsRef = useRef<HTMLDivElement | null>(null);
+  const [qrHits, setQrHits] = useState<Array<{ source: string; text: string }>>([]);
+
+  // 帧拼合 QR（glance/give_you_flag 型）：单帧 + 全帧横拼 + 网格拼三路（同通关执行器口径）。
+  const runFrameQr = () => {
+    if (!('inspected' in result)) return;
+    const inspected = result.inspected;
+    const withPixels = inspected.frames.flatMap(frame => frame.imageData
+      ? [{ index: frame.index, pixels: frame.imageData, width: frame.width, height: frame.height }]
+      : []).slice(0, 240);
+    if (withPixels.length === 0) return;
+    const found: Array<{ source: string; text: string }> = [];
+    for (const frame of withPixels.slice(0, 30)) {
+      for (const item of decodeQrCodes(frame.pixels, frame.width, frame.height)) {
+        found.push({ source: (zh ? `帧 ${frame.index + 1}` : `Frame ${frame.index + 1}`), text: item.text });
+      }
+    }
+    const w = withPixels[0].width, h = withPixels[0].height;
+    if (withPixels.length >= 2 && withPixels.every(f => f.width === w && f.height === h)) {
+      const strip = new Uint8ClampedArray(withPixels.length * w * h * 4);
+      withPixels.forEach((f, i) => strip.set(f.pixels, i * w * h * 4));
+      for (const item of decodeQrCodes(strip, withPixels.length * w, h)) {
+        found.push({ source: zh ? `横拼（${withPixels.length} 帧）` : `Strip (${withPixels.length})`, text: item.text });
+      }
+      const cols = Math.ceil(Math.sqrt(withPixels.length));
+      const rows = Math.ceil(withPixels.length / cols);
+      const grid = new Uint8ClampedArray(cols * w * rows * h * 4);
+      withPixels.forEach((f, i) => {
+        const gx = (i % cols) * w, gy = Math.floor(i / cols) * h;
+        for (let y = 0; y < h; y += 1) {
+          for (let x = 0; x < w; x += 1) {
+            const src = (y * w + x) * 4, dst = ((gy + y) * cols * w + gx + x) * 4;
+            grid[dst] = f.pixels[src]; grid[dst + 1] = f.pixels[src + 1];
+            grid[dst + 2] = f.pixels[src + 2]; grid[dst + 3] = 255;
+          }
+        }
+      });
+      for (const item of decodeQrCodes(grid, cols * w, rows * h)) {
+        found.push({ source: `${cols}×${rows} ${zh ? '网格拼' : 'grid'}`, text: item.text });
+      }
+    }
+    setQrHits(found);
+    if (!found.length) {
+      notifications.show({ message: zh ? '单帧/横拼/网格拼均未识别到二维码（知识型拼图题需目检帧缩略图）。' : 'No QR found in single frames or stitchings; knowledge-based puzzles need eyeballing.' });
+    }
+  };
 
   // 帧缩略 canvas：挂载后一次性渲染（帧像素已在引擎 imageData 里）。
   useEffect(() => {
@@ -124,9 +170,27 @@ function GifInspectCard({ fileName, bytes, language }: GifInspectCardProps) {
         <div className="ff-tool">
           <span className="ff-label">
             {zh
-              ? `帧缩略图（点击下载该帧 PNG${result.decodedCount < frames.length ? `；仅渲染前 ${result.decodedCount} 帧` : ''}）`
-              : `Frame thumbnails (click to download PNG${result.decodedCount < frames.length ? `; first ${result.decodedCount} rendered` : ''})`}
+              ? `帧缩略图（点击下载该帧 PNG${result && 'inspected' in result && result.decodedCount < frames.length ? `；仅渲染前 ${result.decodedCount} 帧` : ''}）`
+              : `Frame thumbnails (click to download PNG${result && 'inspected' in result && result.decodedCount < frames.length ? `; first ${result.decodedCount} rendered` : ''})`}
           </span>
+          <div className="ff-row">
+            <button type="button" className="ff-button ff-button-primary" onClick={runFrameQr}>
+              {zh ? '帧拼合识别二维码' : 'Stitch & scan QR'}
+            </button>
+          </div>
+          {qrHits.length > 0 && (
+            <div className="ff-tool">
+              {qrHits.map((hit, index) => (
+                <div key={`qr-${index}`} className="ff-row">
+                  <span className="ff-badge ff-badge-ok">{hit.source}</span>
+                  <code className="ff-code" style={{ flex: 1 }}><FlagAutoText text={hit.text} /></code>
+                  <button type="button" className="ff-button" onClick={() => { void copyToClipboard(hit.text); }}>
+                    {zh ? '复制' : 'Copy'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="ff-plane-grid" ref={thumbsRef}>
             {frames.slice(0, result.decodedCount).map(frame => (
               <div key={frame.index} className="ff-plane-group">
