@@ -8,6 +8,9 @@ import EmbeddedCard from './EmbeddedCard';
 import type { EmbeddedReport } from './EmbeddedCard';
 import ImagePlanesCard from './ImagePlanesCard';
 import type { PlaneImage } from './ImagePlanesCard';
+import AudioStegoCard from './AudioStegoCard';
+import GifInspectCard from './GifInspectCard';
+import ZipBruteCard from './ZipBruteCard';
 import StringsCard from './StringsCard';
 import HexdumpCard from './HexdumpCard';
 import { downloadBytes } from './ffDownload';
@@ -569,6 +572,31 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
               fileName={analysis.name}
               image={planeImage}
               status={planeStatus}
+              language={language}
+            />
+          )}
+
+          {report && report.types.some(type => ['wav', 'mp3', 'flac', 'ogg'].includes(type.ext)) && (
+            <AudioStegoCard
+              key={`audio-${analysis.name}:${analysis.size}`}
+              file={analysis.file}
+              language={language}
+            />
+          )}
+
+          {report && report.types.some(type => type.ext === 'gif') && (
+            <GifInspectCard
+              key={`gif-${analysis.name}:${analysis.size}`}
+              fileName={analysis.name}
+              bytes={analysis.bytes}
+              language={language}
+            />
+          )}
+
+          {report && report.zip !== null && (report.zip.state === 'encrypted' || report.zip.state === 'pseudo') && (
+            <ZipBruteCard
+              key={`zipbrute-${analysis.name}:${analysis.size}`}
+              bytes={analysis.bytes}
               language={language}
             />
           )}

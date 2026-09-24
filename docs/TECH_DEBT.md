@@ -50,3 +50,13 @@
 - [ ] TD-批次MISC1-1 | magicChain FLAG_LIKE_PATTERN 的 `\{[A-Za-z0-9_]{2,}:` 分支把任意 JSON 判为 flagLike（+1000 分）：url-decode 出 JSON 的浅层分支会同分压过更深的真 flag 链（同分链短者胜） | 发现于 2026-09-24 四引擎批次（reviewer P2） | 影响 `src/utils/codec/magicChain.ts:68` | 建议修法：该分支对冒号后值侧加可读性/长度要求，或确认"JSON 包 flag 值得置顶"为有意设计后关闭 | P2
 - [ ] TD-批次MISC1-2 | crc32AttackReport 未知参数键静默丢弃（`lenght=4` 拼写错落默认值）、重复键 last-wins 无提示 | 发现于 2026-09-24 四引擎批次（reviewer P2） | 影响 `src/utils/codec/crc32Attack.ts:256-281` | 建议修法：未知键直接抛中文错误（与"无法解析参数段"同风格） | P2
 - [ ] TD-批次MISC1-3 | magicChain tie-break 用无 locale 参数的 localeCompare，跨环境排序理论上可漂移（纯 ASCII 风险极低） | 发现于 2026-09-24 四引擎批次（reviewer P2） | 影响 `src/utils/codec/magicChain.ts:261` | 建议修法：换显式三向比较换完全确定 | P3
+- [ ] TD-批次MISC2-1 | 视频容器枚举面空白：MP4 无 box 级枚举（moov/trak/mdat/udta）、AVI 连 RIFF....AVI 魔数都未收录、MKV EBML 头未收录（GIF 路摸底结论） | 发现于 2026-09-24 misc 批（sweep2 #19 附带项） | 影响 `src/utils/ctf/fileDetect.ts`、`embedScan.ts` | 建议修法：AVI 魔数一行补录优先，MP4 box 枚举次之（udta/atmo 注释、mdat 尾附是 CTF 视频隐写高频点） | P2
+- [ ] TD-批次MISC2-2 | ZIP 爆破命中后仅 stored 条目出内容预览：deflate 条目无 inflate，命中口令后提示用系统解压工具 | 发现于 2026-09-24 misc 批 | 影响 `src/utils/ctf/zipBrute.ts` | 建议修法：长期接 CompressionStream('deflate-raw') 做本地解压预览 | P3
+- [ ] TD-审计0924-P2 | yEnc/UU/XX 解码以 UTF-8 输出致二进制载荷静默损坏（≥0x80 字节→U+FFFD） | 2026-09-24 算法审计 | `src/utils/codec/textEncodings.ts:626`、`bases.ts:556,610` | 修法：输出改 latin1 或加 hex 双轨 | P2
+- [ ] TD-审计0924-P2 | RSA 行内 c=[a,b] 只解第一块（推理层坍缩数组，parseRsaMessageValues 本身支持列表） | 2026-09-24 算法审计 | `src/utils/codec/rsa.ts` 推理层 | 修法：数组 inputBlocks 透传 | P2
+- [ ] TD-审计0924-P2 | 自动破译硬上限无提示：Vigenère keyLen≤20、XOR ≤32 且 ≤len/2，超限静默失败/错解 | 2026-09-24 算法审计 | `src/utils/codec/autoSolve.ts` | 修法：报告字段标注 keyLen 超上限提示 | P2
+- [ ] TD-审计0924-P2 | CRC16 实为 MODBUS 变体（"123456789"→4b37 值对）但 UI 只标"CRC16" | 2026-09-24 算法审计 | `OperationParamsPanel.tsx:201` | 修法：标签改 CRC16/MODBUS 或补变体选择 | P2
+- [ ] TD-审计0924-P3 | 17 项 P3 清单（hex 全角丢弃/QP 截断/Base58 空串/Playfair 退化对/Hill 负 key/八进制丢 8,9/URL 无 %u/低指数根边界/rho~2^40/Base32 尾位/LCG 4 输出伪因子/p−1 双光滑/bytesFromTextOrHex/bech32 限长/Wiener 双实现/bigintToBytes(0) 等） | 2026-09-24 算法审计 | 详见 docs/research/algo-correctness-audit-2026-09-24.md | 按报告逐项 | P3
+- [ ] TD-批次MISC2-3 | ZipBruteCard 爆破任务无 abort：换文件 remount 后旧任务跑满剩余预算（最长 60s），新旧任务并行浪费算力 | 2026-09-24 misc 批（reviewer P3） | `src/components/ctf/ZipBruteCard.tsx:71-109` | 修法：引擎 options 加 AbortSignal 或组件侧 epoch 计数丢弃过期进度 | P3
+- [ ] TD-批次MISC2-4 | mp3 仅识别 ID3 头，裸 MPEG 帧同步（0xFF Ex）不挂音频卡；帧同步魔数短误报率高 | 2026-09-24 misc 批（reviewer P3） | `src/utils/ctf/fileDetect.ts` | 修法：需连续多帧同步确认，暂不硬补 | P3
+- [ ] TD-批次MISC2-5 | AudioStegoCard 语言切换后 failed 文案语言陈旧（exhaustive-deps disable 的低频路径） | 2026-09-24 misc 批（reviewer P3） | `src/components/ctf/AudioStegoCard.tsx` | 修法：failed 存错误码而非文案，渲染时现算 | P3
