@@ -11,6 +11,8 @@ import {
   grayToRgba,
 } from '../../utils/ctf/imagePlanes';
 import type { RgbaChannel } from '../../utils/ctf/imagePlanes';
+import { scanBitPlanes } from '../../utils/ctf/bitPlaneScan';
+import type { BitPlaneHit } from '../../utils/ctf/bitPlaneScan';
 import { copyToClipboard } from '../../utils/clipboard';
 import { downloadBlob, downloadBytes } from '../../utils/download';
 
@@ -116,11 +118,15 @@ const PlaneThumb = ({ thumb, label, selected, onSelect }: PlaneThumbProps) => {
 
 // 位平面 + 色道卡片：输入是已解码的 RGBA（由父组件异步 createImageBitmap 解出）。
 // 平面灰度惰性现算：缩略图在采样后的小 rgba 上做（快），放大图在原图上现算一次。
+// 自动扫描命中里能映射到下方手动提取器（单通道 + 行序 + MSB-first）的组合，用于"深挖"回填。
+const SCAN_CHANNEL_INDEX: Record<string, RgbaChannel> = { r: 0, g: 1, b: 2, a: 3 };
+
 function ImagePlanesCard({ fileName, image, status, language }: ImagePlanesCardProps) {
   const [selected, setSelected] = useState<{ channel: RgbaChannel; bit: number } | null>(null);
   const [lsbChannel, setLsbChannel] = useState<RgbaChannel>(0);
   const [lsbBit, setLsbBit] = useState(0);
   const [lsbResult, setLsbResult] = useState<{ text: string; bytes: Uint8Array; truncated: boolean } | null>(null);
+  const [scanHits, setScanHits] = useState<BitPlaneHit[] | null>(null);
 
   const zh = language === 'zh';
   const baseName = fileName.replace(/\.[^.]+$/, '');
@@ -154,6 +160,23 @@ function ImagePlanesCard({ fileName, image, status, language }: ImagePlanesCardP
   const runLsbExtract = () => {
     if (!image) return;
     const bytes = extractLsbBytes(image.rgba, { channel: lsbChannel, bit: lsbBit, maxBytes: LSB_MAX_BYTES });
+    const truncated = image.width * image.height > LSB_MAX_BYTES * 8;
+    setLsbResult({ bytes, text: bytesToPreviewText(bytes, LSB_PREVIEW_CHARS), truncated });
+  };
+
+  // zsteg 式全组合扫描（9 通道组 × 8 位 × 2 位序 × 2 像素序 = 288 次 256B 提取，10ms 级），
+  // 只列带命中理由（zlib 魔数 / flag 格式 / 可打印率 / base64）的组合，按分降序。
+  const runAutoScan = () => {
+    if (!image) return;
+    setScanHits(scanBitPlanes(image.rgba, image.width, image.height));
+  };
+
+  const deepDiveHit = (hit: BitPlaneHit) => {
+    const channel = SCAN_CHANNEL_INDEX[hit.channel];
+    if (channel === undefined || !image) return;
+    setLsbChannel(channel);
+    setLsbBit(hit.bit - 1);
+    const bytes = extractLsbBytes(image.rgba, { channel, bit: hit.bit - 1, maxBytes: LSB_MAX_BYTES });
     const truncated = image.width * image.height > LSB_MAX_BYTES * 8;
     setLsbResult({ bytes, text: bytesToPreviewText(bytes, LSB_PREVIEW_CHARS), truncated });
   };
@@ -226,6 +249,47 @@ function ImagePlanesCard({ fileName, image, status, language }: ImagePlanesCardP
                 <canvas ref={zoomRef} className="ff-plane-zoom" aria-label={`${channelLabel}${selected.bit}`} />
               </div>
             )}
+            <div className="ff-tool">
+              <span className="ff-label">{zh ? '全组合自动扫描（zsteg 式：通道组 × 位 × 位序 × 像素序，共 288 组合）' : 'Auto-scan all combos (zsteg-style: channel group × bit × bit order × pixel order, 288 total)'}</span>
+              <div className="ff-row">
+                <button type="button" className="ff-button ff-button-primary" onClick={runAutoScan}>
+                  {zh ? '自动扫描' : 'Auto-scan'}
+                </button>
+              </div>
+              {scanHits && (
+                scanHits.length === 0 ? (
+                  <p className="ff-note">
+                    {zh
+                      ? '288 个组合均无命中（无 zlib 魔数 / flag 格式 / 高可打印率 / base64 特征）。可换用下方手动提取或位平面放大目检。'
+                      : 'No hits across the 288 combos (no zlib magic / flag pattern / printable text / base64 traits). Try manual extraction below or inspect planes visually.'}
+                  </p>
+                ) : (
+                  <>
+                    <p className="ff-note">
+                      {zh ? `命中 ${scanHits.length} 个组合（按评分降序；单通道行序命中可「深挖」导出完整字节）：` : `${scanHits.length} hits (score-descending; single-channel row hits support deep-dive export):`}
+                    </p>
+                    {scanHits.map(hit => {
+                      const combo = `${hit.channel}/${hit.bit}/${hit.lsbFirst ? 'lsb' : 'msb'}/${hit.pixelOrder === 'row' ? (zh ? '行' : 'row') : (zh ? '列' : 'col')}`;
+                      const deepDiveable = SCAN_CHANNEL_INDEX[hit.channel] !== undefined && !hit.lsbFirst && hit.pixelOrder === 'row';
+                      return (
+                        <div key={combo} className="ff-tool">
+                          <div className="ff-row">
+                            <span className="ff-badge ff-badge-ok">{combo}</span>
+                            <span className="ff-badge">{hit.reasons.join(' + ')} · {hit.score}</span>
+                            {deepDiveable && (
+                              <button type="button" className="ff-button" onClick={() => deepDiveHit(hit)}>
+                                {zh ? '深挖（64KB 完整提取）' : 'Deep-dive (64KB full extract)'}
+                              </button>
+                            )}
+                          </div>
+                          <code className="ff-code"><FlagAutoText text={hit.preview} /></code>
+                        </div>
+                      );
+                    })}
+                  </>
+                )
+              )}
+            </div>
             <div className="ff-tool">
               <span className="ff-label">{zh ? 'LSB 顺序提取（从 (0,0) 按行取位、高位在前组字节）' : 'LSB extraction (row-major from (0,0), MSB first)'}</span>
               <div className="ff-row">

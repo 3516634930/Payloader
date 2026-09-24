@@ -83,6 +83,9 @@ export const operationAudience: Record<OperationId, Audience> = {
   'xor-auto-solve': 'ctf',
   'vigenere-auto': 'ctf',
   'substitution-auto': 'ctf',
+  'padding-oracle-attack': 'ctf',
+  'magic-chain': 'ctf',
+  'crc32-attack': 'ctf',
   'xor-known-plaintext': 'ctf',
   'magic-xor-helper': 'ctf',
   'brainfuck': 'ctf',
@@ -337,7 +340,7 @@ const ctfMenuSpec: CodecMenuSpec[] = [
   {
     id: 'smart',
     name: { zh: '智能识别', en: 'Smart' },
-    sections: [{ label: null, ids: ['smart-decode'] }],
+    sections: [{ label: null, ids: ['smart-decode', 'magic-chain'] }],
   },
   {
     id: 'base-rot',
@@ -408,7 +411,7 @@ const ctfMenuSpec: CodecMenuSpec[] = [
       { label: { zh: '散列与 JWT', en: 'Hash & JWT' }, ids: ['hash', 'hash-identify', 'hmac', 'aes-cmac', 'jwt', 'jwt-hmac', 'jwt-public', 'hash-length-extension-helper', 'hotp', 'totp', 'otpauth-uri'] },
       { label: { zh: 'PRNG 与格', en: 'PRNG & Lattice' }, ids: ['mt19937-helper', 'lcg-helper', 'lfsr-helper', 'discrete-log-helper'] },
       { label: { zh: '自动破译', en: 'Auto Solve' }, ids: ['xor-auto-solve', 'vigenere-auto', 'substitution-auto'] },
-      { label: { zh: '变体与助手', en: 'Variants & Helpers' }, ids: ['xor', 'xor-bruteforce', 'xor-known-plaintext', 'magic-xor-helper', 'aes-ofb', 'aes-kw', 'aes-kwp', 'aes-gcm-siv', 'aes-siv', 'crypto-attack-helper', 'bip39-seed', 'cbc-padding-demo'] },
+      { label: { zh: '变体与助手', en: 'Variants & Helpers' }, ids: ['xor', 'xor-bruteforce', 'xor-known-plaintext', 'magic-xor-helper', 'aes-ofb', 'aes-kw', 'aes-kwp', 'aes-gcm-siv', 'aes-siv', 'crypto-attack-helper', 'bip39-seed', 'cbc-padding-demo', 'padding-oracle-attack', 'crc32-attack'] },
     ],
   },
   {
@@ -453,7 +456,7 @@ const ctfSections: CtfSectionSpec[] = [
     id: 'smart',
     name: { zh: '智能识别', en: 'Smart Identify' },
     note: { zh: '粘贴密文自动识别', en: 'Auto identify' },
-    ids: ['smart-decode'],
+    ids: ['smart-decode', 'magic-chain'],
   },
   {
     id: 'classical',    name: { zh: '古典密码', en: 'Classical Ciphers' },
@@ -482,7 +485,7 @@ const ctfSections: CtfSectionSpec[] = [
       { name: { zh: 'XOR 攻击', en: 'XOR Attacks' }, ids: ['xor', 'xor-bruteforce', 'xor-known-plaintext', 'xor-auto-solve', 'magic-xor-helper'] },
       { name: { zh: '自动破译', en: 'Auto Solve' }, ids: ['vigenere-auto', 'substitution-auto'] },
       { name: { zh: '随机数与序列', en: 'PRNG & Sequences' }, ids: ['mt19937-helper', 'lcg-helper', 'lfsr-helper', 'discrete-log-helper'] },
-      { name: { zh: '协议与取证助手', en: 'Protocol & Forensics Helpers' }, ids: ['hash-length-extension-helper', 'crypto-attack-helper', 'bip39-seed', 'pgp-parse', 'cbc-padding-demo', 'pem-block', 'asn1-der', 'ssh-public-key', 'jwk-jwe'] },
+      { name: { zh: '协议与取证助手', en: 'Protocol & Forensics Helpers' }, ids: ['hash-length-extension-helper', 'crypto-attack-helper', 'bip39-seed', 'pgp-parse', 'cbc-padding-demo', 'padding-oracle-attack', 'crc32-attack', 'pem-block', 'asn1-der', 'ssh-public-key', 'jwk-jwe'] },
       { name: { zh: '带key与多key（批次 O）', en: 'Keyed & Multi-key (Batch O)' }, ids: ['otp', 'multiplicative', 'fractionated-morse', 'fenham', 'running-key', 'bazeries', 'kamasutra', 'm209', 'rc2', 'rc6'] },
     ],
   },

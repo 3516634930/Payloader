@@ -4247,7 +4247,7 @@ export const toolCommands: ToolCommand[] = [
       { name: { zh: 'strings 过滤', en: 'Extract strings' }, command: "strings image.jpg | grep -E 'flag|CTF|\\{'\nstrings -n 6 file.bin | head -50", description: { zh: '从文件中提取可见字符串', en: 'Extract printable strings from file' }, platform: 'all' },
       { name: { zh: 'foremost 文件恢复', en: 'foremost file recovery' }, command: 'foremost -i image.jpg -o output/\nforemost -t png,jpg,gif -i disk.img -o out/', description: { zh: '从文件中恢复嵌入的其他文件', en: 'Recover embedded files from container file' }, platform: 'linux' },
       { name: { zh: 'LSB Python 分析', en: 'LSB Python analysis' }, command: "from PIL import Image\nimg = Image.open('img.png')\npixels = list(img.getdata())\nbits = [p[0] & 1 for p in pixels[:100]]\nprint(''.join(map(str, bits)))", description: { zh: 'Python 提取图片 LSB', en: 'Extract LSB from image using Python' }, platform: 'all' },
-      { name: { zh: '音频隐写', en: 'Audio steganography' }, command: '# Audacity: 查看频谱图 (Spectrum Analyzer)\n# DeepSound: 提取音频隐写\nmp3stego-decode -f output.txt audio.mp3', description: { zh: '音频文件隐写分析', en: 'Analyze audio file for steganography' }, platform: 'all' }
+      { name: { zh: '音频隐写', en: 'Audio steganography' }, command: '# Audacity: 查看频谱图 (Spectrum Analyzer)\n# DeepSound: 提取音频隐写\nmp3stego decode -X -P <pass> audio.mp3', description: { zh: '音频文件隐写分析（mp3stego 官方语法：decode -X -P 密码）', en: 'Analyze audio file for steganography (official mp3stego syntax)' }, platform: 'all' }
     ],
     references: ['https://github.com/bannsec/stegoVeritas', 'https://0xrick.github.io/lists/stego/']
   },

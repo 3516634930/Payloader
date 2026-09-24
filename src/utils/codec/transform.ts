@@ -12,6 +12,9 @@ import { discreteLogHelper, signatureNonceReuseHelper } from './prng';
 import { mt19937Helper } from './smartDecode';
 import { setSmartDecodeExecutor } from './smartBase';
 import { substitutionAutoSolve, vigenereAutoSolve, xorAutoSolve } from './autoSolve';
+import { paddingOracleReport } from './paddingOracle';
+import { magicChainReport } from './magicChain';
+import { crc32AttackReport } from './crc32Attack';
 import { brainfuckToOokText, cryptoAttackHelper, encodeBrainfuckText, frequencyAnalysis, hashLengthExtensionHelper, jsfuckInspector, lcgHelper, lfsrHelper, ookToBrainfuckText, runBrainfuck } from './attacks';
 import { cloudShadowDecode, cloudShadowEncode, baijiaxingDecode, baijiaxingEncode, bearDecode, bearEncode, buddhaDecode, buddhaEncode, buddhaV2Decode, hexagramDecode, hexagramEncode, sexagesimalDecode, sexagesimalEncode } from './chineseCiphers';
 import { albamTransform, carbonaroTransform, ciscoType7Decode, ciscoType7Encode, cetaceanDecode, cetaceanEncode, decabitDecode, decabitEncode, pizziniDecode, pizziniEncode } from './mapCiphers';
@@ -274,6 +277,14 @@ export async function transform(operationId: OperationId, direction: Direction, 
       return parsePgpMessage(input);
     case 'cbc-padding-demo':
       return cbcDemoTransform(input, params.secret);
+    case 'padding-oracle-attack':
+      return paddingOracleReport(params.secret ? `${input}\nkeyHex=${params.secret}` : input);
+    case 'magic-chain': {
+      const maxDepth = Number(params.maxDepth);
+      return magicChainReport(input, Number.isFinite(maxDepth) && maxDepth >= 1 ? { maxDepth } : undefined);
+    }
+    case 'crc32-attack':
+      return crc32AttackReport(input);
     case 'rsa-helper':
       return rsaHelper(input);
     case 'signature-nonce-helper':

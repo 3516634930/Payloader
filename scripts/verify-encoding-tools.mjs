@@ -24,9 +24,9 @@ const ENTRY_EXPORTS = [
   'parityNumVectors', 'parityProbes',
 ];
 
-// 受众记账口径（批次 W 纠偏定稿 + autoSolve 三操作）：全部操作 245 个 = ctf 158 + both 85 + pentest 2，
-// 钉住具体数字防止清单无声漂移。
-const AUDIENCE_SNAPSHOT = { total: 245, ctf: 158, both: 85, pentest: 2 };
+// 受众记账口径（批次 W 纠偏定稿 + autoSolve 三操作 + 本批 padding-oracle-attack/magic-chain/crc32-attack）：
+// 全部操作 248 个 = ctf 161 + both 85 + pentest 2，钉住具体数字防止清单无声漂移。
+const AUDIENCE_SNAPSHOT = { total: 248, ctf: 161, both: 85, pentest: 2 };
 
 // 批次 O 形状探针中仍验证智能解码可达性的样本集（telecode/quwei 等 4 位数字组形态与日期/编号
 // 不可区分，已退出直解路径只出芯片，故不在自动解码样本内）。
@@ -2447,7 +2447,10 @@ await run('受众分流：编解码与 CTF 视图记账守恒、无遗漏无重�
   expect(!pentestGroups.some(group => group.id === 'smart'), 'smart-decode 已迁往 CTF 视图，渗透视图不得保留空 smart 分类');
   // CTF 视图四段流程：智能识别必须存在且只含 smart-decode
   const smartGroup = ctfGroups.find(group => group.id === 'smart');
-  expect(smartGroup && smartGroup.operations.length === 1 && smartGroup.operations[0].id === 'smart-decode', 'CTF 视图智能识别段缺失或不完整');
+  // 智能识别段 = smart-decode（叙事路由）+ magic-chain（CyberChef Magic 式深度链），钉住防止无声漂移。
+  expect(smartGroup && smartGroup.operations.length === 2
+    && smartGroup.operations.some(op => op.id === 'smart-decode')
+    && smartGroup.operations.some(op => op.id === 'magic-chain'), 'CTF 视图智能识别段缺失或不完整');
   // flag 格式徽标识别（只做展示）
   const hits = detectFlagFormats('noise flag{ab_1234} tail ctf{xy_9876}');
   expect(hits.length === 2 && hits[0].prefix === 'flag' && hits[1].prefix === 'ctf', 'flag 格式识别失败');

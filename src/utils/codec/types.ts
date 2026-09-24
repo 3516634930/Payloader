@@ -114,6 +114,9 @@ export type OperationId =
   | 'xor-auto-solve'
   | 'vigenere-auto'
   | 'substitution-auto'
+  | 'padding-oracle-attack'
+  | 'magic-chain'
+  | 'crc32-attack'
   | 'xor-known-plaintext'
   | 'magic-xor-helper'
   | 'rot'
@@ -252,7 +255,7 @@ export type OperationId =
   | 'ascii-control'
   | 'quwei';
 
-export type ParamKey = 'variant' | 'hashAlgorithm' | 'secret' | 'iv' | 'keyword2' | 'associatedData' | 'hrp' | 'versionHex' | 'digits' | 'counter' | 'timeStep' | 'otpTimestamp' | 'period' | 'iterations' | 'shift' | 'separator' | 'mimeType' | 'blockLabel' | 'affineA' | 'affineB' | 'rails' | 'knownPlaintext' | 'dropBytes' | 'keyBits';
+export type ParamKey = 'variant' | 'hashAlgorithm' | 'secret' | 'iv' | 'keyword2' | 'associatedData' | 'hrp' | 'versionHex' | 'digits' | 'counter' | 'timeStep' | 'otpTimestamp' | 'period' | 'iterations' | 'shift' | 'separator' | 'mimeType' | 'blockLabel' | 'affineA' | 'affineB' | 'rails' | 'knownPlaintext' | 'dropBytes' | 'keyBits' | 'maxDepth';
 
 export interface Operation {
   id: OperationId;
