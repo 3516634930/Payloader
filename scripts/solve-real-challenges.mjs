@@ -424,55 +424,67 @@ const solveBytes = async (bytes, fileName, depth, label) => {
   }
 
   // ZIP 家族（zip/jar/apk/docx/xlsx 都是 zip 容器）。策略序（真题校准）：
-  // ①加密条目存在 → 先试伪加密修复版解包（修复后能解出有效条目 = 伪加密成立，11-base64stego 型）；
-  //   解不出（真加密，deflate 全坏流）→ 回原文件字典+数字掩码爆破（13-Janos 型），命中后解密条目+inflate 递归。
-  // ②无加密条目 → 直接解包（docx/jar 常规容器）。
+  // ①加密条目存在 → 修复版解包且内容可信（可读率>0.85，防真加密垃圾被 inflate 成功）→ 伪加密成立直用；
+  //   否则原文件字典+数字掩码爆破，命中后解密条目+inflate 递归（Janos 型）。
+  // ②无加密条目 → 直接解包递归（docx/jar 常规容器）。
   if (bytes[0] === 0x50 && bytes[1] === 0x4b && depth < 3) {
     let working = bytes;
     let encryptedEntries = [];
     try {
       encryptedEntries = engines.zipBrute.detectEncryptedEntries(bytes);
     } catch { /* 非标准 zip */ }
+    let usedFixed = false;
     if (encryptedEntries.length) {
       const fix = engines.crc32Attack.fixZipPseudoEncryption(bytes);
       if (fix.fixed) {
         const innerFromFixed = unpackZipEntries(fix.fixed);
-        if (innerFromFixed.length > 0) {
-          paths.push(`${prefix}ZIP 伪加密修复（${fix.changes.length} 处标志位，条目可解）`);
+        // 采信门槛：真加密的修复版会把密文当 deflate 成功解出垃圾——内容高度可读才认定伪加密成立。
+        const credible = innerFromFixed.some(entry => {
+          if (entry.name.endsWith('/') || entry.bytes.length < 4) return false;
+          let printable = 0;
+          for (let index = 0; index < entry.bytes.length; index += 1) {
+            const code = entry.bytes[index];
+            if ((code >= 0x20 && code <= 0x7e) || code === 0x0a || code === 0x0d || code === 0x09) printable += 1;
+          }
+          return printable / entry.bytes.length > 0.85;
+        });
+        if (innerFromFixed.length > 0 && credible) {
+          paths.push(prefix + 'ZIP 伪加密修复（' + fix.changes.length + ' 处标志位，条目可解）');
           working = fix.fixed;
-        } else {
-          // 真加密：修复版解不出，走原文件爆破
-          try {
-            let result = await engines.zipBrute.bruteZipPassword(bytes, encryptedEntries[0], engines.zipBrute.dictionaryCandidates(), { timeBudgetMs: 8000 });
-            if (!result.password) {
-              const gen = function* () { for (let len = 1; len <= 5; len += 1) yield* engines.zipBrute.maskCandidates('0123456789', len, len); };
-              result = await engines.zipBrute.bruteZipPassword(bytes, encryptedEntries[0], gen(), { timeBudgetMs: 8000 });
-              paths.push(`${prefix}ZIP 字典+数字掩码爆破（共试 ${result.tried}，${result.password ? `命中 ${result.password}` : '未命中'}）`);
-            } else {
-              paths.push(`${prefix}ZIP 字典爆破（命中 ${result.password}）`);
-            }
-            if (result.previewText) addText(result.previewText, `${prefix}ZIP 爆破内容预览`);
-            if (result.password && encryptedEntries[0].method === 'zipcrypto') {
-              const decrypted = engines.zipBrute.decryptZipCryptoEntry?.(bytes, encryptedEntries[0], result.password);
-              if (decrypted) {
-                const content = decrypted.compression === 8
-                  ? (() => { try { return new Uint8Array(zlib.inflateRawSync(Buffer.from(decrypted.bytes))); } catch { return null; } })()
-                  : decrypted.bytes;
-                if (content) {
-                  const innerResult = await solveBytes(content, encryptedEntries[0].fileName, depth + 1, `${prefix}zip:${encryptedEntries[0].fileName}`);
-                  paths.push(...innerResult.paths);
-                  for (const flag of innerResult.found) found.add(flag);
-                  addText(latin1Of(content.subarray(0, 4096)), `${prefix}ZIP 条目明文（口令 ${result.password}）`);
-                }
+          usedFixed = true;
+        }
+      }
+      if (!usedFixed) {
+        try {
+          let result = await engines.zipBrute.bruteZipPassword(bytes, encryptedEntries[0], engines.zipBrute.dictionaryCandidates(), { timeBudgetMs: 8000 });
+          if (!result.password) {
+            const gen = function* () { for (let len = 1; len <= 5; len += 1) yield* engines.zipBrute.maskCandidates('0123456789', len, len); };
+            result = await engines.zipBrute.bruteZipPassword(bytes, encryptedEntries[0], gen(), { timeBudgetMs: 8000 });
+            paths.push(prefix + 'ZIP 字典+数字掩码爆破（共试 ' + result.tried + '，' + (result.password ? '命中 ' + result.password : '未命中') + '）');
+          } else {
+            paths.push(prefix + 'ZIP 字典爆破（命中 ' + result.password + '）');
+          }
+          if (result.previewText) addText(result.previewText, prefix + 'ZIP 爆破内容预览');
+          if (result.password && encryptedEntries[0].method === 'zipcrypto') {
+            const decrypted = engines.zipBrute.decryptZipCryptoEntry ? engines.zipBrute.decryptZipCryptoEntry(bytes, encryptedEntries[0], result.password) : null;
+            if (decrypted) {
+              const content = decrypted.compression === 8
+                ? (() => { try { return new Uint8Array(zlib.inflateRawSync(Buffer.from(decrypted.bytes))); } catch { return null; } })()
+                : decrypted.bytes;
+              if (content) {
+                const innerResult = await solveBytes(content, encryptedEntries[0].fileName, depth + 1, prefix + 'zip:' + encryptedEntries[0].fileName);
+                paths.push(...innerResult.paths);
+                for (const flag of innerResult.found) found.add(flag);
+                addText(latin1Of(content.subarray(0, 4096)), prefix + 'ZIP 条目明文（口令 ' + result.password + '）');
               }
             }
-          } catch (error) { paths.push(`${prefix}ZIP 爆破失败：${error.message}`); }
-        }
+          }
+        } catch (error) { paths.push(prefix + 'ZIP 爆破失败：' + error.message); }
       }
     } else {
       const fix = engines.crc32Attack.fixZipPseudoEncryption(bytes);
       if (fix.fixed) {
-        paths.push(`${prefix}ZIP 伪加密修复（${fix.changes.length} 处标志位）`);
+        paths.push(prefix + 'ZIP 伪加密修复（' + fix.changes.length + ' 处标志位）');
         working = fix.fixed;
       }
     }
