@@ -137,23 +137,65 @@ const decodeBmpRgba = bytes => {
 // —— ZIP 递归解包：stored 直取 / deflate raw inflate，返回 [{name, bytes}]（不做加密拦截——
 // 调用方传进来的应是已修复/未加密的 working 版；deflate 坏流自然被 catch 过滤，真加密版解出全坏即空）。——
 const unpackZipEntries = (bytes, maxEntries = 30) => {
-  const out = [];
-  let offset = 0;
-  while (offset + 30 < bytes.length && out.length < maxEntries) {
-    if (!(bytes[offset] === 0x50 && bytes[offset + 1] === 0x4b && bytes[offset + 2] === 0x03 && bytes[offset + 3] === 0x04)) break;
-    const h = Buffer.from(bytes.subarray(offset, offset + 30));
-    const method = h.readUInt16LE(8);
-    const compressedSize = h.readUInt32LE(18);
-    const nameLen = h.readUInt16LE(26);
-    const extraLen = h.readUInt16LE(28);
-    const name = latin1Of(bytes.subarray(offset + 30, offset + 30 + nameLen));
-    const dataStart = offset + 30 + nameLen + extraLen;
-    const data = bytes.subarray(dataStart, dataStart + compressedSize);
-    if (method === 0) out.push({ name, bytes: data });
-    else if (method === 8) {
-      try { out.push({ name, bytes: new Uint8Array(zlib.inflateRawSync(Buffer.from(data))) }); } catch { /* 坏流跳过 */ }
+  // Central Directory 驱动（权威 csize/local offset），local 头只补 nameLen/extraLen 定位 dataStart——
+  // data descriptor 猜边界会被 deflate 流里的假 PK 签名截断，jar（bit3 流式写入）必须走 CD。
+  const entries = [];
+  const cdStart = bytes.length > 4 ? (() => {
+    for (let tail = bytes.length - 22; tail >= 0 && tail > bytes.length - 65558; tail -= 1) {
+      if (bytes[tail] === 0x50 && bytes[tail + 1] === 0x4b && bytes[tail + 2] === 0x05 && bytes[tail + 3] === 0x06) return tail;
     }
-    offset = dataStart + compressedSize;
+    return -1;
+  })() : -1;
+  if (cdStart >= 0) {
+    const cdOffset = Buffer.from(bytes.subarray(cdStart + 16, cdStart + 20)).readUInt32LE(0);
+    let ptr = cdOffset;
+    while (ptr + 46 <= bytes.length && entries.length < maxEntries) {
+      if (!(bytes[ptr] === 0x50 && bytes[ptr + 1] === 0x4b && bytes[ptr + 2] === 0x01 && bytes[ptr + 3] === 0x02)) break;
+      const h = Buffer.from(bytes.subarray(ptr, ptr + 46));
+      const method = h.readUInt16LE(10);
+      const compressedSize = h.readUInt32LE(20);
+      const nameLen = h.readUInt16LE(28);
+      const extraLen = h.readUInt16LE(30);
+      const commentLen = h.readUInt16LE(32);
+      const localOffset = h.readUInt32LE(42);
+      const name = latin1Of(bytes.subarray(ptr + 46, ptr + 46 + nameLen));
+      if (method === 0 || method === 8) entries.push({ name, method, compressedSize, localOffset });
+      ptr += 46 + nameLen + extraLen + commentLen;
+    }
+  }
+  const out = [];
+  for (const entry of entries) {
+    if (entry.name.endsWith('/')) continue;
+    const lh = Buffer.from(bytes.subarray(entry.localOffset, entry.localOffset + 30));
+    if (!(lh[0] === 0x50 && lh[1] === 0x4b)) continue;
+    const nameLen = lh.readUInt16LE(26);
+    const extraLen = lh.readUInt16LE(28);
+    const dataStart = entry.localOffset + 30 + nameLen + extraLen;
+    const data = bytes.subarray(dataStart, dataStart + entry.compressedSize);
+    if (entry.method === 0) out.push({ name: entry.name, bytes: data });
+    else if (entry.method === 8) {
+      try { out.push({ name: entry.name, bytes: new Uint8Array(zlib.inflateRawSync(Buffer.from(data))) }); } catch { /* 坏流跳过 */ }
+    }
+  }
+  // 无 CD 回退：local 头顺序扫（csize 直读；data descriptor 条目在此形态下放弃——jar 类由 CD 路径覆盖）。
+  if (out.length === 0 && cdStart < 0) {
+    let offset = 0;
+    while (offset + 30 < bytes.length && out.length < maxEntries) {
+      if (!(bytes[offset] === 0x50 && bytes[offset + 1] === 0x4b && bytes[offset + 2] === 0x03 && bytes[offset + 3] === 0x04)) break;
+      const h = Buffer.from(bytes.subarray(offset, offset + 30));
+      const method = h.readUInt16LE(8);
+      const compressedSize = h.readUInt32LE(18);
+      const nameLen = h.readUInt16LE(26);
+      const extraLen = h.readUInt16LE(28);
+      const name = latin1Of(bytes.subarray(offset + 30, offset + 30 + nameLen));
+      const dataStart = offset + 30 + nameLen + extraLen;
+      const data = bytes.subarray(dataStart, dataStart + compressedSize);
+      if (method === 0) out.push({ name, bytes: data });
+      else if (method === 8 && compressedSize > 0) {
+        try { out.push({ name, bytes: new Uint8Array(zlib.inflateRawSync(Buffer.from(data))) }); } catch { /* 坏流跳过 */ }
+      }
+      offset = dataStart + compressedSize;
+    }
   }
   return out;
 };
@@ -465,7 +507,17 @@ const solveBytes = async (bytes, fileName, depth, label) => {
       const dtmf = engines.audioStego.dtmfDecode(mono, wav.info.sampleRate);
       if (dtmf) paths.push(`${prefix}DTMF: ${dtmf}`);
       const morse = engines.audioStego.morseDecodeAudio(mono, wav.info.sampleRate);
-      if (morse.text) addText(morse.text, `${prefix}摩尔斯解码`);
+      if (morse.text) {
+        addText(morse.text, `${prefix}摩尔斯解码`);
+        // 摩尔斯输出是词组形态（"UTFLAG B33P B00P ..."）——原词组与花括号猜测双收（expected 归一匹配）。
+        const words = morse.text.trim().split(/\s+/);
+        const prefixWord = words[0]?.toLowerCase?.();
+        if (['utflag', 'flag', 'ctf', 'byuctf'].includes(prefixWord) && words.length > 1) {
+          found.add(morse.text.trim());
+          found.add(`${prefixWord}{${words.slice(1).join('_').toLowerCase()}}`);
+          paths.push(`${prefix}摩尔斯词组→flag 形态`);
+        }
+      }
     } catch { paths.push(`${prefix}音频：非 PCM WAV（node 侧不解码压缩格式——UI 频谱图卡片可目检）`); }
   }
 
@@ -725,14 +777,22 @@ if (existsSync(rootDir)) {
     const dir = path.dirname(absPath);
     // README 收集全部 flag 形态为预期列表（同目录多附件各自记录的场景取并集，命中任一即 PASS）。
     let expected = [];
-    const readmePath = path.join(dir, 'README.md');
-    if (existsSync(readmePath)) {
+    // README 查找兼容两种命名（收集路差异）：README.md 与 writeup-README.md。
+    const readmeCandidates = ['README.md', 'writeup-README.md'];
+    for (const readmeName of readmeCandidates) {
+      const readmePath = path.join(dir, readmeName);
+      if (!existsSync(readmePath)) continue;
       const text = readFileSync(readmePath, 'utf8');
-      expected = [...text.matchAll(/[A-Za-z0-9_]{2,}\{[^}\s]{3,}\}/g)].map(match => match[0]);
+      expected.push(...[...text.matchAll(/[A-Za-z0-9_]{2,}\{[^}\s]{3,}\}/g)].map(match => match[0]));
       // 预期也覆盖 label 形态（FLAG:385b… / 答案：xxx），与 findFlags 的第二正则同口径。
       for (const m of text.matchAll(/(?:flag|FLAG|答案|预期)\s*(?:is)?\s*[：:]\s*([0-9A-Za-z_!@#$%^&*()+\-.?]{6,64})/g)) {
         expected.push(m[1].replace(/[.,;:!?]+$/, ''));
       }
+      // writeup 反引号词组形态（"utflag b33p b00p b33p"——无花括号的口头 flag）。
+      for (const m of text.matchAll(/`([A-Za-z]{3,8} (?:[A-Za-z0-9_]+ ){2,8}[A-Za-z0-9_]+)`/g)) {
+        expected.push(m[1]);
+      }
+      if (expected.length) break;
     }
     try {
       const solved = await solveOne(absPath, fileName);
@@ -743,10 +803,11 @@ if (existsSync(rootDir)) {
         found: solved.found,
         verdict: !expected.length
           ? (solved.found.length > 0 ? 'FOUND-NO-EXPECTED' : 'NOTHING')
-          // 题目级匹配放宽：flag 命中、或 found 裸串（无花括号）是 expected 内串的子串
-          // （真题常把 flag 内容以明文形态给出，包裹形态在提交时才加——05-掀桌子型）。
-          : (solved.found.some(flag => expected.some(e => e.includes(flag) || flag.includes(e.replace(/^[^{}]+\{/, '').replace(/\}$/, ''))))
-            || solved.found.some(flag => expected.includes(flag))
+          // 题目级匹配放宽：flag 全等 / found 裸串是 expected 内串 / 空格-下划线归一化等价（词组形态 flag）。
+          : (solved.found.some(flag => expected.some(e =>
+              e.includes(flag)
+              || flag.includes(e.replace(/^[^{}]+\{/, '').replace(/\}$/, ''))
+              || e.replace(/[\s_]+/g, '').toLowerCase() === flag.replace(/[\s_{}]+/g, '').toLowerCase()))
             ? 'PASS' : (solved.found.length > 0 ? 'WRONG-HIT' : 'FAIL')),
         paths: solved.paths,
       });
