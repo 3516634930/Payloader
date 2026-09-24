@@ -29,6 +29,8 @@ const loadEngines = async () => {
     qrDecode: ['utils', 'ctf', 'qrDecode.ts'],
     pdfText: ['utils', 'ctf', 'pdfText.ts'],
     pdfCmap: ['utils', 'ctf', 'pdfCmap.ts'],
+    rarInspect: ['utils', 'ctf', 'rarInspect.ts'],
+    rarExtract: ['utils', 'ctf', 'rarExtract.ts'],
   };
   for (const [name, parts] of Object.entries(defs)) {
     try { engines[name] = loadModule(src(...parts)); } catch { engines[name] = null; }
@@ -456,6 +458,38 @@ const solveBytes = async (bytes, fileName, depth, label) => {
         for (const flag of innerResult.found) found.add(flag);
       } catch { /* 内层失败不阻断 */ }
     }
+  }
+
+  // RAR4：签名重写/伪加密清位 → 逐条目解压（stored + RAR3 LZ）→ 内层递归（SimpleRAR/进制反转型）。
+  // 入口按扩展名（坏签名的 RAR 首字节不是 'Ra'，fixRarSignature 自身能识别修复）。
+  if ((ext === 'rar' || (bytes[0] === 0x52 && bytes[1] === 0x61)) && depth < 3 && engines.rarInspect && engines.rarExtract) {
+    let working = bytes;
+    try {
+      const sigFix = engines.rarInspect.fixRarSignature(bytes);
+      if (sigFix.fixed) {
+        paths.push(`${prefix}RAR 签名重写（${sigFix.changes.length} 处改动）`);
+        working = sigFix.fixed;
+      }
+      const pseudoFix = engines.rarInspect.fixRarPseudoEncryption(working);
+      if (pseudoFix.fixed) {
+        paths.push(`${prefix}RAR 伪加密清位（${pseudoFix.changes.length} 处）`);
+        working = pseudoFix.fixed;
+      }
+      const inspected = engines.rarInspect.inspectRar(working);
+      for (const entry of inspected.entries.slice(0, 12)) {
+        if (entry.isDirectory) continue;
+        try {
+          const extracted = engines.rarExtract.extractRarEntry(working, entry);
+          if (!extracted.bytes) {
+            if (extracted.unsupported) paths.push(`${prefix}RAR 条目 ${entry.name} 不支持：${extracted.unsupported}`);
+            continue;
+          }
+          const inner = await solveBytes(extracted.bytes, entry.name, depth + 1, `${prefix}rar:${entry.name}`);
+          paths.push(...inner.paths.slice(0, 10));
+          for (const flag of inner.found) found.add(flag);
+        } catch (error) { paths.push(`${prefix}RAR 条目 ${entry.name} 解压失败：${String(error.message).slice(0, 60)}`); }
+      }
+    } catch (error) { paths.push(`${prefix}RAR 解析失败：${error.message}`); }
   }
 
   // pcap/pcapng：USB HID + TCP 流/HTTP 对象（body 递归）
