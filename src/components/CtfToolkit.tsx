@@ -210,6 +210,9 @@ const CtfToolkit = memo(function CtfToolkit() {
           // 纯导航直接切域（ELF 常量扫描引导 → 逆向速查域）。
           onHandOffFile: handOffFile,
           onSwitchModule: setActiveModuleId,
+          // 题型选择卡：纯输入工具（CRC32 反推/零宽解码）跳密码域并定位操作——复用检测芯片的
+          // pendingFocus 管线（隐藏容器内 scrollIntoView 不生效，切域后补聚焦）。
+          onOpenCipherOperation: applyDetection,
         };
         if (module.keepMounted) {
           const Workspace = module.Workspace;

@@ -11,6 +11,7 @@ import type { PlaneImage } from './ImagePlanesCard';
 import AudioStegoCard from './AudioStegoCard';
 import GifInspectCard from './GifInspectCard';
 import ZipBruteCard from './ZipBruteCard';
+import ChallengePickerCard from './ChallengePickerCard';
 import StringsCard from './StringsCard';
 import HexdumpCard from './HexdumpCard';
 import { downloadBytes } from './ffDownload';
@@ -73,6 +74,8 @@ export interface FileForensicsWorkspaceProps {
   onHandOffFile?: (file: File) => void;
   // 推荐工具条：纯导航切域（ELF 常量扫描引导 → 逆向速查域）。
   onSwitchModule?: (moduleId: string) => void;
+  // 题型选择卡：跳密码与编码域并定位到具体操作（CRC32 反推/零宽解码等纯输入工具）。
+  onOpenCipherOperation?: (operationId: string) => void;
 }
 
 interface PngFixState {
@@ -111,7 +114,7 @@ const toBinaryString = (bytes: Uint8Array): string => {
 
 // 杂项取证域工作区（批次 K）：文件拖入/选择 → 本地探测 → 按需分析。
 // 文件只读字节、不执行、不上传；超过 20MB 直接拒绝并说明原因。
-function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, onSwitchModule }: FileForensicsWorkspaceProps) {
+function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, onSwitchModule, onOpenCipherOperation }: FileForensicsWorkspaceProps) {
   const { language } = useLanguage();
   const [analysis, setAnalysis] = useState<FileAnalysis | null>(null);
   const [report, setReport] = useState<FileReport | null>(null);
@@ -361,10 +364,27 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
           }}
         />
 
-        <WorkbenchMenuBar
-          menus={fileMenus}
-          ariaLabel={language === 'zh' ? '文件与图片菜单' : 'Files and images menu'}
-        />
+      <WorkbenchMenuBar
+        menus={fileMenus}
+        ariaLabel={language === 'zh' ? '文件与图片菜单' : 'Files and images menu'}
+      />
+
+      <ChallengePickerCard
+        language={language}
+        hasFile={Boolean(analysis)}
+        onPickFile={openPicker}
+        onScrollToCard={(cardId) => {
+          const node = document.getElementById(cardId);
+          if (node) {
+            node.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            return true;
+          }
+          return false;
+        }}
+        onOpenCipherOperation={operationId => { onOpenCipherOperation?.(operationId); }}
+        onSwitchModule={moduleId => { onSwitchModule?.(moduleId); }}
+        onHandOffCurrentFile={analysis && onHandOffFile ? () => { onHandOffFile(analysis.file); } : undefined}
+      />
 
       {!analysis ? (
         <div className="ff-dropzone">

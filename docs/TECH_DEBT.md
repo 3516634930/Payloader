@@ -60,3 +60,5 @@
 - [ ] TD-批次MISC2-3 | ZipBruteCard 爆破任务无 abort：换文件 remount 后旧任务跑满剩余预算（最长 60s），新旧任务并行浪费算力 | 2026-09-24 misc 批（reviewer P3） | `src/components/ctf/ZipBruteCard.tsx:71-109` | 修法：引擎 options 加 AbortSignal 或组件侧 epoch 计数丢弃过期进度 | P3
 - [ ] TD-批次MISC2-4 | mp3 仅识别 ID3 头，裸 MPEG 帧同步（0xFF Ex）不挂音频卡；帧同步魔数短误报率高 | 2026-09-24 misc 批（reviewer P3） | `src/utils/ctf/fileDetect.ts` | 修法：需连续多帧同步确认，暂不硬补 | P3
 - [ ] TD-批次MISC2-5 | AudioStegoCard 语言切换后 failed 文案语言陈旧（exhaustive-deps disable 的低频路径） | 2026-09-24 misc 批（reviewer P3） | `src/components/ctf/AudioStegoCard.tsx` | 修法：failed 存错误码而非文案，渲染时现算 | P3
+- [ ] TD-批次PICKER-1 | onScrollToCard 用全文档 getElementById：ff-card-summary 被 ReverseWorkspace 复用且五域 keepMounted 常驻，当前仅靠模块顺序正确；调序或新增同名锚点会静默滚到 hidden 容器 | 2026-09-24 题型卡批（reviewer P2） | `FileForensicsWorkspace.tsx` scrollToCard/选择卡回调 | 修法：容器内 rootRef.querySelector 或锚点 id 加域前缀 | P2
+- [ ] TD-批次PICKER-2 | 题型卡两处文案术语密度偏高（"zsteg 式 288 组合"/"DWT-DCT-SVD"）对新手不自解释 | 2026-09-24 题型卡批（reviewer P2） | `challengeCatalog.ts:77,113` | 修法：换大白话并保留术语在 title | P3
