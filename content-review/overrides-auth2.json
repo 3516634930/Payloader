@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contentStandard": 2,
+  "contentStandard": 3,
   "sourcePrefix": "auth2",
   "entries": [
     {
@@ -159,20 +159,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "401/403 绕过测试关注同一逻辑资源经过大小写、编码、尾随字符、方法覆盖或代理头处理后，是否落入未经授权保护的另一条路由",
-          "en": "401/403 bypass testing asks whether case changes, encoding, trailing characters, method overrides, or proxy headers route the same logical resource around its authorization control"
+          "zh": "该 Payload 覆盖 401 与 403 访问控制绕过变体场景，检验代理与应用对受保护路径的授权判定一致性。验证维度为路径规范化、大小写、编码与分号截断等变体矩阵的单步执行，对应第 1 步。",
+          "en": "This payload covers 401 and 403 access-control bypass variants, testing authorization consistency between proxy and application on protected paths. Validation runs a variant matrix of normalization, casing, encoding and semicolon truncation in one step, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "当 CDN、反向代理、框架路由器与业务授权层采用不同的路径解码和规范化顺序时，前层可能拒绝标准路径却把变体转发到未受保护的处理器",
-          "en": "When a CDN, reverse proxy, framework router, and business authorization layer normalize paths in different orders, a variant may reach an unprotected handler even though the canonical path is denied"
+          "zh": "根因在于边缘授权与应用路由对路径的解释不一致：尾部斜杠、点段、百分号编码与分号参数在不同层被规范化为不同路径，受保护资源从变体路径暴露。",
+          "en": "The root cause is edge authorization and application routing interpreting paths differently: trailing slashes, dot segments, percent-encoding and semicolon parameters normalize into different paths per layer, exposing protected resources through variants."
         },
         "exploitation": {
-          "zh": "1. 使用无权限账号请求标准受保护路径并保存 401/403、响应体摘要与路由日志；2. 逐类测试路径、方法和头部变体，每次只改变一个因素；3. 仅当变体返回真实受保护对象或完成受控动作，且后端日志显示同一资源时确认缺陷。自定义错误页、缓存的 200 页面或登录页内容相同均属于假阳性。",
-          "en": "1. Request the canonical protected path with an unauthorized account and save the 401/403 response, body digest, and route log. 2. Test path, method, and header variants one factor at a time. 3. Confirm only when a variant returns the protected object or completes a controlled action and backend logs identify the same resource. Custom error pages, cached 200 responses, and login pages are false positives."
+          "zh": "第 1 步按清单把斜杠、点号、大小写、编码与分号变体逐条替换进受保护端点请求并记录响应：任一变体返回 200 或受保护内容而非 401 或 403，即确认该路径变体绕过有效，把命中的规范化差异对应到具体代理层。成功判据以变体响应矩阵为准。占位符在全局变量菜单替换；对命中项加二次验证排除误报。",
+          "en": "In step 1, substitute slash, dot, casing, encoding and semicolon variants from the list into protected-endpoint requests one by one, recording responses; any variant returning 200 or protected content instead of 401 or 403 confirms that path bypass, and map the normalization divergence to the responsible proxy layer. Judge success by the variant-response matrix. Replace placeholders via the global variables menu; re-verify hits to rule out false positives."
         },
         "mitigation": {
-          "zh": "1. 在授权前执行一次统一的路径解码与规范化并拒绝歧义路径；2. 由后端资源层实施默认拒绝授权，不信任客户端提供的重写头；3. 对代理和应用建立覆盖所有方法、编码及尾随字符的回归测试。",
-          "en": "1. Decode and canonicalize paths once before authorization and reject ambiguous paths. 2. Enforce deny-by-default authorization at the backend resource layer and do not trust client-supplied rewrite headers. 3. Add proxy-to-application regression tests for methods, encodings, and trailing-character variants."
+          "zh": "授权统一收敛到应用层最终路由之后执行，边缘层拒绝含点段、分号与混合编码的歧义路径。修复后重放第 1 步矩阵，全部变体应返回一致的 401 或 403。",
+          "en": "Run authorization after the application's final routing and have edge layers reject ambiguous paths with dot segments, semicolons or mixed encodings. After the fix, replay the step 1 matrix: every variant should get a uniform 401 or 403."
         },
         "difficulty": "intermediate"
       },
@@ -269,20 +269,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "会话状态混淆不是把 session 参数简单改成 admin，而是检查 Cookie、URL、请求体、网关和应用之间是否存在优先级冲突或类型强制转换",
-          "en": "Session state confusion is not merely changing a session parameter to admin; it examines precedence conflicts and type coercion across cookies, URLs, request bodies, gateways, and applications"
+          "zh": "该 Payload 覆盖会话状态混淆场景，检验多来源会话值与结构化输入被不同组件解释时的权限漂移。验证维度为角色、布尔、JSON 与无签名 JWT 会话值的逐条提交，对应第 1 步。",
+          "en": "This payload covers session-puzzling state confusion, testing privilege drift when multi-source session values and structured inputs are interpreted by different components. Validation submits role, boolean, JSON and unsigned-JWT session values one by one, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "如果网关校验一个会话值而后端读取另一个来源，或后端把布尔值、对象和字符串转换成同一真值，攻击者可能绕过会话完整性与身份绑定",
-          "en": "If a gateway validates one session value while the backend reads another source, or if booleans, objects, and strings collapse to the same truthy value, session integrity and identity binding can fail"
+          "zh": "根因在于会话建立顺序与来源优先级未在服务端固定：早期流程写入的弱会话字段被后期鉴权逻辑放大，攻击者以受控值预置状态再走正常流程即可提权。",
+          "en": "The root cause is unfixed server-side ordering and precedence across session sources: weak session fields written early in a flow get amplified by later authorization logic, so attackers preset state with controlled values then walk the normal flow to escalate."
         },
         "exploitation": {
-          "zh": "1. 以两个权限不同的测试账号记录正常 Cookie、URL 参数和请求体中的会话来源；2. 逐一提交原始 session 变体，并用重复参数构造来源冲突；3. 对比最终用户标识、服务端会话 ID 与审计日志。只有身份实际切换或授权结果改变才成立；被统一重定向到登录页或仅返回格式错误属于假阳性。",
-          "en": "1. Record normal session sources in cookies, URLs, and bodies for two test accounts with different privileges. 2. Submit the original session variants and create source conflicts with duplicate parameters. 3. Compare the final user identity, server-side session ID, and audit log. Only an identity or authorization change confirms the issue; a common login redirect or parse error is a false positive."
+          "zh": "第 1 步按脚本把会话参数的布尔、JSON 与无签名 JWT 值逐条提交到注册或预置流程端点，随后完成正常登录并检查最终会话权限：服务端按提交值提升了角色即确认状态混淆成立，权限与会话记录一并留证。成功判据以最终主体与角色为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, submit boolean, JSON and unsigned-JWT values for the session parameter one by one to registration or staging endpoints per the script, then complete a normal login and inspect the final session privileges; the server promoting the role per submitted values confirms the state confusion, archived with session records. Judge success by the final principal and role. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. 会话标识只从单一受信通道读取并拒绝重复来源；2. 对会话值实施严格类型、长度和格式校验，登录后轮换 ID；3. 将会话与服务端用户记录绑定，并对来源冲突和身份切换记录告警。",
-          "en": "1. Read session identifiers from one trusted channel and reject duplicate sources. 2. Enforce strict type, length, and format validation and rotate the ID after authentication. 3. Bind sessions to server-side user records and alert on source conflicts or identity changes."
+          "zh": "会话字段由服务端单一来源生成并在登录时整体重建，拒绝客户端提供的任何角色或状态字段。修复后重放第 1 步，最终会话权限应与凭据对应且不受预置值影响。",
+          "en": "Generate session fields from a single server-side source and rebuild the session wholesale at login, rejecting any client-supplied role or state fields. After the fix, replay step 1: final session privileges must match the credentials and ignore preset values."
         },
         "difficulty": "advanced"
       },
@@ -382,20 +382,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "data: URI 可以把媒体类型和内容直接嵌入 URL；只有当应用把该值送入链接、重定向、iframe 或其他可导航上下文时，它才形成 XSS 或内容注入风险",
-          "en": "A data URI embeds a media type and content directly in a URL; it becomes an XSS or content-injection risk only when the application places it in a link, redirect, iframe, or another navigable context"
+          "zh": "覆盖 data: URI 注入的边界验证：以裸 data: 与 text/html/base64 形态探测导航或嵌入上下文，确认该 scheme 能否在浏览器形成活动文档并继续拼接脚本载荷。",
+          "en": "Covers boundary verification of data: URI injection: probing navigation or embedding contexts with bare data: and text/html/base64 forms, determining whether the scheme forms an active document in the browser ready for appended script payloads."
         },
         "vulnerability": {
-          "zh": "漏洞来自仅校验字符串前缀或域名而未解析 URI scheme、媒体类型与最终浏览器上下文，导致 data:text/html 等内容绕过 http/https 白名单",
-          "en": "The flaw arises when validation checks only prefixes or host strings without parsing the URI scheme, media type, and final browser context, allowing data:text/html content around an intended HTTP or HTTPS allowlist"
+          "zh": "根因是应用仅校验字符串前缀或域名而未解析 URI scheme、媒体类型与最终浏览器上下文，data:text/html 等内容绕过 http/https 白名单进入可导航位置。",
+          "en": "The root cause is applications validating only string prefixes or domains without parsing URI scheme, media type, and final browser context, letting data:text/html content bypass http/https allowlists into navigable positions."
         },
         "exploitation": {
-          "zh": "1. 找到接受 URL 并在浏览器中导航或渲染的位置，先用普通 HTTPS 地址建立行为基线；2. 依次提交原始 data: 变体并观察最终 DOM、地址栏、CSP 报告和脚本执行标记；3. 在不同浏览器与沙箱属性下复测。仅被当作文本显示、强制下载或由 CSP 阻止时不能判定可利用 XSS。",
-          "en": "1. Find a URL input that is navigated or rendered and establish a baseline with a normal HTTPS URL. 2. Submit the original data URI variants and inspect the final DOM, address bar, CSP reports, and a harmless execution marker. 3. Retest across browsers and sandbox attributes. Rendering as text, forcing a download, or CSP blocking execution does not prove exploitable XSS."
+          "zh": "使用第 1 步命令逐行提交裸 data: 与 text/html/base64 形态；浏览器按 data: URI 渲染或导航即确认该 scheme 处理边界，可继续拼接脚本载荷验证执行。先以普通 HTTPS 地址建立行为基线，再观察最终 DOM、地址栏、CSP 报告与脚本执行标记，并在不同浏览器与沙箱属性下复测。",
+          "en": "Use the step 1 command to submit bare data: and text/html/base64 forms line by line; the browser rendering or navigating per the data: URI confirms the scheme's processing boundary, ready for appended script payloads to verify execution. Baseline behavior with plain HTTPS addresses first, then observe final DOM, address bar, CSP reports, and script-execution markers, retesting across browsers and sandbox attributes."
         },
         "mitigation": {
-          "zh": "1. 解析并仅允许明确需要的 http/https scheme；2. 对输出上下文执行正确编码，并对链接、iframe 与重定向分别使用安全 API；3. 配置 CSP 禁止不必要的 data: 脚本和框架来源，并增加浏览器回归测试。",
-          "en": "1. Parse URLs and allow only explicitly required HTTP and HTTPS schemes. 2. Apply context-appropriate output encoding and safe APIs for links, iframes, and redirects. 3. Configure CSP to disallow unnecessary data sources for scripts and frames and add browser regression tests."
+          "zh": "解析并仅允许明确需要的 http/https scheme，对输出上下文正确编码，链接、iframe 与重定向分别使用安全 API；配置 CSP 禁止不必要的 data: 脚本与框架来源并增加浏览器回归。",
+          "en": "Parse and allow only explicitly needed http/https schemes, encode output context correctly, and use safe APIs separately for links, iframes, and redirects; configure CSP blocking unnecessary data: scripts and frame sources with added browser regressions."
         },
         "difficulty": "intermediate"
       },
@@ -492,20 +492,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "浏览器加载图片、脚本和样式时会自动发起 GET 请求并在适用条件下携带 Cookie；若服务端把 GET 用于转账、删除或提权，恶意页面即可跨站触发",
-          "en": "Browsers automatically issue GET requests for images, scripts, and styles and may attach cookies; if the server uses GET for transfers, deletion, or privilege changes, a malicious page can trigger the action cross-site"
+          "zh": "该 Payload 覆盖基于 GET 的状态变更 CSRF 场景，检验自动发起请求的资源标签能否无交互触发写操作。验证维度为 img、script、link 标签对多类 GET 端点的触发样例，对应第 1 步。",
+          "en": "This payload covers GET-based state-changing CSRF, testing whether auto-requesting resource tags trigger writes with no interaction. Validation fires img, script and link tags at several GET endpoints in one step, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "根因是违反 HTTP 安全方法语义并把身份 Cookie 当作唯一授权证据，同时缺少 CSRF token、Origin/Referer 校验或 SameSite 限制",
-          "en": "The root cause is using a safe HTTP method for state changes and treating the identity cookie as the only authorization evidence without a CSRF token, Origin or Referer validation, or suitable SameSite policy"
+          "zh": "根因在于服务端用 GET 承载资金、删除或提权类副作用：浏览器解析页面时自动请求标签即携带会话发出请求，无需任何用户确认操作即被执行。",
+          "en": "The root cause is servers carrying money, deletion or promotion side effects over GET: browsers auto-request resource tags while parsing a page, firing the session-carrying request without any user confirmation."
         },
         "exploitation": {
-          "zh": "1. 使用测试账号直接访问目标 GET 端点，确认它确实产生可回滚状态变化；2. 在另一个站点加载原始 img/script/link 载荷并记录请求 Cookie、Origin/Referer 与前后状态；3. 更换无会话浏览器和幂等资源复测。只有跨站请求携带受害会话并导致状态改变才成立，图片加载错误或单纯命中端点是典型假阳性。",
-          "en": "1. Call the target GET endpoint directly with a test account and confirm a reversible state change. 2. Load the original img, script, and link payloads from another origin and record cookies, Origin or Referer, and before-and-after state. 3. Retest without a session and against an idempotent resource. The issue exists only when a cross-site request carries the victim session and changes state; a resource-load error or endpoint hit alone is a false positive."
+          "zh": "第 1 步把 img 与 script 标签样例嵌入跨站页面并逐条指向转账、删除与提权类 GET 端点，打开页面即自动触发；核对目标端点日志出现带会话的命中且合成状态变化即确认 GET 型 CSRF。成功判据以状态变更与服务端记录为准。占位符在全局变量菜单替换；全部端点使用实验合成对象。",
+          "en": "In step 1, embed the img and script tag samples into a cross-site page pointing one by one at transfer, deletion and promotion GET endpoints; opening the page fires them automatically. A session-carrying hit in endpoint logs plus the synthetic state changing confirms GET-based CSRF. Judge success by state changes and server records. Replace placeholders via the global variables menu; all endpoints use lab synthetic objects."
         },
         "mitigation": {
-          "zh": "1. 所有状态变更改用 POST/PUT/PATCH/DELETE 并验证 CSRF token；2. 对 Cookie 设置合适 SameSite、Secure 与 HttpOnly 属性；3. 校验 Origin/Referer，禁止通过 GET 产生副作用并为关键操作增加二次确认。",
-          "en": "1. Move all state changes to POST, PUT, PATCH, or DELETE and validate a CSRF token. 2. Set appropriate SameSite, Secure, and HttpOnly cookie attributes. 3. Validate Origin or Referer, prohibit side effects on GET, and require confirmation for sensitive actions."
+          "zh": "状态变更一律改用 POST 并校验来源与 Token，GET 端点强制只读语义并加幂等保护。修复后重放第 1 步，标签触发的请求应全部被拒绝。",
+          "en": "Move all state changes to POST with origin and token validation, enforce read-only GET semantics with idempotency protection. After the fix, replay step 1: tag-triggered requests should all be rejected."
         },
         "difficulty": "beginner"
       },
@@ -605,20 +605,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "none 算法测试用于确认服务端是否把 JWT Header 中的 alg 当作可信配置；安全实现必须从服务端策略选择算法并拒绝所有未签名令牌",
-          "en": "The none-algorithm test checks whether the server trusts the JWT alg header as configuration; a secure implementation selects algorithms from server policy and rejects every unsigned token"
+          "zh": "该 Payload 覆盖 JWT none 算法拒绝测试场景，检验验证器对大小写变体与空签名令牌的拒绝边界。验证维度为多组 none 变体令牌的逐条提交矩阵，对应第 1 步。",
+          "en": "This payload covers JWT none-algorithm rejection testing, testing rejection boundaries for case variants and empty-signature tokens. Validation submits multiple none-variant tokens one by one, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "受影响实现会接受 alg=none、忽略签名段或在算法解析大小写异常时走到无签名分支，使攻击者可以修改 claims 后伪造身份",
-          "en": "A vulnerable implementation accepts alg=none, ignores the signature segment, or reaches an unsigned path through case-handling errors, allowing modified claims to impersonate another identity"
+          "zh": "根因在于验证器按头部 alg 分派验证逻辑且允许 none：算法大小写或类型名变换未被归一化拒绝时，攻击者剥离签名仍保留原载荷通过校验。",
+          "en": "The root cause is the verifier dispatching on the header alg and permitting none: when case or type-name transformations are not normalized and rejected, attackers strip the signature while keeping the payload and pass validation."
         },
         "exploitation": {
-          "zh": "1. 获取测试账号的有效签名令牌并记录受保护接口基线；2. 保持 payload claims 不变，依次提交原始 none 大小写变体和空签名格式；3. 再修改一个无害声明并核对服务端主体与授权日志。只有未签名令牌获得受保护数据才确认漏洞；统一 200 错误包装或公开接口响应属于假阳性。",
-          "en": "1. Obtain a valid signed token for a test account and record a protected-endpoint baseline. 2. Keep claims unchanged while submitting the original none case variants and empty-signature forms. 3. Change one harmless claim and verify the server principal and authorization log. Confirm only if an unsigned token receives protected data; uniform HTTP 200 error envelopes or public endpoints are false positives."
+          "zh": "第 1 步按脚本把 none 大小写与类型名变体令牌逐条提交受保护端点，记录每条的响应：任一未签名令牌返回授权数据即确认算法固定缺失，全部拒绝则通过。成功判据以响应矩阵为准。占位符在全局变量菜单替换；令牌载荷仅含测试身份字段。",
+          "en": "In step 1, submit none case and type-name variant tokens to the protected endpoint one by one per the script, recording each response; any unsigned token returning authorization data confirms missing algorithm pinning, uniform rejection passes. Judge success by the response matrix. Replace placeholders via the global variables menu; token payloads carry only test-identity fields."
         },
         "mitigation": {
-          "zh": "1. 在服务端固定允许算法列表并显式拒绝 none；2. 使用维护中的 JWT 库，验证签名后再读取授权声明；3. 为算法大小写、空签名和畸形段建立负向测试及认证失败告警。",
-          "en": "1. Pin an allowlist of algorithms on the server and explicitly reject none. 2. Use a maintained JWT library and verify the signature before consuming authorization claims. 3. Add negative tests for algorithm case, empty signatures, and malformed segments and alert on validation failures."
+          "zh": "验证器固定允许算法并对 none 及其一切变体直接拒绝，归一化算法字段后再分派。修复后重放第 1 步，全部变体应返回 401 并记录伪造尝试。",
+          "en": "Pin allowed algorithms in the verifier, rejecting none and every variant outright, normalizing the algorithm field before dispatch. After the fix, replay step 1: all variants should get 401 with forgery attempts logged."
         },
         "difficulty": "intermediate"
       },
@@ -718,20 +718,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "kid 是 JWT Header 中的密钥标识符，本应只映射到服务端预注册密钥；该测试覆盖目录穿越、特殊值和密钥查找边界，而不是把任意字符串视为有效密钥",
-          "en": "The JWT kid header should map only to a server-registered key; this test covers traversal, special values, and key-lookup boundaries rather than treating arbitrary strings as valid keys"
+          "zh": "该 Payload 覆盖 JWT kid 密钥标识注入场景，检验服务端把 kid 用于路径、查询或远程查找时的边界。验证维度为目录穿越与受控路径 kid 的令牌矩阵，对应第 1 步。",
+          "en": "This payload covers JWT kid key-identifier injection, testing boundaries when the server uses kid for paths, queries or remote lookups. Validation is a token matrix of traversal and controlled-path kids, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "如果应用把 kid 拼接到文件路径、SQL 或缓存键中，攻击者可选择可预测内容作为 HMAC 密钥，或触发密钥查询注入和越界读取",
-          "en": "If an application concatenates kid into a file path, SQL query, or cache key, an attacker may select predictable content as an HMAC key or trigger injection and out-of-bounds key reads"
+          "zh": "根因在于 kid 未做白名单即进入文件系统或查询构造：穿越序列或注入串让攻击者指定验证密钥来源，令牌签名随之可被任意伪造。",
+          "en": "The root cause is kid entering filesystem or query construction without an allowlist: traversal sequences or injection strings let attackers choose the verification-key source, making token signatures forgeable at will."
         },
         "exploitation": {
-          "zh": "1. 使用两个合法 kid 的测试令牌确认服务端密钥轮换基线；2. 提交原始目录穿越和异常 kid 变体，同时保持算法与 claims 不变；3. 观察密钥查找日志、错误类型及授权结果，并用不存在 kid 对照。文件不存在、统一签名失败或仅错误差异不能证明密钥被控制。",
-          "en": "1. Use test tokens with two legitimate kid values to establish key-rotation behavior. 2. Submit the original traversal and malformed kid variants while keeping algorithm and claims unchanged. 3. Inspect key-lookup logs, error types, and authorization results, with a nonexistent kid as control. Missing-file errors, uniform signature failures, or error differences alone do not prove key control."
+          "zh": "第 1 步按脚本构造携带穿越路径、空 kid 与受控文件路径 kid 的令牌逐条提交，观察响应差异与服务端日志：任一注入 kid 触发文件读取或查询即确认注入面，命中已知密钥路径则以自签令牌完成完整利用验证。成功判据以密钥解析行为为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, submit tokens carrying traversal paths, empty kids and controlled-file-path kids one by one per the script, watching response differences and server logs; any injected kid triggering file reads or queries confirms the injection surface, and a hit on a known key path completes full exploitation with a self-signed token. Judge success by key-resolution behavior. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. 将 kid 与固定密钥表做精确映射，不参与路径或查询拼接；2. 限制字符集、长度并拒绝未知 kid；3. 对密钥加载实施最小文件权限、参数化查询和审计，并添加目录穿越负向测试。",
-          "en": "1. Map kid exactly to a fixed server-side key registry and never concatenate it into paths or queries. 2. Restrict character set and length and reject unknown identifiers. 3. Apply least filesystem privilege, parameterized lookup, and auditing to key loading and add traversal-negative tests."
+          "zh": "kid 与预配置密钥 ID 白名单精确匹配后才进入查找，拒绝路径分隔符与特殊字符，密钥目录权限最小化。修复后重放第 1 步，全部注入 kid 应被拒绝并告警。",
+          "en": "Match kid exactly against a preconfigured key-ID allowlist before lookup, rejecting path separators and special characters, with key-directory permissions minimized. After the fix, replay step 1: every injected kid should be rejected with alerts."
         },
         "difficulty": "advanced"
       },
@@ -830,20 +830,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "JWT claims 只是被签名保护的数据，并不因为 Base64URL 编码而可信；该条聚焦权限声明篡改与签名验证顺序，而不是声明名称本身",
-          "en": "JWT claims are data protected by a signature and are not trusted merely because they are Base64URL encoded; this entry focuses on privilege-claim tampering and validation order"
+          "zh": "该 Payload 覆盖 JWT 未签名权限声明篡改场景，检验服务端是否在验签前信任载荷中的角色字段。验证维度为空签名携带角色提升载荷的令牌矩阵，对应第 1 步。",
+          "en": "This payload covers unsigned JWT privilege-claim tampering, testing whether the server trusts role fields in the payload before verifying signatures. Validation is a token matrix of empty-signature payloads with role elevation, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "服务端若先依据 role 或 is_admin 做授权，再验证签名，或把空签名与解析成功混为一谈，就会允许客户端自授予管理员权限",
-          "en": "If the server authorizes on role or is_admin before verifying the signature, or conflates successful parsing with successful validation, a client can grant itself administrative privileges"
+          "zh": "根因在于应用先把 JWT 载荷解析为身份对象再执行验签：签名校验失败未中止流程时，篡改的 role 或 admin 字段已进入授权判定。",
+          "en": "The root cause is applications parsing the JWT payload into an identity object before verification: when failed signature checks do not abort the flow, tampered role or admin fields already drive authorization."
         },
         "exploitation": {
-          "zh": "1. 用低权限账号令牌访问管理员接口并记录拒绝基线；2. 提交原始 role/admin 声明变体但保留空签名，逐次只改变一个声明；3. 核对服务端主体、权限计算和审计事件。只有受保护操作被允许才算成功；前端菜单变化、解码页面显示 admin 或公开接口 200 都是假阳性。",
-          "en": "1. Access an administrative endpoint with a low-privilege token and record the denied baseline. 2. Submit the original role and admin claim variants with an empty signature, changing one claim at a time. 3. Verify the server principal, permission calculation, and audit event. Only an allowed protected operation confirms the flaw; UI menu changes, a decoder showing admin, or a public 200 response are false positives."
+          "zh": "第 1 步按脚本构造保留原头部与载荷但签名置空的令牌，把 role 改为管理员值后逐条提交受保护端点，记录响应与实际主体：服务端按载荷角色放行即确认验签顺序缺陷。成功判据以提权后的接口访问为准。占位符在全局变量菜单替换；同时以正确签名令牌对照排除解析问题。",
+          "en": "In step 1, build tokens keeping the original header and payload but with empty signatures, set role to an administrator value, and submit each to the protected endpoint per the script, recording responses and the effective principal; the server honoring the payload role confirms the verification-order flaw. Judge success by post-elevation API access. Replace placeholders via the global variables menu; contrast with correctly signed tokens to rule out parsing issues."
         },
         "mitigation": {
-          "zh": "1. 在任何 claims 使用前完成签名、算法、issuer、audience 与时效验证；2. 高价值权限从服务端数据库读取，不直接信任客户端 role；3. 对声明篡改、空签名和权限提升建立自动化负向测试。",
-          "en": "1. Validate signature, algorithm, issuer, audience, and time constraints before using any claims. 2. Read high-value permissions from server-side state instead of trusting client role claims. 3. Add automated negative tests for claim tampering, empty signatures, and privilege escalation."
+          "zh": "验签必须在任何载荷字段进入授权逻辑前完成且失败即中止，身份对象仅由验证后的载荷构建。修复后重放第 1 步，全部空签名令牌应被拒绝且无提权效果。",
+          "en": "Verification must complete before any payload field reaches authorization logic and abort on failure, building identity objects only from verified payloads. After the fix, replay step 1: every empty-signature token should be rejected with no elevation effect."
         },
         "difficulty": "intermediate"
       },
@@ -941,20 +941,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "RSA/HMAC 混淆发生在验证器根据客户端 alg 选择验证分支，却向不同算法复用同一 key 参数；公开公钥因此可能被误作 HMAC 密钥",
-          "en": "RSA/HMAC confusion occurs when a verifier chooses its branch from the client-controlled alg header while reusing one key parameter across algorithms, allowing a public key to be misused as an HMAC secret"
+          "zh": "该 Payload 覆盖 JWT RSA 与 HMAC 算法混淆场景，检验非对称服务是否把公钥当作 HMAC 密钥验签。验证维度为 HS256 头替换与空 kid 变体的令牌矩阵，对应第 1 步。",
+          "en": "This payload covers JWT RSA versus HMAC algorithm confusion, testing whether asymmetric services verify HMAC tokens with the public key. Validation is a token matrix of HS256 header swaps and empty-kid variants, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "受影响代码未固定预期算法，也未区分非对称公钥与对称密钥类型，使攻击者可把 RS256 令牌改成 HS256 并用公开材料重新签名",
-          "en": "Vulnerable code fails to pin the expected algorithm or distinguish asymmetric public keys from symmetric secrets, letting an attacker change RS256 to HS256 and sign with public material"
+          "zh": "根因在于验证库按 alg 选择算法却复用同一密钥对象：公钥字节被直接作为 HMAC secret，而公钥公开可得，攻击者可自签任意身份令牌。",
+          "en": "The root cause is verification libraries selecting the algorithm by alg while reusing one key object: public-key bytes double as the HMAC secret, and since public keys are public, attackers self-sign tokens with any identity."
         },
         "exploitation": {
-          "zh": "1. 取得测试环境的合法 RS256 令牌与对应公开公钥，确认 RS256 基线；2. 使用原始 RSA/HMAC 变体构造 HS256 对照并保持 claims 不变；3. 再改变一个低风险声明，核对验证库日志与授权结果。仅算法名称出现在错误信息中不是漏洞，必须证明 HMAC 令牌被接受并影响受保护资源。",
-          "en": "1. Obtain a valid RS256 test token and its public key and confirm the RS256 baseline. 2. Use the original RSA/HMAC variants to build an HS256 control while preserving claims. 3. Change one low-risk claim and verify library logs and authorization results. Seeing an algorithm name in an error is not a flaw; the HMAC token must be accepted and affect a protected resource."
+          "zh": "第 1 步以目标服务公钥字节为 HMAC 密钥签发 HS256 令牌并按脚本提交混淆与空 kid 变体，记录验证结果：混淆令牌被接受即确认算法混淆成立，再以自签管理身份访问高权接口验证完整影响。成功判据以伪造令牌的授权效果为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, sign HS256 tokens using the target service's public-key bytes as the HMAC secret and submit confusion and empty-kid variants per the script, recording verification outcomes; acceptance confirms algorithm confusion, then access a high-privilege API with a self-signed admin identity to prove full impact. Judge success by the forged token's authorization effect. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. 在验证调用中固定 RS256/ES256 等预期算法；2. 为对称和非对称密钥使用不同类型与存储，禁止跨算法复用；3. 升级 JWT 库并添加 RS→HS、未知算法和错误密钥类型测试。",
-          "en": "1. Pin the expected RS256, ES256, or other algorithm in the verification call. 2. Use distinct types and stores for symmetric and asymmetric keys and forbid cross-algorithm reuse. 3. Upgrade the JWT library and test RS-to-HS changes, unknown algorithms, and wrong key types."
+          "zh": "按签发方配置固定算法并绑定密钥类型，HMAC 与非对称密钥分库存放，验证前断言算法与密钥族匹配。修复后重放第 1 步，混淆令牌应被 401 拒绝并触发算法告警。",
+          "en": "Pin algorithms per issuer configuration bound to key types, store HMAC and asymmetric keys separately, and assert algorithm-key family matching before verification. After the fix, replay step 1: confusion tokens should get 401 with algorithm alerts."
         },
         "difficulty": "advanced"
       },
@@ -1050,20 +1050,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "该链路要求 Redis 连接具备 CONFIG 与持久化权限、进程对目标目录可写、Web 服务器会解释生成文件，三项缺一都不能形成 WebShell 执行",
-          "en": "This chain requires Redis CONFIG and persistence privileges, filesystem write access to the target directory, and a web server that interprets the generated file; without all three, no webshell execution exists"
+          "zh": "Redis 持久化配置写入 WebShell 针对暴露且高权限 Redis 把受控值写入 Web 可执行目录的场景：需要 CONFIG 权限、目录可写与 Web 解释器三项同时成立。验证 RESP SET 写入受控 PHP 内容。",
+          "en": "Redis persistence-configuration-to-webshell targets exposed, over-privileged Redis writing controlled values into web-executable directories: CONFIG permission, writable directory, and a web interpreter must all hold. It validates RESP SET writing controlled PHP content."
         },
         "vulnerability": {
-          "zh": "风险来自未授权或过度授权的 Redis 与危险文件系统边界组合，原始 RESP 数据只是传输形式；把写入成功等同于代码执行会夸大结论",
-          "en": "The risk is the combination of unauthorized or overprivileged Redis access and a dangerous filesystem boundary; RESP data is only the transport, and a successful write alone must not be equated with code execution"
+          "zh": "风险来自未授权或过度授权的 Redis 与危险文件系统边界组合，原始 RESP 数据只是传输形式；把写入成功等同于代码执行会夸大结论，三项条件缺一都不能形成 WebShell 执行。",
+          "en": "The risk combines unauthorized or over-privileged Redis with dangerous filesystem boundaries; raw RESP data is only transport—equating write success with code execution overstates the finding, and any missing condition of the three prevents webshell execution."
         },
         "exploitation": {
-          "zh": "1. 在隔离容器中确认 Redis ACL、CONFIG 权限、持久化模式和目标目录写权限；2. 使用原始 RESP 载荷写入无害固定标记，禁止使用真实后门内容，并记录 SAVE/BGSAVE 与文件哈希；3. 通过测试 Web 路由判断文件是下载、文本显示还是被解释。只有固定标记进入解释路径才证明 RCE 条件；写入非 Web 目录或静态下载属于假阳性。",
-          "en": "1. In an isolated container, verify Redis ACLs, CONFIG permission, persistence mode, and target-directory write access. 2. Use the original RESP payload with a harmless fixed marker instead of a real backdoor and record SAVE or BGSAVE plus the file hash. 3. Check through a test web route whether the file is downloaded, displayed, or interpreted. RCE conditions are proven only when the marker reaches an interpreter; writing outside the web root or static download is a false positive."
+          "zh": "按第 1 步发送长度一致的 RESP SET 消息保存隔离测试用 PHP 内容到指定键；随后在授权范围内按工具卡流程设置 dir 指向 Web 目录、dbfilename 为 shell.php 并 SAVE 落盘。命中判据为访问生成的 shell.php 并传 cmd 参数后返回命令输出。目录不可写或 Web 不解释 PHP 时链路不成立，记录具体断点；测试后恢复配置并清理文件。",
+          "en": "Per step 1, send a length-consistent RESP SET message storing isolated test PHP content under the key; then within authorization follow the tool-card flow to set dir to the web directory, dbfilename to shell.php, and SAVE to disk. A hit is command output returned when requesting the generated shell.php with a cmd parameter. If the directory is unwritable or the web server does not interpret PHP, the chain fails—record the exact break point; restore configuration and clean files after testing."
         },
         "mitigation": {
-          "zh": "1. Redis 仅监听受信网络并使用 ACL 禁止不需要的 CONFIG、SAVE 与模块命令；2. 以专用低权限账户运行 Redis，文件系统隔离且不可写 Web 根目录；3. 对 CONFIG SET、持久化路径变化和 Web 目录新增脚本文件告警。",
-          "en": "1. Expose Redis only to trusted networks and use ACLs to deny unnecessary CONFIG, SAVE, and module commands. 2. Run Redis as a dedicated low-privilege account with filesystem isolation and no write access to web roots. 3. Alert on CONFIG SET, persistence-path changes, and new script files in web directories."
+          "zh": "Redis 仅监听受信网络并使用 ACL 禁止不需要的 CONFIG、SAVE 与模块命令；以专用低权限账户运行 Redis，文件系统隔离且不可写 Web 根目录；对 CONFIG SET、持久化路径变化和 Web 目录新增脚本文件告警。修复后重放第 1 步序列，确认写入被拒绝。",
+          "en": "Bind Redis to trusted networks only and use ACLs to block unneeded CONFIG, SAVE, and module commands; run Redis under a dedicated low-privilege account with isolated filesystem that cannot write the web root; alert on CONFIG SET, persistence-path changes, and new script files in web directories. After the fix, replay the step-1 sequence and confirm writes are denied."
         },
         "difficulty": "advanced"
       },
@@ -1164,20 +1164,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Redis 写 Cron 依赖 CONFIG 权限、操作系统目录与格式、Redis 进程写权限、cron 服务读取规则和任务内容五个条件，不能仅凭 SAVE 成功判定命令执行",
-          "en": "Redis-to-cron execution depends on CONFIG permission, operating-system paths and formats, Redis process write access, cron parsing rules, and task content; a successful SAVE alone does not prove command execution"
+          "zh": "Redis 持久化配置写入 Cron 针对高权限 Redis 把持久化文件写入 Cron 读取位置的场景：依赖 CONFIG 权限、目录写权限、cron 格式与读取规则四类条件。验证 RESP 配置序列写入计划任务。",
+          "en": "Redis persistence-configuration-to-cron targets over-privileged Redis writing persistence files into cron-read locations: it depends on CONFIG permission, directory write access, cron format, and read rules. It validates the RESP configuration sequence writing a scheduled task."
         },
         "vulnerability": {
-          "zh": "当 Redis 暴露且以过高系统权限运行，攻击者可能修改持久化目录和文件名，把数据库快照写入计划任务位置；不同发行版的 cron 格式会显著影响可利用性",
-          "en": "When Redis is exposed and runs with excessive OS privileges, an attacker may change persistence paths and filenames to place a database snapshot in a scheduled-task location; cron formats vary significantly across distributions"
+          "zh": "当 Redis 暴露且以过高系统权限运行，攻击者可能修改持久化目录和文件名，把数据库快照写入计划任务位置；不同发行版的 cron 格式会显著影响可利用性，仅凭 SAVE 成功不能判定命令执行。",
+          "en": "When Redis is exposed and runs with excessive system privileges, attackers can change persistence directory and filename to write snapshots into scheduled-task locations; cron format varies significantly across distributions and strongly affects exploitability—SAVE success alone does not prove command execution."
         },
         "exploitation": {
-          "zh": "1. 在一次性 Linux 容器核对 Redis ACL、运行用户、cron 目录和实际解析格式；2. 用原始 RESP 载荷验证路径控制，但任务内容替换为写入临时日志的无害标记；3. 观察生成文件、cron 解析日志和标记时间线，并恢复配置。文件存在但 cron 拒绝格式、权限不足或服务未运行均为假阳性。",
-          "en": "1. In a disposable Linux container, inspect Redis ACLs, runtime user, cron directories, and the actual parser format. 2. Use the original RESP payload to validate path control but replace task content with a harmless marker written to a temporary log. 3. Observe the generated file, cron parser logs, and marker timeline, then restore configuration. A file that cron rejects, insufficient permissions, or a stopped cron service are false positives."
+          "zh": "在可回滚实验副本上按第 1 步发送完整 RESP 序列：CONFIG SET dir 指向 cron 目录、dbfilename 设为 root，再 SET 写入含换行任务行的键并 SAVE；命中判据为 cron 服务按计划执行任务并在 /tmp/red… 留下输出。执行后立即恢复 dir/dbfilename 配置并清理任务文件；发行版 cron 格式不同时按实际布局调整路径并记录。",
+          "en": "On a rollback-capable experimental replica, send the full RESP sequence per step 1: CONFIG SET dir to the cron directory, dbfilename to root, SET a key containing the newline-framed task line, then SAVE; a hit is cron executing the task on schedule leaving output in /tmp/red…. Restore dir/dbfilename immediately afterwards and clean the task file; when distribution cron formats differ, adjust paths to the actual layout and record them."
         },
         "mitigation": {
-          "zh": "1. 使用 Redis ACL 禁止非管理主体调用 CONFIG 与持久化命令；2. 以不可写系统计划任务目录的专用账户运行 Redis，并启用 MAC/容器隔离；3. 监控 Redis dir/dbfilename 变化、cron 目录写入和异常计划任务。",
-          "en": "1. Deny CONFIG and persistence commands to non-administrative Redis principals. 2. Run Redis as a dedicated account that cannot write system scheduling directories and apply MAC or container isolation. 3. Monitor Redis dir and dbfilename changes, cron-directory writes, and anomalous scheduled tasks."
+          "zh": "使用 Redis ACL 禁止非管理主体调用 CONFIG 与持久化命令；以不可写系统计划任务目录的专用账户运行 Redis，并启用 MAC/容器隔离；监控 Redis dir/dbfilename 变化、cron 目录写入和异常计划任务。修复后重放第 1 步序列，确认配置变更被拒绝。",
+          "en": "Use Redis ACLs to block non-administrative principals from CONFIG and persistence commands; run Redis under a dedicated account that cannot write system task directories with MAC or container isolation; monitor dir/dbfilename changes, cron-directory writes, and anomalous scheduled tasks. After the fix, replay the step-1 sequence and confirm configuration changes are denied."
         },
         "difficulty": "advanced"
       },
@@ -1390,20 +1390,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Origin 头描述发起请求的源，浏览器是否允许脚本读取响应由 CORS 响应头决定；把任意域名列表称为认证注入会遗漏真正的跨源读取条件",
-          "en": "The Origin header identifies the requesting origin, while CORS response headers determine whether browser script may read a response; calling a domain list authentication injection misses the cross-origin read condition"
+          "zh": "该 Payload 覆盖 CORS Origin 校验绕过场景，检验 API 与认证端点对特殊来源值的放行边界。验证维度为任意、后缀与端口变体 Origin 的单步矩阵，对应第 1 步。",
+          "en": "This payload covers CORS Origin-validation bypass, testing acceptance boundaries for special origin values at API and authentication endpoints. Validation is a single-step matrix of arbitrary, suffix and port origin variants, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "危险实现会反射 Origin、使用不带边界的后缀正则，或在 Access-Control-Allow-Credentials 为 true 时接受攻击者源，使浏览器暴露已认证响应",
-          "en": "A dangerous implementation reflects Origin, uses a suffix regex without label boundaries, or accepts an attacker origin while Access-Control-Allow-Credentials is true, exposing authenticated responses to browser script"
+          "zh": "根因在于 Origin 校验使用包含匹配或未归一化端口号：攻击者域出现在子串位置或以默认端口变体即可通过判定，凭据响应随之跨源可读。",
+          "en": "The root cause is origin validation using substring matching or unnormalized ports: attacker domains in substring positions or default-port variants pass the check, making credentialed responses readable cross-origin."
         },
         "exploitation": {
-          "zh": "1. 从受信源和无 Origin 请求建立 CORS 基线；2. 逐个提交原始 Origin 变体并记录 ACAO、ACAC、Vary 与预检结果；3. 在不同源浏览器页面使用测试账号读取无害受保护字段。只有浏览器允许攻击者源脚本读取带凭证响应才成立；服务器返回数据但浏览器因 CORS 阻止读取是假阳性。",
-          "en": "1. Establish CORS baselines from a trusted origin and without Origin. 2. Submit each original Origin variant and record ACAO, ACAC, Vary, and preflight behavior. 3. From another origin in a browser, use a test account to read a harmless protected field. The flaw exists only when attacker-origin script can read a credentialed response; a server response blocked by the browser is a false positive."
+          "zh": "第 1 步把外部域的协议、路径、端口与大小写变体逐条置于 Origin 头发送，记录响应中的 ACAO 与 ACAC 头：任一恶意 Origin 被反射且凭据放行即确认校验可绕过。成功判据以凭据响应头组合为准。占位符在全局变量菜单替换；命中后用浏览器页面读取响应完成完整验证。",
+          "en": "In step 1, place external-domain protocol, path, port and casing variants into the Origin header one by one, recording ACAO and ACAC in responses; any malicious origin reflected with credentials allowed confirms the bypass. Judge success by the credentialed-header combination. Replace placeholders via the global variables menu; on a hit, complete verification by reading the response from a browser page."
         },
         "mitigation": {
-          "zh": "1. 解析 Origin 并与完整 scheme/host/port 白名单精确匹配；2. 仅在必要端点启用凭证 CORS，动态响应时添加 Vary: Origin；3. 对 null、子域后缀、端口和 Unicode 域名建立浏览器回归测试。",
-          "en": "1. Parse Origin and compare the complete scheme, host, and port against an exact allowlist. 2. Enable credentialed CORS only where necessary and send Vary: Origin for dynamic responses. 3. Add browser tests for null, suffix-confused subdomains, ports, and Unicode domains."
+          "zh": "Origin 白名单做精确串匹配并归一化协议与端口，未命中一律省略 CORS 头；凭据接口叠加 CSRF Token。修复后重放第 1 步，全部变体的响应应不含 ACAO。",
+          "en": "Match origin allowlists on exact strings with normalized scheme and port, omitting CORS headers on any miss; stack CSRF tokens on credentialed APIs. After the fix, replay step 1: no variant's response should carry ACAO."
         },
         "difficulty": "intermediate"
       },
@@ -1500,20 +1500,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Referer 会受到浏览器 Referrer-Policy、协议降级、代理和隐私设置影响，适合辅助风控而不适合单独证明请求来自可信页面",
-          "en": "Referer is affected by Referrer-Policy, protocol downgrade, proxies, and privacy settings; it may assist risk scoring but should not independently prove that a request came from a trusted page"
+          "zh": "该 Payload 覆盖 Referer 访问控制绕过场景，检验把可裁剪来源头当作鉴权依据的实现缺陷。验证维度为外部域 Referer 变体的逐条提交矩阵，对应第 1 步。",
+          "en": "This payload covers Referer access-control bypass, testing flaws in implementations treating the trimmable Referer as an auth basis. Validation submits external-domain Referer variants one by one, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "如果服务端只做字符串包含或后缀匹配，并在 Referer 缺失时放行，攻击者可能用相似域名、路径或空头绕过页面来源检查，同时需要排除网关统一拒绝页、缓存响应和公开资源。",
-          "en": "If the server uses substring or suffix checks and allows missing Referer, an attacker may bypass page-origin checks with lookalike domains, crafted paths, or an absent header, while excluding gateway-generated denial pages, cached responses, and public resources."
+          "zh": "根因在于鉴权逻辑读取 Referer 做包含判断：该头可被攻击者完全控制且受 Referrer-Policy 影响，伪造受信域值即可绕过访问限制。",
+          "en": "The root cause is authorization reading Referer with containment checks: the header is fully attacker-controlled and subject to Referrer-Policy, so forged trusted-domain values bypass access restrictions."
         },
         "exploitation": {
-          "zh": "1. 使用正常业务页面请求受保护动作并记录 Referer 与授权结果；2. 逐一替换为原始 Referer 域名和路径变体，同时保留账号及请求体；3. 再测试缺失头并核对状态变化、用户身份和审计日志。只有来源变化导致原本禁止的操作成功才成立；浏览器自动裁剪路径或错误页差异是假阳性。",
-          "en": "1. Invoke the protected action from the normal business page and record Referer and authorization. 2. Replace Referer with each original domain and path variant while preserving account and body. 3. Test a missing header and verify state change, user identity, and audit log. The flaw exists only if a source change enables an otherwise denied action; browser path trimming or error-page differences are false positives."
+          "zh": "第 1 步把受信域的路径、端口与大小写 Referer 变体逐条置于受限请求发送，记录授权结果：任一伪造 Referer 放行即确认校验可绕过，并以缺失 Referer 对照验证失败关闭行为。成功判据以受限资源放行记录为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, place trusted-domain path, port and casing Referer variants into restricted requests one by one, recording authorization outcomes; any forged Referer passing confirms the bypass, contrasted with missing-Referer controls for fail-closed behavior. Judge success by restricted-resource allowance records. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. 关键操作使用服务端会话、对象级授权和 CSRF token；2. Referer 仅作辅助信号，若校验则解析完整 origin 而非子串；3. 明确处理缺失头并对来源校验分支建立测试。",
-          "en": "1. Protect sensitive actions with server sessions, object-level authorization, and CSRF tokens. 2. Use Referer only as a secondary signal and parse its complete origin rather than matching substrings. 3. Define behavior for a missing header and test every source-validation branch."
+          "zh": "移除 Referer 作为鉴权依据改用会话与权限校验，确需来源判断时按解析后的 host 精确匹配且缺失即拒绝。修复后重放第 1 步，全部变体应被拒绝。",
+          "en": "Remove Referer as an auth basis in favor of session and permission checks; where source checks are required, match parsed hosts exactly and reject on absence. After the fix, replay step 1: every variant should be denied."
         },
         "difficulty": "intermediate"
       },
@@ -1610,20 +1610,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Token 删除和置空测试关注解析器、网关与业务层对缺失值和类型异常的处理是否一致，而不是假设字符串 null 本身具有认证意义",
-          "en": "Token deletion and null testing examines whether parsers, gateways, and business logic handle missing and type-confused values consistently rather than assuming the string null has authentication meaning"
+          "zh": "该 Payload 覆盖认证中间件空值与类型异常 Token 场景，检验占位值是否被映射为已认证主体。验证维度为 null、布尔、数字与对象形 Token 的单步矩阵，对应第 1 步。",
+          "en": "This payload covers empty and type-anomalous tokens at authentication middleware, testing whether placeholder values map to authenticated principals. Validation is a single-step matrix of null, boolean, numeric and object-shaped tokens, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "弱类型比较、默认值回退、JSON 类型强制或中间件短路可能把异常 token 映射到匿名高权限上下文、缓存主体或上一次请求状态",
-          "en": "Loose comparison, default fallback, JSON coercion, or middleware short-circuiting can map malformed tokens to an anonymous privileged context, cached principal, or stale request state"
+          "zh": "根因在于令牌解析缺少类型与空值断言：宽松转换把空串或占位字符串解释为默认身份，异常输入落入错误分支反而被放行，认证边界因此失效。",
+          "en": "The root cause is token parsing lacking type and empty-value assertions: lenient coercion interprets empty strings or placeholders as default identities, and anomalous inputs fall into error branches that allow access, voiding the authentication boundary."
         },
         "exploitation": {
-          "zh": "1. 分别用有效、无效和缺失 token 建立三组响应与主体日志；2. 提交原始空值、布尔、数字和对象变体，保持端点及会话不变；3. 检查解析后的 token 类型、最终主体和受保护数据。只有异常值获得已认证主体或授权结果才确认；统一错误包装、匿名公开响应或 204 均是假阳性。",
-          "en": "1. Establish response and principal logs for valid, invalid, and absent tokens. 2. Submit the original null, boolean, numeric, and object variants while preserving endpoint and session. 3. Inspect parsed token type, final principal, and protected data. Confirm only if a malformed value yields an authenticated principal or authorization result; uniform error envelopes, anonymous public responses, and 204 responses are false positives."
+          "zh": "第 1 步按脚本把空值与类型异常 Token 以请求头与请求体两种载体逐条提交认证端点，记录放行主体与响应：任一变体通过认证即确认校验缺陷，并以随机无效令牌与有效令牌做两侧对照。成功判据以放行记录与主体身份为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, submit empty and type-anomalous tokens in both header and body carriers to the authentication endpoint one by one per the script, recording allowed principals and responses; any variant authenticating confirms the validation defect, contrasted with random-invalid and valid tokens on both sides. Judge success by allowance records and principal identity. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. 在入口层要求 token 为非空、长度受限的字符串并拒绝其他 JSON 类型；2. 验证失败必须清除主体且默认拒绝；3. 禁止跨请求缓存身份对象并对缺失、null 和类型异常增加单元测试。",
-          "en": "1. Require tokens to be non-empty length-bounded strings at the boundary and reject every other JSON type. 2. Clear the principal on validation failure and deny by default. 3. Do not cache identity objects across requests and add tests for absent, null, and type-confused values."
+          "zh": "令牌入口强制字符串类型与非空断言，解析失败一律 401 并统一错误响应；中间件对未知字段拒绝。修复后重放第 1 步，全部异常 Token 应返回一致拒绝。",
+          "en": "Enforce string-type, non-empty assertions at the token entry, returning uniform 401 on parse failures; middleware should reject unknown fields. After the fix, replay step 1: every anomalous token should get a consistent rejection."
         },
         "difficulty": "beginner"
       },
@@ -1838,20 +1838,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "JWT 综合测试必须把解析成功、签名通过和授权成功区分开；原始集合可作为候选输入，但每次测试只能改变算法、密钥或声明中的一个维度",
-          "en": "Comprehensive JWT testing must distinguish successful parsing, signature validation, and authorization; the original set is candidate input, but each test must change only one of algorithm, key, or claim"
+          "zh": "该 Payload 覆盖 JWT 验证边界的综合测试场景，检验解析、签名与授权三层的组合缺陷。验证维度为 none 令牌、算法头变体、常见弱密钥与声明篡改的分阶段对照，对应第 1 步。",
+          "en": "This payload covers comprehensive JWT validation-boundary testing, testing combined flaws across parsing, signature and authorization layers. Validation phases through none tokens, algorithm-header variants, common weak keys and claim tampering, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "当验证器接受 none、弱 HMAC 密钥或客户端控制的算法，并且业务层直接信任 role 等声明时，多个缺陷可能叠加造成身份伪造",
-          "en": "When a verifier accepts none, weak HMAC secrets, or client-controlled algorithms and business logic trusts claims such as role directly, multiple defects can combine into impersonation"
+          "zh": "根因在于 JWT 处理链对算法、密钥强度与声明校验各自松散：none 绕过、弱密钥离线破译或声明篡改任一路径成立即可伪造身份令牌。",
+          "en": "The root cause is loose handling of algorithm, key strength and claim checks across the JWT chain: any successful path among none bypass, weak-key offline cracking or claim tampering forges identity tokens."
         },
         "exploitation": {
-          "zh": "1. 用合法测试令牌记录算法、issuer、audience、时效和权限基线；2. 将原始集合拆成算法、密钥、声明三组并逐个变量复测；3. 对每个候选记录解析、签名、主体和授权四层结果。JWT 可被解码、返回统一 401 或仅暴露不同错误均不是成功，必须访问受保护资源才确认。",
-          "en": "1. Record algorithm, issuer, audience, time, and privilege baselines from a valid test token. 2. Split the original set into algorithm, secret, and claim groups and change one variable at a time. 3. Record parsing, signature, principal, and authorization outcomes for every candidate. Decoding a JWT, receiving a uniform 401, or seeing a different error is not success; access to a protected resource is required."
+          "zh": "第 1 步按脚本先提交 none 与变体算法令牌确认算法固定，再用常见弱密钥对截获令牌离线验签尝试，最后篡改声明以已知密钥重签提交：任一路径接受伪造令牌即确认对应层缺陷。成功判据以伪造令牌的授权效果为准。占位符在全局变量菜单替换；全程使用合成身份。",
+          "en": "In step 1, submit none and variant-algorithm tokens to confirm algorithm pinning per the script, then attempt offline verification of captured tokens against common weak keys, and finally tamper claims and re-sign with a known key before submitting; acceptance along any path confirms the corresponding layer defect. Judge success by forged tokens' authorization effects. Replace placeholders via the global variables menu; synthetic identities throughout."
         },
         "mitigation": {
-          "zh": "1. 固定允许算法与密钥类型并拒绝 none；2. 使用高熵密钥、轮换和安全密钥存储；3. 完整验证标准声明并在服务端重新计算权限，为所有负向变体保留回归测试。",
-          "en": "1. Pin allowed algorithms and key types and reject none. 2. Use high-entropy keys, rotation, and secure key storage. 3. Validate standard claims completely, recompute permissions server-side, and retain regression tests for every negative variant."
+          "zh": "统一 JWT 安全基线：算法白名单、密钥强度审计、验签前不采信声明。修复后重放第 1 步三条路径，全部伪造令牌应被拒绝并触发告警。",
+          "en": "Adopt a unified JWT baseline: algorithm allowlists, key-strength audits, and no claim trust before verification. After the fix, replay all three step 1 paths: every forged token should be rejected with alerts."
         },
         "difficulty": "advanced"
       },
@@ -1948,20 +1948,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "redirect_uri 决定授权码或令牌返回位置，是 OAuth 客户端绑定的核心；测试重点是授权请求和令牌交换阶段是否都绑定同一个预注册 URI",
-          "en": "redirect_uri determines where an authorization code or token is delivered and is central to OAuth client binding; both authorization and token exchange must bind the same pre-registered URI"
+          "zh": "该 Payload 覆盖 OAuth redirect_uri 严格匹配场景，检验授权服务器对未注册回调变体的拒绝边界。验证维度为路径后缀、查询占位与编码变体的单步矩阵，对应第 1 步。",
+          "en": "This payload covers OAuth redirect_uri strict matching, testing rejection boundaries for unregistered callback variants at the authorization server. Validation is a single-step matrix of path suffixes, query placeholders and encoding variants, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "前缀匹配、子串匹配、忽略端口或路径规范化差异会允许攻击者把授权响应送往控制域名，或经客户端开放重定向外带 code，还必须证明授权码或令牌最终到达攻击者控制的接收端。",
-          "en": "Prefix or substring matching, ignored ports, and path-normalization differences can send authorization responses to an attacker-controlled origin or exfiltrate a code through a client open redirect, and the authorization code or token must demonstrably reach an attacker-controlled receiver."
+          "zh": "根因在于授权服务器匹配回调时忽略路径或查询差异：未注册变体仍被接受签发 code，授权响应可被引导至攻击者可控地址并被完整窃取。",
+          "en": "The root cause is the authorization server ignoring path or query differences when matching callbacks: unregistered variants still receive codes, steering authorization responses to attacker-controlled addresses for full theft."
         },
         "exploitation": {
-          "zh": "1. 用已注册 URI 完成测试客户端授权并记录 code 与回调基线；2. 逐个提交原始外域、编码、空字节和路径变体，同时保持 client_id、state 与 PKCE 不变；3. 检查浏览器最终 Location、授权服务器日志和 code 是否可在攻击者回调兑换。仅出现 302、错误页带 code 参数或客户端页面跳转不代表窃取成功。",
-          "en": "1. Complete authorization with the registered URI for a test client and record code and callback baselines. 2. Submit the original external-host, encoded, null-byte, and path variants while preserving client_id, state, and PKCE. 3. Check the final browser Location, authorization-server log, and whether the code can be redeemed from the attacker callback. A 302, an error page containing a code parameter, or client-side navigation alone does not prove theft."
+          "zh": "第 1 步按脚本把未注册回调的路径、查询、片段与编码变体逐条提交授权端点，记录是否签发 code 或执行跳转：任一变体仍完成签发即确认绑定不严格。成功判据以授权服务器的错误码与重定向行为为准。占位符在全局变量菜单替换；先以合法回调标定基线。",
+          "en": "In step 1, submit unregistered-callback path, query, fragment and encoding variants to the authorization endpoint one by one per the script, recording whether codes are issued or redirects executed; any variant completing issuance confirms loose binding. Judge success by authorization-server error codes and redirect behavior. Replace placeholders via the global variables menu; baseline with the legitimate callback first."
         },
         "mitigation": {
-          "zh": "1. 对完整 scheme、host、port、path 做预注册精确匹配；2. 授权码与 client_id、redirect_uri 和 PKCE verifier 绑定且单次使用；3. 禁止回调端点开放重定向并测试 URL 解析边界。",
-          "en": "1. Exactly match the complete scheme, host, port, and path against pre-registered values. 2. Bind codes to client_id, redirect_uri, and the PKCE verifier and make them single-use. 3. Prohibit open redirects on callback endpoints and test URL-parsing boundaries."
+          "zh": "redirect_uri 执行注册值完整比对并禁止通配与忽略子路径，开放重定向页面不得位于回调域。修复后重放第 1 步矩阵，全部变体应返回 invalid_request。",
+          "en": "Compare redirect_uri fully against registered values, banning wildcards and subpath ignoring, with no open-redirect pages under callback domains. After the fix, replay the step 1 matrix: every variant should return invalid_request."
         },
         "difficulty": "intermediate"
       },
@@ -2058,20 +2058,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "授权码是一次性的中间凭据，安全性依赖短有效期、单次兑换和客户端上下文绑定；直接把 STOLEN_CODE 字符串发给任意端点不能构成有效测试",
-          "en": "An authorization code is a one-time intermediate credential whose security depends on short lifetime, single redemption, and client-context binding; sending a STOLEN_CODE string to an arbitrary endpoint is not a valid test"
+          "zh": "该 Payload 覆盖 OAuth 授权码重放与绑定场景，检验 code 的时效、单次性与多要素绑定。验证维度为窃取、过期、重放与异常值 code 的单步矩阵，对应第 1 步。",
+          "en": "This payload covers OAuth authorization-code replay and binding, testing code freshness, single-use and multi-factor binding. Validation is a single-step matrix of stolen, expired, replayed and anomalous codes, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "如果令牌端点未记录使用状态，或未绑定 client_id、redirect_uri、code_verifier，截获的 code 可能被重放到另一个会话或客户端",
-          "en": "If the token endpoint does not track use or bind client_id, redirect_uri, and code_verifier, an intercepted code may be replayed from another session or client"
+          "zh": "根因在于授权码消费未与客户端、redirect_uri 及 PKCE 绑定或未即时失效：被截获的 code 在有效窗口内可由任意客户端重复兑换。",
+          "en": "The root cause is code consumption unbound to client, redirect_uri and PKCE or not invalidated promptly: intercepted codes can be redeemed repeatedly by any client within their validity window."
         },
         "exploitation": {
-          "zh": "1. 为测试客户端完成一次授权并捕获未兑换 code、创建时间和绑定参数；2. 正常兑换一次后，使用原始重放、过期和空值变体再次请求令牌；3. 再用不同客户端或 verifier 兑换并核对令牌日志。只有第二次或错误上下文获得有效 token 才确认；invalid_grant、统一 400 或前端缓存结果均为正常阻断。",
-          "en": "1. Complete authorization for a test client and capture an unredeemed code, creation time, and binding parameters. 2. Redeem it normally once, then use the original replay, expired, and empty variants in another token request. 3. Attempt redemption with a different client or verifier and inspect token logs. Confirm only if a second or mismatched context obtains a valid token; invalid_grant, uniform 400, and cached UI state are expected controls."
+          "zh": "第 1 步按脚本把窃取、过期、重放与空值 code 逐条提交令牌端点，记录兑换结果：任一非本轮 code 仍换取令牌即确认绑定或失效缺失，同时核对兑换请求中的客户端凭据是否被校验。成功判据以令牌端点响应矩阵为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, submit stolen, expired, replayed and empty codes to the token endpoint one by one per the script, recording redemption outcomes; any non-current code still exchanging for tokens confirms missing binding or invalidation, also checking whether client credentials in redemption requests are verified. Judge success by the token-endpoint response matrix. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. 授权码使用高熵随机值、短有效期和原子单次消费；2. 绑定 client_id、redirect_uri 与 PKCE verifier；3. 对重放、跨客户端兑换和过期 code 建立告警与并发回归测试。",
-          "en": "1. Use high-entropy random authorization codes with short lifetimes and atomic single consumption. 2. Bind them to client_id, redirect_uri, and the PKCE verifier. 3. Alert on replay and cross-client redemption and add concurrent and expired-code tests."
+          "zh": "授权码签发即绑定客户端与回调值，兑换成功或失败均立即烧毁并叠加 PKCE 强制。修复后重放第 1 步，全部异常 code 应返回 invalid_grant。",
+          "en": "Bind codes to client and callback values at issuance, burn them immediately on success or failure, and enforce PKCE on top. After the fix, replay step 1: every anomalous code should return invalid_grant."
         },
         "difficulty": "intermediate"
       },
@@ -2172,20 +2172,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "state 用于把授权响应绑定到发起请求的用户代理状态，主要防止登录 CSRF 和响应注入；存在参数但不校验、固定值或跨会话复用都不满足目的",
-          "en": "The state parameter binds an authorization response to the user-agent state that initiated it and primarily prevents login CSRF and response injection; presence without validation, fixed values, or cross-session reuse does not satisfy that purpose"
+          "zh": "该 Payload 覆盖 OAuth state 绑定与随机性场景，检验客户端对缺失、固定与可预测 state 的处理边界。验证维度为空值、字面量与可预测值的单步矩阵，对应第 1 步。",
+          "en": "This payload covers OAuth state binding and randomness, testing client handling of missing, fixed and predictable state values. Validation is a single-step matrix of empty, literal and predictable values, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "客户端若接受缺失、空值、攻击者固定 state，或只检查格式不检查会话绑定，攻击者可把自己的授权响应植入受害者回调流程，并应使用两个隔离浏览器会话证明授权响应发生跨会话绑定。",
-          "en": "If the client accepts missing, empty, attacker-fixed state or validates format without session binding, an attacker may inject their authorization response into the victim callback flow, with two isolated browser sessions proving that the authorization response was bound across sessions."
+          "zh": "根因在于 state 未按会话存储或校验可被绕过：跨站页面携带伪造 state 完成回调即把攻击者账号绑定到受害者会话，形成登录 CSRF。",
+          "en": "The root cause is state not stored per session or checks being bypassable: cross-site pages complete callbacks with forged state, binding attacker accounts into victim sessions as login CSRF."
         },
         "exploitation": {
-          "zh": "1. 在两个独立浏览器会话分别发起 OAuth 登录并记录 state；2. 使用原始缺失、null、固定值变体以及跨会话交换 state 的回调；3. 检查最终登录主体、state 消费记录和错误页面。只有受害会话被绑定到攻击者账号或错误授权响应被接受才成立；单纯回调 200 或重新开始登录是假阳性。",
-          "en": "1. Start OAuth login in two independent browser sessions and record state values. 2. Use the original missing, null, and fixed variants and swap state values across callbacks. 3. Inspect the final signed-in principal, state-consumption record, and error page. Confirm only if the victim session is bound to the attacker account or a mismatched response is accepted; a callback 200 or restarted login is a false positive."
+          "zh": "第 1 步按脚本把缺失、空值、固定与可预测 state 逐条注入 OAuth 回调流程，记录登录是否完成及账号绑定对象：服务端不校验 state 仍建立会话即确认登录 CSRF，可用性以会话快照留证。成功判据以回调拒绝记录为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, inject missing, empty, fixed and predictable state values into the OAuth callback flow one by one per the script, recording whether logins complete and which accounts bind; the server establishing sessions without state validation confirms login CSRF, evidenced by session snapshots. Judge success by callback-rejection records. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. 使用 CSPRNG 生成高熵 state 并存储在发起会话；2. 回调时常量时间精确比较并原子单次消费；3. 设置短有效期，拒绝缺失/重复/跨会话 state 并记录告警。",
-          "en": "1. Generate high-entropy state with a CSPRNG and store it in the initiating session. 2. Compare it exactly in constant time at callback and consume it atomically once. 3. Apply a short lifetime, reject missing, duplicate, or cross-session state, and log alerts."
+          "zh": "state 由 CSPRNG 生成并与发起会话绑定存储，回调时严格比对并一次性消费。修复后重放第 1 步，全部异常 state 应被拒绝且无账号绑定发生。",
+          "en": "Generate state with a CSPRNG bound to the initiating session, compare strictly on callback and consume once. After the fix, replay step 1: every anomalous state should be rejected with no account binding."
         },
         "difficulty": "intermediate"
       },
@@ -2282,20 +2282,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "aud 表示令牌预期接收方，scope 表示授权范围；二者必须由授权服务器签发并由资源服务器独立强制，而不能通过客户端请求参数自行提升",
-          "en": "aud identifies the intended token recipient and scope identifies delegated permissions; both must be issued by the authorization server and enforced independently by the resource server rather than elevated by client parameters"
+          "zh": "该 Payload 覆盖令牌 audience 与 scope 约束场景，检验资源服务器是否校验令牌用途与权限范围。验证维度为 aud 值替换与 scope 提升的令牌请求矩阵，对应第 1 步。",
+          "en": "This payload covers token audience and scope constraints, testing whether resource servers validate token purpose and privilege range. Validation is a request matrix of aud swaps and scope elevation, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "如果 API 只验证签名而忽略 aud、scope、token_use 或 issuer，同一签名域中的低权限令牌可能在另一个服务被错误接受",
-          "en": "If an API verifies only the signature and ignores aud, scope, token_use, or issuer, a low-privilege token from the same signing domain may be accepted by another service"
+          "zh": "根因在于资源服务器只验签名不验 aud 与 scope：为其他服务或低权用途签发的令牌被当作高权凭据使用，跨服务权限边界失效。",
+          "en": "The root cause is resource servers verifying signatures but not aud and scope: tokens issued for other services or low-privilege purposes work as high-privilege credentials, voiding cross-service boundaries."
         },
         "exploitation": {
-          "zh": "1. 获取两个 audience 或 scope 不同的合法测试 token，并记录各自允许接口；2. 使用原始 aud/scope 声明与参数变体访问不匹配资源，每次保留签名和其他声明；3. 核对网关、资源服务器和审计日志中的最终权限。只有错误 audience 或缺失 scope 仍读取受保护数据才成立；解码显示 admin 或授权服务器拒绝提升均不是漏洞。",
-          "en": "1. Obtain two valid test tokens with different audiences or scopes and record their allowed endpoints. 2. Use the original aud and scope claim or parameter variants against mismatched resources while preserving signatures and other claims. 3. Verify effective permissions in gateway, resource server, and audit logs. Confirm only if a wrong audience or missing scope still reads protected data; a decoder showing admin or an authorization server rejecting elevation is not a flaw."
+          "zh": "第 1 步按脚本以低权测试令牌为基础构造 aud 为管理服务与 scope 提升的请求变体逐条提交目标 API，记录放行结果：超范围令牌访问成功即确认约束缺失。成功判据以越权访问记录为准。占位符在全局变量菜单替换；同时验证令牌类型字段是否被检查。",
+          "en": "In step 1, build request variants per the script on a low-privilege test token with aud set to management services and elevated scopes, submitting each to the target API and recording allowances; over-scoped tokens succeeding confirms missing constraints. Judge success by unauthorized-access records. Replace placeholders via the global variables menu; also verify whether token-type fields are checked."
         },
         "mitigation": {
-          "zh": "1. 每个资源服务器校验 issuer、audience、token 类型和所需 scope；2. scope 由服务端策略授予并遵循最小权限，禁止客户端任意扩大；3. 对跨 audience、缺失 scope 和 token 混用建立集成测试。",
-          "en": "1. Every resource server must validate issuer, audience, token type, and required scope. 2. Grant scope from server policy with least privilege and never let the client expand it arbitrarily. 3. Add integration tests for cross-audience use, missing scopes, and token-type confusion."
+          "zh": "资源服务器强制校验 aud 匹配本服务与 scope 覆盖所需权限，令牌类型按用途区分。修复后重放第 1 步矩阵，全部越权请求应返回 403。",
+          "en": "Resource servers must enforce aud matching their service and scope coverage of required permissions, distinguishing token types per purpose. After the fix, replay the step 1 matrix: every over-scope request should get 403."
         },
         "difficulty": "advanced"
       },
@@ -2392,20 +2392,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "PKCE 通过一次性 code_verifier 与其 challenge 把授权码绑定到发起客户端，主要降低公开客户端授权码被截获后的兑换风险",
-          "en": "PKCE binds an authorization code to the initiating client through a one-time code_verifier and its challenge, reducing intercepted-code redemption risk for public clients"
+          "zh": "该 Payload 覆盖 PKCE verifier 绑定场景，检验授权服务器对 challenge 与 verifier 对应关系的强制程度。验证维度为空值、伪造 verifier 与缺失方法的单步矩阵，对应第 1 步。",
+          "en": "This payload covers PKCE verifier binding, testing how strictly the authorization server enforces challenge-verifier correspondence. Validation is a single-step matrix of empty, forged verifiers and missing methods, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "若授权端点允许空 challenge、令牌端点忽略 verifier、接受任意方法或降级到 plain，截获 code 的攻击者可能不持有原 verifier 也能兑换 token",
-          "en": "If the authorization endpoint permits an empty challenge, the token endpoint ignores the verifier, accepts arbitrary methods, or downgrades to plain, an intercepted code may be redeemed without the original verifier"
+          "zh": "根因在于 PKCE 未被强制或 verifier 校验可跳过：拦截授权请求的攻击者以自有 verifier 或空值完成令牌交换，授权码保护被架空。",
+          "en": "The root cause is PKCE not being mandatory or verifier checks being skippable: attackers intercepting authorization requests complete token exchange with their own or empty verifiers, voiding code protection."
         },
         "exploitation": {
-          "zh": "1. 以 S256 完成一次正常测试授权并记录 challenge、code 与 verifier；2. 使用原始空值和 attacker_value 变体分别测试授权请求与令牌交换；3. 交换两个会话的 verifier 并检查 token 端点日志。只有错误或缺失 verifier 仍兑换出有效 token 才成立；授权页加载成功或 code 已失效导致的统一错误是假阳性。",
-          "en": "1. Complete a normal S256 authorization and record challenge, code, and verifier. 2. Use the original empty and attacker_value variants separately in authorization and token requests. 3. Swap verifiers across two sessions and inspect token-endpoint logs. Confirm only if a missing or wrong verifier still produces a valid token; a loaded consent page or a uniform error from an expired code is a false positive."
+          "zh": "第 1 步按脚本以空 verifier、伪造值与缺失 challenge_method 组合逐条提交令牌交换请求，记录兑换结果：任一组合仍换取令牌即确认 PKCE 绑定未强制。成功判据以令牌端点响应矩阵为准。占位符在全局变量菜单替换；先以合法 verifier 对确认基线可用。",
+          "en": "In step 1, submit token-exchange requests combining empty verifiers, forged values and missing challenge_method one by one per the script, recording redemption outcomes; any combination still exchanging tokens confirms PKCE binding is not enforced. Judge success by the token-endpoint response matrix. Replace placeholders via the global variables menu; confirm baseline viability with a legitimate verifier pair first."
         },
         "mitigation": {
-          "zh": "1. 公共客户端强制 PKCE S256 并拒绝缺失 challenge；2. 将 code 与 challenge、client_id、redirect_uri 原子绑定；3. 常量时间校验 verifier，拒绝方法降级并测试跨会话交换。",
-          "en": "1. Require PKCE S256 for public clients and reject missing challenges. 2. Atomically bind the code to challenge, client_id, and redirect_uri. 3. Verify the verifier in constant time, reject method downgrade, and test cross-session swapping."
+          "zh": "公共客户端强制 PKCE 且服务端校验 S256 方法与 verifier 匹配，缺失或不匹配一律拒绝交换。修复后重放第 1 步，全部异常组合应返回 invalid_grant。",
+          "en": "Mandate PKCE for public clients with server-side S256 method and verifier matching, rejecting exchanges on absence or mismatch. After the fix, replay step 1: every anomalous combination should return invalid_grant."
         },
         "difficulty": "intermediate"
       },
@@ -2502,20 +2502,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "SAML 响应包含多层 XML 元素和引用，安全判断必须围绕服务提供方最终使用的 Assertion，而不是仅检查文档中是否存在一个有效 Signature",
-          "en": "SAML responses contain nested XML elements and references; security depends on validating the exact Assertion consumed by the service provider rather than merely finding a valid Signature somewhere in the document"
+          "zh": "该 Payload 覆盖 SAML 断言与 XML 签名验证场景，检验服务提供方对签名包装、受众与时效属性的处理。验证维度为注释混淆、重复 ID 与声明重写的变体矩阵，对应第 1 步。",
+          "en": "This payload covers SAML assertion and XML signature validation, testing service-provider handling of signature wrappers, audience and freshness attributes. Validation is a variant matrix of comment confusion, duplicate IDs and claim rewrites, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "若实现解析与签名验证使用不同节点、允许重复 ID、忽略 Audience/Recipient/NotOnOrAfter 或接受弱签名算法，伪造断言可能在签名检查后被业务层使用",
-          "en": "If parsing and signature validation select different nodes, duplicate IDs are allowed, Audience, Recipient, or NotOnOrAfter is ignored, or weak algorithms are accepted, a forged assertion may be consumed after signature checks"
+          "zh": "根因在于验证与消费的断言对象可能不一致：签名包装让合法签名覆盖恶意声明，注释混淆与重复 ID 进一步扰乱解析器选择，身份可被替换。",
+          "en": "The root cause is potential mismatch between verified and consumed assertions: signature wrappers let valid signatures cover malicious claims, while comment confusion and duplicate IDs further confuse parser selection, enabling identity swaps."
         },
         "exploitation": {
-          "zh": "1. 在测试身份提供方获取一次合法 SAMLResponse 并记录签名引用、Assertion ID、Audience 和时效；2. 使用原始 XML 片段逐类构造重复 Assertion、NameID、算法和签名包装变体，每次只改变一个结构；3. 核对 SP 最终主体、签名库日志和断言 ID 消费记录。解析错误、不同错误页或 XML 被接受但未登录均是假阳性。",
-          "en": "1. Obtain a valid SAMLResponse from a test identity provider and record signature references, Assertion ID, Audience, and time constraints. 2. Use the original XML fragments to create duplicate-assertion, NameID, algorithm, and wrapping variants one structure at a time. 3. Verify the final SP principal, signature-library log, and Assertion-ID consumption. Parse errors, different error pages, or accepted XML without a login are false positives."
+          "zh": "第 1 步按脚本构造注释包裹的 NameID、重复 ID 断言与受众重写等变体逐条提交 ACS，记录身份解析与验证结果：篡改后的 NameID 或 Audience 被采信即确认断言验证缺陷。成功判据以登录身份与验证日志为准。占位符在全局变量菜单替换；仅使用测试 IdP 签名夹具。",
+          "en": "In step 1, build variants such as comment-wrapped NameIDs, duplicate-ID assertions and rewritten audiences per the script and submit each to the ACS, recording identity resolution and verification outcomes; tampered NameIDs or audiences being trusted confirms the assertion-validation flaw. Judge success by login identity and verification logs. Replace placeholders via the global variables menu; use only test-IdP signature fixtures."
         },
         "mitigation": {
-          "zh": "1. 使用维护中的 SAML 库并验证实际消费 Assertion 的签名与唯一 ID；2. 严格校验 Audience、Recipient、InResponseTo 和时效；3. 禁止弱算法、重复 ID 与断言重放，并保存已消费 ID。",
-          "en": "1. Use a maintained SAML library and validate the signature and unique ID of the Assertion actually consumed. 2. Enforce Audience, Recipient, InResponseTo, and time constraints. 3. Reject weak algorithms, duplicate IDs, and assertion replay and store consumed IDs."
+          "zh": "验证器只消费签名引用的断言并拒绝重复 ID 与注释混淆，Audience、Recipient 与 NotOnOrAfter 全部强制校验。修复后重放第 1 步矩阵，全部变体应被拒绝并记录告警。",
+          "en": "Verifiers must consume only signature-referenced assertions, rejecting duplicate IDs and comment confusion, with Audience, Recipient and NotOnOrAfter fully enforced. After the fix, replay the step 1 matrix: every variant should be rejected with alerts."
         },
         "difficulty": "advanced"
       },
@@ -2611,20 +2611,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "OAuth 参数只有放在正确端点和流程阶段才有意义；把所有候选一次提交无法区分客户端注册错误、授权策略缺陷和单纯的参数解析失败",
-          "en": "OAuth parameters are meaningful only at the correct endpoint and protocol stage; submitting every candidate together cannot distinguish client-registration mistakes, authorization-policy flaws, and simple parsing errors"
+          "zh": "该 Payload 覆盖 OAuth 参数与流程约束场景，检验授权与令牌端点对 response_type、grant_type 等参数的策略一致性。验证维度为响应类型混合、客户端伪造与流程切换变体的单步矩阵，对应第 1 步。",
+          "en": "This payload covers OAuth parameter and flow constraints, testing policy consistency across authorization and token endpoints for response_type, grant_type and peers. Validation is a single-step matrix of mixed response types, client forgery and flow-switching variants, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "授权服务器若允许未注册 response_type 或 grant_type、把公共客户端当机密客户端、忽略 redirect_uri 或 scope 策略，可能签发超出客户端许可的 token",
-          "en": "An authorization server that permits unregistered response types or grant types, treats a public client as confidential, or ignores redirect URI or scope policy may issue tokens beyond the client's registration"
+          "zh": "根因在于端点对参数组合缺少注册策略约束：response_type 混用、grant_type 越权切换或 client_id 伪造未被拒绝时，授权流程被诱导进入非预期分支。",
+          "en": "The root cause is endpoints lacking registered policy constraints on parameter combinations: mixed response_types, unauthorized grant_type switches or forged client_ids go unrefused, steering flows into unintended branches."
         },
         "exploitation": {
-          "zh": "1. 导出测试客户端注册的 grant、response_type、redirect_uri 与 scope 基线；2. 按授权端点和令牌端点拆分原始参数，每次只测试一个不匹配值；3. 检查签发 token 的 audience、scope、主体与授权服务器日志。出现协议错误、登录页或无效 token 不是漏洞，必须证明服务端签发了超出注册策略的有效凭据。",
-          "en": "1. Export the test client's registered grants, response types, redirect URIs, and scopes. 2. Split the original parameters between authorization and token endpoints and test one mismatched value at a time. 3. Inspect audience, scope, principal, and authorization-server logs for any issued token. Protocol errors, a login page, or an invalid token are not flaws; the server must issue a valid credential outside registration policy."
+          "zh": "第 1 步按脚本把 response_type 混合值、未注册 client_id 与 grant_type 切换等变体逐条加入授权与令牌请求，记录流程行为差异：出现跳过同意、隐式令牌直发或错误流程即确认约束缺失。成功判据以端点行为矩阵为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, add variants such as mixed response_type values, unregistered client_ids and grant_type switches to authorization and token requests one by one per the script, recording behavioral differences; consent skips, implicit tokens issued directly or wrong flows confirm missing constraints. Judge success by the endpoint-behavior matrix. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. 为每个 client 精确注册允许的 grant、response_type、redirect_uri 与 scope；2. 禁止隐式和密码模式等不需要的旧流程，采用授权码+PKCE；3. 在每个协议阶段验证参数组合并记录异常签发。",
-          "en": "1. Register exact grants, response types, redirect URIs, and scopes for every client. 2. Disable unnecessary legacy flows such as implicit and password grants and use authorization code with PKCE. 3. Validate parameter combinations at every protocol stage and log anomalous issuance."
+          "zh": "按客户端注册固化允许的 response_type 与 grant_type 组合，未知参数拒绝并审计异常流程请求。修复后重放第 1 步矩阵，全部变体应返回 invalid_request 或被拒绝。",
+          "en": "Fix allowed response_type and grant_type combinations per client registration, rejecting unknown parameters and auditing anomalous flow requests. After the fix, replay the step 1 matrix: every variant should return invalid_request or be denied."
         },
         "difficulty": "advanced"
       },
@@ -2721,20 +2721,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "用户名字典只有与成对的存在/不存在测试账号、稳定响应采样和速率控制结合时才构成枚举测试；名称列表本身不等于已发现真实账号",
-          "en": "A username dictionary becomes an enumeration test only with paired existing and nonexistent test accounts, stable response sampling, and rate control; the list itself does not reveal real accounts"
+          "zh": "该 Payload 覆盖常见用户名枚举场景，检验注册、登录与重置入口对账号存在性的信息泄露差异。验证维度为常见用户名清单在三类入口的差异化提交与响应比对，对应第 1 步。",
+          "en": "This payload covers common username enumeration, testing information-disclosure differences on account existence across registration, login and reset entries. Validation submits a common-username list differentially across the three entries with response comparison, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "登录、注册或找回密码接口若在状态码、正文、响应时间、邮件副作用或限速策略上区别对待存在账号，攻击者可以批量确认有效用户名",
-          "en": "If login, registration, or password-recovery endpoints treat existing accounts differently in status, body, timing, email side effects, or rate limits, an attacker can enumerate valid usernames"
+          "zh": "根因在于接口对存在与不存在账号返回不同提示、耗时或流程分支：攻击者据此批量确认有效用户名，为口令喷洒与定向钓鱼提供目标清单。",
+          "en": "The root cause is interfaces returning different messages, latencies or flow branches for existing versus absent accounts: attackers bulk-confirm valid usernames, feeding password spraying and targeted phishing lists."
         },
         "exploitation": {
-          "zh": "1. 创建一个已知存在和多个随机不存在的测试用户名，重复采样状态码、正文长度与时间；2. 在低速率下使用原始候选集合，但只记录测试环境结果；3. 比较统计分布、邮件队列和审计日志。单次时间差、CDN 抖动、验证码或全局限速造成的差异是假阳性。",
-          "en": "1. Create one known existing and several random nonexistent test usernames and repeatedly sample status, body length, and timing. 2. Use the original candidate set at a low rate and record only test-environment results. 3. Compare distributions, mail queue, and audit logs. A single timing difference, CDN jitter, CAPTCHA, or global rate limiting is a false positive."
+          "zh": "第 1 步把清单中的常见用户名逐条提交注册、登录与重置入口，记录响应文案、状态码与耗时差异：已存在提示或可测量的时间差即确认枚举面，绘制差异矩阵作为证据。成功判据以响应差异的可区分性为准。占位符在全局变量菜单替换；请求频率控制在授权阈值内。",
+          "en": "In step 1, submit common usernames from the list to registration, login and reset entries one by one, recording message, status and latency differences; existing-user notices or measurable timing deltas confirm the enumeration surface, charted into a differential matrix as evidence. Judge success by distinguishability of response differences. Replace placeholders via the global variables menu; keep request rates within authorized thresholds."
         },
         "mitigation": {
-          "zh": "1. 对存在与不存在账号返回统一消息、状态和近似耗时；2. 为登录、注册与找回接口实施按账号和来源组合限速；3. 邮件发送与审计不得向客户端泄露账号状态，并监控枚举模式。",
-          "en": "1. Return uniform messages, status codes, and approximately equal timing for existing and nonexistent accounts. 2. Rate-limit login, registration, and recovery by both account and source. 3. Keep mail delivery and audit state hidden from the client and monitor enumeration patterns."
+          "zh": "三类入口返回统一提示与常量耗时，注册流程延迟到邮件确认阶段暴露结果。修复后重放第 1 步，存在与不存在账号的响应应不可区分。",
+          "en": "Return uniform messages and constant latencies across the three entries, deferring registration outcomes to the email-confirmation stage. After the fix, replay step 1: responses for existing and absent accounts should be indistinguishable."
         },
         "difficulty": "beginner"
       },
@@ -2830,20 +2830,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "该集合由用户相关 API 路径组成，重点是验证路由和对象标识是否泄露，而不是把路径列表误归为认证 Payload；枚举结果还需对象级授权复核",
-          "en": "This set contains user-related API paths and is intended to test route and object-identifier disclosure rather than act as an authentication payload; any enumeration result also requires object-level authorization review"
+          "zh": "该 Payload 覆盖 API 用户端点枚举场景，检验资源路径与差异响应对账号及接口结构信息的泄露程度。验证维度为用户与管理路径变体的逐条探测，对应第 1 步。",
+          "en": "This payload covers API user-endpoint enumeration, testing how resource paths and differential responses disclose account and API-structure information. Validation probes user and admin path variants one by one, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "API 若对存在和不存在用户返回不同状态或结构、公开搜索接口、使用可预测路径且缺少资源级授权，可能泄露账号与内部版本信息",
-          "en": "An API may disclose accounts and internal versions when it returns different structures for existing users, exposes search, uses predictable paths, or omits resource-level authorization"
+          "zh": "根因在于用户资源路径可预测且错误响应差异化：有效路径返回数据或结构化错误，无效路径返回通用 404，攻击者据此枚举账号与接口结构。",
+          "en": "The root cause is predictable user-resource paths with differential error responses: valid paths return data or structured errors while invalid ones give generic 404s, letting attackers enumerate accounts and API structure."
         },
         "exploitation": {
-          "zh": "1. 用 API 文档或正常客户端请求建立已知存在/不存在资源基线；2. 逐项请求原始端点并保持身份、方法和 Accept 头一致；3. 对比状态、schema、缓存头与审计日志，再用另一测试账号验证对象授权。网关 404 模板、静态 SPA 回退或公开资料接口是假阳性。",
-          "en": "1. Use API documentation or normal client traffic to establish existing and nonexistent resource baselines. 2. Request each original endpoint while keeping identity, method, and Accept headers constant. 3. Compare status, schema, cache headers, and audit logs and then verify object authorization with another test account. Gateway 404 templates, SPA fallbacks, and intentionally public profiles are false positives."
+          "zh": "第 1 步按脚本逐条请求用户与管理路径变体，记录状态码、响应结构与大小：任一路径返回有效用户数据或差异化错误即确认枚举面，同时对比认证前后的差异以界定泄露条件。成功判据以路径响应矩阵为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, request user and admin path variants one by one per the script, recording status codes, response shapes and sizes; any path returning valid user data or differential errors confirms the enumeration surface, contrasting pre- and post-authentication to bound disclosure conditions. Judge success by the path-response matrix. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. 对用户资源实施对象级授权并最小化响应字段；2. 对不存在和无权限资源采用一致的错误策略，限制搜索与批量枚举；3. 为版本路由、缓存和 API 网关回退建立测试与监控。",
-          "en": "1. Enforce object-level authorization and minimize fields on user resources. 2. Use a consistent error strategy for nonexistent and unauthorized resources and limit search and bulk enumeration. 3. Test and monitor versioned routes, caches, and API-gateway fallbacks."
+          "zh": "用户资源改用不可枚举标识并统一错误响应结构，未授权访问一律返回通用 404。修复后重放第 1 步，全部路径应返回一致的匿名化响应。",
+          "en": "Switch user resources to non-enumerable identifiers with unified error shapes, returning generic 404 for all unauthorized access. After the fix, replay step 1: every path should return consistent anonymized responses."
         },
         "difficulty": "intermediate"
       },
@@ -2940,20 +2940,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "GraphQL 通常始终返回 HTTP 200，并在 data 与 errors 中表达结果；账号枚举必须比较字段级数据、错误路径和 resolver 行为，不能只看状态码",
-          "en": "GraphQL commonly returns HTTP 200 and represents outcomes in data and errors; account enumeration must compare field data, error paths, and resolver behavior rather than status alone"
+          "zh": "该 Payload 覆盖 GraphQL 用户存在性枚举场景，检验 user 查询对存在与不存在账号的响应差异及字段授权。验证维度为用户名与邮箱查询参数的差异化提交，对应第 1 步。",
+          "en": "This payload covers GraphQL user-existence enumeration, testing response differences between existing and absent accounts on user queries and field authorization. Validation submits username and email query parameters differentially, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "resolver 若对存在和不存在用户返回不同错误、暴露稳定 ID，或允许未授权查询 email、role 等字段，就会泄露账号存在性和敏感对象信息",
-          "en": "A resolver discloses account existence and sensitive object information when existing and nonexistent users produce distinct errors, stable IDs are exposed, or unauthorized clients can query fields such as email or role"
+          "zh": "根因在于解析器对未命中对象返回结构化错误或 null 差异：响应形状本身泄露账号存在性，且查询不受字段级授权约束时信息进一步外溢。",
+          "en": "The root cause is resolvers returning structured errors or null differences for misses: response shape itself discloses account existence, and without field-level authorization the information leaks further."
         },
         "exploitation": {
-          "zh": "1. 用已知存在和随机不存在的测试账号建立 GraphQL data/errors 基线；2. 逐项提交原始 username 与 email 查询，保持 operationName、variables 和身份一致；3. 对比错误 path、null 位置、响应时间和 resolver 日志，并验证敏感字段权限。仅 HTTP 200、通用 validation error 或 schema 不含该字段均是假阳性。",
-          "en": "1. Build GraphQL data and errors baselines with known existing and random nonexistent test accounts. 2. Submit each original username and email query while preserving operationName, variables, and identity. 3. Compare error paths, null positions, timing, and resolver logs and verify sensitive-field authorization. HTTP 200 alone, a generic validation error, or a schema without the field are false positives."
+          "zh": "第 1 步按脚本对已知存在与确定不存在的用户名和邮箱逐条发起 user 查询，记录返回结构与错误文案：两类响应可区分即确认枚举面，再以无权限身份查询敏感字段验证授权缺口。成功判据以响应差异矩阵为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, issue user queries for known-existing and certainly-absent usernames and emails one by one per the script, recording return shapes and error texts; distinguishable responses confirm the enumeration surface, then query sensitive fields as an unauthorized identity to verify authorization gaps. Judge success by the response-difference matrix. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. resolver 对存在性失败返回一致结果并避免泄露稳定内部 ID；2. 对每个对象和字段实施授权及最小字段暴露；3. 限制查询复杂度、别名批量枚举与速率，并监控重复候选查询。",
-          "en": "1. Return consistent resolver results for existence checks and avoid exposing stable internal IDs. 2. Enforce authorization at object and field level and minimize fields. 3. Limit query complexity, alias-based batching, and rate and monitor repeated candidate queries."
+          "zh": "未命中查询返回与空结果一致的统一结构并延迟到授权后才区分，用户标识改用不可枚举 ID。修复后重放第 1 步，两类查询的响应应不可区分。",
+          "en": "Return uniform shapes identical to empty results for misses, deferring distinctions until after authorization, and switch user identifiers to non-enumerable IDs. After the fix, replay step 1: both query classes should be indistinguishable."
         },
         "difficulty": "intermediate"
       },
@@ -3050,20 +3050,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "%0d%0a 只有经过应用或代理解码并进入响应头值时才会形成 CRLF 注入；载荷出现在请求中、日志中或正文中并不等于浏览器收到新 Cookie",
-          "en": "The encoded CRLF sequence becomes an injection only when an application or proxy decodes it into a response-header value; appearing in a request, log, or body does not mean the browser received a new cookie"
+          "zh": "该 Payload 覆盖认证会话 Set-Cookie 注入场景，检验未编码输入进入响应头后的会话固定与拆分影响。验证维度为多类会话 Cookie 名的 CRLF 注入变体矩阵，对应第 1 步。",
+          "en": "This payload covers Set-Cookie injection on authentication sessions, testing session-fixation and splitting impacts when unencoded input reaches response headers. Validation is a CRLF injection variant matrix over multiple session cookie names, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "当 Location、文件名或自定义头直接拼接用户输入且未拒绝 CR/LF，攻击者可以终止原头并附加 Set-Cookie，影响后续会话解析",
-          "en": "When Location, filename, or a custom header concatenates user input without rejecting CR and LF, an attacker can terminate the original header and append Set-Cookie, affecting later session parsing"
+          "zh": "根因在于登录或会话接口把用户输入写入 Set-Cookie 值而未过滤换行：攻击者注入攻击者会话 ID 或追加任意头，固定受害者会话或拆分响应。",
+          "en": "The root cause is login or session interfaces writing user input into Set-Cookie values without newline filtering: attackers inject their session IDs or append arbitrary headers, fixing victim sessions or splitting responses."
         },
         "exploitation": {
-          "zh": "1. 找到会把输入反射到响应头的参数，并用普通值记录原始头基线；2. 逐项提交原始编码 CRLF 与 Set-Cookie 变体，抓取浏览器前的原始字节和代理日志；3. 在隔离配置下确认浏览器 Cookie 存储及下一请求是否携带。正文出现字符串、代理规范化删除换行或抓包工具重排头均是假阳性。",
-          "en": "1. Find a parameter reflected into a response header and record the baseline with a normal value. 2. Submit the original encoded CRLF and Set-Cookie variants and capture raw bytes before the browser plus proxy logs. 3. In an isolated profile, verify browser cookie storage and whether the next request sends it. A string in the body, proxy newline removal, or header reformatting by a capture tool are false positives."
+          "zh": "第 1 步把 Set-Cookie 注入变体逐条置于可回显的头值或路径参数提交，检查响应头是否出现攻击者可控的会话 Cookie：命中后在浏览器验证 Cookie 被实际设置，再以固定会话访问受保护端点验证完整影响。成功判据以浏览器 Cookie 状态为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, submit Set-Cookie injection variants one by one in echoable header values or path parameters, checking responses for attacker-controlled session cookies; on a hit, verify in a browser that the cookie is actually set, then access protected endpoints with the fixed session to prove full impact. Judge success by browser cookie state. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. 响应头值使用框架 API 并拒绝所有 CR/LF 字符及编码变体；2. Cookie 仅由服务端固定逻辑生成，设置 Secure、HttpOnly、SameSite 与作用域；3. 在代理和应用层增加响应拆分负向测试与异常头告警。",
-          "en": "1. Build response headers through framework APIs and reject CR and LF plus encoded variants. 2. Generate cookies only from fixed server logic and set Secure, HttpOnly, SameSite, and scope. 3. Add response-splitting negative tests and anomalous-header alerts at proxy and application layers."
+          "zh": "会话值进入响应头前做严格字符校验并拒绝换行，框架层启用头注入防护；登录后轮换会话 ID。修复后重放第 1 步，全部变体应被过滤且无异常 Cookie 生成。",
+          "en": "Strictly validate characters before session values enter headers and reject newlines, enabling framework header-injection protections; rotate session IDs after login. After the fix, replay step 1: every variant should be filtered with no anomalous cookies set."
         },
         "difficulty": "advanced"
       },
@@ -3161,20 +3161,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "会话固定要求攻击者能够让受害者使用一个已知 Session ID，且应用在认证状态提升时不轮换该 ID；只接受某个 Cookie 名并不足以证明漏洞",
-          "en": "Session fixation requires the attacker to make the victim use a known session ID and the application to retain that ID across authentication; merely accepting a cookie name does not prove the issue"
+          "zh": "该 Payload 覆盖预设会话标识的会话固定场景，检验主流框架会话 Cookie 在登录后是否沿用攻击者已知值。验证维度为多框架会话名的预设 ID 注入与登录后复用，对应第 1 步。",
+          "en": "This payload covers session fixation via preset session identifiers, testing whether mainstream framework session cookies keep attacker-known values after login. Validation injects preset IDs across framework cookie names and reuses them post-login, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "应用若接受 URL、Cookie 或隐藏字段中的客户端预设会话标识，并在登录后沿用同一服务端会话记录，攻击者可用已知 ID 接管会话",
-          "en": "If an application accepts a client-supplied session identifier from a URL, cookie, or hidden field and reuses the same server session after login, an attacker can take over the session with the known ID"
+          "zh": "根因在于登录成功后未轮换会话 ID 且接受请求中预设的会话值：攻击者先把已知 ID 种入受害者浏览器，登录完成后即可直接复用该已认证会话。",
+          "en": "The root cause is session IDs not rotating after successful login while accepting preset values from requests: attackers first seed a known ID into the victim browser, then reuse the authenticated session outright after login."
         },
         "exploitation": {
-          "zh": "1. 在未登录测试浏览器设置一个原始预设 ID 并记录服务端会话；2. 使用该浏览器登录测试账号，比较登录前后 Cookie、服务端 session 主键和过期时间；3. 从独立浏览器仅使用旧 ID 访问无害受保护页面。只有旧 ID 获得已认证主体才成立；Cookie 值未变但服务端映射已轮换、或旧 ID 被拒绝是假阳性。",
-          "en": "1. Set one original preset ID in an unauthenticated test browser and record the server session. 2. Log in with that browser and compare cookie value, server session key, and expiry before and after authentication. 3. From an independent browser, use only the old ID on a harmless protected page. Confirm only if the old ID yields the authenticated principal; an unchanged cookie backed by a rotated server mapping or a rejected old ID is a false positive."
+          "zh": "第 1 步按脚本把各框架会话 Cookie 名的预设值置入请求发起登录，登录成功后以同一 ID 访问受保护页面：会话有效且身份为目标用户即确认会话固定成立。成功判据以预设 ID 登录后的授权访问为准。占位符在全局变量菜单替换；同时记录登录前后 Cookie 变化作为轮换行为证据。",
+          "en": "In step 1, seed preset values for each framework's session cookie name into the request and initiate login per the script, then access a protected page with the same ID; a valid session under the target identity confirms fixation. Judge success by authorized access under the preset ID post-login. Replace placeholders via the global variables menu; record cookie changes across login as rotation-behavior evidence."
         },
         "mitigation": {
-          "zh": "1. 登录、权限提升和敏感身份切换后轮换 Session ID 并销毁旧会话；2. 禁止从 URL 接受会话 ID，Cookie 设置 Secure、HttpOnly 与 SameSite；3. 绑定服务端会话生命周期并测试旧 ID 重放。",
-          "en": "1. Rotate the session ID and destroy the old session after login, privilege elevation, and sensitive identity changes. 2. Do not accept session IDs from URLs and set Secure, HttpOnly, and SameSite cookies. 3. Enforce server-side session lifetime and test old-ID replay."
+          "zh": "登录与权限变更时强制轮换会话 ID，拒绝请求携带的非服务端会话值并设置会话 Cookie 为 HttpOnly。修复后重放第 1 步，预设 ID 应在登录后被替换为全新值。",
+          "en": "Force session-ID rotation on login and privilege changes, refuse non-server session values from requests, and mark session cookies HttpOnly. After the fix, replay step 1: preset IDs should be replaced by brand-new values after login."
         },
         "difficulty": "intermediate"
       },
@@ -3274,20 +3274,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "把会话标识放在 URL 会进入浏览历史、日志和 Referer；若应用还接受攻击者预设值，就同时扩大泄露和会话固定风险，并关联服务端会话日志确认传播路径。",
-          "en": "Putting session identifiers in URLs exposes them to browser history, logs, and Referer; if the application also accepts attacker-preset values, it compounds leakage and session-fixation risk, with server-side session logs correlated to confirm the propagation path."
+          "zh": "该 Payload 覆盖 URL 参数会话标识场景，检验应用是否从查询串读取会话或令牌并优先于安全 Cookie。验证维度为多类会话参数名的 URL 注入对照，对应第 1 步。",
+          "en": "This payload covers session identifiers in URL parameters, testing whether the app reads sessions or tokens from query strings ahead of secure cookies. Validation injects multiple session parameter names via URL, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "中间件若从 query 读取 session、token 或 sid，并在 Cookie 之前解析或跨登录保留该值，攻击者可影响最终身份凭据",
-          "en": "If middleware reads session, token, or sid from the query and parses it before cookies or retains it across login, an attacker can influence the final identity credential"
+          "zh": "根因在于应用为兼容旧客户端保留 URL 会话参数且优先级高于 Cookie：会话值经浏览器历史、代理与 Referer 外泄，预设参数即完成会话固定。",
+          "en": "The root cause is apps keeping URL session parameters for legacy compatibility at higher priority than cookies: session values leak via history, proxies and Referer, and preset parameters achieve fixation."
         },
         "exploitation": {
-          "zh": "1. 用测试账号记录仅 Cookie、仅 URL 和两者冲突时的主体基线；2. 逐项使用原始查询参数并设置不同的安全 Cookie，观察服务端选择来源；3. 登录后检查 URL 值是否被轮换、写入日志或通过 Referer 外传。只有 URL 值控制已认证主体才是会话注入；被忽略、立即清除或仅产生 400 是正常阻断。",
-          "en": "1. Record principal baselines for cookie-only, URL-only, and conflicting values with a test account. 2. Use each original query parameter while setting a different secure cookie and observe which source the server chooses. 3. After login, check whether the URL value is rotated, logged, or leaked through Referer. Session injection exists only if the URL value controls an authenticated principal; ignored, immediately cleared, or 400 responses are expected controls."
+          "zh": "第 1 步按脚本把各类会话参数名与预设值附加到目标 URL 请求，记录服务端采用的会话来源与主体：URL 值被采纳即确认会话暴露面，再检查访问日志与 Referer 确认外泄路径。成功判据以服务端会话决策为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, append session parameter names with preset values to target URLs per the script, recording which session source and principal the server adopts; adoption of the URL value confirms the exposure surface, then check access logs and Referer for leak paths. Judge success by the server's session decision. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. 会话和 bearer token 仅从安全 Cookie 或 Authorization 头读取；2. 拒绝 URL 中的会话参数并从日志、监控和重定向中清理敏感查询；3. 登录后轮换会话并测试来源冲突。",
-          "en": "1. Read sessions and bearer tokens only from secure cookies or the Authorization header. 2. Reject session parameters in URLs and scrub sensitive queries from logs, monitoring, and redirects. 3. Rotate sessions after login and test source conflicts."
+          "zh": "移除 URL 会话参数支持并强制 Cookie 承载会话，日志与监控对含会话样式的 URL 告警脱敏。修复后重放第 1 步，URL 参数应被忽略且历史链接无法复用会话。",
+          "en": "Remove URL session-parameter support and enforce cookie-based sessions, masking and alerting on session-shaped URLs in logs. After the fix, replay step 1: URL parameters should be ignored and historical links unable to reuse sessions."
         },
         "difficulty": "intermediate"
       },
@@ -3383,20 +3383,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Referer 是浏览器提供的来源信息，不是凭据传输通道；从其中解析 session 或 token 会把可伪造、可缺失且会被策略裁剪的值升级为身份材料",
-          "en": "Referer is browser-provided source information, not a credential transport; parsing session or token values from it promotes spoofable, optional, and policy-trimmed data into identity material"
+          "zh": "该 Payload 覆盖 Referer 中的会话标识解析场景，检验后端是否从来源头查询串提取凭据并作为认证状态。验证维度为携带会话参数的 Referer 变体注入，对应第 1 步。",
+          "en": "This payload covers session identifiers parsed from Referer, testing whether backends extract credentials from source-header query strings as authentication state. Validation injects Referer variants carrying session parameters, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "应用或旧版 SSO 适配器若扫描 Referer 查询串并覆盖 Cookie/Authorization 身份，攻击者可通过受控链接或代理头注入预设会话",
-          "en": "If an application or legacy SSO adapter scans the Referer query and overrides cookie or Authorization identity, an attacker can inject a preset session through a crafted link or proxy header"
+          "zh": "根因在于后端兼容逻辑从 Referer 提取会话参数：该头可被任意站点控制，跨站页面构造含会话值的来源即可劫持或固定目标会话。",
+          "en": "The root cause is backend compatibility logic extracting session parameters from Referer: the header is controllable by any site, so cross-site pages craft sources carrying session values to hijack or fix target sessions."
         },
         "exploitation": {
-          "zh": "1. 记录正常页面跳转时 Referer 与最终主体；2. 使用原始带 session/token 的 Referer 变体，同时提供冲突 Cookie，确认后端来源优先级；3. 通过真实浏览器和直接 HTTP 客户端复测并查看身份日志。仅直接客户端可伪造但浏览器路径无法产生、或值只写日志不参与认证时是假阳性。",
-          "en": "1. Record Referer and final principal during normal navigation. 2. Use the original Referer variants carrying session or token values while supplying a conflicting cookie and observe backend precedence. 3. Retest with a real browser and a direct HTTP client and inspect identity logs. A value that only a raw client can spoof but a browser path cannot produce, or that is merely logged, is a false positive."
+          "zh": "第 1 步按脚本把携带各类会话参数的 Referer 变体注入受保护请求，记录服务端是否按 Referer 值建立或切换身份：来源头中的会话被采纳即确认解析缺陷，并以正常 Cookie 对照验证优先级。成功判据以服务端身份决策为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, inject Referer variants carrying session parameters into protected requests per the script, recording whether the server adopts the Referer value to establish or switch identity; a Referer-borne session being honored confirms the parsing flaw, contrasted with normal cookies for precedence. Judge success by the server's identity decision. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. 永不从 Referer 读取认证凭据，只接受受支持的 Cookie/Authorization 通道；2. 对来源信息进行独立解析并限制为风控辅助；3. 删除遗留 SSO Referer 解析逻辑并增加冲突来源测试。",
-          "en": "1. Never read authentication credentials from Referer and accept only supported cookie or Authorization channels. 2. Parse source information independently and use it only as a secondary risk signal. 3. Remove legacy Referer-based SSO parsing and add conflicting-source tests."
+          "zh": "删除从 Referer 提取凭据的兼容逻辑，会话仅从 Cookie 或 Authorization 读取并配置 Referrer-Policy 限制外泄。修复后重放第 1 步，Referer 会话值应被完全忽略。",
+          "en": "Remove credential-extraction compatibility from Referer handling, reading sessions only from Cookie or Authorization, and set Referrer-Policy to curb leaks. After the fix, replay step 1: Referer session values should be ignored entirely."
         },
         "difficulty": "advanced"
       },
@@ -3497,20 +3497,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "会话 ID 安全取决于服务端生成的不可预测性和生命周期，客户端提供的固定字符串只有在被接受并映射到有效服务端会话时才有风险",
-          "en": "Session ID security depends on server-generated unpredictability and lifecycle; client-supplied fixed strings are risky only if accepted and mapped to valid server-side sessions"
+          "zh": "该 Payload 覆盖低熵会话标识检测场景，检验服务端对重复与可预测会话值的接受度及登录轮换行为。验证维度为重复字符与顺序模式 ID 的逐条注入，对应第 1 步。",
+          "en": "This payload covers low-entropy session-ID detection, testing server acceptance of repeated and predictable values and post-login rotation. Validation injects repeated-character and sequential-pattern IDs one by one, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "若应用直接采用客户端 ID、使用计数器或可预测模板，或在认证后不轮换，攻击者可猜测或预设另一个用户的会话标识，并应通过服务端会话映射确认身份是否真正被继承。",
-          "en": "If an application adopts client IDs directly, uses counters or predictable templates, or does not rotate after authentication, an attacker may guess or preset another user's session identifier, with server-side session mapping used to confirm whether identity was actually inherited."
+          "zh": "根因在于会话 ID 生成未使用 CSPRNG或接受了客户端提供的值：低熵 ID 可被猜测命中，登录不轮换则弱值可长期复用。",
+          "en": "The root cause is session IDs generated without a CSPRNG or accepted from clients: low-entropy IDs are guessable, and without login rotation weak values stay reusable indefinitely."
         },
         "exploitation": {
-          "zh": "1. 多次创建匿名和已认证测试会话，收集服务端生成 ID 的长度、字符集与唯一性；2. 逐项提交原始固定值并观察服务器是接受、替换还是拒绝；3. 登录后验证 ID 轮换并用第二浏览器重放。短样本中出现相似前缀或 Cookie 回显不证明低熵，必须有可预测生成或有效会话映射证据。",
-          "en": "1. Create many anonymous and authenticated test sessions and collect generated ID length, alphabet, and uniqueness. 2. Submit each original fixed value and observe whether the server accepts, replaces, or rejects it. 3. Verify rotation after login and replay from a second browser. Similar prefixes in a small sample or cookie echo does not prove low entropy; predictable generation or valid session mapping is required."
+          "zh": "第 1 步按脚本把全零、全 f 与顺序字符等低熵值置入会话 Cookie 请求受保护端点，记录服务端是否建立会话；命中后再验证登录流程是否生成新 ID。低熵值获得会话即确认熵缺陷。成功判据以会话建立与轮换记录为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, seed all-zero, all-f and sequential-character low-entropy values into session cookies against protected endpoints per the script, recording whether the server establishes sessions; on a hit, verify whether login generates fresh IDs. A low-entropy value gaining a session confirms the entropy defect. Judge success by session-establishment and rotation records. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. 使用 CSPRNG 生成至少 128 位不可预测会话 ID；2. 拒绝客户端选定 ID，并在登录和权限变化后轮换；3. 设置短闲置/绝对超时、并发限制和会话异常检测。",
-          "en": "1. Generate at least 128 bits of unpredictable session ID with a CSPRNG. 2. Reject client-chosen IDs and rotate after login and privilege changes. 3. Apply short idle and absolute timeouts, concurrency controls, and session-anomaly detection."
+          "zh": "会话 ID 改用 128 位以上 CSPRNG 输出并拒绝客户端提供值，登录与会权变更强制轮换。修复后重放第 1 步，低熵值应全部被拒绝且登录生成全新 ID。",
+          "en": "Generate session IDs from 128-bit-plus CSPRNG output, refuse client-supplied values, and force rotation on login and privilege changes. After the fix, replay step 1: low-entropy values should all be rejected and logins mint fresh IDs."
         },
         "difficulty": "intermediate"
       },
@@ -3606,20 +3606,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "该问题不是伪造 Referer，而是敏感 token 出现在当前页面 URL 后，浏览器依据 Referrer-Policy 把完整或裁剪后的地址发送给下一接收方",
-          "en": "This issue is not about forging Referer; it occurs when a sensitive token appears in the current page URL and the browser sends the full or trimmed address to the next recipient according to Referrer-Policy"
+          "zh": "该 Payload 覆盖 Referer 令牌泄露场景，检验 URL 令牌在跨站导航与资源加载中是否随来源头外发。验证维度为外部域引用页与多类外发路径的泄露对照，对应第 1 步。",
+          "en": "This payload covers Referer token leakage, testing whether URL tokens ride out on the source header during cross-site navigation and resource loading. Validation contrasts external reference pages and multiple outbound paths, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "应用把 access token、重置 token 或会话标识放进查询串，同时允许加载第三方资源或跳转，就可能通过 Referer、日志、分析服务和浏览历史泄露",
-          "en": "When applications place access, reset, or session tokens in query strings and load third-party resources or navigate away, those values may leak through Referer, logs, analytics, and browser history"
+          "zh": "根因在于令牌置于 URL 且未配置 Referrer-Policy：跳转或加载第三方资源时完整 URL 进入 Referer 发往不受信方，令牌随之泄露。",
+          "en": "The root cause is tokens in URLs without a Referrer-Policy: on jumps or third-party resource loads the full URL enters Referer toward untrusted parties, leaking the token."
         },
         "exploitation": {
-          "zh": "1. 在隔离测试页面生成一次短期无权限 token 并放入 URL；2. 从该页面加载原始外部地址或执行跨站跳转，记录接收服务器的 Referer 和浏览器策略；3. 判断泄露值是否仍有效且可被接收方使用，然后立即撤销。若策略只发送 origin、token 已在 fragment 中不进入 Referer，或接收方未收到值则是假阳性。",
-          "en": "1. Generate a short-lived non-privileged token on an isolated test page and place it in the URL. 2. Load the original external destinations or navigate cross-site and record Referer at the receiving server and browser policy. 3. Determine whether the leaked value remains valid and usable by the recipient, then revoke it. Origin-only policy, fragment-only tokens that never enter Referer, or no received value are false positives."
+          "zh": "第 1 步在外部测试域部署引用收集页，把携带令牌的目标页通过跳转与子资源加载两类路径引向外部域，检查收集页收到的 Referer 是否包含令牌：出现完整令牌即确认泄露链成立。成功判据以收集页记录为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, deploy a reference-collection page on an external test domain, route the token-carrying target page toward it via jumps and subresource loads, and check whether collected Referers contain the token; a full token appearing completes the leak chain. Judge success by collection-page records. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. 不在 URL 查询串传递 token，使用安全 Cookie、Authorization 头或一次性交换码；2. 设置严格 Referrer-Policy 并减少第三方资源；3. 对日志和分析系统脱敏，token 短时、单次使用且支持撤销。",
-          "en": "1. Do not transmit tokens in URL queries; use secure cookies, Authorization headers, or one-time exchange codes. 2. Set a strict Referrer-Policy and minimize third-party resources. 3. Redact logs and analytics and make tokens short-lived, single-use, and revocable."
+          "zh": "令牌改由请求头或 Cookie 传递并配置 strict-origin-when-cross-origin 等策略，外链跳转经中转页剥离来源。修复后重放第 1 步，收集页应收不到含令牌的 Referer。",
+          "en": "Carry tokens via headers or cookies with strict-origin-when-cross-origin policies, and strip sources on outbound jumps through an interstitial. After the fix, replay step 1: the collection page should receive no token-bearing Referer."
         },
         "difficulty": "intermediate"
       },
@@ -3716,20 +3716,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "密码重置 token 是短期高价值凭据，不能仅通过观察字符串长度判断安全；需要结合生成方式、样本分布、生命周期、绑定与在线尝试限制",
-          "en": "A password-reset token is a short-lived high-value credential whose security cannot be inferred from string length alone; generation, distribution, lifetime, binding, and online attempt limits all matter"
+          "zh": "该 Payload 覆盖密码重置令牌强度场景，检验令牌的熵、时效、单次使用及其与账号和请求会话的绑定关系。验证维度为短值与可预测令牌的逐条提交矩阵，对应第 1 步。",
+          "en": "This payload covers password-reset token strength, testing token entropy, freshness, single use, and binding to the account and request session. Validation is a submission matrix of short and predictable tokens, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "使用计数器、时间戳、短数字或弱随机源，且缺少账号绑定、过期和单次消费时，攻击者可能预测、枚举或重放他人的重置 token",
-          "en": "Counters, timestamps, short numbers, or weak randomness combined with missing account binding, expiry, and one-time consumption may let an attacker predict, enumerate, or replay another user's reset token"
+          "zh": "根因在于重置令牌由弱随机源或短长度生成：可预测值落在搜索空间内即可冒领重置流程，缺乏单次与绑定约束时影响扩大到任意账号。",
+          "en": "The root cause is reset tokens from weak randomness or short lengths: predictable values fall within the searchable space to claim resets, and missing single-use and binding constraints widen impact to any account."
         },
         "exploitation": {
-          "zh": "1. 为多个测试账号在不同时间请求重置，采集 token 长度、字符集、重复率和时间相关性；2. 使用原始短值候选只对专用测试账号做低速在线对照；3. 验证 token 是否绑定账号、短时过期且使用后失效，并检查邮件与审计日志。小样本看似递增、响应时间差或统一错误不证明可预测，必须成功预测或跨账号使用测试 token。",
-          "en": "1. Request resets for several test accounts over time and collect token length, alphabet, collisions, and time correlation. 2. Use the original short candidates only at a low rate against a dedicated test account. 3. Verify account binding, short expiry, one-time use, and mail and audit logs. Apparent sequence in a small sample, timing differences, or uniform errors do not prove predictability; a test token must be predicted or used across accounts."
+          "zh": "第 1 步按脚本把短数字、顺序与常见词令牌逐条提交重置确认端点并配合 dry_run 类标记，记录接受情况：任一弱值进入流程即确认熵缺陷，再检查同一令牌重复提交的失效行为。成功判据以令牌接受矩阵为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, submit short-numeric, sequential and common-word tokens to the reset-confirm endpoint one by one with dry-run-style flags per the script, recording acceptances; any weak value entering the flow confirms the entropy defect, then check invalidation on resubmission of the same token. Judge success by the token-acceptance matrix. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. 使用 CSPRNG 生成至少 128 位不可预测 token，并只存储其安全摘要；2. 绑定账号与用途、设置短有效期并原子单次消费；3. 统一响应、限制尝试频率并对异常重置请求和失败验证告警。",
-          "en": "1. Generate at least 128 bits of unpredictable token material with a CSPRNG and store only a secure digest. 2. Bind the token to account and purpose, apply a short lifetime, and consume it atomically once. 3. Use uniform responses, rate-limit attempts, and alert on anomalous reset requests and validation failures."
+          "zh": "重置令牌以 CSPRNG 生成 128 位以上熵、限时有效、单次使用并绑定账号与请求会话。修复后重放第 1 步，全部弱令牌应被拒绝且真实令牌用后即失效。",
+          "en": "Generate reset tokens with a CSPRNG at 128-bit-plus entropy, short-lived, single-use, bound to account and request session. After the fix, replay step 1: every weak token should be rejected and genuine tokens die on first use."
         },
         "difficulty": "intermediate"
       },
@@ -3830,20 +3830,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "JWT 通常是 bearer credential，任何持有者都可能在有效期内使用；把它放在 URL 查询串会扩大到浏览器、代理、日志和第三方资源的暴露面",
-          "en": "A JWT is commonly a bearer credential usable by any holder during its lifetime; placing it in a URL query broadens exposure to browsers, proxies, logs, and third-party resources"
+          "zh": "该 Payload 覆盖 JWT 传输泄露场景，检验查询参数承载的令牌进入日志、历史与 Referer 的路径。验证维度为多类令牌参数名的 URL 注入与外泄对照，对应第 1 步。",
+          "en": "This payload covers JWT transport leakage, testing paths by which query-string tokens reach logs, history and Referer. Validation injects multiple token parameter names via URL and contrasts leak paths, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "应用若接受 query 中的 access_token、jwt 或 bearer，并把完整 URL 写入日志或用于跳转，令牌可能脱离原客户端和安全传输通道",
-          "en": "If an application accepts access_token, jwt, or bearer in the query and logs or redirects the full URL, the token may leave its original client and secure transport channel"
+          "zh": "根因在于应用支持 URL 参数承载 JWT：令牌随完整 URL 被浏览器历史、代理日志与外发 Referer 记录，泄露后在其有效期内可被任意持有者重放。",
+          "en": "The root cause is app support for URL-carried JWTs: tokens ride full URLs into browser history, proxy logs and outbound Referer, and once leaked remain replayable by any holder within validity."
         },
         "exploitation": {
-          "zh": "1. 创建短期低权限测试 JWT 并通过原始查询参数访问测试端点；2. 检查浏览历史、网关日志、应用日志、分析事件和后续 Referer 是否出现完整 token；3. 从独立客户端尝试访问无害受保护资源并立即撤销。仅看到被脱敏片段、过期 token 或服务端不接受 URL token 时是假阳性。",
-          "en": "1. Create a short-lived low-privilege test JWT and access a test endpoint through the original query parameters. 2. Inspect browser history, gateway logs, application logs, analytics events, and subsequent Referer for the complete token. 3. From an independent client, attempt a harmless protected resource and revoke immediately. Redacted fragments, expired tokens, or a server that does not accept URL tokens are false positives."
+          "zh": "第 1 步把测试 JWT 逐条置于不同参数名的 URL 中请求目标，随后检查代理日志、浏览器历史与外部 Referer 收集页是否捕获完整令牌：任一路径泄露即确认传输缺陷，并以泄露令牌重放验证有效期内的可用性。成功判据以泄露路径记录为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, place test JWTs one by one under different URL parameter names against the target, then check proxy logs, browser history and an external Referer-collection page for captured tokens; any leak path confirms the transport defect, and replay the leaked token to prove in-validity reuse. Judge success by leak-path records. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. JWT 仅通过 Authorization: Bearer 或安全 Cookie 传输，禁止查询参数；2. 对 URL、日志、追踪和分析系统做凭据脱敏；3. 缩短 token 有效期、限制 audience/scope，并提供撤销与轮换。",
-          "en": "1. Transmit JWTs only in Authorization: Bearer or secure cookies and reject query parameters. 2. Redact credentials from URLs, logs, traces, and analytics. 3. Shorten token lifetime, constrain audience and scope, and support revocation and rotation."
+          "zh": "JWT 仅经 Authorization 头或安全 Cookie 传输，URL 形式彻底下线；日志对令牌样式脱敏并缩短有效期。修复后重放第 1 步，全部路径应无令牌外泄。",
+          "en": "Transmit JWTs only via Authorization headers or secure cookies, retiring URL forms entirely; mask token shapes in logs and shorten validity. After the fix, replay step 1: no path should leak tokens."
         },
         "difficulty": "intermediate"
       },
@@ -3940,20 +3940,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Token 固定要求客户端能够选择后续被认证的 token，并且服务端在身份提升时不重新签发；仅在 URL 出现 attacker_token 文本并不能证明固定",
-          "en": "Token fixation requires the client to choose a token that later becomes authenticated and the server to avoid reissuing it during privilege elevation; seeing attacker_token text in a URL alone does not prove fixation"
+          "zh": "该 Payload 覆盖令牌固定与来源优先级场景，检验 URL 令牌是否覆盖安全凭据来源并在登录后沿用。验证维度为多类令牌参数名的预设值注入与来源对照，对应第 1 步。",
+          "en": "This payload covers token fixation and source precedence, testing whether URL tokens override secure credential sources and survive login. Validation injects preset values across token parameter names and contrasts sources, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "遗留认证中间件可能从多个参数读取 token、优先采用 URL 值并把匿名 token 升级为登录状态，使攻击者预先知道受害者的最终凭据",
-          "en": "Legacy authentication middleware may read tokens from multiple parameters, prefer the URL value, and upgrade an anonymous token into an authenticated one, leaving the attacker aware of the victim's final credential"
+          "zh": "根因在于令牌解析存在来源优先级且 URL 优先：攻击者预设的参数值压过 Cookie 与 Authorization 头，登录后服务端沿用该值即形成持久固定。",
+          "en": "The root cause is source precedence in token parsing favoring URLs: attacker-preset parameter values outweigh cookies and Authorization headers, and servers keeping the value after login create durable fixation."
         },
         "exploitation": {
-          "zh": "1. 在未认证浏览器设置一个原始固定 token，并记录服务端匿名状态；2. 使用该浏览器登录测试账号，比较登录前后 token、主体和签发记录；3. 从独立客户端重放旧 token，并测试它与安全 Cookie 冲突时的优先级。若服务端重新签发、旧值只作关联 ID 或重放被拒绝则是假阳性。",
-          "en": "1. Set one original fixed token in an unauthenticated browser and record anonymous server state. 2. Log in with that browser and compare token, principal, and issuance records before and after. 3. Replay the old token from an independent client and test precedence against a conflicting secure cookie. Server reissuance, an old value used only as a correlation ID, or replay rejection are false positives."
+          "zh": "第 1 步按脚本把预设令牌逐条置于不同参数名请求受保护端点，记录服务端采信的来源；再携预设值完成登录并复用同一值验证沿用行为。URL 值压过安全来源或登录后沿用即确认缺陷。成功判据以来源采信与沿用记录为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, place preset tokens one by one under different parameter names against protected endpoints per the script, recording which source the server trusts; then complete login carrying the preset value and reuse it to verify persistence. URL values outranking secure sources or persisting post-login confirm the defect. Judge success by source-trust and persistence records. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. 认证成功和权限变化后签发全新 token，废弃所有匿名或旧值；2. 只从单一受信通道读取凭据并拒绝 URL token；3. token 绑定会话上下文、短时有效且支持重放检测。",
-          "en": "1. Issue a new token after authentication and privilege changes and invalidate anonymous or previous values. 2. Read credentials from one trusted channel and reject URL tokens. 3. Bind tokens to context, keep them short-lived, and detect replay."
+          "zh": "令牌只从 Authorization 或 HttpOnly Cookie 读取并显式忽略查询参数，登录后强制轮换全部令牌。修复后重放第 1 步，URL 预设值应被忽略且登录产生新令牌。",
+          "en": "Read tokens only from Authorization or HttpOnly cookies, explicitly ignoring query parameters, and force full token rotation after login. After the fix, replay step 1: URL preset values should be ignored and logins mint new tokens."
         },
         "difficulty": "advanced"
       },
@@ -4049,20 +4049,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "连续数字候选用于验证 token 是否直接采用毫秒时间戳或计数器；可靠结论需要多次签发样本、相关性分析和成功预测，不能从外观下结论",
-          "en": "Sequential numeric candidates test whether a token directly uses a millisecond timestamp or counter; a reliable conclusion needs multiple issued samples, correlation analysis, and a successful prediction rather than appearance alone"
+          "zh": "该 Payload 覆盖时间序列令牌可预测性场景，检验令牌是否由时间戳或计数器直接派生并可被枚举。验证维度为相邻时间戳候选的批量提交与统计判定，对应第 1 步。",
+          "en": "This payload covers time-series token predictability, testing whether tokens derive directly from timestamps or counters and can be enumerated. Validation batch-submits adjacent-timestamp candidates with statistical judgment, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "使用低熵时间值、全局递增计数器或可推导组合且缺少在线尝试限制时，攻击者可能在有限窗口内枚举有效 token，还需关联令牌生命周期、主体绑定和服务端审计事件。",
-          "en": "Low-entropy timestamps, global counters, or derivable combinations combined with missing online attempt limits may let an attacker enumerate a valid token within a bounded window, with token lifetime, subject binding, and server-side audit events correlated."
+          "zh": "根因在于令牌生成依赖毫秒级时间戳或可猜测的计数器：攻击者按业务时间窗口枚举相邻候选即可命中有效令牌，认证防线被整体绕过失效。",
+          "en": "The root cause is token generation keyed to millisecond timestamps or guessable counters: attackers enumerate adjacent candidates around business-time windows to hit valid tokens, bypassing the authentication defense entirely."
         },
         "exploitation": {
-          "zh": "1. 为同一测试账号和多个并发账号收集足量 token、签发时间与服务端事件；2. 用原始相邻时间戳候选建立预测模型并在独立样本上验证；3. 仅对可撤销测试 token 做一次受控预测，并记录限速。相似长度、局部递增或一次偶然命中不够，必须在未见样本上重复预测成功。",
-          "en": "1. Collect enough tokens, issue times, and server events for one test account and concurrent accounts. 2. Use the original adjacent timestamps to build a prediction model and validate it on held-out samples. 3. Perform one controlled prediction only against a revocable test token and record rate limiting. Similar length, local monotonicity, or one accidental hit is insufficient; prediction must repeat on unseen samples."
+          "zh": "第 1 步按脚本把目标业务时间前后的毫秒时间戳候选批量提交令牌端点，统计命中情况：相邻值命中即确认时间派生缺陷，并以多组窗口重复验证排除巧合。成功判据以命中统计为准。占位符在全局变量菜单替换；候选生成速率控制在授权范围。",
+          "en": "In step 1, batch-submit millisecond-timestamp candidates around the target's business time to the token endpoint per the script and tally hits; adjacent-value hits confirm time-derived defects, repeating across multiple windows to rule out coincidence. Judge success by hit statistics. Replace placeholders via the global variables menu; keep candidate generation rates within authorization."
         },
         "mitigation": {
-          "zh": "1. 使用 CSPRNG 生成至少 128 位随机 token，禁止时间戳或计数器直接作为秘密；2. 设置短有效期、单次使用和账号/用途绑定；3. 限制验证频率并监控序列候选尝试。",
-          "en": "1. Generate at least 128 bits of random token material with a CSPRNG and never use timestamps or counters directly as secrets. 2. Apply short lifetime, one-time use, and account and purpose binding. 3. Rate-limit validation and monitor sequential candidate attempts."
+          "zh": "令牌改用 CSPRNG 生成并禁止时间或计数器直接参与，服务端对令牌枚举速率限制与告警。修复后重放第 1 步，候选命中应为零且批量请求触发限流。",
+          "en": "Generate tokens with a CSPRNG, barring direct timestamp or counter participation, and rate-limit plus alert on token enumeration. After the fix, replay step 1: candidate hits should be zero with batch requests throttled."
         },
         "difficulty": "advanced"
       },
@@ -4159,20 +4159,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Base64 只是编码而非加密或完整性保护；风险在于服务端解码后直接信任内容，而不是 token 字符串看起来像 Base64",
-          "en": "Base64 is encoding rather than encryption or integrity protection; the risk is server trust in decoded content, not merely a token string that looks Base64 encoded"
+          "zh": "该 Payload 覆盖可逆编码令牌场景，检验 Base64 形式令牌是否仅为编码而缺少签名与服务端状态校验。验证维度为常见身份值的编码令牌矩阵，对应第 1 步。",
+          "en": "This payload covers reversibly-encoded tokens, testing whether Base64-style tokens are mere encodings lacking signatures and server-side state checks. Validation is a token matrix over common identity values, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "若 token 仅由可预测字段 Base64 编码，且缺少签名、随机会话映射或过期校验，攻击者可以解码、修改并重新编码身份数据",
-          "en": "If a token is only Base64 over predictable fields and lacks a signature, random server-side session mapping, or expiry validation, an attacker can decode, modify, and re-encode identity data"
+          "zh": "根因在于令牌仅做 Base64 编码即承载身份且无密钥校验：攻击者自行编码任意用户名或角色即可通过认证，令牌与凭证完全脱钩。",
+          "en": "The root cause is tokens carrying identity as bare Base64 with no keyed verification: attackers encode any username or role themselves and pass authentication, fully decoupling tokens from credentials."
         },
         "exploitation": {
-          "zh": "1. 获取低权限测试 token，确认其是否能稳定 Base64 解码并识别字段边界；2. 使用原始候选值替换单个无害字段后重新编码并提交；3. 核对服务端主体、完整性校验日志和授权结果。能解码字符串、出现可读词或服务端返回格式错误都不是漏洞，必须证明修改内容被信任。",
-          "en": "1. Obtain a low-privilege test token and determine whether it decodes consistently as Base64 with recognizable field boundaries. 2. Replace one harmless field using the original candidate values, re-encode, and submit. 3. Verify server principal, integrity-validation logs, and authorization. Decoding text, seeing readable words, or receiving a format error is not a flaw; modified content must be trusted."
+          "zh": "第 1 步按脚本把常见用户名、口令与组合值的 Base64 编码逐条提交认证端点，记录放行结果：任一编码值获得会话即确认仅编码缺陷，解码对照验证服务端未做任何签名核验。成功判据以放行矩阵为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, submit Base64 encodings of common usernames, passwords and combos to the authentication endpoint one by one per the script, recording allowances; any encoding gaining a session confirms the encoding-only defect, with decoded cross-checks proving no signature verification. Judge success by the allowance matrix. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. 使用随机服务端会话 ID 或经过认证的签名 token，不把 Base64 当安全控制；2. 验证签名、issuer、audience、时效并在服务端执行授权；3. 对解码失败和内容篡改统一拒绝并建立负向测试。",
-          "en": "1. Use random server-side session IDs or authenticated signed tokens and never treat Base64 as a security control. 2. Validate signature, issuer, audience, and time and authorize server-side. 3. Reject decode failures and content tampering uniformly and add negative tests."
+          "zh": "令牌改为带签名的结构（如 HMAC 或 JWT 严格校验）并由服务端保存会话状态，拒绝无法验签的值。修复后重放第 1 步，全部自造编码应被拒绝。",
+          "en": "Move tokens to signed structures such as HMAC or strictly validated JWTs with server-side session state, rejecting anything unverifiable. After the fix, replay step 1: every self-made encoding should be rejected."
         },
         "difficulty": "beginner"
       },
@@ -4269,20 +4269,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "反射 Origin 只有与浏览器 CORS 决策、凭证模式和敏感响应组合时才有影响；单纯在响应头看到输入字符串不能直接定为漏洞",
-          "en": "Origin reflection has impact only together with browser CORS enforcement, credential mode, and a sensitive response; merely seeing the input string in a response header is not sufficient"
+          "zh": "该 Payload 覆盖任意 Origin 反射场景，检验服务端是否把请求来源原样回写进响应并连同凭据一起放行。验证维度为外部域协议与端口变体的反射对照，对应第 1 步。",
+          "en": "This payload covers arbitrary origin reflection, testing whether the server echoes request origins verbatim into responses and allows credentials alongside. Validation contrasts external-domain protocol and port variants, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "动态 CORS 中间件若无白名单地回显任意 Origin，并同时发送 Access-Control-Allow-Credentials: true，攻击者页面可以读取受害者会话响应",
-          "en": "If dynamic CORS middleware echoes arbitrary Origin without an allowlist and also sends Access-Control-Allow-Credentials: true, attacker-origin script can read responses from the victim session"
+          "zh": "根因在于 CORS 处理把 Origin 头直接写回 ACAO 并允许凭据：任意网站可在受害者浏览器中读取其会话数据，等同关闭跨源边界。",
+          "en": "The root cause is CORS handling writing the Origin header straight back into ACAO with credentials allowed: any website can read a victim's session data in their browser, effectively dissolving the cross-origin boundary."
         },
         "exploitation": {
-          "zh": "1. 用可信源建立 ACAO/ACAC/Vary 与预检基线；2. 逐项提交原始攻击者 Origin，并在真实浏览器以 credentials: include 请求无害受保护字段；3. 从接收脚本读取响应并关联服务端用户。只有浏览器成功向攻击者脚本暴露带凭证数据才成立；通配符配凭证被浏览器阻止或无敏感数据是假阳性（误报）。",
-          "en": "1. Establish ACAO, ACAC, Vary, and preflight baselines from a trusted origin. 2. Submit each original attacker Origin and request a harmless protected field in a real browser with credentials included. 3. Read the response in attacker script and correlate the server user. Confirm only when the browser exposes credentialed data to attacker script; wildcard with credentials blocked by the browser or nonsensitive data are false positives."
+          "zh": "第 1 步把外部域的多协议多端口 Origin 逐条随凭据请求发送，记录响应 ACAO 与 ACAC 组合：任一外部源被反射且凭据放行即确认反射缺陷，再以浏览器页面实际读取响应完成端到端验证。成功判据以反射与读取记录为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, send external-domain multi-protocol multi-port origins with credentialed requests one by one, recording ACAO and ACAC combinations; any external origin reflected with credentials allowed confirms the reflection defect, then read responses from a browser page for end-to-end proof. Judge success by reflection and read records. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. 对完整 origin 进行精确白名单匹配，不直接反射请求头；2. 仅在必要端点启用 credentials，并发送 Vary: Origin；3. 对随机域、端口、scheme 与 null 建立浏览器测试。",
-          "en": "1. Match the complete origin against an exact allowlist and do not reflect the request header directly. 2. Enable credentials only where necessary and send Vary: Origin. 3. Add browser tests for random hosts, ports, schemes, and null."
+          "zh": "ACAO 仅回写预注册白名单来源，其余请求一律省略 CORS 头；凭据接口叠加来源无关的 CSRF 防护。修复后重放第 1 步，全部外部源应无反射。",
+          "en": "Echo ACAO only for pre-registered allowlisted origins, omitting CORS headers otherwise; stack origin-agnostic CSRF protection on credentialed APIs. After the fix, replay step 1: no external origin should be reflected."
         },
         "difficulty": "intermediate"
       },
@@ -4378,20 +4378,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "null Origin 会由 sandbox iframe、file URL 和其他不透明源产生，它不是普通域名；允许 null 可能扩大跨源读取面，但还需证明攻击者能构造可用浏览器上下文",
-          "en": "A null Origin is produced by sandboxed iframes, file URLs, and other opaque origins and is not a normal hostname; allowing it can widen cross-origin access but requires a reachable browser context"
+          "zh": "该 Payload 覆盖 CORS null Origin 信任场景，检验服务端对来源为 null 的凭据请求放行及其真实可构造性。验证维度为 null Origin 请求与 sandbox iframe 的配合验证，对应第 1 步。",
+          "en": "This payload covers CORS null-origin trust, testing whether the server allows credentialed requests with a null origin and whether such origins are realistically constructible. Validation pairs a null-origin request with a sandboxed iframe, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "若 CORS 白名单把字符串 null 当作可信源并允许 credentials，攻击者可能在 sandbox 或本地文件上下文中读取受害者会话数据",
-          "en": "If a CORS allowlist treats the literal null as trusted and permits credentials, an attacker may read victim-session data from a sandbox or local-file context"
+          "zh": "根因在于白名单包含字面量 null 或把无 Origin 请求视为可信：sandbox、data URI 等场景天然产生 null 来源，攻击者据此框架化页面读取凭据响应。",
+          "en": "The root cause is allowlists containing the literal null or treating Origin-less requests as trusted: sandbox and data-URI contexts naturally produce null origins, letting attackers frame pages and read credentialed responses."
         },
         "exploitation": {
-          "zh": "1. 记录可信源与普通攻击者源的 CORS 基线；2. 在 sandbox iframe 或其他可控不透明源发送原始 null 变体并携带测试会话；3. 检查浏览器是否允许脚本读取受保护字段。仅手工伪造 Origin: null 获得服务器响应、或浏览器不发送凭据时是假阳性。",
-          "en": "1. Record CORS baselines for trusted and ordinary attacker origins. 2. From a sandboxed iframe or another controlled opaque origin, send the original null variants with a test session. 3. Check whether browser script can read a protected field. A raw client that forges Origin: null and receives a server response, or a browser that sends no credentials, is a false positive."
+          "zh": "第 1 步先以手工 Origin null 头请求账号接口记录响应头，再按脚本在 sandbox iframe 中以真实 null 源发起同一请求并尝试读取：响应反射 null 且浏览器可读即确认信任缺陷。成功判据以反射头与读取结果为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, first request the account API with a manual Origin null header recording response headers, then per the script fire the same request from a sandboxed iframe as a genuine null origin and attempt a read; reflection of null plus browser readability confirms the trust defect. Judge success by reflected headers and read results. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. 除非有明确且经过威胁建模的场景，否则拒绝 null Origin；2. 不对 null 响应启用 credentials，并按完整 origin 白名单；3. 用 sandbox/file 场景做浏览器回归测试。",
-          "en": "1. Reject null Origin unless a specific threat-modeled use case requires it. 2. Do not enable credentials for null and use complete-origin allowlists. 3. Add browser regression tests with sandbox and file contexts."
+          "zh": "从白名单移除 null 与通配值，无 Origin 请求按非浏览器流量处理并要求凭据接口显式校验。修复后重放第 1 步，null 源请求应无 ACAO 反射且读取被阻断。",
+          "en": "Remove null and wildcard values from allowlists, treat Origin-less requests as non-browser traffic, and require explicit validation on credentialed APIs. After the fix, replay step 1: null-origin requests should carry no ACAO reflection and reads must be blocked."
         },
         "difficulty": "advanced"
       },
@@ -4490,20 +4490,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "允许 *.target.com 可能是业务需要，也可能把已接管、用户内容或低信任子域提升为可信源；安全判断必须同时核对域名边界和子域治理",
-          "en": "Allowing every target.com subdomain may be a business requirement or may promote a taken-over, user-content, or low-trust subdomain to a trusted origin; assessment must include hostname boundaries and subdomain governance"
+          "zh": "该 Payload 覆盖 CORS 子域信任边界场景，检验白名单对子域与近邻域的放行宽度。验证维度为可控子域、任意子域与相似域的 Origin 矩阵，对应第 1 步。",
+          "en": "This payload covers CORS subdomain trust boundaries, testing allowlist breadth across subdomains and neighbor domains. Validation is an Origin matrix of controllable, wildcard and lookalike subdomains, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "无边界后缀匹配会接受 evil-target.com 等相似域，而通配子域策略会在任一子域可被攻击者控制时暴露带凭证 API",
-          "en": "Suffix matching without label boundaries accepts lookalikes such as evil-target.com, while wildcard subdomain policy exposes credentialed APIs whenever any trusted subdomain is attacker-controlled"
+          "zh": "根因在于白名单按通配子域或后缀匹配放行：任一子域存在 XSS 或接管即获得读取主站凭据响应的能力，信任边界被横向放大扩散。",
+          "en": "The root cause is allowlists admitting wildcard subdomains or suffix matches: any subdomain with XSS or takeover gains the ability to read main-site credentialed responses, amplifying trust laterally."
         },
         "exploitation": {
-          "zh": "1. 导出允许的业务源和子域所有权清单；2. 逐项提交原始相似域与真实子域 Origin，记录 ACAO/ACAC/Vary；3. 仅在可控低信任子域的浏览器页面读取无害受保护字段。合法受管子域被允许、相似域被拒绝或无子域控制权时不能认定可利用。",
-          "en": "1. Export allowed business origins and subdomain ownership. 2. Submit the original lookalike and real-subdomain origins and record ACAO, ACAC, and Vary. 3. Read a harmless protected field only from a controllable low-trust subdomain in a browser. An allowed managed subdomain, a rejected lookalike, or no subdomain control does not prove exploitation."
+          "zh": "第 1 步按脚本把可控子域、任意前缀子域与近邻拼接域逐条置于 Origin 发送，记录反射与凭据放行结果：任一未注册来源被放行即确认边界过宽，结合该子域的实际控制权评估影响。成功判据以放行矩阵为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, place controllable subdomains, arbitrary-prefix subdomains and concatenated lookalikes into Origin one by one per the script, recording reflections and credential allowances; any unregistered origin passing confirms the overly broad boundary, with impact gauged by actual control of that subdomain. Judge success by the allowance matrix. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. 使用完整 origin 精确列表，避免裸后缀和无界通配；2. 将用户内容、预览、开发和第三方托管子域排除出凭证 CORS；3. 持续盘点子域所有权并对 DNS 接管与 CORS 组合测试。",
-          "en": "1. Use an exact list of complete origins and avoid bare suffixes and unbounded wildcards. 2. Exclude user-content, preview, development, and third-party-hosted subdomains from credentialed CORS. 3. Continuously inventory ownership and test subdomain takeover together with CORS."
+          "zh": "白名单枚举确切主机名并纳入子域资产清单一并维护，禁用通配匹配；对遗留子域做接管检测。修复后重放第 1 步，全部非枚举来源应被拒绝。",
+          "en": "Enumerate exact hostnames in allowlists maintained alongside subdomain asset inventories, disabling wildcard matching, and run takeover checks on legacy subdomains. After the fix, replay step 1: every non-enumerated origin should be rejected."
         },
         "difficulty": "advanced"
       },
@@ -4600,20 +4600,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "域名正则常因 `.` 未转义、缺少起止锚点或只检查包含 target 字符串而越界；应在 URL 解析后比较 host，而不是直接对原始 Origin 文本做宽松正则",
-          "en": "Hostname regexes often fail because dots are unescaped, anchors are missing, or only the target substring is checked; validation should parse the URL and compare the host rather than apply a loose regex to raw Origin text"
+          "zh": "该 Payload 覆盖 CORS 域名正则边界绕过场景，检验白名单正则的锚点、转义与边界缺陷。验证维度为目标域前缀拼接与连字符变体的 Origin 矩阵，对应第 1 步。",
+          "en": "This payload covers CORS domain-regex boundary bypass, testing allowlist regexes for anchor, escaping and boundary flaws. Validation is an Origin matrix of target-domain prefixes, concatenations and hyphen variants, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "错误表达式可能把攻击者注册的父域、后缀或连字符变体当成可信源，并在允许 credentials 时向其暴露受保护 API",
-          "en": "A faulty expression may treat attacker-registered parent domains, suffixes, or hyphen variants as trusted origins and expose protected APIs when credentials are allowed"
+          "zh": "根因在于域名校验正则缺少起止锚点或未转义点号：攻击者域以包含关系命中规则，target 形态的恶意域被当作合法来源放行。",
+          "en": "The root cause is domain-validation regexes missing anchors or escaping dots: attacker domains match by containment, letting target-shaped malicious domains pass as legitimate origins."
         },
         "exploitation": {
-          "zh": "1. 获取测试环境 CORS 允许源预期并记录合法 target.com 源基线；2. 逐项提交原始相似域，核对解析后的 scheme/host/port 与 ACAO；3. 从实际控制的测试域用浏览器读取无害受保护字段。只看到头反射、无法控制域名或浏览器阻止读取均是假阳性。",
-          "en": "1. Obtain expected CORS origins for the test environment and record a valid target.com baseline. 2. Submit each original lookalike, comparing parsed scheme, host, and port with ACAO. 3. From an actually controlled test domain, use a browser to read a harmless protected field. Header reflection alone, no domain control, or browser-blocked reads are false positives."
+          "zh": "第 1 步按脚本把目标域前缀拼接、连字符分隔与相似拼写域逐条置于 Origin 发送，记录校验放行结果：任一相似域被反射凭据响应即确认正则边界缺陷。成功判据以放行与反射记录为准。占位符在全局变量菜单替换；命中时以浏览器读取完成验证闭环。",
+          "en": "In step 1, place target-domain prefix concatenations, hyphen separations and lookalike spellings into Origin one by one per the script, recording validation outcomes; any lookalike domain reflected on credentialed responses confirms the regex boundary defect. Judge success by allowance and reflection records. Replace placeholders via the global variables menu; on hits, close the loop with a browser read."
         },
         "mitigation": {
-          "zh": "1. 使用标准 URL 解析器并精确比较 scheme、host、port；2. 若必须使用正则，转义点号、添加完整锚点和 DNS label 边界并代码审查；3. 为父域、后缀、连字符和 Unicode 变体建立测试。",
-          "en": "1. Use a standard URL parser and exactly compare scheme, host, and port. 2. If regex is unavoidable, escape dots, add full anchors and DNS-label boundaries, and review the expression. 3. Test parent-domain, suffix, hyphen, and Unicode variants."
+          "zh": "域名校验放弃正则改为解析后 host 精确比对，确需正则时补全锚点并转义点号。修复后重放第 1 步，全部相似域应被拒绝。",
+          "en": "Replace domain regexes with parsed-host exact comparison; where regexes are unavoidable, add anchors and escape dots. After the fix, replay step 1: every lookalike domain should be rejected."
         },
         "difficulty": "intermediate"
       },
@@ -4709,20 +4709,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "CORS 的浏览器安全决策基于 Origin 和响应头，Referer 只能提供可选导航信息；混用二者会受到 Referrer-Policy、代理裁剪和来源冲突影响",
-          "en": "Browser CORS decisions depend on Origin and response headers, while Referer is optional navigation information; mixing them creates errors under Referrer-Policy, proxy trimming, and source conflicts"
+          "zh": "该 Payload 覆盖 CORS 与 Referer 来源信号组合场景，检验双信号不一致时的仲裁逻辑缺陷。验证维度为缺失 Origin 携带 Referer 与双头冲突的变体矩阵，对应第 1 步。",
+          "en": "This payload covers combined CORS and Referer source signals, testing arbitration flaws when the two disagree. Validation is a variant matrix of missing Origin with Referer present and conflicting header pairs, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "应用若在 Origin 不可信时回退检查 Referer，或只要任一头匹配就放行，攻击者可构造冲突值绕过 CORS 白名单或来源校验",
-          "en": "If an application falls back to Referer when Origin is untrusted or allows a request when either header matches, conflicting values may bypass CORS allowlists or source validation"
+          "zh": "根因在于服务端用 Referer 兜底 Origin 或冲突时取宽松分支：跨源判定被次要信号绕过，攻击者构造 Origin 缺失加受信 Referer 的组合即可放行。",
+          "en": "The root cause is servers falling back to Referer when Origin is absent or taking lenient branches on conflict: cross-origin checks get bypassed via secondary signals, and Origin-less requests with trusted Referers pass."
         },
         "exploitation": {
-          "zh": "1. 从合法浏览器源记录 Origin、Referer 和 CORS 响应基线；2. 使用原始 Referer 变体，分别配对可信、不可信和缺失 Origin；3. 在攻击者源浏览器读取无害受保护字段并查看服务端分支日志。原始 HTTP 客户端可任意设置两头、浏览器无法产生该组合或响应不可读时是假阳性。",
-          "en": "1. Record Origin, Referer, and CORS response from a legitimate browser origin. 2. Pair the original Referer variants with trusted, untrusted, and missing Origin values. 3. From an attacker-origin browser, read a harmless protected field and inspect server branch logs. A raw client that can set both headers arbitrarily, a combination browsers cannot produce, or an unreadable response is a false positive."
+          "zh": "第 1 步按脚本组合缺失 Origin 加受信 Referer、双头冲突与端口变体逐条发送凭据请求，记录 CORS 判定结果：任一组合被放行即确认仲裁缺陷，区分兜底与优先级两种根因。成功判据以判定矩阵为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, send credentialed requests combining missing Origin with trusted Referer, conflicting header pairs and port variants one by one per the script, recording CORS verdicts; any combination passing confirms the arbitration defect, distinguishing fallback versus precedence root causes. Judge success by the verdict matrix. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. CORS 仅依据解析后的 Origin 精确白名单，不以 Referer 回退；2. 来源冲突默认拒绝并记录，Referer 仅作辅助风控；3. 用真实浏览器覆盖缺失、裁剪和冲突头组合。",
-          "en": "1. Base CORS only on an exact parsed-Origin allowlist and never fall back to Referer. 2. Deny and log source conflicts by default and use Referer only as a secondary risk signal. 3. Cover missing, trimmed, and conflicting headers with real-browser tests."
+          "zh": "跨源判定仅以 Origin 为准且缺失即拒绝，Referer 不参与 CORS 决策；冲突日志并入监控。修复后重放第 1 步，全部组合应返回无凭据放行。",
+          "en": "Base cross-origin decisions solely on Origin, rejecting absence, and keep Referer out of CORS decisions; pipe conflicts into monitoring. After the fix, replay step 1: every combination should come back without credential allowance."
         },
         "difficulty": "advanced"
       },
@@ -4820,20 +4820,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "application/x-www-form-urlencoded、multipart/form-data 和 text/plain 在满足条件时可形成 CORS 简单请求而不先发送 OPTIONS；这不会自动绕过服务端认证或 CSRF 防护",
-          "en": "application/x-www-form-urlencoded, multipart/form-data, and text/plain can qualify as CORS simple requests without a preceding OPTIONS request, but this does not automatically bypass server authentication or CSRF protection"
+          "zh": "该 Payload 覆盖 CORS 简单请求与预检边界场景，检验仅防护预检路径的 API 对简单跨源写的暴露。验证维度为三类简单 Content-Type 的跨站写请求矩阵，对应第 1 步。",
+          "en": "This payload covers CORS simple-request versus preflight boundaries, testing APIs that guard only preflight paths against simple cross-origin writes. Validation is a cross-site write matrix over three simple Content-Types, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "如果服务端把 OPTIONS 预检当作唯一安全控制，却在实际端点接受简单 Content-Type 并使用 Cookie 执行状态变化，攻击者可跨站触发请求；若同时错误开放 CORS，还可能读取响应",
-          "en": "If a server treats OPTIONS preflight as its only control while the actual endpoint accepts simple content types and uses cookies for state changes, an attacker can trigger cross-site requests; misconfigured CORS may additionally expose the response"
+          "zh": "根因在于防护模型把预检视为安全边界而忽略简单请求天然免检：表单与 text/plain 跨站写直达业务端点，预检缺失不构成任何阻断。",
+          "en": "The root cause is protection models treating preflight as the security boundary while simple requests are naturally exempt: form and text/plain cross-site writes reach business endpoints with no preflight obstruction at all."
         },
         "exploitation": {
-          "zh": "1. 用正常 JSON 请求记录预检、认证、CSRF 与状态变化基线；2. 逐项使用原始简单 Content-Type 重放等价业务请求，保持字段语义一致；3. 分别验证请求是否改变状态以及攻击者脚本是否能读取响应。未预检但被 CSRF token/Origin 阻止、仅发送无状态请求或响应不可读不能等同为完整 CORS 绕过。",
-          "en": "1. Record preflight, authentication, CSRF, and state-change baselines for a normal JSON request. 2. Replay the equivalent business request with each original simple Content-Type while preserving field semantics. 3. Separately verify state change and attacker-script response readability. No preflight with CSRF or Origin rejection, a stateless delivered request, or an unreadable response is not a complete CORS bypass."
+          "zh": "第 1 步按脚本以表单编码、multipart 与 text/plain 三种类型从跨站页面发送状态变更请求，记录服务端处理结果：无预检且写操作生效即确认边界缺陷，同时区分请求送达与响应可读两种影响。成功判据以写操作生效记录为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, send state-changing requests from a cross-site page as form-encoded, multipart and text/plain per the script, recording server handling; writes landing without preflight confirm the boundary defect, distinguishing request delivery from response readability. Judge success by effective-write records. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. 在实际业务端点验证认证、对象授权、CSRF token 和 Origin，而不是依赖预检；2. 仅接受业务需要的 Content-Type 并严格解析 schema；3. 配置精确 CORS 白名单并测试简单请求、预检请求及带凭证读取。",
-          "en": "1. Enforce authentication, object authorization, CSRF tokens, and Origin on the actual endpoint rather than relying on preflight. 2. Accept only required content types and parse a strict schema. 3. Configure an exact CORS allowlist and test simple requests, preflighted requests, and credentialed reads."
+          "zh": "跨源防护不依赖预检，业务端点校验 Origin/Sec-Fetch-Site 并叠加 CSRF Token；简单请求同样纳入限速。修复后重放第 1 步，三类请求应全部被拒绝。",
+          "en": "Never rely on preflight for cross-origin protection: business endpoints validate Origin and Sec-Fetch-Site with CSRF tokens stacked, and simple requests get rate-limited too. After the fix, replay step 1: all three request types should be rejected."
         },
         "difficulty": "intermediate"
       },

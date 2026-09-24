@@ -36,20 +36,20 @@
       ],
       "tutorial": {
         "overview": {
-          "zh": "基础开放重定向测试应覆盖最常见的五种 URL 解释：完整绝对 URL、userinfo 分隔、协议相对 URL、百分号编码和反斜杠规范化。每个样例只改变一个组成部分，并记录服务端解析结果与 Location，而不是把多个技巧堆叠在一个字符串里。",
-          "en": "Basic open-redirect testing should cover five common URL interpretations: absolute URLs, userinfo separators, protocol-relative URLs, percent encoding, and backslash normalization. Each sample changes one component and records server parsing plus Location rather than stacking multiple tricks in one string."
+          "zh": "该 Payload 覆盖开放重定向的基础目标解析场景，检验跳转端点对 next 参数的绝对 URL、userinfo、协议相对与编码变体的校验是否可靠。验证维度含直接外部跳转、@ 混淆与协议相对斜杠三类样例，对应第 1 至第 3 步。",
+          "en": "This payload covers basic open-redirect target parsing, testing whether the redirect endpoint reliably validates absolute URLs, userinfo, protocol-relative and encoded variants of the next parameter. Validation covers direct external redirects, userinfo confusion, and protocol-relative slashes, mapped to steps 1 through 3."
         },
         "vulnerability": {
-          "zh": "当应用允许用户控制 Location，或用 startsWith、endsWith、contains 等字符串判断代替标准 URL 解析与精确允许列表时，最终 host 可能离开批准源。只有规范化后的 Location 或浏览器目标指向保留外域时才确认问题；输入看起来像 URL 或响应为 3xx 都不是充分证据。",
-          "en": "When an application lets users control Location or replaces standard URL parsing and exact allowlists with startsWith, endsWith, or contains checks, the final host may leave the approved origin. Confirm only when the normalized Location or browser destination points to the reserved external domain; URL-looking input or a 3xx response is insufficient."
+          "zh": "根因在于重定向目标校验基于字符串包含或前缀匹配而非解析后的 host：合法域出现在 userinfo 位置或以双斜杠开头的协议相对 URL 都能伪装为站内目标，最终跳转到外部域。",
+          "en": "The root cause is validation by substring or prefix matching instead of parsing the host: a legitimate domain in the userinfo position or a protocol-relative URL starting with double slashes masquerades as an in-site target and ends at an external domain."
         },
         "exploitation": {
-          "zh": "先用同源相对路径建立基线，再依次提交五个样例。对每次请求保存原始 next 参数、一次解码后的值、URL 解析器输出、允许列表判定和 Location Header；不使用 curl -L。若目标被拒绝、替换为固定路由或规范化到同源，应作为有效阻断记录。",
-          "en": "Establish a baseline with a same-origin relative path, then submit the five samples in order. Preserve the raw next parameter, value after one decode, URL-parser output, allowlist decision, and Location header without curl -L. Rejection, replacement with a fixed route, or same-origin canonicalization is valid blocking evidence."
+          "zh": "第 1 步请求携带外部 next 的链接，响应 302 且最终落在外部域即确认开放重定向；第 2 步以合法域@外部域构造 next，authority 落在 @ 后主机即确认 userinfo 绕过；第 3 步以双斜杠外部域提交，跳转落地外部域即确认前缀校验失效。以 Location 与最终地址为判据。占位符在全局变量菜单替换；编码变体参考 wafBypass。",
+          "en": "In step 1, request the link with an external next; a 302 landing externally confirms the open redirect. In step 2, craft next as legitimate-domain-at-external-domain; authority resolving to the post-at host confirms the userinfo bypass. In step 3, submit the double-slash external form; external landing confirms the failed prefix check. Use Location and final address as criteria. Replace placeholders via the global variables menu; see wafBypass for encoding variants."
         },
         "mitigation": {
-          "zh": "优先使用服务端定义的路由标识符或相对路径映射，不接收任意绝对 URL。确需外部跳转时，执行一次明确解码并使用标准 URL 解析器，拒绝 userinfo、控制字符和非 HTTP(S) Scheme，再对规范化的 scheme、host 与 port 做精确允许列表比较。",
-          "en": "Prefer server-defined route identifiers or relative-path mappings and do not accept arbitrary absolute URLs. If external redirects are required, perform one explicit decode with a standard URL parser, reject userinfo, control characters, and non-HTTP(S) schemes, then compare normalized scheme, host, and port against an exact allowlist."
+          "zh": "跳转前解析 URL 取 authority 与预注册域名白名单精确比对，仅允许站内相对路径或白名单目标。修复后重放第 1 至第 3 步，所有外部目标应被拒绝或回退首页。",
+          "en": "Parse the URL before redirecting and match the authority exactly against a pre-registered domain allowlist, permitting only in-site relative paths or allowlisted targets. After the fix, replay steps 1 through 3: every external target should be rejected or fall back to the home page."
         },
         "difficulty": "beginner"
       },

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contentStandard": 2,
+  "contentStandard": 3,
   "sourcePrefix": "inject2",
   "entries": [
     {
@@ -23,20 +23,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "该集合不是普通开放重定向地址，而是带 javascript: 协议的浏览器执行载荷。只有值进入 href、location 或等价可执行 Sink，且浏览器没有在解析前拒绝该协议时，才形成客户端脚本执行边界。",
-          "en": "This set is not a normal open-redirect list; it contains javascript-scheme browser execution inputs. The issue exists only when a value reaches href, location, or an equivalent executable sink and the browser does not reject the scheme before parsing."
+          "zh": "覆盖 javascript: 危险协议进入可执行上下文的验证：以 javascript: URI 变体作用于 href、location 等可执行 Sink，浏览器实际跳转至收集端即确认对应赋值形式可被触发。",
+          "en": "Covers verification of the javascript: dangerous scheme entering executable contexts: javascript: URI variants against executable sinks like href and location, with the browser actually jumping to your collector confirming the assignment form is triggerable."
         },
         "vulnerability": {
-          "zh": "风险来自应用只校验字符串前缀或目标域，却未在统一解码后按协议白名单重新解析 URL。模板转义无法阻止危险协议语义，框架路由器、DOM 赋值和浏览器规范化差异还可能让服务端检查与客户端执行结果不一致。",
-          "en": "The weakness arises when an application checks string prefixes or destination hosts but does not parse the fully normalized URL against an allowlist of schemes. Template escaping does not remove dangerous-scheme semantics, and routers, DOM assignment, and browser normalization can disagree with server validation."
+          "zh": "根因是应用只校验字符串前缀或目标域，未在统一解码后按协议白名单重新解析 URL；模板转义无法阻止危险协议语义，框架路由与 DOM 赋值差异可能让服务端检查与客户端执行不一致。",
+          "en": "The root cause is applications validating string prefixes or target domains without re-parsing URLs against protocol allowlists after unified decoding; template escaping cannot neutralize dangerous scheme semantics, and framework-routing versus DOM-assignment differences may desync server checks from client execution."
         },
         "exploitation": {
-          "zh": "步骤一用 https://example.test 建立正常链接与导航基线；步骤二逐项提交原始 JavaScript URI 并在浏览器开发者工具中记录最终 DOM 属性、实际协议和脚本副作用；步骤三在纯文本、禁用脚本和不同浏览器中复测，排除仅显示载荷、CSP 阻断或扫描器匹配关键字造成的假阳性。",
-          "en": "First establish a normal link and navigation baseline with https://example.test. Submit each original JavaScript URI and record the final DOM property, resolved scheme, and script side effect in browser tooling. Repeat in plain-text, script-disabled, and alternate-browser controls to exclude displayed text, CSP blocking, or keyword-only scanner matches as false positives."
+          "zh": "使用第 1 步命令逐行以 javascript: URI 变体把页面导航到收集端；浏览器实际跳转至 {ATTACKER_HOST} 即确认对应 location 赋值形式可被 URI 触发。先用 https://example.test 建立正常链接与导航基线，再在开发者工具记录最终 DOM 属性、实际协议与脚本副作用，并在纯文本与禁脚本环境复测。",
+          "en": "Use the step 1 command to navigate the page to your collector via javascript: URI variants line by line; the browser actually jumping to {ATTACKER_HOST} confirms the corresponding location assignment form is triggerable by the URI. Baseline normal links and navigation with https://example.test first, then record final DOM attributes, actual protocols, and script side effects in DevTools, retesting in plain-text and script-disabled contexts."
         },
         "mitigation": {
-          "zh": "统一解码并使用标准 URL 解析器；只允许明确的 http/https 等业务协议并拒绝 javascript、data 与未知协议；在危险 DOM Sink 前执行上下文相关校验，同时部署严格 CSP 并保留浏览器回归测试。",
-          "en": "Normalize once and use a standard URL parser. Allow only business-required schemes such as HTTP and HTTPS and reject javascript, data, and unknown schemes. Validate before dangerous DOM sinks, deploy a strict CSP, and retain browser regression tests."
+          "zh": "统一解码并使用标准 URL 解析器，只允许明确的 http/https 等业务协议并拒绝 javascript、data 与未知协议；在危险 DOM Sink 前执行上下文校验，部署严格 CSP 并保留浏览器回归。",
+          "en": "Decode uniformly with standard URL parsers, allowing only explicit business protocols like http/https while rejecting javascript, data, and unknown schemes; run contextual validation before hazardous DOM sinks, deploy strict CSP, and keep browser regressions."
         },
         "difficulty": "intermediate"
       },
@@ -132,20 +132,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "这组样式表通过 PHP 命名空间扩展调用宿主函数，不是 SQL 或普通 XML 语法测试。成立条件包括攻击者能影响完整或关键 XSLT 节点、运行时注册 PHP 函数，以及转换进程拥有可观察的操作系统权限。",
-          "en": "These stylesheets invoke host functions through the PHP extension namespace; they are not SQL or ordinary XML syntax tests. Exploitation requires control of a complete or critical XSLT node, registered PHP functions, and observable operating-system privileges in the transform process."
+          "zh": "PHP XSLT 扩展函数代码执行针对不受信任样式表调用 php:function 的场景：system 等进程函数被暴露为转换期 Sink。验证含 PHP 命名空间的样式表能否在转换时执行宿主命令。",
+          "en": "PHP XSLT extension-function code execution targets untrusted stylesheets calling php:function, exposing process functions like system as transform-time sinks. It validates whether a stylesheet with the PHP namespace can execute host commands during transformation."
         },
         "vulnerability": {
-          "zh": "若服务端把上传或拼接的 XSLT 当作可信代码执行，并启用 registerPHPFunctions 或等价能力，样式表表达式就可跨越数据转换边界调用 system。仅解析 XML 并不等于执行，实际根因是扩展函数暴露与不可信样式表共存。",
-          "en": "If a server executes uploaded or composed XSLT as trusted code while registerPHPFunctions or equivalent capability is enabled, stylesheet expressions can cross the transformation boundary and invoke system. XML parsing alone is not execution; the root cause is exposing extension functions to untrusted stylesheets."
+          "zh": "若服务端把上传或拼接的 XSLT 当作可信代码执行并启用 registerPHPFunctions，样式表表达式可跨越数据转换边界调用 system；仅解析 XML 并不等于执行，根因是扩展函数暴露与不可信样式表共存。",
+          "en": "If the server executes uploaded or spliced XSLT as trusted code with registerPHPFunctions enabled, stylesheet expressions can cross the data-transformation boundary to call system; parsing XML alone is not execution—the root cause is extension-function exposure coexisting with untrusted stylesheets."
         },
         "exploitation": {
-          "zh": "步骤一用只输出固定文本的 XSLT 记录处理器和执行账号基线；步骤二提交原始 php:function 样式表，并以受控无害命令的标准输出、进程审计或系统调用日志确认执行；步骤三禁用 PHP 扩展后重放，排除 XML 回显、报错中出现命令文本或静态规则命中造成的假阳性。",
-          "en": "First record the processor and service-account baseline with a stylesheet that emits fixed text. Submit the original php:function stylesheet and confirm execution through controlled harmless output, process auditing, or system-call logs. Replay with PHP extensions disabled to exclude XML echoing, command text in errors, or static-rule matches as false positives."
+          "zh": "按第 1 步提交含 xmlns:php 命名空间与 php:function('system','id') 的完整样式表到目标转换入口；命中判据为转换输出包含 uid= 的命令结果。确认执行后可把函数参数替换为标记命令形成证据；若无输出，依次排查 registerPHPFunctions 是否启用、样式表是否被完整接受与转换进程权限，三项缺一即不成立。",
+          "en": "Per step 1, submit the complete stylesheet with the xmlns:php namespace and php:function('system','id') to the target transform entry; a hit is uid= command output in the transform result. Once execution is confirmed, swap function arguments for marker commands as evidence; without output, check in turn whether registerPHPFunctions is enabled, whether the stylesheet was fully accepted, and transform-process permissions—any missing means the chain fails."
         },
         "mitigation": {
-          "zh": "禁止用户控制可执行样式表；关闭 PHP XSL 扩展函数注册并采用无扩展的受限处理器；以低权限隔离转换进程、限制文件与网络访问，并对允许的模板做完整性校验和回归测试。",
-          "en": "Do not let users control executable stylesheets. Disable PHP XSL extension-function registration and use a restricted processor without host extensions. Isolate transformation under least privilege, restrict file and network access, and integrity-check approved templates with regression tests."
+          "zh": "禁止用户控制可执行样式表；关闭 PHP XSL 扩展函数注册并采用无扩展的受限处理器；以低权限隔离转换进程、限制文件与网络访问，并对允许的模板做完整性校验。修复后重放第 1 步样式表，确认 php:function 被拒绝且正常转换可用。",
+          "en": "Forbid user-controlled executable stylesheets; disable PHP XSL extension-function registration and use a restricted extension-free processor; isolate transform processes with low privilege, restrict file and network access, and verify template integrity. After the fix, replay the step-1 stylesheet and confirm php:function is rejected while normal transforms work."
         },
         "difficulty": "expert"
       },
@@ -241,20 +241,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原载荷依赖 Xalan 风格的 Java 扩展命名空间，把 XSLT 表达式连接到 java.lang.Runtime。它只在特定处理器、扩展函数未被安全模式禁用且不可信样式表真实参与转换时有效，因此必须先识别实现而非把任何 XML 响应都判为 RCE。",
-          "en": "The source payload relies on Xalan-style Java extension namespaces that connect XSLT expressions to java.lang.Runtime. It works only with a compatible processor, extensions enabled outside secure mode, and an untrusted stylesheet actually used for transformation, so implementation evidence is required before calling any XML response RCE."
+          "zh": "Java Xalan XSLT 扩展代码执行针对攻击者控制的命名空间映射到 Runtime 等宿主类的场景：转换表达式可调用进程执行。验证 Xalan 风格扩展命名空间能否在转换期启动命令。",
+          "en": "Java Xalan XSLT extension code execution targets attacker-controlled namespaces mapping to host classes like Runtime, letting transform expressions invoke process execution. It validates whether Xalan-style extension namespaces can launch commands during transformation."
         },
         "vulnerability": {
-          "zh": "应用若允许上传、覆盖或拼接 XSLT，并使用可反射调用 Java 类的方法解析扩展命名空间，数据转换模板便成为代码。处理器安全特性、类加载策略和服务账号权限共同决定影响，单独看到 Runtime 字符串不能证明调用发生。",
-          "en": "When an application permits uploaded, replaced, or composed XSLT and resolves extension namespaces into reflective Java calls, a data-transform template becomes code. Processor security features, class-loading policy, and service-account privileges determine impact; seeing a Runtime string alone does not prove invocation."
+          "zh": "应用若允许上传、覆盖或拼接 XSLT，并使用可反射调用 Java 类的方法解析扩展命名空间，数据转换模板便成为代码；处理器安全特性、类加载策略和服务账号权限共同决定影响，单独看到 Runtime 字符串不能证明调用发生。",
+          "en": "If the application allows XSLT upload, overwrite, or splicing and resolves extension namespaces via methods that reflectively invoke Java classes, data-transformation templates become code; processor security features, class-loading policy, and service-account permissions jointly determine impact—seeing the Runtime string alone proves no invocation."
         },
         "exploitation": {
-          "zh": "步骤一用 system-property 和固定输出确定 Xalan 实现及安全处理配置；步骤二提交原始 Runtime 扩展载荷，以无害命令输出、Java 进程创建事件和服务日志三者交叉确认；步骤三开启 secure-processing 并禁用扩展重放，排除解析错误、模板回显或其他后台任务造成的假阳性。",
-          "en": "First use system-property and fixed output to identify the Xalan implementation and secure-processing state. Submit the original Runtime extension payload and correlate harmless output, Java child-process events, and service logs. Replay with secure processing and extensions disabled to exclude parse errors, template echoing, or unrelated background jobs as false positives."
+          "zh": "按第 1 步提交映射 java.lang.Runtime 的扩展命名空间样式表，先以 getRuntime 与 exec('id') 组合验证调用链；命中判据为转换输出包含对应命令结果。确认执行后可替换为标记命令；无输出时依次确认处理器是否为 Xalan、扩展函数是否被安全模式禁用、不可信样式表是否真实参与转换，三者缺一则该链不适用于目标。",
+          "en": "Per step 1, submit the stylesheet mapping the java.lang.Runtime extension namespace, first validating the invocation chain with getRuntime and exec('id'); a hit is the corresponding command output in the transform result. Once confirmed, substitute marker commands; without output, confirm in turn that the processor is Xalan, extension functions are not disabled by secure processing, and the untrusted stylesheet genuinely participates in transformation—if any fails, the chain does not apply to the target."
         },
         "mitigation": {
-          "zh": "只执行受版本控制且签名的 XSLT；启用 JAXP 安全处理并禁止外部扩展函数与任意类解析；在无网络、只读文件系统和低权限账号中运行转换，同时监控异常子进程。",
-          "en": "Execute only versioned and integrity-checked XSLT. Enable JAXP secure processing and block external extension functions and arbitrary class resolution. Run transforms without network access, on a read-only filesystem, under least privilege, and monitor unexpected child processes."
+          "zh": "只执行受版本控制且签名的 XSLT；启用 JAXP 安全处理并禁止外部扩展函数与任意类解析；在无网络、只读文件系统和低权限账号中运行转换，同时监控异常子进程。修复后重放第 1 步样式表，确认扩展命名空间被拒绝。",
+          "en": "Execute only version-controlled, signed XSLT; enable JAXP secure processing and forbid external extension functions and arbitrary class resolution; run transforms without network, on read-only filesystems, under low-privilege accounts, and monitor anomalous child processes. After the fix, replay the step-1 stylesheet and confirm the extension namespace is rejected."
         },
         "difficulty": "expert"
       },
@@ -353,20 +353,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "msxsl:script 允许部分 .NET XSLT 实现把脚本块编译为宿主程序集。原语料通过 Process 启动命令，成立前提是应用使用支持脚本的旧式 XslTransform 或启用了脚本的 XslCompiledTransform，并真正处理攻击者样式表。",
-          "en": "msxsl:script lets some .NET XSLT implementations compile script blocks into host assemblies. The source uses Process to launch commands and requires an implementation with script enabled plus actual processing of an attacker-controlled stylesheet."
+          "zh": ".NET msxsl:script 代码执行针对攻击者提供的 msxsl:script 脚本块被宿主编译执行的场景。验证支持脚本的 XSLT 引擎是否把 C# 代码块编译进宿主进程并执行。",
+          "en": ".NET msxsl:script code execution targets attacker-supplied msxsl:script blocks compiled and executed by the host. It validates whether a script-capable XSLT engine compiles the C# block into the host process and runs it."
         },
         "vulnerability": {
-          "zh": "如果应用将 XsltSettings.EnableScript 打开并允许外部提供样式表，脚本就绕过了数据转换边界，继承服务进程的文件、网络和进程权限。现代运行时可能直接拒绝脚本，因此必须区分功能不可用、编译失败与真正执行。",
-          "en": "If an application enables XsltSettings.EnableScript and accepts external stylesheets, script crosses the data-transform boundary and inherits the service process's file, network, and process privileges. Modern runtimes may reject scripts outright, so unsupported functionality, compilation failure, and actual execution must be distinguished."
+          "zh": "如果应用将 XsltSettings.EnableScript 打开并允许外部提供样式表，脚本就绕过了数据转换边界，继承服务进程的文件、网络和进程权限；现代运行时可能直接拒绝脚本，必须区分功能不可用、编译失败与真正执行。",
+          "en": "If the application enables XsltSettings.EnableScript and allows externally supplied stylesheets, scripts bypass the data-transformation boundary and inherit the service process's file, network, and process permissions; modern runtimes may reject scripts outright—distinguish feature unavailable, compile failure, and genuine execution."
         },
         "exploitation": {
-          "zh": "步骤一记录 .NET 运行时、XSLT API 与 EnableScript 基线；步骤二提交原始 msxsl:script，并用受控输出、进程创建遥测和转换异常记录确认 C# 代码是否编译运行；步骤三关闭脚本并在相同模板输入下重放，排除源码回显、编译器错误或预存文件造成的假阳性。",
-          "en": "First record the .NET runtime, XSLT API, and EnableScript baseline. Submit the original msxsl:script and use controlled output, process-creation telemetry, and transform exceptions to determine whether C# compiled and ran. Replay with script disabled to exclude source echoing, compiler errors, or preexisting files as false positives."
+          "zh": "按第 1 步提交含 msxsl:script 与 xmlns:my 命名空间的完整样式表，脚本块内以 Process 启动命令并在模板中调用 user 函数；命中判据为转换时脚本内代码执行并输出命令结果。确认执行后可把命令替换为标记输出；无输出时核对 XslCompiledTransform 是否启用脚本设置与样式表是否完整参与转换，编译错误要单独记录。",
+          "en": "Per step 1, submit the complete stylesheet with msxsl:script and the xmlns:my namespace, launching a command via Process inside the script block and calling the user function from the template; a hit is the script code executing during transformation with command output. Once confirmed, swap commands for marker output; without output, check whether XslCompiledTransform has script settings enabled and whether the stylesheet fully participates in transformation—log compile errors separately."
         },
         "mitigation": {
-          "zh": "保持 XSLT 脚本功能关闭；只从受信仓库加载固定样式表并校验完整性；将转换放入低权限隔离进程，限制子进程、文件与网络能力并监控动态编译事件。",
-          "en": "Keep XSLT scripting disabled. Load only fixed integrity-checked stylesheets from a trusted repository. Isolate transforms under least privilege, restrict child-process, file, and network capabilities, and monitor dynamic compilation events."
+          "zh": "保持 XSLT 脚本功能关闭；只从受信仓库加载固定样式表并校验完整性；将转换放入低权限隔离进程，限制子进程、文件与网络能力并监控动态编译事件。修复后重放第 1 步样式表，确认脚本块被拒绝且正常转换可用。",
+          "en": "Keep XSLT scripting disabled; load fixed stylesheets only from trusted repositories with integrity checks; run transforms in low-privilege isolated processes, restricting child-process, file, and network capabilities, and monitor dynamic-compilation events. After the fix, replay the step-1 stylesheet and confirm script blocks are rejected while normal transforms work."
         },
         "difficulty": "expert"
       },
@@ -462,20 +462,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "CRLF 载荷只有在应用、框架或反向代理将其解码并写入响应头值时才有安全意义。原集合同时覆盖新 Header、Set-Cookie、Location 和正文分隔，审校时必须捕获未经客户端重排的原始响应字节。",
-          "en": "CRLF input matters only when an application, framework, or reverse proxy decodes it into a response-header value. The set covers new headers, Set-Cookie, Location, and body boundaries, so review must capture raw response bytes before client reformatting."
+          "zh": "该 Payload 覆盖 HTTP 响应头注入场景，检验请求输入进入响应头后能否拆分出新的 Header、Cookie 与正文边界。验证维度为 CRLF 编码变体注入头值与路径的单步矩阵，对应第 1 步。",
+          "en": "This payload covers HTTP response-header injection, testing whether request input entering headers can split out new headers, cookies and body boundaries. Validation injects CRLF-encoded variants into header values and paths in a single-step matrix, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "根因是把不受信输入拼进响应头、重复解码或在代理与应用之间采用不同换行规范。现代框架常拒绝 CR/LF，若载荷只出现在请求、日志或 HTML 正文中，就没有跨越响应头结构边界。",
-          "en": "The root cause is concatenating untrusted input into response headers, repeated decoding, or inconsistent newline handling between proxies and applications. Modern frameworks often reject CR and LF; if input appears only in the request, a log, or HTML body, it has not crossed the response-header boundary."
+          "zh": "根因在于服务端把未过滤回车换行的用户输入写入响应头：一旦解码层放行编码序列，浏览器即按头边界解析出攻击者定义的 Set-Cookie、Location 或正文。",
+          "en": "The root cause is the server writing user input with unfiltered carriage returns into response headers: once a decoding layer passes encoded sequences, the browser parses attacker-defined Set-Cookie, Location or body content at header boundaries."
         },
         "exploitation": {
-          "zh": "步骤一找到会进入 Location 或自定义响应头的参数并记录正常响应；步骤二逐项发送原始编码与字面换行变体，保存代理前后的原始字节和浏览器头视图；步骤三检查新 Header、Cookie 或正文是否实际生效，排除日志换行、抓包工具格式化和正文回显造成的假阳性。",
-          "en": "First find a parameter written into Location or another response header and record a normal response. Send each encoded and literal-newline variant and preserve raw bytes on both sides of the proxy plus the browser header view. Verify that a new header, cookie, or body actually takes effect, excluding log newlines, capture-tool formatting, and body echo as false positives."
+          "zh": "第 1 步把百分号编码与原始 CRLF 变体逐条注入可回显的头值或路径参数，检查响应是否出现注入的 Set-Cookie、自定义头或 Location 指向；出现任一注入结构即确认头注入成立，并区分响应拆分与仅头污染两种深度。成功判据以浏览器实际接受的 Cookie 与响应结构为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, inject percent-encoded and raw CRLF variants one by one into echoable header values or path parameters, checking responses for injected Set-Cookie, custom headers or Location pointers; any injected structure confirms header injection, distinguishing full response splitting from mere header pollution. Judge success by cookies the browser actually accepts and response structure. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "禁止把用户输入直接拼入响应头；使用框架 Header API 并拒绝解码后包含 CR 或 LF 的值；统一代理与应用的解码策略、减少重复解码，并为 Cookie 与重定向路径增加原始字节回归测试。",
-          "en": "Never concatenate user input into response headers. Use framework header APIs and reject values containing CR or LF after canonical decoding. Align proxy and application decoding, avoid repeated decoding, and add raw-byte regression tests for cookies and redirects."
+          "zh": "拒绝进入响应头的输入含回车换行并做严格编码，框架升级至禁止手动多头发头；对重定向 Location 统一白名单。修复后重放第 1 步，全部变体应被过滤或拒绝。",
+          "en": "Reject carriage returns in header-bound input with strict encoding, upgrade frameworks to forbid manual multi-header emission, and allowlist redirect Locations. After the fix, replay step 1: every variant should be filtered or rejected."
         },
         "difficulty": "advanced"
       },
@@ -575,20 +575,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原命令包含重复 Content-Length、冲突 Transfer-Encoding 和控制字节变体，测试的是两个 HTTP 解析器对同一字节流的消息边界判断。单个 400、连接关闭或 WAF 告警都不能证明发生请求走私。",
-          "en": "The source contains duplicate Content-Length, conflicting Transfer-Encoding, and control-byte variants that test how two HTTP parsers frame the same byte stream. A single 400 response, closed connection, or WAF alert does not prove request smuggling."
+          "zh": "该 Payload 覆盖 HTTP 请求走私的消息分帧差异场景，检验链路对 CL、TE 与异常字节的解析分歧。验证维度为 CL 与 TE 混淆、重复头与变体编码的原始报文矩阵，对应第 1 步。",
+          "en": "This payload covers HTTP request-smuggling message-framing divergence, testing parse disagreements across CL, TE and anomalous bytes in the chain. Validation is a raw-message matrix of CL and TE confusion, duplicate headers and variant encodings, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "当入口代理与源站对 CL/TE 优先级、重复头合并或非法字符容忍度不一致时，前端认为属于一个请求的剩余字节可能被后端当作下一请求。影响取决于连接复用、队列共享以及受害请求能否被稳定干扰。",
-          "en": "When an edge proxy and origin disagree on CL or TE precedence, duplicate-header combination, or malformed-character tolerance, bytes treated as one request by the front end may become a subsequent request at the back end. Impact depends on connection reuse, queue sharing, and repeatable interference with a victim request."
+          "zh": "根因在于前端与后端对同一报文的定界标准可被构造性分离：CL 与 TE 并存、重复 TE 或非法取值让两端各自解析出不同消息边界，第二请求由此注入。",
+          "en": "The root cause is constructively separable delimiting standards between front and back ends for one message: CL-plus-TE coexistence, duplicate TE or illegal values make each end parse different boundaries, injecting a second request."
         },
         "exploitation": {
-          "zh": "步骤一用正常 POST 和两次独立探测建立前后端连接基线；步骤二以原始字节发送每个分帧变体，并在同一后端连接追加唯一 Canary 请求；步骤三关联代理与源站日志中的请求数、边界和 Canary 顺序，排除超时抖动、限流或普通 keep-alive 行为造成的假阳性。",
-          "en": "First establish front-end and origin connection baselines with a normal POST and two independent probes. Send each framing variant as raw bytes and append a uniquely tagged canary request on the same back-end connection. Correlate request counts, boundaries, and canary order in proxy and origin logs to exclude timeout jitter, rate limiting, or ordinary keep-alive behavior as false positives."
+          "zh": "第 1 步按脚本用原始套接字逐条发送 CL 前置、TE 前置、重复 TE 与变体取值的报文，观察第二条请求出现、响应错位或超时差异；命中任一特征即确认分帧分歧，并按两跳日志定位责任层。成功判据以走私证据与请求计数为准。占位符在全局变量菜单替换；全部目标限定授权实验路径。",
+          "en": "In step 1, send raw-socket messages one by one per the script covering CL-first, TE-first, duplicate TE and variant values, watching for a second request appearing, misaligned responses or timeout differences; any hit confirms framing divergence, and two-hop logs locate the responsible layer. Judge success by smuggling evidence and request counts. Replace placeholders via the global variables menu; all targets restricted to authorized lab paths."
         },
         "mitigation": {
-          "zh": "在边缘统一拒绝模糊或重复的分帧头；让代理与源站采用一致且及时更新的 HTTP 解析器；避免不可信请求复用后端连接，并用原始字节差分测试覆盖 CL.CL、CL.TE、TE.CL 和异常编码。",
-          "en": "Reject ambiguous or duplicate framing headers at the edge. Keep proxy and origin parsers aligned and updated. Avoid reusing back-end connections for untrusted requests, and maintain raw-byte differential tests for CL.CL, CL.TE, TE.CL, and malformed encodings."
+          "zh": "统一链路 HTTP 解析器版本并启用走私防护模式，拒绝 CL 与 TE 并存及一切歧义头组合。修复后重放第 1 步矩阵，歧义报文应在边缘即被 400 拒绝。",
+          "en": "Unify HTTP parser versions across the chain with smuggling-protection modes on, rejecting CL-plus-TE and every ambiguous header combination. After the fix, replay the step 1 matrix: ambiguous messages should get 400 at the edge."
         },
         "difficulty": "expert"
       },
@@ -688,20 +688,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原集合混合污染源与多个潜在 Gadget，包括 isAdmin、innerHTML、src 和 Node 运行配置。审计必须先证明共享原型被改写，再证明目标对象在未显式设置属性时继承该值，最后确认具体 Sink 产生安全影响。",
-          "en": "The set combines pollution sources with possible gadgets such as isAdmin, innerHTML, src, and Node runtime configuration. Review must first prove shared-prototype modification, then inherited values on objects without own properties, and finally a concrete security effect at a sink."
+          "zh": "JavaScript 对象合并原型污染针对 JSON 或嵌套属性合并允许 __proto__ 或 constructor.prototype 改写共享原型的场景。验证 isAdmin、innerHTML、src 与 Node 运行配置等 gadget 链的逐级触发。",
+          "en": "JavaScript object-merge prototype pollution targets JSON or nested-property merges letting __proto__ or constructor.prototype overwrite the shared prototype. It validates gadget chains—isAdmin, innerHTML, src, and Node runtime configuration—stage by stage."
         },
         "vulnerability": {
-          "zh": "易受影响的递归合并、路径赋值或反序列化逻辑未拒绝 __proto__、prototype 和 constructor 等特殊键，导致攻击者把属性写入 Object.prototype 或自定义构造器原型。污染本身与可利用 Gadget 是两个独立证据阶段。",
-          "en": "Vulnerable recursive merge, path assignment, or deserialization code fails to reject special keys such as __proto__, prototype, and constructor, letting an attacker write to Object.prototype or a custom constructor prototype. Pollution and an exploitable gadget are separate evidence stages."
+          "zh": "易受影响的递归合并、路径赋值或反序列化逻辑未拒绝 __proto__、prototype 和 constructor 等特殊键，导致攻击者把属性写入 Object.prototype 或自定义构造器原型；污染本身与可利用 gadget 是两个独立证据阶段。",
+          "en": "Vulnerable recursive merges, path assignment, or deserialization logic fail to reject special keys like __proto__, prototype, and constructor, letting attackers write properties to Object.prototype or custom constructor prototypes; pollution itself and exploitable gadgets are two independent evidence stages."
         },
         "exploitation": {
-          "zh": "步骤一在隔离进程中用普通嵌套对象记录合并结果和自有属性基线；步骤二逐项提交原始 JSON，检查新建空对象是否意外继承唯一 Canary 属性；步骤三单独触发授权、DOM 或进程 Gadget 并重启进程复测，排除响应回显、对象自身属性或测试间残留造成的假阳性。",
-          "en": "First record merge results and own-property baselines with a normal nested object in an isolated process. Submit each original JSON input and check whether a newly created empty object inherits a unique canary property. Trigger authorization, DOM, or process gadgets separately and restart between tests to exclude response echo, own properties, or cross-test residue as false positives."
+          "zh": "按第 1 步逐条提交样例：先以 isAdmin 变体确认共享原型被改写且目标对象继承该值；再测 innerHTML 与 src 是否进入 DOM 或脚本 Sink；Node 环境测 NODE_OPTIONS 等 gadget。命中判据为继承属性引发预期行为。先证污染原语，再逐个验证 gadget，两级证据分开归档。",
+          "en": "Submit samples one by one per step 1: first confirm with the isAdmin variants that the shared prototype is overwritten and target objects inherit the value; then test whether innerHTML and src reach DOM or script sinks; in Node, test NODE_OPTIONS-style gadgets. A hit is inherited properties producing expected behavior. Prove the pollution primitive first, then verify gadgets one by one, archiving the two evidence stages separately."
         },
         "mitigation": {
-          "zh": "在所有对象路径入口拒绝 __proto__、prototype 和 constructor；使用无原型对象、Map 或经过审计的安全合并库；授权判断只读取自有属性并采用显式 Schema，同时为污染源与每个 Gadget 分别回归。",
-          "en": "Reject __proto__, prototype, and constructor at every object-path entry. Use null-prototype objects, Map, or an audited safe merge library. Read own properties only for authorization, enforce explicit schemas, and regress pollution sources separately from each gadget."
+          "zh": "在所有对象路径入口拒绝 __proto__、prototype 和 constructor；使用无原型对象、Map 或经过审计的安全合并库；授权判断只读取自有属性并采用显式 Schema。修复后重放第 1 步全部变体，并为污染源与每个 gadget 分别建立回归测试。",
+          "en": "Reject __proto__, prototype, and constructor at every object-path entry; use prototype-less objects, Map, or audited safe merge libraries; read authorization decisions from own properties only with explicit schemas. After the fix, replay all step-1 variants and build separate regression tests for the pollution source and each gadget."
         },
         "difficulty": "advanced"
       },
@@ -801,20 +801,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原语料不是数据库注入，而是 JSON 类型进入密码校验逻辑后的比较语义测试。服务端若接受非字符串 password，并通过宽松相等、strcmp 返回值误用或空值分支决定登录结果，可能出现认证绕过。",
-          "en": "The source is not database injection; it tests comparison semantics after JSON types reach password verification. If a server accepts a non-string password and uses loose equality, misinterpreted strcmp results, or null-like branches to decide login, authentication may be bypassed."
+          "zh": "该 Payload 覆盖认证参数弱类型比较场景，检验登录接口对布尔、数字与数组凭据的宽松处理。验证维度为 JSON 类型混淆凭据矩阵的单步提交，对应第 1 步。",
+          "en": "This payload covers weak-typed authentication comparison, testing lenient handling of boolean, numeric and array credentials at login. Validation submits a JSON type-confusion credential matrix in one step, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "根因是缺少输入 Schema、在安全比较前发生隐式类型转换，或把函数错误状态当作匹配成功。影响必须表现为服务端建立有效身份会话或发放令牌，仅返回不同错误、500 或解析成功不构成绕过。",
-          "en": "The root cause is missing input schemas, implicit conversion before a secure comparison, or treating a comparison-function error as success. Impact must be a valid authenticated session or token; a different error, 500 response, or successful parsing is not a bypass."
+          "zh": "根因在于比较逻辑使用松散相等且未对凭据做类型断言：零、空数组或布尔值在特定运行时与特定字符串判定相等，口令校验被整体绕过。",
+          "en": "The root cause is comparison via loose equality without type assertions on credentials: zero, empty arrays or booleans compare equal to certain strings under specific runtimes, bypassing the password check entirely."
         },
         "exploitation": {
-          "zh": "步骤一用正确与错误字符串密码记录状态码、会话和审计基线；步骤二逐项提交原始布尔、数字、数组与空值 JSON，保持账号和请求头不变；步骤三访问受保护资源并检查服务端主体，排除错误页差异、测试账号免密配置或旧 Cookie 复用造成的假阳性。",
-          "en": "First record status, session, and audit baselines with correct and incorrect string passwords. Submit each original boolean, number, array, and empty-value JSON while keeping the account and headers fixed. Access a protected resource and inspect the server principal to exclude error-page differences, passwordless test accounts, or reused cookies as false positives."
+          "zh": "第 1 步按脚本把 true、0、空数组、空串等类型混淆凭据逐条提交登录端点，记录认证结果与错误差异：任一非字符串凭据通过认证即确认弱比较漏洞，全部拒绝则说明类型断言到位。成功判据以认证响应矩阵为准。占位符在全局变量菜单替换；对命中项复查服务端比较实现以定位根因。",
+          "en": "In step 1, submit type-confused credentials such as true, 0, empty arrays and empty strings to the login endpoint one by one per the script, recording authentication results and error differences; any non-string credential authenticating confirms the weak-comparison flaw, uniform rejection shows type assertions exist. Judge success by the authentication-response matrix. Replace placeholders via the global variables menu; re-inspect server comparison code on hits to pin the root cause."
         },
         "mitigation": {
-          "zh": "为认证请求执行严格 JSON Schema 并要求密码为非空字符串；使用恒定时间的密码验证 API，禁止宽松比较和隐式转换；在失败分支清除旧会话并对所有错误类型保持统一拒绝与审计。",
-          "en": "Enforce a strict authentication JSON schema and require a nonempty string password. Use constant-time password-verification APIs and prohibit loose comparison or implicit conversion. Clear stale sessions on failure and reject and audit every invalid type consistently."
+          "zh": "凭据入口强制字符串类型断言并使用恒时严格比较，反序列化配置禁用数字与数组到字符串的隐式转换。修复后重放第 1 步，全部混淆凭据应返回统一失败。",
+          "en": "Assert string types at the credential entry with constant-time strict comparison, and configure deserialization to forbid implicit numeric and array to-string coercion. After the fix, replay step 1: every confused credential should get a uniform failure."
         },
         "difficulty": "intermediate"
       },
@@ -914,20 +914,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原命令通过同名参数的先取、后取和逗号合并语义探测解析链差异。它不是 SQL 注入；关键在于安全组件验证了一个值，而后端业务实际消费另一个值，或不同层以数组、标量和拼接字符串解释同一请求。",
-          "en": "The source probes first-value, last-value, and comma-join semantics for duplicate parameter names. It is not SQL injection; the issue occurs when a security layer validates one value while back-end logic consumes another, or layers disagree between arrays, scalars, and joined strings."
+          "zh": "该 Payload 覆盖 HTTP 参数污染场景，检验网关、框架与业务层对重复参数取值顺序的解释差异。验证维度为重复参数顺序与逗号合并值三类提交的单步对照，对应第 1 步。",
+          "en": "This payload covers HTTP parameter pollution, testing value-order interpretation differences for repeated parameters across gateway, framework and business layers. Validation contrasts three submission forms of repeated-parameter order and comma merging in one step, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "如果 CDN、WAF、路由器和应用框架没有统一参数基数与合并规则，攻击者可把安全值放在被检查的位置，把恶意值放在最终消费位置。仅响应变化不够，必须证明校验日志与业务日志看到不同的规范化值并产生安全结果。",
-          "en": "If a CDN, WAF, router, and application framework do not share parameter cardinality and combination rules, an attacker can place a safe value where validation looks and a malicious value where business logic consumes it. A response change is insufficient; logs must show divergent normalized values and a security-relevant result."
+          "zh": "根因在于各层对重复参数采用首值、末值或拼接等不同策略：校验层读到的值与业务层实际使用值可被构造成不同，安全判定随之失效。",
+          "en": "The root cause is layers differing on first-value, last-value or concatenation strategies for repeated parameters: the value validated can be crafted to differ from the value business logic uses, voiding security checks."
         },
         "exploitation": {
-          "zh": "步骤一分别发送单一 safe 与单一 payload 参数记录每层解析值；步骤二回放原始重复和逗号变体，并在网关、WAF 与应用日志中标记同一请求；步骤三验证授权或校验是否真实绕过，排除参数本就允许多值、客户端自动重排或普通业务分支造成的假阳性。",
-          "en": "First send one safe value and one test value separately and record each layer's parsed value. Replay the original duplicate and comma variants with a shared request identifier across gateway, WAF, and application logs. Verify an actual validation or authorization bypass, excluding intentionally multivalued parameters, client reordering, or ordinary business branching as false positives."
+          "zh": "第 1 步按 safe 与 payload 两种顺序及逗号合并形式逐条提交重复参数，比对边缘校验结论与业务端实际处理结果：两侧取值不一致且恶意值生效即确认污染可用，同时记录各层日志定位分歧点。成功判据以业务层实际取值为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, submit repeated parameters in safe-then-payload and payload-then-safe orders plus comma-merged form one by one, comparing edge validation verdicts against actual business-layer handling; divergent values with the malicious one winning confirms usable pollution, and layer logs pinpoint the divergence. Judge success by the business layer's actual value. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "为每个参数声明唯一或数组基数并拒绝歧义输入；在最外层统一解码与规范化后把同一结构传给授权和业务逻辑；让代理、WAF 和框架采用一致规则，并对重复、顺序和分隔符建立差分回归。",
-          "en": "Declare scalar or array cardinality for every parameter and reject ambiguous input. Normalize once at the edge and pass the same structure to authorization and business logic. Align proxy, WAF, and framework rules and maintain differential regressions for duplicates, ordering, and delimiters."
+          "zh": "各层统一重复参数解析策略并在入口丢弃多余同名参数，安全校验与业务读取复用同一取值函数。修复后重放第 1 步，三组提交应得到一致的拒绝结论。",
+          "en": "Unify repeated-parameter parsing across layers and drop extra same-name parameters at ingress, with security checks and business reads sharing one resolver. After the fix, replay step 1: all three submissions should get a consistent rejection."
         },
         "difficulty": "advanced"
       },
@@ -1030,20 +1030,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "CSV 本身没有执行引擎，风险发生在 Excel、LibreOffice 或在线表格把以 =、+、-、@ 等字符开头的字段解释为公式时。原集合覆盖命令调用和网络取数函数，必须记录具体客户端、信任提示与用户交互。",
-          "en": "CSV itself has no execution engine; risk occurs when Excel, LibreOffice, or an online spreadsheet interprets fields beginning with characters such as equals, plus, minus, or at sign as formulas. The set covers command and network functions, so the exact client, trust prompt, and user interaction must be recorded."
+          "zh": "CSV 电子表格公式注入针对导出的用户字段以公式前缀进入单元格的场景：人工打开或刷新文件时触发命令、外部取数或数据外传。验证 DDE 命令调用与 IMPORTDATA 网络取数两类公式。",
+          "en": "CSV spreadsheet formula injection targets exported user fields entering cells with formula prefixes, triggering commands, external fetches, or data exfiltration when a human opens or refreshes the file. It validates two formula classes: DDE command invocation and IMPORTDATA network fetches."
         },
         "vulnerability": {
-          "zh": "应用若把不受信字段直接串接到 CSV，引用和分隔符转义可能保证格式正确，却不会阻止电子表格公式求值。实际影响受客户端版本、安全模式、外部连接提示、DDE 支持和文件来源标记影响，不能仅凭单元格显示公式判定。",
-          "en": "When an application writes untrusted fields directly to CSV, delimiter and quote escaping may preserve format but does not stop formula evaluation. Impact depends on client version, protected mode, external-connection prompts, DDE support, and file provenance; merely displaying a formula is not proof."
+          "zh": "应用若把不受信字段直接串接到 CSV，引用和分隔符转义可能保证格式正确，却不会阻止电子表格公式求值；实际影响受客户端版本、安全模式、外部连接提示、DDE 支持和文件来源标记影响，不能仅凭单元格显示公式判定。",
+          "en": "If the application concatenates untrusted fields directly into CSV, quoting and delimiter escaping may keep the format valid yet cannot stop spreadsheet formula evaluation; actual impact depends on client version, protected view, external-connection prompts, DDE support, and file origin marking—cell display alone is not a verdict."
         },
         "exploitation": {
-          "zh": "步骤一导出以普通文本开头的唯一 Canary 并记录原始 CSV 字节；步骤二逐项写入原始公式，在隔离虚拟机的目标电子表格中打开并捕获公式类型、提示和受控网络请求；步骤三用纯文本查看器和禁用外部内容的客户端对照，排除仅显示字符串、客户端已阻断或代理缓存造成的假阳性。",
-          "en": "First export a unique canary beginning with normal text and preserve the raw CSV bytes. Insert each original formula and open the file in the target spreadsheet inside an isolated VM, capturing formula type, prompts, and controlled network requests. Compare a plain-text viewer and a client with external content disabled to exclude displayed strings, client blocking, or proxy cache as false positives."
+          "zh": "把第 1 步的公式样例写入导出功能接受的输入字段（如姓名、备注），生成 CSV 后在隔离环境打开并允许外部连接提示；命中判据为打开文件后攻击者 HTTP 日志收到 shell.ps1/shell.exe 下载请求或 IMPORTDATA 的外带请求（或目标进程弹出）。{ATTACKER_HOST} 占位符在全局变量菜单替换为目标值。逐条记录客户端软件、版本与用户交互，公式仅显示为文本时记为阴性。",
+          "en": "Write the step-1 formula samples into input fields the export feature accepts (e.g., name, remarks), generate the CSV, and open it in an isolated environment accepting the external-connection prompt; a hit is your HTTP log receiving shell.ps1/shell.exe downloads or IMPORTDATA callbacks after opening (or the target process launching). Replace the {ATTACKER_HOST} placeholder in the global variables menu. Record client software, version, and user interaction per sample; formulas displayed as text count as negative."
         },
         "mitigation": {
-          "zh": "导出前对可能被解释为公式的前缀采用可靠的文本化策略；根据目标客户端正确处理引号、分隔符与前导空白，禁止仅依赖黑名单；提供不执行公式的安全导出格式，并用主流客户端版本做文件级回归。",
-          "en": "Before export, apply a reliable text-forcing strategy to fields that could be formulas. Handle quotes, delimiters, and leading whitespace for the target client and do not rely on a prefix blacklist. Offer a safe nonformula export format and run file-level regressions across supported spreadsheet versions."
+          "zh": "导出前对可能被解释为公式的前缀采用可靠的文本化策略；根据目标客户端正确处理引号、分隔符与前导空白，禁止仅依赖黑名单；提供不执行公式的安全导出格式，并用主流客户端版本做文件级回归。修复后重放第 1 步样例并重新打开导出文件，确认无外带请求。",
+          "en": "Apply a reliable textification strategy to potential formula prefixes before export; handle quotes, delimiters, and leading whitespace correctly per target client and never rely on blacklists alone; provide safe export formats that do not evaluate formulas, and run file-level regression on mainstream client versions. After the fix, replay the step-1 samples, re-open the export, and confirm no callbacks occur."
         },
         "difficulty": "advanced"
       },
@@ -1261,20 +1261,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原语料包含 SpEL 类型引用、ProcessBuilder 和反射链，测试输入是否从普通字符串进入可求值表达式上下文。表达式被解析、返回语法错误或在日志中出现 Runtime 都不等于命令执行，必须观察实际求值 Sink。",
-          "en": "The source includes SpEL type references, ProcessBuilder, and reflection chains that test whether ordinary strings enter an evaluable expression context. Parsing, syntax errors, or Runtime text in logs do not equal command execution; the actual evaluation sink must be observed."
+          "zh": "服务端表达式语言代码注入针对 Spring SpEL 等表达式语言解析攻击者输入的场景：类型解析、反射或进程构造能力被暴露。验证 SpEL 类型引用、ProcessBuilder 与插值三类样例是否进入可求值上下文。",
+          "en": "Server-side expression-language code injection targets Spring SpEL and similar languages parsing attacker input, exposing type resolution, reflection, or process construction. It validates three sample classes—SpEL type references, ProcessBuilder, and interpolation—reaching an evaluable context."
         },
         "vulnerability": {
-          "zh": "应用把请求字段、路由表达式或配置值传给支持类型解析和方法调用的标准求值上下文时，攻击者可能访问任意 Java 类。根因是把不可信数据当作表达式代码，并给求值器超出业务需要的反射与构造权限。",
-          "en": "When an application passes request fields, routing expressions, or configuration values into a standard evaluation context that supports type resolution and method calls, an attacker may reach arbitrary Java classes. The root cause is treating untrusted data as expression code with excessive reflection and construction privileges."
+          "zh": "应用把请求字段、路由表达式或配置值传给支持类型解析和方法调用的标准求值上下文时，攻击者可能访问任意 Java 类；根因是把不可信数据当作表达式代码，并给求值器超出业务需要的反射与构造权限。",
+          "en": "When the application passes request fields, route expressions, or configuration values to a standard evaluation context supporting type resolution and method invocation, attackers may reach arbitrary Java classes; the root cause is treating untrusted data as expression code and granting evaluators more reflection and construction power than the business needs."
         },
         "exploitation": {
-          "zh": "步骤一用常量算术和字面字符串确认是否发生表达式求值；步骤二逐项提交原始 SpEL 与反射变体，并以无害子进程、求值器日志和响应 Canary 交叉证明；步骤三切换到受限求值上下文或纯数据绑定后重放，排除模板回显、日志告警和其他进程造成的假阳性。",
-          "en": "First use constant arithmetic and literal strings to confirm expression evaluation. Submit each original SpEL and reflection variant and correlate a harmless child process, evaluator logs, and a response canary. Replay under a restricted evaluation context or plain data binding to exclude template echo, log alerts, and unrelated processes as false positives."
+          "zh": "按第 1 步逐条提交样例并记录响应与日志差异：先提交 T(java.lang.Runtime).getRuntime().exec('id') 验证类型引用可达，再测试 ProcessBuilder 构造与 ${} 插值形式；命中判据为表达式求值返回 uid= 的命令输出。无输出时核对求值上下文类型（Standard 还是 Simple）与表达式入口；表达式被解析或仅返回语法错误不算命中。",
+          "en": "Submit the samples one by one per step 1, recording response and log differences: first T(java.lang.Runtime).getRuntime().exec('id') to confirm type references are reachable, then ProcessBuilder construction and ${} interpolation forms; a hit is uid= command output from expression evaluation. Without output, check the evaluation-context type (Standard vs Simple) and the expression entry; a parsed expression or mere syntax error is not a hit."
         },
         "mitigation": {
-          "zh": "不要对用户输入调用通用表达式求值器；使用 SimpleEvaluationContext 或业务专用白名单语法并禁用类型、构造器与反射访问；以低权限隔离进程并为路由、配置和模板入口建立求值回归测试。",
-          "en": "Do not invoke a general expression evaluator on user input. Use SimpleEvaluationContext or a business-specific allowlisted grammar and block type, constructor, and reflection access. Isolate the process under least privilege and regress routing, configuration, and template entry points."
+          "zh": "不要对用户输入调用通用表达式求值器；使用 SimpleEvaluationContext 或业务专用白名单语法并禁用类型、构造器与反射访问；以低权限隔离进程并为路由、配置和模板入口建立求值回归测试。修复后重放第 1 步样例，确认类型引用被拒绝。",
+          "en": "Never call generic expression evaluators on user input; use SimpleEvaluationContext or business-specific allowlisted syntax, disabling type, constructor, and reflection access; isolate processes with low privilege and build evaluation regression tests for route, configuration, and template entries. After the fix, replay the step-1 samples and confirm type references are rejected."
         },
         "difficulty": "expert"
       },
@@ -1377,20 +1377,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原集合包含直接 LDAP/RMI URI 与插值形式。安全结论必须分层：首先证明字符串进入 JNDI lookup，其次证明服务端向受控命名服务发起请求，最后根据运行时和对象工厂配置判断是否能加载对象或执行代码。",
-          "en": "The source combines direct LDAP or RMI URIs with interpolation forms. Evidence must be layered: prove the string reaches JNDI lookup, prove the server contacts a controlled naming service, and then determine whether runtime and object-factory settings permit object loading or code execution."
+          "zh": "JNDI 外部命名查询注入针对攻击者控制的 LDAP、RMI URI 进入 JNDI lookup 的场景：可触发服务端出站连接、对象加载或代码执行。验证直接 URI 与插值形式是否到达 lookup 并产生回连。",
+          "en": "JNDI external naming-lookup injection targets attacker-controlled LDAP/RMI URIs entering JNDI lookup, able to trigger server-side outbound connections, object loading, or code execution. It validates whether direct URIs and interpolated forms reach lookup and produce callbacks."
         },
         "vulnerability": {
-          "zh": "应用或日志组件若把不可信值传给 InitialContext.lookup，攻击者可控制命名服务目标。现代 JDK 的远程类加载限制会降低部分链路，但本地对象工厂、反序列化和出站信息泄露仍可能存在，所以一次 DNS 回连不能自动等同于 RCE。",
-          "en": "If an application or logging component passes an untrusted value to InitialContext.lookup, an attacker controls the naming-service destination. Modern JDK restrictions may block remote class loading, while local object factories, deserialization, and outbound disclosure can remain; one DNS callback is not automatically RCE."
+          "zh": "应用或日志组件若把不可信值传给 InitialContext.lookup，攻击者可控制命名服务目标；现代 JDK 的远程类加载限制会降低部分链路，但本地对象工厂、反序列化和出站信息泄露仍可能存在，一次 DNS 回连不能自动等同于 RCE。",
+          "en": "If the application or logging component passes untrusted values to InitialContext.lookup, attackers control the naming-service target; modern JDK remote-class-loading limits reduce some chains, but local object factories, deserialization, and outbound information leakage may persist—one DNS callback does not automatically equal RCE."
         },
         "exploitation": {
-          "zh": "步骤一用不可解析的本地名称记录 lookup 错误与 JDK 配置基线；步骤二提交原始 URI 到受控无害目录服务，关联 DNS、TCP、JNDI 调用栈和返回对象类型；步骤三禁止出站并移除动态 lookup 后重放，排除安全扫描器 DNS 预取、代理解析或日志文本匹配造成的假阳性。",
-          "en": "First use an unresolvable local name to record lookup errors and JDK configuration. Submit the original URI to a controlled harmless directory service and correlate DNS, TCP, the JNDI call stack, and returned object type. Replay after blocking egress and removing dynamic lookup to exclude scanner DNS prefetch, proxy resolution, or log-text matches as false positives."
+          "zh": "先在攻击者侧启动 LDAP/RMI 捕获端与 DNS/HTTP 观察端，再按第 1 步逐条提交 ldap://、rmi:// 与 ${jndi:...} 形式的 URI 并记录响应与日志差异；命中判据为捕获端收到目标回连或带外日志出现记录。命中后分层确认：先证明字符串进入 lookup，再证明出站请求，最后按 JDK 版本与对象工厂配置判断能否加载对象或执行代码。{ATTACKER_HOST} 等占位符在全局变量菜单替换。",
+          "en": "Start LDAP/RMI captors and DNS/HTTP observers attacker-side first, then submit the ldap://, rmi://, and ${jndi:...} URI forms one by one per step 1, recording response and log differences; a hit is the captor receiving the target's callback or outbound logs appearing. Layer the confirmation after a hit: prove the string reached lookup, then the outbound request, then whether object loading or execution is possible given JDK version and object-factory configuration. Replace {ATTACKER_HOST} and similar placeholders in the global variables menu."
         },
         "mitigation": {
-          "zh": "禁止不可信输入进入 JNDI 名称；升级相关 JDK、日志与命名组件并关闭远程对象工厂能力；限制 LDAP/RMI 出站网络和允许的命名协议，同时监控 lookup 调用与异常目录连接。",
-          "en": "Keep untrusted input out of JNDI names. Update JDK, logging, and naming components and disable remote object-factory capabilities. Restrict LDAP and RMI egress and allowed naming schemes, and monitor lookup calls and anomalous directory connections."
+          "zh": "禁止不可信输入进入 JNDI 名称；升级相关 JDK、日志与命名组件并关闭远程对象工厂能力；限制 LDAP/RMI 出站网络和允许的命名协议，同时监控 lookup 调用与异常目录连接。修复后重放第 1 步 URI，确认捕获端无任何回连。",
+          "en": "Keep untrusted input out of JNDI names; upgrade affected JDKs, logging, and naming components and disable remote object factories; restrict LDAP/RMI egress and allowed naming protocols while auditing lookup calls and anomalous directory connections. After the fix, replay the step-1 URIs and confirm the captors receive nothing."
         },
         "difficulty": "expert"
       },
@@ -1493,20 +1493,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原 HTML 使用低透明度 iframe 与诱导按钮模拟 UI 重叠。成功条件不是攻击页能渲染 iframe 标签，而是目标敏感页面在不同源顶层页中实际加载，且一次真实用户点击落在预期敏感控件上。",
-          "en": "The source HTML uses a low-opacity iframe and lure button to model UI overlap. Success is not rendering an iframe tag; the sensitive target must actually load inside a cross-origin top-level page and one real user click must land on the intended sensitive control."
+          "zh": "该 Payload 覆盖透明覆盖式点击劫持场景，检验敏感页面被跨站嵌入后诱导点击的可行性。验证维度为透明与半透明 iframe 叠加对齐的单步样例，对应第 1 步。",
+          "en": "This payload covers transparent-overlay clickjacking, testing feasibility of lured clicks after a sensitive page is cross-site embedded. Validation overlays transparent and semi-transparent iframes in one aligned sample, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "目标未通过 CSP frame-ancestors 或 X-Frame-Options 限制嵌入，并把有影响的操作放在可预测位置且缺少再认证或明确确认。SameSite Cookie 不一定阻止顶层站点中的 iframe 携带会话，需按实际浏览器验证。",
-          "en": "The target lacks CSP frame-ancestors or X-Frame-Options restrictions and places consequential controls at predictable coordinates without reauthentication or explicit confirmation. SameSite cookies do not necessarily prevent a framed page from carrying a session, so browser behavior must be tested."
+          "zh": "根因在于敏感页面缺少 Frame 嵌入防护且操作即时生效：攻击者以近乎不可见的 iframe 对齐诱饵界面，受害者的点击被转移到真实控件。",
+          "en": "The root cause is sensitive pages lacking frame protection with instant-action controls: attackers align a near-invisible iframe over a decoy interface, transferring victim clicks onto real controls."
         },
         "exploitation": {
-          "zh": "步骤一在独立测试域加载目标敏感页面并记录控制台与响应头；步骤二使用原始透明 iframe 布局对齐测试账号的无害操作，捕获点击坐标和状态变化；步骤三加入 frame-ancestors 后重放并使用非敏感页对照，排除登录页重定向、框架空白或攻击页自身按钮响应造成的假阳性。",
-          "en": "First load the sensitive target from a separate test origin and record console output and response headers. Align the original transparent iframe layout with a harmless action on a test account and capture click coordinates and state change. Replay after adding frame-ancestors and compare a nonsensitive page to exclude login redirects, blank frames, or the attack page's own button as false positives."
+          "zh": "第 1 步部署含透明 iframe 的诱饵页，把目标敏感操作页对齐到诱饵按钮上方，调整透明度与坐标后点击验证：目标操作在无感知交互下被执行即确认劫持可行，记录响应头以核对防护缺失。成功判据以目标端操作执行记录为准。占位符在全局变量菜单替换；使用实验合成操作避免真实影响。",
+          "en": "In step 1, deploy a decoy page with a transparent iframe, align the target sensitive-action page above the decoy button, tune opacity and coordinates, then click; the target action executing without the victim's awareness confirms the hijack, and record response headers to verify missing protection. Judge success by execution records on the target side. Replace placeholders via the global variables menu; use lab synthetic actions to avoid real impact."
         },
         "mitigation": {
-          "zh": "使用 CSP frame-ancestors 精确限制允许嵌入的源，并为旧客户端保留 X-Frame-Options；对转账、权限变更等操作要求再认证或清晰确认；避免可预测的一键敏感控件并保留跨源浏览器回归。",
-          "en": "Use CSP frame-ancestors to restrict embedding origins precisely and retain X-Frame-Options for legacy clients. Require reauthentication or explicit confirmation for transfers and privilege changes. Avoid predictable one-click sensitive controls and maintain cross-origin browser regressions."
+          "zh": "敏感页面返回 frame-ancestors none 或 SAMEORIGIN，关键操作增加二次确认与随机化控件位置。修复后重放第 1 步，iframe 应被浏览器拒绝加载且操作无执行记录。",
+          "en": "Serve frame-ancestors none or SAMEORIGIN on sensitive pages, add second confirmation for critical actions, and randomize control positions. After the fix, replay step 1: the browser should refuse the iframe and no execution records appear."
         },
         "difficulty": "intermediate"
       },
@@ -1606,20 +1606,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原集合同时包含服务端 redirect 参数与一个 rel=opener 链接片段。核心判定应围绕服务端或客户端导航最终是否离开允许源；链接本身指向外站并不自动是漏洞，只有应用将不可信目标包装成可信跳转或 opener 信任才有影响。",
-          "en": "The source combines redirect parameters with a rel=opener link fragment. Review whether navigation ultimately leaves the allowed origin; an ordinary external link is not automatically a vulnerability unless the application wraps an untrusted destination in a trusted redirect or exposes opener trust."
+          "zh": "该 Payload 覆盖重定向目标校验缺失场景，检验跳转端点对绝对、协议相对与反斜杠目标的放行边界。验证维度为多类 url 参数变体加超链接诱导的单步矩阵，对应第 1 步。",
+          "en": "This payload covers missing redirect-target validation, testing acceptance boundaries for absolute, protocol-relative and backslash targets. Validation is a single-step matrix of url-parameter variants plus hyperlink luring, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "应用按字符串前缀、未经规范化的 Host 或不完整 allowlist 校验目标，再由不同 URL 解析器处理协议相对、反斜杠和编码分隔符时，会产生目标解析差异。影响包括钓鱼信任放大和 OAuth 回调链劫持。",
-          "en": "Destination confusion arises when an application validates string prefixes, an unnormalized host, or an incomplete allowlist before a different URL parser handles scheme-relative forms, backslashes, and encoded separators. Impact includes trusted-domain phishing and OAuth callback-chain abuse."
+          "zh": "根因在于跳转实现直接信任 url 参数而缺少解析层校验：绝对 URL、双斜杠与反斜杠形式均被原样写入 Location，钓鱼跳转链即告成立。",
+          "en": "The root cause is the redirect trusting the url parameter outright without parse-level validation: absolute URLs, double slashes and backslash forms land verbatim in Location, completing the phishing jump chain."
         },
         "exploitation": {
-          "zh": "步骤一用站内相对路径记录 Location 与浏览器最终 URL；步骤二逐项提交原始外部、协议相对和反斜杠变体，捕获每一跳状态码、Location 与规范化主机；步骤三用普通外链和无导航的响应作对照，排除仅回显参数、浏览器阻止弹窗或测试代理改写造成的假阳性。",
-          "en": "First record Location and the browser's final URL with an internal relative path. Submit each original external, scheme-relative, and backslash variant and capture status, Location, and normalized host for every hop. Compare an ordinary external link and a nonnavigation response to exclude parameter echo, popup blocking, or test-proxy rewriting as false positives."
+          "zh": "第 1 步把外部域、协议相对与反斜杠目标变体逐条放入 url 参数请求跳转端点，记录响应 Location 与浏览器最终地址；同时部署含诱导超链接的页面验证完整钓鱼链路。任一变体落地外部域即确认校验缺失。成功判据以最终导航地址为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, place external-domain, protocol-relative and backslash target variants into the url parameter against the redirect endpoint one by one, recording response Location and the browser's final address; also deploy a luring-hyperlink page to verify the full phishing chain. Any variant landing externally confirms missing validation. Judge success by final navigation address. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "优先只接受服务端映射的目标 ID 或站内相对路径；必须允许外部跳转时，用标准解析器统一解码并精确匹配协议、主机和端口；拒绝用户信息、反斜杠和控制字符，并为 OAuth 回调使用独立严格 allowlist。",
-          "en": "Prefer server-mapped destination identifiers or internal relative paths. If external redirects are required, normalize with one standard parser and exactly match scheme, host, and port. Reject userinfo, backslashes, and control characters, and maintain a separate strict allowlist for OAuth callbacks."
+          "zh": "跳转前解析 authority 并对照白名单，仅接受相对路径或注册域名，拒绝非常规分隔符。修复后重放第 1 步，全部变体应被拒绝或回退站内地址。",
+          "en": "Parse the authority before redirecting and compare against an allowlist, accepting only relative paths or registered domains and rejecting unconventional separators. After the fix, replay step 1: every variant should be rejected or fall back in-site."
         },
         "difficulty": "intermediate"
       },
@@ -1719,20 +1719,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原路径把账户资源伪装成 .css、.js 或图片，测试源站路由与缓存键/缓存规则的差异。成功必须证明已认证响应先被共享缓存保存，随后不同会话或匿名客户端获得相同私密内容，而不是浏览器本地缓存。",
-          "en": "The source paths disguise account resources with CSS, JavaScript, or image suffixes and test disagreement between origin routing and cache policy. Success requires a shared cache to store an authenticated response and a different or anonymous client to retrieve the same private content; browser-local caching is not enough."
+          "zh": "该 Payload 覆盖认证内容的 Web 缓存欺骗场景，检验伪静态后缀能否让私有响应进入共享缓存。验证维度为账号路径加静态后缀的认证与匿名双重请求，对应第 1 步。",
+          "en": "This payload covers web cache deception for authenticated content, testing whether fake static suffixes push private responses into a shared cache. Validation pairs authenticated and anonymous requests to account paths with static suffixes, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "源站容忍路径后缀并仍返回动态账户页面，而边缘按扩展名认为资源可公开缓存，且缓存键忽略 Cookie 或 Authorization 时，会把个性化内容存入共享对象。仅看到 HIT 头不够，还要验证内容跨身份泄露。",
-          "en": "If the origin tolerates suffixes and still returns a dynamic account page while the edge treats the extension as publicly cacheable and ignores Cookie or Authorization in its key, personalized content can enter a shared object. A HIT header alone is insufficient; content must leak across identities."
+          "zh": "根因在于缓存层按 URL 后缀判定可缓存而源站按路径返回认证内容：静态后缀让两者判定分歧，携带会话的私有响应被存入公共键供任意用户命中。",
+          "en": "The root cause is the cache layer judging cacheability by URL suffix while the origin returns authenticated content per path: static suffixes split the judgment, storing session-carrying private responses under public keys anyone can hit."
         },
         "exploitation": {
-          "zh": "步骤一用账号 A 请求正常动态路径并记录 Cache-Control、Age、Vary 与缓存键；步骤二以账号 A 访问原始伪静态路径，再由无 Cookie 客户端 B 请求同一路径；步骤三比较唯一用户 Canary、缓存节点和对象年龄，排除客户端缓存、源站公共测试数据或会话未清理造成的假阳性。",
-          "en": "First request the normal dynamic path as account A and record Cache-Control, Age, Vary, and key behavior. Have account A fetch the original static-looking path, then request the same path from cookie-free client B. Compare a user-specific canary, cache node, and object age to exclude client cache, public fixture data, or uncleared sessions as false positives."
+          "zh": "第 1 步先以认证会话请求 account 路径加 css、js、png 后缀的变体，确认响应包含私有数据；再以匿名会话重复同一 URL，取回相同私有内容即确认缓存欺骗成立。同时记录 X-Cache 与 Age 头佐证缓存命中来源。成功判据以匿名请求返回的私有字段为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, request account paths with css, js and png suffixes under an authenticated session first, confirming responses contain private data; then repeat the same URLs anonymously, and retrieving identical private content confirms cache deception. Record X-Cache and Age headers to corroborate the cache hit source. Judge success by private fields in anonymous responses. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "对认证和个性化响应设置 private、no-store 并在边缘禁止缓存；让源站严格匹配路径而不是忽略多余后缀；按认证状态隔离缓存键，统一 CDN 与应用路由规则，并用双客户端测试回归。",
-          "en": "Mark authenticated and personalized responses private and no-store and prevent edge caching. Make the origin reject surplus suffixes rather than routing through them. Separate cache keys by authentication state, align CDN and application routing, and maintain two-client regressions."
+          "zh": "认证响应禁用共享缓存并按 Content-Type 判定资格，路径解析剥除伪静态后缀。修复后重放第 1 步，匿名请求应取不到私有内容且认证响应带 no-store。",
+          "en": "Disable shared caching for authenticated responses and gate eligibility on Content-Type, stripping fake static suffixes in path parsing. After the fix, replay step 1: anonymous requests should retrieve no private content and authenticated responses carry no-store."
         },
         "difficulty": "advanced"
       },
@@ -1832,20 +1832,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "iframe、图片和其他资源由服务器上的 wkhtmltopdf 进程解析，因此客户端 HTML 注入会转化为服务端网络与文件访问。原集合同时含 HTTP 内网地址和 file: 路径，应分别记录网络请求与 PDF 中真实文件内容。",
-          "en": "Iframes, images, and related resources are parsed by the server-side wkhtmltopdf process, so client-controlled HTML can become server-side network and file access. The source includes both internal HTTP targets and file paths, which require separate network and PDF-content evidence."
+          "zh": "wkhtmltopdf 资源加载 SSRF 覆盖 HTML 转 PDF 渲染场景：针对接收用户 HTML 并生成 PDF 的服务，验证 iframe 等资源引用能否让服务器进程访问回环、内网、云元数据与 file: 资源。验证维度涵盖常见内网端口 iframe 变体与本地文件读取两类。",
+          "en": "wkhtmltopdf Resource-Fetch SSRF covers HTML-to-PDF rendering: for services that generate PDFs from user HTML, verify whether iframe-style resource references make the server process reach loopback, intranet, cloud metadata, and file: resources. Verification dimensions cover common intranet-port iframe variants and local file reads."
         },
         "vulnerability": {
-          "zh": "应用将用户 HTML 直接交给渲染器，且未限制 URL scheme、目标地址、DNS 解析或本地文件访问时，渲染进程会继承服务器网络位置和文件权限。空白 iframe 或渲染超时不能证明目标可读。",
-          "en": "When an application sends user HTML directly to a renderer without restricting schemes, destinations, DNS resolution, or local file access, the renderer inherits the server's network position and file privileges. A blank iframe or render timeout does not prove that a target was readable."
+          "zh": "根因是应用把用户 HTML 直接交给渲染器且未限制 URL scheme 与目标地址，渲染进程继承服务器的网络位置与文件权限；客户端注入因此转化为服务端网络与文件访问，内部内容还可嵌入 PDF 回显给攻击者。",
+          "en": "The root cause is user HTML handed directly to the renderer without URL scheme or destination restrictions, so the rendering process inherits the server's network position and file privileges; client-side injection therefore becomes server-side network and file access, and internal content can even be echoed back inside the PDF."
         },
         "exploitation": {
-          "zh": "步骤一用受控外部 HTTP 资源记录渲染器 User-Agent、请求时序和 PDF 嵌入基线；步骤二逐项回放原始内网与 file: 载荷，关联受控回调、服务器连接日志和 PDF 唯一内容；步骤三阻断私网与本地文件后重放，排除客户端预览请求、DNS 扫描或占位图造成的假阳性。",
-          "en": "First use a controlled external HTTP resource to record renderer User-Agent, request timing, and PDF embedding. Replay each original internal and file-scheme input and correlate controlled callbacks, server connection logs, and unique PDF content. Replay after blocking private networks and local files to exclude client previews, DNS scanning, or placeholder images as false positives."
+          "zh": "按 Payload 列表顺序使用：第 1 步用受控外部 HTTP 资源记录渲染器 User-Agent 与请求时序；随后逐条渲染含 iframe 的 HTML（127.0.0.1 常见端口、localhost、云元数据地址），PDF 中嵌入对应内部页面且渲染器出站日志记录请求即确认 SSRF；再提交 file:///etc/passwd 类引用，PDF 出现文件内容即确认本地读取。命中拦截时对照 wafBypass。占位符在全局变量菜单中替换。",
+          "en": "Use in Payload list order: step 1 records the renderer's User-Agent and request timing via a controlled external HTTP resource; then render iframe HTML variants one by one (127.0.0.1 common ports, localhost, cloud metadata) — internal pages embedded in the PDF plus renderer egress logs confirm SSRF; next submit file:///etc/passwd-style references — file content in the PDF confirms local reads. On blocks, consult wafBypass. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "对渲染输入采用资源 allowlist 并拒绝 file、gopher 与未知协议；在独立网络命名空间中阻断回环、链路本地和私网目标，并禁用本地文件访问；以最小权限运行渲染器并对最终 DNS 地址重复校验。",
-          "en": "Apply a resource allowlist and reject file, gopher, and unknown schemes. Block loopback, link-local, and private destinations in an isolated network namespace and disable local-file access. Run the renderer under least privilege and revalidate final DNS addresses."
+          "zh": "对渲染输入启用资源 allowlist 并拒绝 file、gopher 与未知协议，在独立网络命名空间阻断回环、链路本地与私网目标，禁用本地文件访问；以最小权限运行渲染器并对最终 DNS 地址重复校验。修复后用第 1 步样例回归，内部与本地资源引用应全部失败。",
+          "en": "Apply a resource allowlist to rendered input rejecting file, gopher, and unknown schemes, block loopback, link-local, and private targets in a dedicated network namespace, and disable local file access; run the renderer with least privilege and revalidate final DNS addresses. After the fix, regress with the step 1 sample: internal and local references must all fail."
         },
         "difficulty": "advanced"
       },
@@ -1941,20 +1941,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "gopher: 载荷将 SSRF 从 HTTP GET 扩展到可控 TCP 字节，原集合涉及 Redis 与多个数据库端口。测试应使用隔离模拟服务，尤其不能把 flushall 等破坏性片段发送到真实共享 Redis。",
-          "en": "Gopher inputs extend SSRF from HTTP GET to attacker-controlled TCP bytes, and the source covers Redis and several database ports. Testing must use isolated mock services, especially because destructive fragments such as flushall must never be sent to a shared Redis instance."
+          "zh": "wkhtmltopdf gopher 协议 SSRF 覆盖渲染器非 HTTP 协议转发场景：针对接收用户 HTML 的 wkhtmltopdf 服务，验证 gopher: 资源能否把受控字节发往内网 Redis、数据库等 TCP 端口。验证维度涵盖 RESP 命令帧构造与多协议端口转发两类变体。",
+          "en": "wkhtmltopdf Gopher-Scheme SSRF covers non-HTTP protocol forwarding by the renderer: for wkhtmltopdf services accepting user HTML, verify whether gopher: resources can push controlled bytes to intranet Redis, database, and other TCP ports. Verification dimensions cover RESP command-frame construction and multi-protocol port forwarding variants."
         },
         "vulnerability": {
-          "zh": "若渲染器或其 URL 库允许非业务协议，且网络层可到达内网服务，攻击者可以把 HTML 资源 URL 变成任意协议客户端。端口可连接或渲染失败只表示网络行为，只有模拟服务收到预期解码字节才证明协议级 SSRF。",
-          "en": "If the renderer or URL library permits nonbusiness schemes and can reach internal services, an HTML resource URL can become an arbitrary protocol client. A reachable port or failed render shows only network behavior; protocol-level SSRF requires the mock service to receive the expected decoded bytes."
+          "zh": "根因是渲染器或其 URL 库允许非业务协议时，HTML 资源 URL 即可变成任意协议客户端；gopher 把解码后字节直接写入 TCP 连接，隔离缺失时 flushall 等破坏性片段可能触达真实共享服务。",
+          "en": "The root cause is non-business schemes permitted by the renderer or its URL library, turning HTML resource URLs into arbitrary protocol clients; gopher writes decoded bytes straight into the TCP connection, and without isolation destructive fragments such as flushall can reach real shared services."
         },
         "exploitation": {
-          "zh": "步骤一在隔离网络启动只记录字节的 Redis/TCP 模拟器并建立普通 HTTP 资源基线；步骤二回放原始 gopher 集合，保存渲染器连接、URL 解码后字节和模拟器会话；步骤三禁用 gopher 并阻断内网网段后复测，排除 DNS 探测、端口扫描或渲染超时造成的假阳性。",
-          "en": "First start a byte-recording Redis or TCP simulator in an isolated network and establish a normal HTTP-resource baseline. Replay the original gopher set and preserve renderer connections, URL-decoded bytes, and simulator sessions. Disable gopher and block internal ranges before replaying to exclude DNS probes, port scans, or render timeouts as false positives."
+          "zh": "按 Payload 列表顺序使用：第 1 步在隔离网络启动只记录字节的 Redis/TCP 模拟器并建立普通 HTTP 资源基线；随后逐条渲染 gopher iframe（INFO 帧、RESP 命令与各数据库端口），模拟器收到对应端口的原始连接与解码字节即确认协议级 SSRF；严禁把 flushall 等破坏性片段发向真实共享 Redis；最后禁用 gopher 并阻断内网网段复测防护。占位符在全局变量菜单中替换。",
+          "en": "Use in Payload list order: step 1 starts a byte-recording Redis/TCP emulator on an isolated network and establishes an ordinary HTTP resource baseline; then render gopher iframes one by one (INFO frames, RESP commands, and database ports) — raw connections with decoded bytes at the corresponding ports confirm protocol-level SSRF; never send destructive fragments like flushall to real shared Redis; finally retest protection with gopher disabled and intranet ranges blocked. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "在解析器入口只允许 http/https 且拒绝协议混淆；在网络层阻断渲染容器到私网、回环和管理端口；对 URL 解码后目标再次校验，并以只读、无凭据的独立渲染沙箱运行。",
-          "en": "Allow only HTTP and HTTPS at parser entry and reject scheme confusion. Block renderer-container access to private, loopback, and management ports at the network layer. Revalidate destinations after URL decoding and run rendering in an isolated read-only sandbox without credentials."
+          "zh": "在解析器入口只允许 http/https 并拒绝协议混淆，在网络层阻断渲染容器到私网、回环与管理端口；对 URL 解码后目标再次校验，渲染沙箱以只读、无凭据身份运行。修复后用第 1 步样例回归，gopher 资源应全部被拒绝。",
+          "en": "Allow only http/https at the parser entrance and reject scheme confusion; block renderer-container access to private, loopback, and management ports at the network layer; revalidate decoded URL targets and run the render sandbox read-only without credentials. After the fix, regress with the step 1 sample: every gopher resource must be denied."
         },
         "difficulty": "expert"
       },
@@ -2288,20 +2288,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原命令利用 Prince 支持的附件和对象引用，测试生成 PDF 时是否主动拉取 URL 或嵌入本地文件。链接文本本身不构成 SSRF，必须证明 Prince 进程而非用户浏览器发起请求，并确认资源进入输出或服务日志。",
-          "en": "The source uses Prince attachment and object references to test whether PDF generation actively retrieves a URL or embeds a local file. Link text alone is not SSRF; evidence must show that the Prince process, not the user's browser, made the request and that the resource reached output or server logs."
+          "zh": "Prince XML 附件与对象资源 SSRF 覆盖 PDF 渲染资源加载场景：针对把用户标记交给 Prince XML 的服务，验证 attachment 与 object 引用能否让渲染器读取回环地址与本地文件并嵌入 PDF。验证维度涵盖 file 与 http 两类目标、附件与对象两种入口。",
+          "en": "Prince XML Attachment and Object Resource SSRF covers PDF-rendering resource loading: for services passing user markup to Prince XML, verify whether attachment and object references make the renderer read loopback addresses and local files into the PDF. Verification dimensions cover file and http targets across attachment and object entries."
         },
         "vulnerability": {
-          "zh": "当应用允许用户控制 Prince 输入且未配置 URL 访问策略时，渲染器会继承服务端网络位置和文件权限。附件功能尤其可能把 file: 内容直接封装进 PDF；仅看到对象占位符或渲染错误不能确认读取成功。",
-          "en": "When users control Prince input and no URL-access policy is enforced, the renderer inherits server network position and file privileges. Attachment support may package file content directly into the PDF; an object placeholder or render error does not confirm a successful read."
+          "zh": "根因是应用允许用户控制 Prince 输入且未配置 URL 访问策略时，渲染器继承服务端网络位置与文件权限；附件功能尤其会把 file: 内容直接封装进 PDF，仅看到对象占位符或渲染错误不能确认读取成功。",
+          "en": "The root cause is user-controlled Prince input without a URL access policy, so the renderer inherits the server's network position and file privileges; the attachment feature in particular wraps file: content directly into the PDF, while object placeholders or render errors alone do not confirm a successful read."
         },
         "exploitation": {
-          "zh": "步骤一用受控公共附件记录 Prince 请求特征、PDF 附件清单和哈希；步骤二回放原始 link/object 变体，关联回环模拟器、本地文件 Canary 与最终 PDF 对象；步骤三启用 URL 白名单并禁用本地文件后复测，排除客户端下载、旧 PDF 缓存或空附件造成的假阳性。",
-          "en": "First use a controlled public attachment to record Prince request traits, the PDF attachment list, and hashes. Replay the original link and object variants and correlate a loopback simulator, local-file canary, and final PDF objects. Retest with a URL allowlist and local files disabled to exclude client downloads, stale PDF cache, or empty attachments as false positives."
+          "zh": "按 Payload 列表顺序使用：第 1 步用受控公共附件记录 Prince 请求特征、PDF 附件清单与哈希；随后逐条渲染 link rel=attachment 与 object 变体（file:///etc/passwd 与 http://127.0.0.1/），PDF 嵌入对应内容且渲染器日志记录 file/http 访问即确认成立，必须证明请求来自 Prince 进程而非用户浏览器；最后启用 URL 白名单复测防护。占位符在全局变量菜单中替换。",
+          "en": "Use in Payload list order: step 1 records Prince's request characteristics, PDF attachment inventory, and hashes via a controlled public attachment; then render link rel=attachment and object variants one by one (file:///etc/passwd and http://127.0.0.1/) — matching content embedded in the PDF plus renderer logs of file/http access confirms, provided requests are proven to come from the Prince process rather than the user's browser; finally retest protection with a URL allowlist. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "只允许明确业务资源协议和域名；拒绝 file: 并在 DNS、重定向后阻断回环、链路本地与私网；在独立低权限容器中运行 Prince，使用只读临时目录并检查生成 PDF 的附件。",
-          "en": "Allow only explicit business schemes and domains. Reject file and block loopback, link-local, and private destinations after DNS and redirects. Run Prince in a separate least-privilege container with read-only temporary storage and inspect generated PDF attachments."
+          "zh": "只允许明确业务资源协议和域名，拒绝 file: 并在 DNS 与重定向后阻断回环、链路本地与私网；在独立低权限容器运行 Prince，使用只读临时目录并检查生成 PDF 的附件内容。修复后用第 1 步样例回归，附件与对象引用应全部失败。",
+          "en": "Allow only explicit business resource schemes and domains, reject file:, and block loopback, link-local, and private ranges after DNS and redirects; run Prince in a dedicated low-privilege container with a read-only temp directory and inspect generated PDF attachments. After the fix, regress with the step 1 sample: attachment and object references must all fail."
         },
         "difficulty": "advanced"
       },
@@ -2397,20 +2397,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原内容是路径和查询候选清单，不是 SQL 注入。它用于定位 GraphQL HTTP 入口、开发控制台和 Schema 暴露面，后续还需发送最小合法查询确认协议，而不能仅凭 200、HTML 页面或路径名称下结论。",
-          "en": "The source is a path and query candidate list, not SQL injection. It locates GraphQL HTTP entry points, development consoles, and exposed schemas, after which a minimal valid query must confirm the protocol; a 200 response, HTML page, or path name alone is insufficient."
+          "zh": "该 Payload 覆盖 GraphQL 攻击面发现场景，检验端点、控制台与 Schema 路径的暴露范围。验证维度为常见 API 与调试路径的探测矩阵，对应第 1 步。",
+          "en": "This payload covers GraphQL attack-surface discovery, testing exposure of endpoints, consoles and schema paths. Validation is a probing matrix of common API and debug paths, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "GraphQL 端点本身不是漏洞；风险来自生产环境暴露调试 UI、未授权 Schema、敏感字段或缺少复杂度与字段级授权。发现阶段必须与身份、响应 Content-Type、GraphQL data/errors 结构和 resolver 行为结合。",
-          "en": "A GraphQL endpoint is not itself a vulnerability. Risk comes from production debug UIs, unauthorized schema access, sensitive fields, or missing complexity and field-level authorization. Discovery must be combined with identity, response Content-Type, GraphQL data or errors structure, and resolver behavior."
+          "zh": "根因在于 GraphQL 服务常部署在非标准路径且调试界面未随生产关闭：可发现端点配合开放内省即交出完整数据结构，攻击面直接成型。",
+          "en": "The root cause is GraphQL services deployed on nonstandard paths with debug consoles left open in production: a discoverable endpoint plus open introspection hands over the complete data structure, forming the attack surface outright."
         },
         "exploitation": {
-          "zh": "步骤一用不存在随机路径和普通 REST 路径建立路由基线；步骤二逐项请求原始候选，并向响应候选发送 query{__typename} 或等价最小查询；步骤三比较未认证与低权限身份下的 Schema 和字段结果，排除 SPA fallback、统一 200、WAF 品牌页或静态文档造成的假阳性。",
-          "en": "First establish routing baselines with a random nonexistent path and an ordinary REST path. Request each original candidate and send query{__typename} or an equivalent minimal query to responders. Compare schema and field results under anonymous and low-privilege identities to exclude SPA fallbacks, uniform 200 responses, WAF pages, or static documentation as false positives."
+          "zh": "第 1 步按脚本逐条探测 API、控制台与 Schema 路径并记录响应特征：返回 GraphQL 错误结构或 playground 页面即确认端点存活，对每个存活端点再发一个最小查询确认可用性。成功判据以存活端点矩阵为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, probe API, console and schema paths one by one per the script, recording response signatures; GraphQL error structures or playground pages confirm live endpoints, then send a minimal query to each to confirm usability. Judge success by the live-endpoint matrix. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "只暴露业务需要的 GraphQL 路由并关闭生产调试控制台；对 Schema 与每个 resolver 执行认证和字段级授权；设置深度、复杂度、分页与速率限制，同时监控异常内省和路径枚举。",
-          "en": "Expose only required GraphQL routes and disable production debug consoles. Enforce authentication and field-level authorization on schema and every resolver. Apply depth, complexity, pagination, and rate limits and monitor unusual introspection and path enumeration."
+          "zh": "生产环境关闭调试界面并把端点收敛到统一路径，未认证请求返回通用错误。修复后重放第 1 步，控制台路径应不可达且特征响应消失。",
+          "en": "Close debug consoles in production and consolidate endpoints to one path, returning generic errors for unauthenticated requests. After the fix, replay step 1: console paths should be unreachable and signature responses gone."
         },
         "difficulty": "beginner"
       },
@@ -2506,20 +2506,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "该异常短 ID 对应的真实内容是完整 GraphQL 内省集合。内省是开发与工具生态的正常功能，测试目标不是看到 __schema 就报漏洞，而是确认生产策略、身份边界和返回字段是否与设计一致。",
-          "en": "This unusually short ID maps to a complete GraphQL introspection set. Introspection is normal for development and tooling; the goal is not to report any __schema response, but to verify production policy, identity boundaries, and returned fields against design."
+          "zh": "该 Payload 覆盖 GraphQL 内省与 Schema 暴露场景，检验不同身份下类型、字段与指令的可枚举边界。验证维度为完整内省与最小内省查询的分级提交，对应第 1 步。",
+          "en": "This payload covers GraphQL introspection and schema exposure, testing enumerable boundaries for types, fields and directives across identities. Validation grades submissions from full to minimal introspection queries, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "生产 API 若向未授权用户公开包含内部管理类型、弃用字段或敏感操作的完整 Schema，会降低攻击成本；但关闭内省不能替代 resolver 授权。真实问题应表现为超出预期的 Schema 暴露或随后可访问的未授权字段。",
-          "en": "A production API that exposes a full schema with internal administrative types, deprecated fields, or sensitive operations to unauthorized users reduces attack cost, but disabling introspection does not replace resolver authorization. A finding requires schema exposure beyond policy or subsequent unauthorized field access."
+          "zh": "根因在于内省对所有调用者开放且与角色可见性策略脱节：完整 Schema 被枚举后，敏感字段与高权 Mutation 直接暴露给攻击者定位。",
+          "en": "The root cause is introspection open to all callers and decoupled from role visibility policies: once the full schema is enumerated, sensitive fields and privileged mutations are directly exposed for attacker targeting."
         },
         "exploitation": {
-          "zh": "步骤一以管理员、低权限和匿名身份发送最小 __typename 查询记录协议基线；步骤二逐项回放原始内省查询并对 Schema 结果做结构化差异；步骤三抽样验证敏感字段 resolver 的授权，排除开发环境预期、客户端缓存 Schema 或错误消息补全建议造成的假阳性。",
-          "en": "First send a minimal __typename query as administrator, low-privilege user, and anonymous user. Replay each original introspection query and structurally diff the resulting schemas. Sample authorization on sensitive field resolvers to exclude expected development exposure, client-cached schemas, or error-message suggestions as false positives."
+          "zh": "第 1 步按脚本先以低权身份提交完整内省查询，再降级为最小类型名查询，记录两级身份下的返回差异：Schema 结构完整返回即确认内省未关闭，差异可区分则说明存在部分策略。成功判据以内省返回矩阵为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, submit the full introspection query as a low-privilege identity per the script, then downgrade to minimal type-name queries, recording differences across both levels; complete schema returns confirm introspection is open, while distinguishable differences indicate partial policy. Judge success by the introspection-return matrix. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "按环境和身份明确内省策略并关闭不需要的生产探索功能；对每个 resolver 强制对象与字段级授权而非依赖隐藏 Schema；限制查询复杂度、记录内省行为，并在 Schema 发布流程中审查敏感类型。",
-          "en": "Define introspection policy by environment and identity and disable unneeded production exploration. Enforce object- and field-level authorization at every resolver instead of relying on hidden schema. Limit complexity, log introspection, and review sensitive types during schema publication."
+          "zh": "生产禁用或按角色限制内省，配合 Schema 裁剪工具隐藏敏感类型，定期以低权身份复核。修复后重放第 1 步，低权身份的内省应被拒绝或仅返回白名单类型。",
+          "en": "Disable or role-restrict introspection in production, hide sensitive types with schema-pruning tools, and re-review periodically as a low-privileged identity. After the fix, replay step 1: low-privilege introspection should be rejected or return only allowlisted types."
         },
         "difficulty": "intermediate"
       },
@@ -2615,20 +2615,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原集合以 __typename、queryType、mutationType 和 subscriptionType 识别 GraphQL 根操作。操作类型存在是正常设计信息，风险在于未授权身份可看到或调用管理 Mutation、调试 Query 或未经限制的 Subscription。",
-          "en": "The source uses __typename, queryType, mutationType, and subscriptionType to identify GraphQL root operations. The existence of an operation type is normal design information; risk arises when unauthorized identities can see or invoke administrative mutations, debug queries, or unrestricted subscriptions."
+          "zh": "该 Payload 覆盖 GraphQL 根操作类型暴露场景，检验 Query、Mutation 与 Subscription 的存在性可见性与身份限制。验证维度为三类根类型探测与内省对照的单步矩阵，对应第 1 步。",
+          "en": "This payload covers GraphQL root-operation-type exposure, testing visibility and identity limits of Query, Mutation and Subscription existence. Validation is a single-step matrix of root-type probes with introspection controls, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "Schema 可见性策略与 resolver 授权脱节时，隐藏操作可能仍可直接调用，公开操作也可能缺少对象级校验。探测只能建立攻击面，必须将根类型结果与实际身份、变量校验、状态变化和订阅数据关联。",
-          "en": "When schema visibility and resolver authorization diverge, hidden operations may remain directly callable and visible operations may lack object-level checks. Discovery establishes only the surface and must be tied to identity, variable validation, state change, and subscription data."
+          "zh": "根因在于根操作类型的存在性未按身份裁剪：低权用户可探测到隐藏的 Mutation 或 Subscription 名称，为定向构造操作提供完整地图。",
+          "en": "The root cause is root-operation existence unpruned by identity: low-privilege users can probe hidden Mutation or Subscription names, handing them a complete map for targeted operations."
         },
         "exploitation": {
-          "zh": "步骤一以多个身份执行 query{__typename} 并记录正常 data/errors；步骤二回放原始根类型查询，比较 Query、Mutation、Subscription 名称与可见性；步骤三对一个无害操作做授权对照并检查状态或事件，排除仅类型存在、统一 validation error 或网关缓存造成的假阳性。",
-          "en": "First execute query{__typename} under several identities and record normal data or errors. Replay the original root-type queries and compare Query, Mutation, and Subscription names and visibility. Run an authorization control on one harmless operation and inspect state or events to exclude mere type existence, uniform validation errors, or gateway caching as false positives."
+          "zh": "第 1 步按脚本对三类根类型分别提交 typename 与内省查询并记录可见性差异：返回根类型名而角色策略禁止访问即确认暴露边界缺陷，再以实际操作验证可用性。成功判据以根类型可见矩阵为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, submit typename and introspection queries for each of the three root types per the script, recording visibility differences; root type names returning despite role policies confirm the exposure-boundary defect, then validate usability with real operations. Judge success by the root-type visibility matrix. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "对 Query、Mutation 与 Subscription 的每个 resolver 独立授权；按身份最小化 Schema 可见性但不把隐藏当作安全控制；为写操作设置输入 Schema、幂等与审计，并限制订阅连接、事件过滤和查询复杂度。",
-          "en": "Authorize every Query, Mutation, and Subscription resolver independently. Minimize schema visibility by identity without treating hiding as a security control. Apply input schemas, idempotency, and auditing to writes and constrain subscription connections, event filtering, and query complexity."
+          "zh": "按角色裁剪根类型可见性并拒绝未授权类型的解析，Subscription 名称同样纳入策略。修复后重放第 1 步，禁止类型的探测应返回验证错误而非结构信息。",
+          "en": "Prune root-type visibility per role and refuse resolution of unauthorized types, bringing Subscription names under the same policy. After the fix, replay step 1: probes for forbidden types should return validation errors rather than structure."
         },
         "difficulty": "intermediate"
       },
@@ -2724,20 +2724,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原始短 ID 实际对应反斜杠和多斜杠重定向变体。不同 URL 解析器可能把反斜杠当普通路径字符或当作正斜杠，因而服务端 allowlist 的站内判断与浏览器最终主机不一致。",
-          "en": "This short source ID maps to backslash and repeated-slash redirect variants. URL parsers may treat a backslash as an ordinary path character or normalize it into a slash, causing server allowlist decisions to disagree with the browser's final host."
+          "zh": "该 Payload 覆盖反斜杠与斜杠的 URL 解析差异场景，检验跳转目标在多层解析下的 authority 判定分歧。验证维度为混合斜杠数量阶梯的跳转变体矩阵，对应第 1 步。",
+          "en": "This payload covers backslash-versus-slash URL parsing divergence, testing authority-judgment splits for jump targets across parsing layers. Validation is a jump-variant matrix over mixed slash-count ladders, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "应用若在标准 URL 解析前用字符串前缀确认路径以 / 开头，浏览器随后对 /\\evil.com 等形式做 authority 规范化，就可能离开可信源。必须观察真实 Location 和最终浏览器 URL，不能仅凭库函数返回值推断。",
-          "en": "If an application checks that a path begins with slash before standard URL parsing, a browser may later normalize forms such as slash-backslash-host into an authority and leave the trusted origin. Real Location and final browser URL are required; a library return value alone is not enough."
+          "zh": "根因在于校验器与浏览器对反斜杠及连续斜杠的规范化规则不同：看似站内的路径被某一层解析为协议相对目标，最终导航至外部主机。",
+          "en": "The root cause is validators and browsers normalizing backslashes and consecutive slashes differently: paths that look in-site resolve to protocol-relative targets at some layer, ending navigation at external hosts."
         },
         "exploitation": {
-          "zh": "步骤一用 /account 记录应用和浏览器的站内解析基线；步骤二逐项回放原始反斜杠组合，保存校验器解析对象、响应 Location 与浏览器地址栏；步骤三在两个浏览器和标准 URL 解析器中对照，排除显示转义、代理自动纠正或根路径 404 造成的假阳性。",
-          "en": "First record application and browser parsing for an internal path such as /account. Replay each original backslash combination and preserve the validator's parsed object, response Location, and browser address bar. Compare two browsers and a standard URL parser to exclude display escaping, proxy correction, or a root-path 404 as false positives."
+          "zh": "第 1 步按脚本把反斜杠与连续斜杠阶梯变体逐条置于跳转参数提交，记录响应 Location 与浏览器最终地址：任一变体被解析为外部 authority 并完成跳转即确认解析差异可利用。成功判据以最终导航域名为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, place backslash and consecutive-slash ladder variants into the jump parameter one by one per the script, recording response Location and the browser's final address; any variant resolving to an external authority and completing the jump confirms exploitable parsing divergence. Judge success by the final navigation domain. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "拒绝重定向参数中的反斜杠、控制字符和协议相对形式；在一次规范化后用同一标准解析器校验并生成 Location；优先使用服务端目标 ID，同时对代理和支持浏览器建立解析差分回归。",
-          "en": "Reject backslashes, control characters, and scheme-relative forms in redirect input. Normalize once and use the same standard parser for validation and Location generation. Prefer server-side destination IDs and maintain parser-differential regressions across proxies and supported browsers."
+          "zh": "跳转前按 RFC 解析 authority 并与白名单精确匹配，拒绝含反斜杠与混合斜杠的目标。修复后重放第 1 步矩阵，全部变体应被拒绝或落在站内。",
+          "en": "Parse the authority per RFC before jumping and exact-match against allowlists, rejecting backslash and mixed-slash targets. After the fix, replay the step 1 matrix: every variant should be rejected or stay in-site."
         },
         "difficulty": "advanced"
       },
@@ -2833,20 +2833,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原集合是明文与 Base64 编码的 data:text/html 文档，脚本在独立不透明源中执行并尝试导航。它与普通 URL 编码开放重定向不同，首先测试危险协议能否进入浏览器，随后才观察导航副作用。",
-          "en": "The source contains plain and Base64 data:text/html documents whose scripts run in an opaque origin and attempt navigation. Unlike ordinary encoded open redirects, it first tests whether a dangerous scheme reaches the browser and then observes navigation as a side effect."
+          "zh": "覆盖 data: URI 活动内容执行验证：以 data:text/html 明文与 base64 形态注入脚本导航，测试危险协议能否进入可导航或可嵌入 Sink 并执行内联脚本。",
+          "en": "Covers data: URI active-content execution verification: injecting script navigation in plain and base64 data:text/html forms, testing whether the dangerous scheme enters navigable or embeddable sinks and executes inline scripts."
         },
         "vulnerability": {
-          "zh": "应用只按域名字符串或前缀允许 URI，却不限制 scheme，或把 data: 写入 iframe、object、链接和 location 等危险属性时，会让攻击者控制完整活动文档。CSP、浏览器上下文和用户手势可能改变执行结果。",
-          "en": "If an application validates only host strings or prefixes without restricting schemes, or writes data into iframe, object, link, or location sinks, an attacker can control an active document. CSP, browser context, and user-gesture requirements may change execution results."
+          "zh": "根因是应用只按域名字符串或前缀允许 URI 却不限制 scheme，或把 data: 写入 iframe、object、链接与 location 等危险属性，攻击者据此控制完整活动文档；CSP 与用户手势影响执行结果。",
+          "en": "The root cause is applications allowing URIs by domain string or prefix without scheme restrictions, or writing data: into hazardous attributes like iframe, object, links, and location, giving attackers a complete active document; CSP and user gestures shape the execution outcome."
         },
         "exploitation": {
-          "zh": "步骤一用 data:text/plain 建立无脚本显示基线；步骤二回放原始 HTML/Base64 URI，在真实 Sink 中记录最终协议、文档源、CSP 和导航事件；步骤三用纯文本上下文与禁用 data: 的策略对照，排除载荷只被显示、Base64 解码工具预览或浏览器阻断造成的假阳性。",
-          "en": "First establish a nonscript display baseline with data:text/plain. Replay the original HTML and Base64 URIs in the real sink and record final scheme, document origin, CSP, and navigation events. Compare plain-text context and a policy blocking data to exclude displayed payloads, decoder previews, or browser blocking as false positives."
+          "zh": "使用第 1 步命令逐行以 data:text/html 明文与 base64 形态注入脚本导航；明文行导航到 {ATTACKER_HOST} 即确认 data: 活动内容执行，base64 行内域名需手动重新编码替换。先用 data:text/plain 建立无脚本显示基线，再在真实 Sink 记录最终协议、文档源、CSP 与导航事件。载荷被当作纯文本显示或被 CSP 阻断时按阴性记录，不算执行成立。",
+          "en": "Use the step 1 command to inject script navigation line by line in plain and base64 data:text/html forms; the plain row navigating to {ATTACKER_HOST} confirms data: active-content execution, with base64-row domains manually re-encoded for replacement. Baseline first with data:text/plain for script-free display, then record final protocol, document origin, CSP, and navigation events at the real sink. Record negatives when payloads render as plain text or CSP blocks them — execution never counts."
         },
         "mitigation": {
-          "zh": "按业务只允许明确协议并默认拒绝 data:；在 DOM 属性赋值前使用标准 URL 解析器和 Trusted Types 等约束；部署限制 object-src、frame-src 和 script-src 的 CSP，并避免把用户数据作为完整导航目标。",
-          "en": "Allow only explicit business schemes and reject data by default. Use standard URL parsing and controls such as Trusted Types before DOM property assignment. Deploy CSP restrictions for object-src, frame-src, and script-src, and avoid treating user data as a complete navigation target."
+          "zh": "按业务只允许明确协议并默认拒绝 data:，DOM 属性赋值前用标准 URL 解析器与 Trusted Types 约束；部署限制 object-src、frame-src 与 script-src 的 CSP，避免把用户数据作为完整导航目标。",
+          "en": "Allow only explicit business protocols, default-denying data:; constrain DOM attribute assignment with standard URL parsers and Trusted Types; deploy CSP restricting object-src, frame-src, and script-src, and avoid using user data as complete navigation targets."
         },
         "difficulty": "intermediate"
       },
@@ -2942,20 +2942,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原命令把 http/https、://、// 和外部主机进行百分号编码，测试安全校验与 Location 生成之间的解码顺序。只有应用接受编码值并让浏览器最终导航到外部主机，才构成重定向绕过。",
-          "en": "The source percent-encodes HTTP or HTTPS, separators, double slashes, and an external host to test decode ordering between validation and Location generation. It is a redirect bypass only when the application accepts the encoded value and the browser ultimately navigates externally."
+          "zh": "该 Payload 覆盖百分号编码的重定向绕过场景，检验校验器在解码之前比对目标所导致的次序缺陷。验证维度为编码协议、双斜杠与编码主机的变体矩阵，对应第 1 步。",
+          "en": "This payload covers percent-encoding redirect bypasses, testing order flaws where validators compare targets before decoding. Validation is a variant matrix of encoded schemes, double slashes and encoded hosts, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "若 WAF 或应用在未解码字符串上匹配主机，而框架、代理或浏览器随后执行一次解码，校验器看到的相对路径可能变成协议相对或绝对 URL。重复解码还会扩大差异，因此必须记录每层规范化值。",
-          "en": "If a WAF or application matches hosts on undecoded text while a framework, proxy, or browser decodes later, a value seen as a relative path can become a scheme-relative or absolute URL. Repeated decoding widens the differential, so each layer's normalized value must be recorded."
+          "zh": "根因在于校验发生在 URL 解码之前：编码后的协议与主机到后续解析阶段才还原为外部目标，站内判断对编码形态失效并被绕过。",
+          "en": "The root cause is validation running before URL decoding: encoded schemes and hosts only revert to external targets during later parsing, so in-site checks fail and get bypassed for encoded shapes."
         },
         "exploitation": {
-          "zh": "步骤一用未编码站内路径和外部绝对 URL 建立允许/拒绝基线；步骤二逐项回放原始编码变体，记录 WAF、应用、Location 与浏览器最终 URL；步骤三用只解码一次的标准解析器对照，排除日志显示解码、浏览器地址栏美化或代理统一编码造成的假阳性。",
-          "en": "First establish allow and deny baselines with an unencoded internal path and external absolute URL. Replay each original encoded variant and record WAF, application, Location, and browser final URL values. Compare a standard parser that decodes once to exclude decoded log display, browser address-bar prettification, or proxy re-encoding as false positives."
+          "zh": "第 1 步按脚本把完整编码与部分编码的外部目标逐条提交跳转端点，记录解码后的实际跳转：编码变体落地外部域即确认次序缺陷，对照双编码形式界定解码层数。成功判据以最终跳转地址为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, submit fully and partially encoded external targets to the jump endpoint one by one per the script, recording actual post-decode redirects; encoded variants landing externally confirm the order defect, contrasted against double-encoded forms to bound decoding layers. Judge success by the final jump address. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "在边界只进行一次严格规范化并拒绝非法编码；使用同一标准 URL 对象完成校验和 Location 生成，精确 allowlist 协议、主机与端口；避免多层重复解码，并用编码与未编码成对用例回归。",
-          "en": "Normalize exactly once at the boundary and reject invalid encoding. Use the same standard URL object for validation and Location generation and exactly allowlist scheme, host, and port. Avoid repeated decoding and regress paired encoded and unencoded cases."
+          "zh": "校验前完成全部解码并循环检测直到值稳定，对最终 URL 解析 authority 后再白名单比对。修复后重放第 1 步矩阵，全部编码变体应被拒绝。",
+          "en": "Fully decode before validation and loop until values stabilize, then parse the final URL's authority for allowlist comparison. After the fix, replay the step 1 matrix: every encoded variant should be rejected."
         },
         "difficulty": "advanced"
       },
@@ -3051,20 +3051,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原值以 %25 表示百分号，需要至少两次解码才显现协议或双斜杠。它用于定位 CDN、WAF、框架与路由器之间的重复规范化，而不是普通 URL 编码功能测试。",
-          "en": "The values encode percent signs as %25 and require at least two decodes before a scheme or double slash appears. They locate repeated normalization across CDN, WAF, framework, and router layers rather than testing ordinary URL encoding."
+          "zh": "该 Payload 覆盖双重 URL 解码的重定向绕过场景，检验代理与应用连续解码时的次序与层级分歧。验证维度为双编码协议、主机与分隔符的变体矩阵，对应第 1 步。",
+          "en": "This payload covers double-URL-decoding redirect bypasses, testing order and layer divergence when proxy and application decode repeatedly. Validation is a variant matrix of double-encoded schemes, hosts and separators, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "第一层安全检查若只看到仍编码的安全字符串，而下游组件再次解码并生成 Location，最终目标会改变。修复不能简单再增加一次解码，否则可能产生第三层差异；必须明确定义唯一规范化边界。",
-          "en": "If the first security check sees a still-encoded safe string while a downstream component decodes again before generating Location, the final destination changes. Adding another decode is not a fix because it can create a third differential; one canonicalization boundary must be defined."
+          "zh": "根因在于链路各层解码次数不一致：第一层解码后看似合规的值经二次解码还原为外部目标，校验与最终跳转面向不同字符串形态，判定随之失真。",
+          "en": "The root cause is inconsistent decode counts across chain layers: values compliant after the first decode revert to external targets on the second, so validation and final jumps face different string shapes and judgments skew."
         },
         "exploitation": {
-          "zh": "步骤一分别发送明文、一次编码和双重编码的站内目标记录解码链；步骤二回放原始双重编码外部目标并保存每层原始值、规范化值和最终浏览器主机；步骤三移除下游重复解码后复测，排除日志自动解码、客户端预解码或普通 302 缓存造成的假阳性。",
-          "en": "First send plain, once-encoded, and twice-encoded internal destinations to map the decode chain. Replay the original twice-encoded external targets and preserve raw and normalized values at each layer plus the final browser host. Retest after removing downstream repeated decoding to exclude log auto-decoding, client pre-decoding, or ordinary cached 302 responses as false positives."
+          "zh": "第 1 步按脚本把双编码目标逐条提交跳转端点，记录各层日志中的解码形态与最终 Location：二次解码后落地外部域即确认层级分歧可利用。成功判据以最终导航地址与中间层日志为准。占位符在全局变量菜单替换；同时以单编码对照界定解码次数。",
+          "en": "In step 1, submit double-encoded targets to the jump endpoint one by one per the script, recording decoded shapes in layer logs and the final Location; landing externally after the second decode confirms exploitable layer divergence. Judge success by the final navigation address and intermediate logs. Replace placeholders via the global variables menu; contrast single encoding to bound decode counts."
         },
         "mitigation": {
-          "zh": "在受信边界严格解码一次并传递结构化 URL，而不是继续传递字符串；拒绝残留或非法百分号编码并阻止下游重复解码；校验最终协议、主机和端口，针对 0/1/2 次编码建立矩阵回归。",
-          "en": "Decode exactly once at the trust boundary and pass a structured URL rather than the original string. Reject residual or invalid percent encodings and prevent downstream decoding. Validate final scheme, host, and port and maintain a zero, one, and two-decode regression matrix."
+          "zh": "统一各层解码为单次并在应用层循环解码至稳定后再校验，边缘层拒绝含双编码特征的目标。修复后重放第 1 步矩阵，全部双编码变体应被拒绝。",
+          "en": "Standardize single-pass decoding at every layer and loop to stability in the application before validating, with edge layers rejecting double-encoded shapes. After the fix, replay the step 1 matrix: every double-encoded variant should be rejected."
         },
         "difficulty": "expert"
       },
@@ -3160,20 +3160,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Fragment 不会随 HTTP 请求发送，浏览器把 # 后内容用于客户端定位。原集合测试直接、一次编码和双重编码的 # 是否在不同层被错误参与主机 allowlist。单独访问 target.com#evil.com 通常仍是站内，不应误报。",
-          "en": "Fragments are not sent in HTTP requests and browsers use text after # for client-side location. The source tests whether direct, once-encoded, and twice-encoded fragment markers are incorrectly included in host allowlisting. Visiting target.com#evil.com normally remains on target.com and must not be misreported."
+          "zh": "该 Payload 覆盖 URL Fragment 主机校验混淆场景，检验校验器把井号后内容误并入主机或路径的判定缺陷。验证维度为明文、编码与双编码井号的变体矩阵，对应第 1 步。",
+          "en": "This payload covers URL fragment host-check confusion, testing flaws where validators fold post-hash content into host or path. Validation is a variant matrix of plaintext, encoded and double-encoded hash marks, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "漏洞只在某层先错误校验整体字符串，另一层解码或重组后把不同部分当作 authority 时成立。通常片段只是无害噪声，因此必须通过最终 URL 对象的 scheme、host、path 和 fragment 证明外部主机确实改变。",
-          "en": "A flaw exists only when one layer validates the whole string incorrectly and another layer decodes or reconstructs it into a different authority. Fragments are usually harmless noise, so the final URL object's scheme, host, path, and fragment must prove an actual host change."
+          "zh": "根因在于服务端校验按原始串处理而浏览器按 URL 规范切分片段：井号编码形态让两侧对可信目标得出不同结论，跳转最终落在片段内主机。",
+          "en": "The root cause is server validation treating the raw string while browsers split per URL semantics: encoded hash marks drive the two sides to different conclusions on the trusted target, ending navigation at the host inside the fragment."
         },
         "exploitation": {
-          "zh": "步骤一用标准解析器记录原始三种值的 scheme、host、path 和 fragment；步骤二将它们输入真实重定向流程并捕获每一跳 Location 与浏览器 URL 对象；步骤三与无重定向普通链接对照，排除地址栏显示、日志截断或扫描器看到 evil.com 字符串造成的假阳性。",
-          "en": "First record scheme, host, path, and fragment for all three source values using a standard parser. Feed them into the real redirect flow and capture every Location and browser URL object. Compare an ordinary nonredirecting link to exclude address-bar display, log truncation, or scanner matches on the evil.com string as false positives."
+          "zh": "第 1 步按脚本把明文井号、百分号编码与双编码井号变体逐条提交跳转端点，记录校验结论与浏览器最终地址：校验判站内而浏览器落外部域即确认片段混淆。成功判据以两侧解析结果对照为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, submit plaintext, percent-encoded and double-encoded hash-mark variants to the jump endpoint one by one per the script, recording validation verdicts and the browser's final address; in-site verdicts with external landings confirm fragment confusion. Judge success by the side-by-side parse results. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "在校验前使用标准 URL 解析器并只对解析后的 host、scheme 和 port 做决定；明确忽略或业务化处理 fragment，拒绝重复编码和多层重组；让校验与 Location 生成复用同一 URL 对象并加入无害片段对照。",
-          "en": "Parse with a standard URL library before validation and decide only on parsed host, scheme, and port. Ignore or explicitly handle fragments, reject repeated encoding and multilayer reconstruction, and reuse the same URL object for validation and Location generation with harmless-fragment controls."
+          "zh": "校验前按 URL 规范完整解析并剥离片段，对编码井号先归一化再判定 authority。修复后重放第 1 步矩阵，全部变体应在校验层即被拒绝。",
+          "en": "Fully parse per URL semantics before validation, stripping fragments and normalizing encoded hash marks before authority checks. After the fix, replay the step 1 matrix: every variant should be rejected at the validation layer."
         },
         "difficulty": "advanced"
       },
@@ -3269,20 +3269,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原样式表只读取标准 XSLT 系统属性，不执行命令也不读取文件。它是后续选择引擎专用安全测试的指纹探针，应从 SQL 注入和 RCE 区分，并以服务端实际转换输出确认。",
-          "en": "The source stylesheets read standard XSLT system properties and do not execute commands or read files. They are fingerprint probes for selecting later engine-specific security tests and should be separated from SQL injection and RCE, with confirmation from actual server transform output."
+          "zh": "XSLT 处理器属性指纹识别针对识别实际 XSLT 引擎及其能力基线的场景：system-property 可查询 vendor、version 与 vendor-url。验证三类系统属性查询的响应输出，为后续引擎专用测试选型。",
+          "en": "XSLT processor property fingerprinting targets identifying the actual XSLT engine and its capability baseline: system-property queries vendor, version, and vendor-url. It validates output of the three system-property queries to select engine-specific tests that follow."
         },
         "vulnerability": {
           "zh": "处理器名称与版本暴露通常是低风险信息，本身不证明可利用缺陷；但它能帮助识别已知安全开关、扩展命名空间和补丁状态。只有应用允许不可信 XSLT 参与转换时，这组输入才有测试入口。",
-          "en": "Processor name and version exposure is usually low-risk information and does not itself prove an exploitable flaw, but it helps identify security switches, extension namespaces, and patch status. The inputs have a test surface only when untrusted XSLT participates in transformation."
+          "en": "Processor name and version exposure is usually low risk and does not itself prove exploitable flaws, but it helps identify known security switches, extension namespaces, and patch status; these inputs only have a test entry when the application lets untrusted XSLT participate in transformation."
         },
         "exploitation": {
-          "zh": "步骤一用固定文本模板确认服务端确实执行上传样式表；步骤二逐项回放原始 system-property 查询并保存原始转换输出与服务版本清单；步骤三在本地不同处理器运行同一模板对照，排除静态文档、客户端转换或预置字符串造成的假阳性。",
-          "en": "First use a fixed-text template to confirm the server actually executes the submitted stylesheet. Replay each original system-property query and preserve raw transform output and service inventory. Run the same template under alternate local processors to exclude static documentation, client-side transformation, or hard-coded strings as false positives."
+          "zh": "按第 1 步把三条 system-property('xsl:vendor')、version 与 vendor-url 样式表逐条提交到目标转换入口；命中判据为响应输出 XSLT 处理器的 vendor/version 信息。记录引擎类型与版本号并映射其安全开关与扩展命名空间支持；该指纹是后续选择引擎专用验证（如扩展函数、脚本块）的前置输入，不执行命令也不读取文件。",
+          "en": "Per step 1, submit the three system-property('xsl:vendor'), version, and vendor-url stylesheets to the target transform entry one by one; a hit is vendor/version information of the XSLT processor in the response. Record engine type and version and map its security switches and extension-namespace support; this fingerprint is the prerequisite input for choosing engine-specific validations that follow (extension functions, script blocks) and neither executes commands nor reads files."
         },
         "mitigation": {
-          "zh": "不要接受用户提供的可执行样式表；隐藏非必要的详细版本输出并保持处理器更新；将引擎选择固定在服务端配置，关闭不需要的扩展，并把指纹结果仅作为后续受控验证输入。",
-          "en": "Do not accept user-provided executable stylesheets. Suppress unnecessary detailed version output and keep processors updated. Pin engine selection in server configuration, disable unneeded extensions, and use fingerprint results only to guide controlled follow-up testing."
+          "zh": "不要接受用户提供的可执行样式表；隐藏非必要的详细版本输出并保持处理器更新；将引擎选择固定在服务端配置，关闭不需要的扩展，并把指纹结果仅作为后续受控验证输入。修复后重放第 1 步查询，确认版本信息不再返回或入口已不可达。",
+          "en": "Never accept user-supplied executable stylesheets; hide non-essential version detail and keep processors updated; pin engine selection in server-side configuration, disable unneeded extensions, and treat fingerprint results only as input for subsequent controlled validation. After the fix, replay the step-1 queries and confirm version details no longer return or the entry is unreachable."
         },
         "difficulty": "beginner"
       },
@@ -3378,20 +3378,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原样式表在 DOCTYPE 中声明 SYSTEM file: 实体，并在模板输出中引用。虽然载体是 XSLT，关键解析边界是 XML 外部实体解析，因此应归 XXE，而不是把所有 XSLT 条目都归 RCE。",
-          "en": "The source declares a SYSTEM file entity in a DOCTYPE and references it in template output. Although the carrier is XSLT, the critical parser boundary is XML external-entity resolution, so it is XXE rather than RCE."
+          "zh": "覆盖 XSLT 文档中外部实体的文件读取验证：在 XSLT 内声明 SYSTEM file: 实体读取服务器本地文件并把内容写入转换结果。载体是样式表，核心边界仍是 XML 外部实体解析。",
+          "en": "Covers external-entity file reads within XSLT documents: declaring SYSTEM file: entities inside the XSLT to read server-local files and write contents into transformation results. The carrier is a stylesheet, but the core boundary remains XML external entity parsing."
         },
         "vulnerability": {
-          "zh": "当处理器允许 DTD 和外部实体，且攻击者能控制样式表文档，解析器会以转换服务账号读取 file: 目标。文件名出现在错误中或渲染失败不等于内容泄露，必须观察唯一文件 Canary 被解析到输出。",
-          "en": "When the processor allows DTDs and external entities and the attacker controls the stylesheet document, the parser reads file targets as the transform service account. A filename in an error or a failed render is not disclosure; a unique file canary must appear in output."
+          "zh": "根因是处理器允许 DTD 与外部实体且攻击者能控制样式表文档，解析器以转换服务账号读取 file: 目标；文件名出现在错误中或渲染失败不等于内容泄露，必须有 Canary 进入输出。",
+          "en": "The root cause is processors allowing DTDs and external entities while attackers control the stylesheet document, so the parser reads file: targets as the transformation-service account; filenames in errors or failed rendering are not content disclosure — a Canary reaching output is required."
         },
         "exploitation": {
-          "zh": "步骤一准备只含随机 Canary 的隔离本地文件并用无 DTD 样式表记录输出；步骤二将原始外部实体集合指向该文件，捕获解析日志和转换结果；步骤三禁用 DTD/外部实体后重放，排除模板中的静态文本、错误页路径或测试工具本地解析造成的假阳性。",
-          "en": "First prepare an isolated local file containing only a random canary and record output with a stylesheet without DTDs. Point the original external-entity pattern at that file and capture parser logs and transform output. Replay with DTDs and external entities disabled to exclude static template text, error-page paths, or local parsing by the test tool as false positives."
+          "zh": "使用第 1 步命令在 XSLT 内声明外部实体读取目标文件；转换输出出现文件内容即确认 XSLT 处理器实体解析开启，/flag 行为典型演示目标，执行前替换为授权 marker。先准备只含随机 Canary 的隔离文件并用无 DTD 样式表记录输出基线，再捕获解析日志与转换结果。",
+          "en": "Use the step 1 command to declare an external entity inside the XSLT reading the target file; file content in transformation output confirms the XSLT processor parses entities, with the /flag line a typical demo target to be replaced by an authorized marker before running. Prepare an isolated file holding only a random Canary and baseline output with a DTD-free stylesheet first, then capture parse logs and transformation results."
         },
         "mitigation": {
-          "zh": "在具体 XML/XSLT 处理器中禁用 DTD、外部通用实体和参数实体；拒绝用户控制样式表并使用受信模板；以低权限、只读文件系统运行转换，限制 file: 与网络解析并添加 Canary 回归。",
-          "en": "Disable DTDs, external general entities, and parameter entities in the selected XML or XSLT processor. Reject user-controlled stylesheets and use trusted templates. Run transforms under least privilege on a read-only filesystem, block file and network resolution, and add canary regressions."
+          "zh": "在 XML/XSLT 处理器禁用 DTD、外部通用实体与参数实体；拒绝用户控制样式表并使用受信模板；以低权限只读文件系统运行转换，限制 file: 与网络解析并添加 Canary 回归。",
+          "en": "Disable DTDs, external general entities, and parameter entities in XML/XSLT processors; reject user-controlled stylesheets and use trusted templates; run transformations with low privileges on read-only filesystems, restricting file: and network resolution with Canary regressions."
         },
         "difficulty": "advanced"
       },
@@ -3724,20 +3724,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原命令是 PDF 阅读器 JavaScript API 片段，不是浏览器 JavaScript 或 SQL 注入。不同阅读器对 app、this、export 和 mail API 的支持、信任提示及权限完全不同，必须在明确客户端版本和隔离配置中验证。",
-          "en": "The source contains PDF-reader JavaScript API fragments, not browser JavaScript or SQL injection. Reader support, trust prompts, and permissions for app, this, export, and mail APIs vary widely, so testing requires an identified client version and isolated profile."
+          "zh": "PDF JavaScript 活动内容注入针对攻击者控制的 PDF JavaScript 调用阅读器特权 API 的场景：提交表单、打开文件、导出对象与邮件动作各有不同权限。验证 submitForm 外传与 exportDataObject 两类动作。",
+          "en": "PDF JavaScript active-content injection targets attacker-controlled PDF JavaScript invoking reader-privileged APIs: form submission, file opening, object export, and mail actions each carry different permissions. It validates submitForm exfiltration and exportDataObject action classes."
         },
         "vulnerability": {
-          "zh": "生成服务若把用户脚本嵌入 PDF，或阅读器允许文档脚本调用超出预期的网络、文件和启动 API，打开文件可能产生外部请求、社会工程或本地副作用。脚本存在和弹出提示不等于静默利用，用户交互与沙箱必须记录。",
-          "en": "If a generation service embeds user script in PDFs, or a reader lets document script call unexpected network, file, or launch APIs, opening the document can create outbound requests, social engineering, or local side effects. Script presence and prompts are not silent exploitation; user interaction and sandbox behavior must be recorded."
+          "zh": "生成服务若把用户脚本嵌入 PDF，或阅读器允许文档脚本调用超出预期的网络、文件和启动 API，打开文件可能产生外部请求、社会工程或本地副作用；脚本存在和弹出提示不等于静默利用，用户交互与沙箱必须记录。",
+          "en": "If generation services embed user scripts into PDFs, or readers let document scripts invoke unexpected network, file, and launch APIs, opening the file can produce external requests, social engineering, or local side effects; script presence and popups are not silent exploitation—user interaction and sandboxing must be recorded."
         },
         "exploitation": {
-          "zh": "步骤一用只写入文档字段的无害脚本确认目标阅读器是否执行 JavaScript；步骤二逐项封装原始 API 调用并在隔离虚拟机记录提示、受控网络、文件和进程事件；步骤三禁用 PDF JavaScript 或受信 API 后复测，排除静态字符串提取、浏览器 PDF 预览差异或用户主动确认造成的假阳性。",
-          "en": "First use a harmless script that writes a document field to confirm JavaScript execution in the target reader. Package each original API call separately and record prompts plus controlled network, file, and process events in an isolated VM. Replay with PDF JavaScript or trusted APIs disabled to exclude static-string extraction, browser-preview differences, or user-confirmed actions as false positives."
+          "zh": "按第 1 步把 submitForm、app.alert、exportDataObject 与 app.openDoc 样例分别嵌入测试 PDF 并在隔离查看器中打开；命中判据为隔离查看器内出现向攻击者地址的表单提交或邮件动作（配合本地代理观察）。逐条记录阅读器版本、信任提示与用户交互要求；app.openDoc 指向 marker 文件时仅验证打开权限，不做内容外传。",
+          "en": "Per step 1, embed the submitForm, app.alert, exportDataObject, and app.openDoc samples into test PDFs separately and open them in an isolated viewer; a hit is a form submission or mail action toward your address inside the isolated viewer (observed via a local proxy). Record reader version, trust prompts, and interaction requirements per sample; when app.openDoc targets a marker file, validate only the open permission without exfiltrating content."
         },
         "mitigation": {
-          "zh": "生成 PDF 时移除用户控制的 JavaScript、Launch、EmbeddedFile 和自动动作；在企业阅读器策略中禁用不需要的文档脚本和特权 API；对上传与生成文件做结构化解析、内容净化和隔离打开。",
-          "en": "Strip user-controlled JavaScript, Launch, EmbeddedFile, and automatic actions during PDF generation. Disable unnecessary document scripting and privileged APIs through enterprise reader policy. Structurally parse and sanitize uploaded and generated files and open them in isolation."
+          "zh": "生成 PDF 时移除用户控制的 JavaScript、Launch、EmbeddedFile 和自动动作；在企业阅读器策略中禁用不需要的文档脚本和特权 API；对上传与生成文件做结构化解析、内容净化和隔离打开。修复后重放第 1 步样例，确认动作被阻断且正常文档可读。",
+          "en": "Strip user-controlled JavaScript, Launch, EmbeddedFile, and automatic actions when generating PDFs; disable unneeded document scripts and privileged APIs in enterprise reader policy; run structured parsing, content sanitization, and isolated opening for uploads and generated files. After the fix, replay the step-1 samples and confirm actions are blocked while normal documents open."
         },
         "difficulty": "advanced"
       },
@@ -3955,20 +3955,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原集合覆盖字面与百分号编码的 LF/CRLF、大小写和多收件人形式，目标 Sink 是应用构造的 RFC 邮件 Header。载荷出现在 HTTP 请求或邮件正文中不算成功，必须在测试 SMTP 信封或邮件 Header 中看到额外收件人。",
-          "en": "The source covers literal and percent-encoded LF or CRLF, case variants, and multiple recipients targeting application-built mail headers. Appearance in an HTTP request or message body is not success; an extra recipient must appear in the test SMTP envelope or message headers."
+          "zh": "该 Payload 覆盖邮件收件人 Header 注入场景，检验表单字段换行注入额外 Bcc 与 Cc 收件人的可行性。验证维度为 CRLF 加收件人头的大小写与编码变体矩阵，对应第 1 步。",
+          "en": "This payload covers mail recipient-header injection, testing whether form-field newlines inject extra Bcc and Cc recipients. Validation is a variant matrix of CRLF-plus-recipient headers across casing and encodings, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "应用把 name、subject、reply-to 等用户字段直接拼进原始邮件头，或重复解码换行时，攻击者可结束当前 Header 并新增 Bcc/Cc。不同邮件库可能自动拒绝换行，因此 500、发送失败或文本回显都不是漏洞证据。",
-          "en": "If an application concatenates user fields such as name, subject, or reply-to into raw mail headers or decodes newlines repeatedly, an attacker can terminate the current header and add Bcc or Cc. Mail libraries may reject newlines automatically, so a 500, send failure, or text echo is not evidence."
+          "zh": "根因在于邮件库把用户输入直接拼入消息头而未过滤换行：注入的 Bcc 行让测试邮件同时投递到攻击者邮箱，泄露全部收件人与正文内容。",
+          "en": "The root cause is mail libraries concatenating user input into message headers without newline filtering: injected Bcc lines deliver the message to attacker mailboxes too, exposing all recipients and body content."
         },
         "exploitation": {
-          "zh": "步骤一向隔离 SMTP 捕获器发送正常邮件并记录 envelope recipients 与原始 MIME；步骤二逐项回放原始 Bcc/Cc 变体，保持授权收件人固定并比较捕获结果；步骤三换用结构化邮件 API 后重放，排除捕获器界面折行、正文引用或预配置抄送造成的假阳性。",
-          "en": "First send a normal message to an isolated SMTP catcher and record envelope recipients and raw MIME. Replay each original Bcc and Cc variant while keeping the authorized recipient fixed and compare captured results. Retest with a structured mail API to exclude UI wrapping, body quoting, or preconfigured copies as false positives."
+          "zh": "第 1 步把换行加 Bcc 与 Cc 的各变体逐条注入邮件表单字段并发送测试邮件，观察自有测试收件箱是否收到副本：出现注入收件即确认头注入成立，同时核对原始收件人是否察觉异常。成功判据以测试邮箱接收记录为准。占位符在全局变量菜单替换；收件地址仅指向实验邮箱。",
+          "en": "In step 1, inject newline-plus-Bcc and Cc variants into mail form fields one by one and send test messages, watching your test inbox for copies; arriving injected recipients confirm the header injection, with original recipients checked for awareness. Judge success by test-inbox reception records. Replace placeholders via the global variables menu; recipient addresses point only at lab mailboxes."
         },
         "mitigation": {
-          "zh": "使用邮件库结构化设置 To/Cc/Bcc 而不拼接原始 Header；对所有 Header 字段拒绝解码后 CR/LF 并限制收件人 Schema；将允许收件人从服务端业务对象解析，同时审计异常多收件人与外部域。",
-          "en": "Use structured mail-library methods for To, Cc, and Bcc rather than concatenating raw headers. Reject CR or LF after decoding in every header field and validate recipient schemas. Resolve allowed recipients from server-side business objects and audit unusual recipient counts and external domains."
+          "zh": "邮件字段强制拒绝回车换行并做地址格式白名单，邮件库升级为头值编码模式；发信日志收件人纳入审计。修复后重放第 1 步，全部变体的注入收件应消失。",
+          "en": "Reject carriage returns in mail fields with address-format allowlists, upgrade mail libraries to header-encoding modes, and audit recipients in send logs. After the fix, replay step 1: injected recipients should vanish across all variants."
         },
         "difficulty": "advanced"
       },
@@ -4064,20 +4064,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原命令使用 LF、CRLF 与百分号编码插入第二个 Subject 或 X-Injected Header。主题显示变化可能受到邮件客户端折叠和重复 Header 策略影响，审计必须查看 SMTP 捕获器保存的原始 MIME，而不是只看 UI。",
-          "en": "The source uses LF, CRLF, and percent encoding to insert a second Subject or X-Injected header. Display changes depend on client folding and duplicate-header policy, so review must inspect raw MIME from an SMTP catcher rather than only the UI."
+          "zh": "该 Payload 覆盖邮件主题 Header 注入场景，检验字段换行对 Subject 与自定义头的覆盖或追加能力。验证维度为明文与编码 CRLF 的主题变体矩阵，对应第 1 步。",
+          "en": "This payload covers mail Subject-header injection, testing field newlines overriding or appending Subject and custom headers. Validation is a subject-variant matrix of plaintext and encoded CRLF, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "应用把联系人姓名、反馈标题等不可信值拼接到 Subject Header，且未在最终解码后拒绝换行时，攻击者可改变邮件元数据并为后续钓鱼或 Header 注入创造条件。重复 Subject 被客户端忽略也不等于输入安全。",
-          "en": "If an application concatenates untrusted names or feedback titles into Subject without rejecting newlines after final decoding, an attacker can alter message metadata and enable phishing or further header injection. A client ignoring duplicate Subject does not mean the input path is safe."
+          "zh": "根因在于主题等头值未过滤换行即进入消息构造：注入行可追加广告头、覆盖编码声明或污染回复地址，破坏邮件可信度、投递与审计可信性。",
+          "en": "The root cause is header values like Subject entering message construction without newline filtering: injected lines append spam headers, override encoding declarations or pollute reply addresses, harming trust, delivery and audit integrity."
         },
         "exploitation": {
-          "zh": "步骤一发送包含唯一正常主题的消息并保存原始 MIME；步骤二逐项回放原始 Subject/X-Injected 变体，比较折叠前 Header 数量、顺序和值；步骤三用不同客户端显示与结构化邮件 API 对照，排除 UI 折行、RFC 编码字换行或正文出现 Subject 字样造成的假阳性。",
-          "en": "First send a message with a unique normal subject and preserve raw MIME. Replay each original Subject and X-Injected variant and compare header count, order, and values before folding. Compare several client displays and a structured mail API to exclude UI wrapping, encoded-word folding, or Subject text in the body as false positives."
+          "zh": "第 1 步把明文与编码的主题注入变体逐条提交邮件功能并接收测试邮件，比对实际主题与新增头：主题被篡改或出现注入头即确认缺陷，记录原始头与注入头的先后关系。成功判据以收到邮件的头结构为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, submit plaintext and encoded subject-injection variants one by one through the mail feature and receive test messages, comparing actual subjects and added headers; tampered subjects or injected headers confirm the defect, recording ordering between original and injected headers. Judge success by received-message header structure. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "通过邮件库 Subject 属性设置主题而非拼接 MIME；在所有邮件 Header 输入上拒绝 CR/LF、控制字符和重复解码结果；限制长度与字符集，并在出站网关记录重复或异常 Header。",
-          "en": "Set the subject through the mail library property rather than concatenating MIME. Reject CR, LF, control characters, and repeated-decoding results in every mail-header input. Limit length and character set and log duplicate or anomalous headers at the outbound gateway."
+          "zh": "主题与其他头值做换行拒绝与长度限制，使用邮件库的头编码接口写入动态值。修复后重放第 1 步，全部变体的邮件应保持原主题且无新增头。",
+          "en": "Reject newlines and cap length on subjects and other header values, writing dynamic values through the mail library's encoding interfaces. After the fix, replay step 1: messages from every variant should keep the original subject with no added headers."
         },
         "difficulty": "intermediate"
       },
@@ -4173,20 +4173,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原集合面向邮件 MIME 头而非 HTTP Content-Type，包含 multipart boundary、text/html、MIME-Version 和传输编码。成功需要最终邮件的 Header/正文边界发生变化，并被目标客户端按注入类型解析。",
-          "en": "The source targets mail MIME headers rather than HTTP Content-Type and includes multipart boundaries, text/html, MIME-Version, and transfer encoding. Success requires the final message's header or body boundary to change and the target client to parse the injected type."
+          "zh": "该 Payload 覆盖邮件 MIME 结构 Header 注入场景，检验换行注入 Content-Type 与边界声明对正文解释的改变。验证维度为 multipart 声明与传输编码的注入变体矩阵，对应第 1 步。",
+          "en": "This payload covers mail MIME-structure header injection, testing how injected Content-Type and boundary declarations change body interpretation. Validation is an injection matrix of multipart declarations and transfer encodings, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "应用把用户字段拼进原始邮件 Header，允许 CR/LF 结束上一字段后，攻击者可重定义 MIME 结构、隐藏正文或引入活动 HTML。邮件库可能重写、去重或拒绝这些头，因此仅发送成功不证明注入。",
-          "en": "When an application concatenates user fields into raw mail headers and permits CR or LF to end a field, an attacker can redefine MIME structure, hide body parts, or introduce active HTML. Mail libraries may rewrite, deduplicate, or reject these headers, so successful sending alone is not proof."
+          "zh": "根因在于正文或附件字段换行可注入 MIME 声明：攻击者重定义边界与类型让邮件解析为多段结构，正文内容被替换或夹带受控段。",
+          "en": "The root cause is body or attachment field newlines injecting MIME declarations: attackers redefine boundaries and types so mail parses as multipart, replacing body content or smuggling controlled parts."
         },
         "exploitation": {
-          "zh": "步骤一发送正常 text/plain 邮件并保存原始 Header、boundary 与客户端渲染；步骤二逐项回放原始 MIME Header 变体，在 SMTP 捕获器解析部件树并比较目标客户端显示；步骤三使用邮件库结构化内容 API 对照，排除捕获器自动补头、客户端 HTML 偏好或正文字符串造成的假阳性。",
-          "en": "First send a normal text/plain message and preserve raw headers, boundaries, and client rendering. Replay each original MIME-header variant, parse the part tree at an SMTP catcher, and compare target-client display. Compare a structured mail-content API to exclude catcher-added headers, client HTML preferences, or body strings as false positives."
+          "zh": "第 1 步把边界声明与 Content-Type 注入变体逐条提交邮件功能并接收测试邮件，检查客户端解析出的邮件结构：出现注入段或正文被重组即确认 MIME 注入，截图留证解析差异。成功判据以邮件客户端的解析结果为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, submit boundary-declaration and Content-Type injection variants through the mail feature one by one and receive test messages, inspecting the structures clients parse; injected parts or reassembled bodies confirm MIME injection, archived with screenshots of parsing differences. Judge success by mail-client parse results. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "通过邮件库的 multipart、正文和附件 API 构建 MIME，不接受用户提供原始结构头；拒绝 Header 输入中的 CR/LF 与控制字符；固定允许的内容类型、边界生成和传输编码，并在网关验证 MIME 树。",
-          "en": "Build MIME through mail-library multipart, body, and attachment APIs and never accept raw structural headers from users. Reject CR, LF, and controls in header input. Pin allowed content types, generated boundaries, and transfer encodings and validate the MIME tree at the gateway."
+          "zh": "正文与附件字段拒绝换行输入，MIME 边界由邮件库随机生成并覆盖用户输入，升级解析库防御结构混淆。修复后重放第 1 步，全部变体邮件应保持原始单段结构。",
+          "en": "Reject newline input in body and attachment fields, let the mail library generate random MIME boundaries overriding user input, and upgrade parsing libraries against structure confusion. After the fix, replay step 1: messages from every variant should keep the original single-part structure."
         },
         "difficulty": "advanced"
       },
@@ -4286,20 +4286,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原集合包含标题、链接、javascript:、iframe、@import、link 和背景资源。多数现代邮件客户端禁止脚本和 iframe，但仍可能保留钓鱼链接、远程跟踪或危险 CSS；必须按支持的客户端分别记录净化结果。",
-          "en": "The source includes headings, links, javascript schemes, iframes, imports, link elements, and background resources. Most modern mail clients block scripts and iframes, while phishing links, remote tracking, or unsafe CSS can remain, so sanitization results must be recorded per supported client."
+          "zh": "覆盖 HTML 邮件正文内容注入验证：向邮件正文注入标题、链接、iframe 与跟踪图片，观察收件端渲染的跳转与外连。多数现代客户端禁脚本，但钓鱼链接、跟踪资源与危险 CSS 仍可保留。",
+          "en": "Covers HTML email body content injection verification: injecting headings, links, iframes, and tracking images into email bodies and observing recipient-side rendering jumps and egress. Most modern clients block scripts, but phishing links, tracking resources, and hazardous CSS can persist."
         },
         "vulnerability": {
-          "zh": "邮件模板若把用户字段当作可信 HTML 拼接，发送端净化与客户端二次解析之间可能保留活动元素、属性或外部资源。由于邮件通常位于独立文档源，影响不应自动等同网站会话 XSS，而应按实际客户端能力描述。",
-          "en": "If a mail template concatenates user fields as trusted HTML, active elements, attributes, or external resources can survive sender sanitization and client reparsing. Because mail is usually an isolated document origin, impact should not automatically be equated with website-session XSS and must reflect actual client capabilities."
+          "zh": "根因是邮件模板把用户字段当作可信 HTML 拼接，发送端净化与客户端二次解析之间保留活动元素、属性或外部资源；邮件位于独立文档源，影响不应自动等同网站会话 XSS。",
+          "en": "The root cause is email templates concatenating user fields as trusted HTML, leaving active elements, attributes, or external resources between sender-side sanitization and client-side re-parsing; email lives in a separate document origin, so impact should not automatically equal website session XSS."
         },
         "exploitation": {
-          "zh": "步骤一发送只含转义文本与允许链接的基线邮件；步骤二逐项回放原始 HTML，在 Webmail、桌面和移动客户端记录最终 DOM、资源请求和点击目标；步骤三禁用远程内容并使用纯文本替代部分对照，排除发送端预览、邮件安全网关主动扫描或客户端自动链接造成的假阳性。",
-          "en": "First send a baseline message containing escaped text and one allowed link. Replay each original HTML item and record final DOM, resource requests, and click targets in webmail, desktop, and mobile clients. Compare remote-content-disabled and plain-text alternatives to exclude sender previews, security-gateway scanning, or client autolinking as false positives."
+          "zh": "使用第 1 步命令向 HTML 邮件正文注入标题、链接、iframe 与跟踪图片；收件端渲染触发跳转或 {ATTACKER_HOST} 收到外连请求即确认邮件 HTML 注入成立。先发送只含转义文本与允许链接的基线邮件，再逐项回放并在 Webmail、桌面与移动客户端记录最终 DOM、资源请求与点击目标。",
+          "en": "Use the step 1 command to inject headings, links, iframes, and tracking images into the HTML email body; recipient-side rendering triggering jumps or {ATTACKER_HOST} receiving egress requests confirms HTML email injection. Send a baseline email with only escaped text and allowed links first, then replay item by item recording final DOM, resource requests, and click targets across webmail, desktop, and mobile clients."
         },
         "mitigation": {
-          "zh": "使用严格 allowlist HTML 净化器并删除脚本、iframe、危险协议、外部 CSS 与事件属性；对纯文本和 HTML 部分分别进行上下文编码；为可信邮件限制远程资源域名，并在每个支持客户端回归最终 DOM。",
-          "en": "Use a strict allowlist HTML sanitizer that removes scripts, iframes, dangerous schemes, external CSS, and event attributes. Encode plain-text and HTML parts for their contexts. Restrict remote-resource domains for trusted mail and regress the final DOM in every supported client."
+          "zh": "使用严格 allowlist HTML 净化器删除脚本、iframe、危险协议、外部 CSS 与事件属性，纯文本与 HTML 部分分别上下文编码；限制可信邮件的远程资源域名，并在每个支持客户端回归最终 DOM。",
+          "en": "Use a strict allowlist HTML sanitizer removing scripts, iframes, dangerous protocols, external CSS, and event attributes, with context encoding applied separately to plain-text and HTML parts; restrict remote resource domains for trusted mail and regression-test final DOM on every supported client."
         },
         "difficulty": "advanced"
       },
@@ -4395,20 +4395,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "该集合比邮件 Header 注入更低一层，尝试控制 SMTP 会话命令和信封。现代邮件库通常不会把 Header 换行传到命令通道，因此必须在隔离 SMTP 服务器的原始会话日志中看到额外命令，而不是只看 MIME。",
-          "en": "This set targets a layer below mail-header injection and attempts to control SMTP session commands and the envelope. Modern mail libraries usually do not pass header newlines into the command channel, so extra commands must appear in raw session logs from an isolated SMTP server, not only in MIME."
+          "zh": "该 Payload 覆盖 SMTP 协议命令注入场景，检验用户字段换行突破应用层后向下游会话注入协议命令。验证维度为 HELO、MAIL FROM、RCPT TO 与 DATA 序列的注入变体矩阵，对应第 1 步。",
+          "en": "This payload covers SMTP protocol command injection, testing whether user-field newlines break past the application layer to inject protocol commands downstream. Validation is an injection matrix of HELO, MAIL FROM, RCPT TO and DATA sequences, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "自建 SMTP 客户端、命令字符串拼接或协议代理若没有区分参数与 CRLF 分帧，用户输入可结束当前命令并增加收件人或消息。不同服务器状态机会拒绝顺序错误，因此出现 5xx 或连接断开不是成功。",
-          "en": "A custom SMTP client, command-string concatenation, or protocol proxy that fails to separate arguments from CRLF framing can let user input terminate one command and add recipients or messages. Server state machines may reject invalid ordering, so a 5xx response or disconnect is not success."
+          "zh": "根因在于应用把用户输入直传 SMTP 会话而未隔离协议边界：注入的命令行让下游服务器接受新的发件人、收件人或提前结束数据段，邮件被任意重定向。",
+          "en": "The root cause is applications piping user input straight into SMTP sessions without protocol isolation: injected command lines make downstream servers accept new senders or recipients or end DATA early, redirecting mail arbitrarily."
         },
         "exploitation": {
-          "zh": "步骤一用正常邮件记录 EHLO、MAIL、RCPT、DATA、QUIT 的完整会话顺序；步骤二在隔离捕获服务回放原始命令注入变体，比较客户端发出的真实行和服务器状态；步骤三切换到成熟 SMTP 库后重放，排除 MIME 正文字符串、服务端 banner 或故意测试脚本造成的假阳性。",
-          "en": "First record the complete EHLO, MAIL, RCPT, DATA, and QUIT sequence for a normal message. Replay the original command-injection variants against an isolated capture service and compare actual client lines with server state. Retest with a mature SMTP library to exclude MIME body strings, server banners, or intentionally scripted test commands as false positives."
+          "zh": "第 1 步把协议命令注入变体逐条置于可回显字段提交并监控实验邮件服务日志：日志出现注入的 MAIL FROM 或 RCPT TO 即确认协议注入，核对测试邮箱是否收到重定向邮件。成功判据以服务端会话日志为准。占位符在全局变量菜单替换；目标限定授权实验 SMTP 服务。",
+          "en": "In step 1, place protocol-command injection variants one by one into echoable fields and monitor lab mail-server logs; injected MAIL FROM or RCPT TO lines in logs confirm protocol injection, cross-checked against redirected mail arriving in test inboxes. Judge success by server session logs. Replace placeholders via the global variables menu; target only the authorized lab SMTP service."
         },
         "mitigation": {
-          "zh": "使用成熟 SMTP 客户端 API 分别设置信封、Header 与正文；拒绝所有协议参数中的 CR/LF 和控制字符并禁止原始命令拼接；限制下游 SMTP 账户的发件域、收件域与速率，并记录异常命令顺序。",
-          "en": "Use a mature SMTP client API that separates envelope, headers, and body. Reject CR, LF, and controls in every protocol argument and prohibit raw command concatenation. Restrict sender and recipient domains and rates for downstream accounts and log anomalous command ordering."
+          "zh": "邮件中间层拒绝字段中的换行并对协议关键字转义，SMTP 客户端库启用参数化接口；网关记录完整会话供审计。修复后重放第 1 步，注入命令应不进入会话且日志无异常。",
+          "en": "Have the mail middle layer reject newlines in fields and escape protocol keywords, use parameterized SMTP client interfaces, and log full sessions at the gateway for audit. After the fix, replay step 1: injected commands must never enter sessions and logs stay clean."
         },
         "difficulty": "expert"
       },
@@ -4508,20 +4508,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原集合包含 meta refresh、Base64 HTML 与 atob/eval 脚本。与 inject2-uri 相比，这里更集中于活动文档的外部导航行为，但根因仍是 data: 危险协议进入浏览器可执行上下文，而不是服务端 302。",
-          "en": "The source combines meta refresh, Base64 HTML, and atob or eval script. Compared with the other data-URI set, this one focuses on external navigation from an active document, but the root cause remains a data scheme reaching an executable browser context rather than a server 302."
+          "zh": "覆盖 data:text/html 载荷在导航 Sink 创建活动文档的验证：以 meta refresh 与脚本形态在 data: 文档内重定向到外部站点。与 inject2-uri 相比更集中于活动文档的导航行为。",
+          "en": "Covers verification of data:text/html payloads creating active documents at navigation sinks: redirecting to external sites via meta refresh and script forms inside data: documents. More focused than inject2-uri on the active document's navigation behavior."
         },
         "vulnerability": {
-          "zh": "链接、iframe 或 location 接受完整用户 URI，而校验器只查找 http 主机或禁止明文 script 时，编码的 data:text/html 仍可创建独立文档并导航。浏览器、CSP 和用户手势决定 meta/script 是否生效，必须真实执行。",
-          "en": "When a link, iframe, or location accepts a complete user URI and validation only checks HTTP hosts or literal script text, encoded data:text/html can still create a document and navigate. Browser, CSP, and user-gesture behavior determine whether meta or script runs, so real execution is required."
+          "zh": "根因是链接、iframe 或 location 接受完整用户 URI，而校验器只查找 http 主机或禁止明文 script，编码的 data:text/html 仍可创建独立文档并导航；浏览器、CSP 与用户手势决定 meta/script 是否生效。",
+          "en": "The root cause is links, iframes, or location accepting complete user URIs while validators check only for http hosts or ban plaintext script: encoded data:text/html still creates an independent document and navigates; browsers, CSP, and user gestures decide whether meta/script take effect."
         },
         "exploitation": {
-          "zh": "步骤一用 data:text/plain 与普通 HTTPS 导航建立文档和跳转基线；步骤二回放原始 meta/Base64/eval 变体并捕获页面源、CSP、计时和最终 URL；步骤三在纯文本 Sink、禁用 data: 和禁用脚本策略下对照，排除解码预览、地址栏显示或扫描器识别 evil.com 造成的假阳性。",
-          "en": "First establish document and navigation baselines with data:text/plain and ordinary HTTPS. Replay the original meta, Base64, and eval variants and capture page origin, CSP, timing, and final URL. Compare plain-text sinks and policies disabling data and script to exclude decoder previews, address-bar display, or scanner recognition of evil.com as false positives."
+          "zh": "使用第 1 步命令以 meta refresh 与脚本形态在 data: 文档内重定向；导航到 {ATTACKER_HOST} 即确认 data: 重定向链可用，base64 行内域名需手动重新编码。先用 data:text/plain 与普通 HTTPS 导航建立文档和跳转基线，再回放变体并捕获页面源、CSP、计时与最终 URL。导航被浏览器策略拦截时按阴性处理，并记录 CSP 与导航事件。",
+          "en": "Use the step 1 command to redirect within data: documents via meta refresh and script forms; navigation reaching {ATTACKER_HOST} confirms the data: redirect chain, with base64-row domains manually re-encoded. Baseline document and jump behavior with data:text/plain and normal HTTPS navigation first, then replay variants capturing page source, CSP, timing, and final URLs. Treat browser-policy-blocked navigation as negative, logging CSP and navigation events."
         },
         "mitigation": {
-          "zh": "导航目标只允许服务端映射或标准解析后的 http/https；拒绝 data:、javascript: 和未知协议，并在解码后再验证；通过 CSP 限制 frame-src、object-src 与 script-src，避免对用户 URI 进行 eval 或字符串执行。",
-          "en": "Allow navigation only through server mappings or parsed HTTP and HTTPS URLs. Reject data, javascript, and unknown schemes and validate after decoding. Restrict frame-src, object-src, and script-src with CSP and never eval or string-execute user URIs."
+          "zh": "导航目标只允许服务端映射或标准解析后的 http/https，拒绝 data:、javascript: 与未知协议并在解码后再验证；CSP 限制 frame-src、object-src 与 script-src，避免对用户 URI 进行 eval。",
+          "en": "Allow only server-mapped or standard-parsed http/https navigation targets, rejecting data:, javascript:, and unknown schemes with validation after decoding; restrict frame-src, object-src, and script-src via CSP, and never eval user URIs."
         },
         "difficulty": "advanced"
       },
@@ -4617,20 +4617,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原集合围绕 javascript: 协议内不同 JavaScript API 和 Base64 解码构造导航。虽然可观察结果是外部跳转，但不存在服务端 Location，漏洞边界是用户 URI 被浏览器当代码执行，因此应归 DOM XSS。",
-          "en": "The source varies JavaScript APIs and Base64 decoding inside the javascript scheme to construct navigation. Although the visible result is an external redirect, there is no server Location; the boundary is a user URI executed as browser code, so it is DOM XSS."
+          "zh": "覆盖 javascript: URI 内不同 API 的导航执行验证：window.open、void、eval 与 setTimeout 变体能否绕过输入校验并执行外部导航。可观察结果是外部跳转，但漏洞边界是用户 URI 被浏览器当代码执行（DOM XSS）。",
+          "en": "Covers navigation-execution verification across APIs inside javascript: URIs: whether window.open, void, eval, and setTimeout variants bypass input validation and execute external navigation. The observable is an external jump, but the vulnerability boundary is the browser executing a user URI as code (DOM XSS)."
         },
         "vulnerability": {
-          "zh": "应用若只过滤字面 window.location 或按字符串黑名单阻止少量模式，eval、void、setTimeout 和 window.open 等语义等价形式仍可运行。协议解析、HTML 实体、URL 解码和 DOM 赋值顺序共同决定绕过。",
-          "en": "If an application filters only literal window.location or blacklists a few strings, equivalent forms using eval, void, setTimeout, and window.open may still run. Scheme parsing, HTML entities, URL decoding, and DOM assignment order jointly determine bypass behavior."
+          "zh": "根因是应用只过滤字面 window.location 或按字符串黑名单阻止少量模式，eval、void、setTimeout 与 window.open 等语义等价形式仍可运行；协议解析、实体、URL 解码与 DOM 赋值顺序共同决定绕过。",
+          "en": "The root cause is applications filtering literal window.location or blocking a few patterns by string blacklist while semantically equivalent forms like eval, void, setTimeout, and window.open still run; protocol parsing, entities, URL decoding, and DOM assignment order jointly decide the bypass."
         },
         "exploitation": {
-          "zh": "步骤一用普通 HTTPS 与被拒绝的基础 javascript:alert 建立协议策略基线；步骤二逐项回放原始 API 变体，记录最终 DOM 值、JavaScript 调用栈、弹窗/导航和 CSP；步骤三用不执行的文本属性、禁用 eval 与严格 CSP 对照，排除字符串回显、弹窗阻止或扫描器模式匹配造成的假阳性。",
-          "en": "First establish scheme-policy baselines with ordinary HTTPS and a rejected basic javascript alert. Replay each original API variant and record final DOM value, JavaScript call stack, popup or navigation, and CSP. Compare a nonexecuting text attribute, eval disabled, and strict CSP to exclude string echo, popup blocking, or scanner-pattern matches as false positives."
+          "zh": "使用第 1 步命令逐行以 window.open/void/eval/setTimeout 等变体重定向；跳转到 {ATTACKER_HOST} 即确认对应 javascript: 执行形态可用，atob 行需按目标域手动重编。先用普通 HTTPS 与被拒绝的基础 javascript:alert 建立协议策略基线，再逐项回放并记录最终 DOM 值、调用栈、弹窗/导航与 CSP。弹窗被拦截或策略阻止执行时按阴性记录，逐个变体分开判定。",
+          "en": "Use the step 1 command to redirect via window.open/void/eval/setTimeout variants line by line; a jump to {ATTACKER_HOST} confirms that javascript: execution form works, with atob rows manually re-encoded per target domain. Baseline protocol policy with plain HTTPS and a rejected basic javascript:alert first, then replay item by item recording final DOM values, call stacks, popup/navigation, and CSP. Record negatives when popups are blocked or policy stops execution, judging each variant separately."
         },
         "mitigation": {
-          "zh": "只允许业务需要的 http/https 等协议并使用标准 URL 解析器；避免用户值进入 href、src、location 与字符串计时器等代码 Sink，禁止 eval；部署 nonce/hash CSP、Trusted Types 和 DOM XSS 回归覆盖等价 API。",
-          "en": "Allow only business-required schemes such as HTTP and HTTPS through a standard URL parser. Keep user values out of href, src, location, string timers, and other code sinks and prohibit eval. Deploy nonce or hash CSP, Trusted Types, and DOM XSS regressions covering equivalent APIs."
+          "zh": "只允许业务需要的 http/https 等协议并使用标准 URL 解析器；避免用户值进入 href、src、location 与字符串计时器等代码汇，禁止 eval；部署 nonce/hash CSP、Trusted Types 与 DOM XSS 回归覆盖等价 API。",
+          "en": "Allow only business-needed protocols like http/https with standard URL parsers; keep user values out of code sinks such as href, src, location, and string timers, banning eval; deploy nonce/hash CSP, Trusted Types, and DOM XSS regressions covering equivalent APIs."
         },
         "difficulty": "advanced"
       },

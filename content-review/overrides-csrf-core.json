@@ -37,20 +37,20 @@
       ],
       "tutorial": {
         "overview": {
-          "zh": "CSRF 利用浏览器自动附带的环境凭据，让跨站页面发起应用接受的状态变更请求。验证时应按 HTML Form、GET 子资源、简单 text/plain 请求和顶级导航拆分请求形状，并明确哪些 Header 或 Cookie 实际出现，而不是假设所有 Fetch 都能绕过预检。",
-          "en": "CSRF abuses ambient browser credentials so a cross-site page can send a state-changing request accepted by the application. Validation should separate HTML forms, GET subresources, simple text/plain requests, and top-level navigation while recording actual headers and cookies instead of assuming every Fetch bypasses preflight."
+          "zh": "该 Payload 覆盖针对依赖会话 Cookie 的状态变更端点的跨站请求伪造场景，检验浏览器是否跨站自动附带受害者凭据。验证维度含表单提交、img 触发、text/plain 简单请求与顶级导航四种形状，对应第 1 至第 4 步。",
+          "en": "This payload covers cross-site request forgery against state-changing endpoints relying on session cookies, testing whether the browser automatically attaches victim credentials cross-site. Validation covers four shapes: form submission, img triggers, text/plain simple requests and top-level navigation, mapped to steps 1 through 4."
         },
         "vulnerability": {
-          "zh": "成立条件包括状态变更端点依赖 Cookie 或其他环境凭据、请求能由跨站页面生成、服务端没有有效 Token 或来源校验，并且测试操作实际改变合成状态。仅能发送请求、返回 2xx、缺少 Token 字段或页面可被访问都不足以确认 CSRF。",
-          "en": "Required conditions are a state-changing endpoint that relies on cookies or other ambient credentials, a request shape that a cross-site page can generate, missing effective token or source validation, and a demonstrated synthetic state change. Request delivery, HTTP 2xx, a missing token field, or endpoint reachability alone is insufficient."
+          "zh": "根因在于服务端仅凭浏览器自动附带的环境 Cookie 识别身份：状态变更接口缺少与会话绑定的 Token，也不校验 Origin，且允许简单请求承载写操作，跨站页面因此能伪造合法请求。",
+          "en": "The root cause is the server identifying users solely by ambient cookies: state-changing endpoints lack session-bound tokens, skip Origin validation, and allow writes over simple requests, so cross-site pages can forge legitimate requests."
         },
         "exploitation": {
-          "zh": "先用同源请求建立正常基线，再从独立本地 Origin 逐个运行 Form、GET、text/plain 和导航 marker。每次使用唯一 request_id，比较浏览器网络面板与服务端日志，并查询合成状态是否变化。Referer 与 Token 对照单独运行，不执行密码、支付、删除或权限修改。",
-          "en": "Establish a same-origin baseline, then run form, GET, text/plain, and navigation markers one at a time from a separate local origin. Use a unique request_id, compare browser network data with server logs, and query the synthetic state. Run Referer and token controls separately without password, payment, deletion, or privilege changes."
+          "zh": "按步骤使用：第 1 步部署自动提交表单页，端点收到带会话 Cookie 的 POST 且 marker 变化即确认表单 CSRF；第 2 步用 img 触发 GET 变更，日志出现带 Cookie 命中即成功；第 3 步以 text/plain Fetch 发送 JSON 体，后端照常解析即确认绕过；第 4 步诱导点击完成导航验证。占位符在全局变量菜单替换；被拦截时参考 wafBypass。",
+          "en": "Use the steps in order: in step 1, host the auto-submitting form; the endpoint receiving a POST with the session cookie and a changing marker confirms form CSRF. In step 2, trigger a GET change with an img tag; a cookie-carrying log hit marks success. In step 3, send a JSON body via text/plain Fetch; the backend parsing it confirms the bypass. In step 4, lure clicks for the navigation variant. Replace placeholders via the global variables menu; if blocked, see wafBypass."
         },
         "mitigation": {
-          "zh": "对所有状态变更使用服务端验证并绑定会话的 CSRF Token，优先校验 Origin 并把 Referer 作为补充；Cookie 设置合适的 SameSite、Secure 与 HttpOnly。拒绝 GET 状态变更，结合 Sec-Fetch-Site、重新认证和业务确认形成纵深防御。",
-          "en": "Use server-validated, session-bound CSRF tokens for every state change, validate Origin first with Referer as a fallback, and set suitable SameSite, Secure, and HttpOnly cookie attributes. Reject state changes over GET and add Sec-Fetch-Site checks, reauthentication, and business confirmation as defense in depth."
+          "zh": "为状态变更端点引入与会话绑定的 CSRF Token 并优先校验 Origin；Cookie 配置 SameSite、Secure 与 HttpOnly，禁止 GET 写操作。修复后重放第 1 至第 4 步，请求应全部被拒绝。",
+          "en": "Add session-bound CSRF tokens to state-changing endpoints with Origin validation first; set cookies with SameSite, Secure and HttpOnly, and forbid GET writes. After the fix, replay steps 1 through 4: all requests should be rejected."
         },
         "difficulty": "beginner"
       },
@@ -175,20 +175,20 @@
       ],
       "tutorial": {
         "overview": {
-          "zh": "Referer 是 CSRF 来源校验的补充信号，可能因 Referrer-Policy、浏览器隐私策略和安全降级而缺失或被缩减。安全实现必须使用标准 URL 解析器比较完整 Origin，而不是对子串、前缀或后缀做正则判断，并为缺失 Header 定义明确策略。",
-          "en": "Referer is a supplemental CSRF source signal that may be omitted or reduced by Referrer-Policy, browser privacy behavior, or secure-to-insecure transitions. Secure implementations parse the URL and compare the complete origin instead of regex substrings, prefixes, or suffixes, with an explicit policy for missing headers."
+          "zh": "该 Payload 覆盖依赖 Referer 的 CSRF 防护场景，检验服务端对绝对 Referer、缺失 Referer、受信子域与策略缩减值的解析是否可被绕过。验证维度含正则匹配、空 Referer、子域前缀与 Referrer-Policy 四类变体，对应第 1 至第 4 步。",
+          "en": "This payload covers Referer-based CSRF protection, testing whether server parsing of absolute Referers, missing Referers, trusted subdomains and policy-trimmed values can be bypassed. Validation covers regex matching, empty Referer, subdomain prefixes and Referrer-Policy variants, mapped to steps 1 through 4."
         },
         "vulnerability": {
-          "zh": "如果服务端接受 allowed.invalid.attacker.invalid、路径中包含允许域、缺失 Referer 或未批准子域，来源校验可能失效。只有跨站请求携带环境凭据、通过 Referer 判定并造成合成状态变化时才构成 CSRF；Header 本身被接受只是校验缺陷证据。",
-          "en": "If the server accepts allowed.invalid.attacker.invalid, an allowed domain embedded in the path, missing Referer, or an unapproved subdomain, source validation may fail. CSRF still requires a cross-site request with ambient credentials that passes validation and changes synthetic state; acceptance of the header alone proves only a validation flaw."
+          "zh": "根因在于 Referer 校验使用宽松正则或前缀匹配：contains 或 startsWith 判定可被拼接域名欺骗，缺失 Referer 被默认放行，Referrer-Policy 又可由攻击者页面裁剪该头，来源校验形同虚设。",
+          "en": "The root cause is lenient regex or prefix-based Referer validation: contains or startsWith checks can be spoofed with concatenated domains, missing Referers are allowed by default, and Referrer-Policy lets attacker pages trim the header, rendering origin checks ineffective."
         },
         "exploitation": {
-          "zh": "依次提交三种恶意绝对 URL、no-referrer Form、登记子域、origin-only 策略、Sandbox Frame 和完全缺失 Header。每次记录标准解析后的 scheme、host、port 与允许原因，并查询合成 marker。旧 Flash/SWF 样例已删除，因为现代浏览器不再支持该验证路径。",
-          "en": "Submit three malicious absolute URLs, a no-referrer form, a registered subdomain, origin-only policy, a sandboxed frame, and a completely missing header one at a time. Record parsed scheme, host, port, allow reason, and synthetic marker state. The obsolete Flash/SWF path is removed because modern browsers no longer support it."
+          "zh": "第 1 步循环提交三个构造 Referer，任一返回 allowed=true 即确认正则绕过；第 2 步以 no-referrer 表单提交空 Referer，marker 被接受即确认空值放行；第 3 步以 nip.io 子域构造前缀 Referer，放行即确认匹配过宽；第 4 步以 origin 策略页验证裁剪影响。占位符在全局变量菜单替换；载体参考 wafBypass。",
+          "en": "In step 1, loop three crafted Referers; any allowed=true confirms the regex bypass. In step 2, submit an empty Referer via a no-referrer form; marker acceptance confirms empty-value allowance. In step 3, build a nip.io subdomain prefix Referer; allowance confirms over-broad matching. In step 4, test trimming from an origin-policy page. Replace placeholders via the global variables menu; see wafBypass for carriers."
         },
         "mitigation": {
-          "zh": "优先验证 Origin；仅在 Origin 缺失时使用 Referer，并通过标准 URL 解析器对 scheme、host 与 port 做精确允许列表比较。缺失来源 Header 应按业务场景拒绝或进入额外确认，同时保留 CSRF Token、SameSite 和 Fetch Metadata 防护。",
-          "en": "Validate Origin first and use Referer only when Origin is absent, comparing parsed scheme, host, and port against an exact allowlist. Reject missing source headers or require extra confirmation according to the workflow, while retaining CSRF tokens, SameSite, and Fetch Metadata defenses."
+          "zh": "解析 URL 后对 host 与预注册允许列表精确匹配，缺失 Referer 一律拒绝，校验前置于业务处理。修复后重放第 1 至第 4 步，全部变体应被拒绝且无状态变化。",
+          "en": "Parse the URL and match the host exactly against a pre-registered allowlist, reject missing Referers, and validate before business logic. After the fix, replay steps 1 through 4: all variants should be rejected with no state change."
         },
         "difficulty": "intermediate"
       },

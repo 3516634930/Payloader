@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contentStandard": 2,
+  "contentStandard": 3,
   "sourcePrefix": "xss2",
   "entries": [
     {
@@ -23,20 +23,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "基础脚本元素注入用于核对 HTML 解析器如何处理当前输出位置。具体审查目标为：输入是否越过文本节点边界并被 HTML 解析器创建为可执行 script 元素。测试成立的前提为：应用把原始值拼接进 HTML 响应或危险 DOM 写入点，且没有执行与位置匹配的输出编码。证据要求为：唯一测试标记对应的 JavaScript 执行记录，而不是响应体中出现了尖括号文本。响应中出现输入文本或标签并不等同于脚本已经执行。",
-          "en": "Basic Script Element Injection checks whether input crosses a text-node boundary and is created as an executable script element by the HTML parser. It applies when the application concatenates the raw value into an HTML response or dangerous DOM write sink without context-appropriate output encoding. A conclusion requires a JavaScript execution record tied to the unique test marker, not merely angle-bracket text appearing in the response; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖 HTML 元素上下文的基础脚本注入验证：script 标签与编码/求值变体进入文本节点后能否被解析器创建为可执行元素。适用于确认输出位是否存在最基础的 XSS 边界。",
+          "en": "Covers foundational script-element injection in the HTML element context: whether script tags and encoding/evaluation variants entering text nodes get parsed into executable elements. Suitable for confirming whether the most basic XSS boundary exists at an output position."
         },
         "vulnerability": {
-          "zh": "该问题的输入与输出前提为：应用把原始值拼接进 HTML 响应或危险 DOM 写入点，且没有执行与位置匹配的输出编码。审查时必须确认“输入是否越过文本节点边界并被 HTML 解析器创建为可执行 script 元素”，并把服务端响应、最终 DOM、事件条件和浏览器版本关联起来。若无法满足“唯一测试标记对应的 JavaScript 执行记录，而不是响应体中出现了尖括号文本”这一证据要求，只能说明输入进入页面，不能确认 XSS。",
-          "en": "The risk exists when the application concatenates the raw value into an HTML response or dangerous DOM write sink without context-appropriate output encoding, allowing whether input crosses a text-node boundary and is created as an executable script element by the HTML parser. Review the input source, final parsing context, browser or policy version, and a JavaScript execution record tied to the unique test marker, not merely angle-bracket text appearing in the response; otherwise record only an unconfirmed control differential."
+          "zh": "根因是应用把原始值拼接进 HTML 响应或危险 DOM 写入点且未做输出编码，浏览器把输入从文本节点边界创建为可执行 script 元素。",
+          "en": "The root cause is the application concatenating raw values into HTML responses or hazardous DOM write points without output encoding, letting the browser create input into an executable script element across the text-node boundary."
         },
         "exploitation": {
-          "zh": "先以普通文本建立编码基线，再在同一参数中提交原集合，逐条确认标签是否进入 DOM、脚本是否被 CSP 阻止以及事件是否只触发一次。为每行样例分配独立的无害标记，每轮只改变一种标签、属性或编码形式；同时保存原始响应、最终 DOM、控制台和事件记录，以排除缓存、浏览器容错及人工交互造成的假阳性。",
-          "en": "In an authorized isolated environment, establish an encoding baseline with plain text, then submit the original set through the same parameter and check DOM creation, CSP enforcement, and single execution per marker. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令逐行提交 script 标签与编码/求值变体；任一行执行（弹窗或日志输出）即确认脚本元素注入成立。先以普通文本建立编码基线，再逐条确认标签是否进入 DOM、是否被 CSP 阻止；每行分配独立无害标记，每轮只改变一种标签、属性或编码形式。",
+          "en": "Use the step 1 command to submit script tags and encoding/evaluation variants line by line; any row executing (alert or log output) confirms script-element injection. Build an encoding baseline with plain text first, then check per row whether the tag enters the DOM or is CSP-blocked; assign an independent harmless marker per line and change one tag, attribute, or encoding form per round."
         },
         "mitigation": {
-          "zh": "按 HTML 文本上下文编码输出，禁止把不可信值交给 innerHTML、document.write 或模板原样输出，并以严格 CSP 作为纵深防御。修复后在同一输出位置重放普通文本、边界字符和最小异常样例，确认合法内容继续显示，同时活动节点、危险属性和对应执行记录均不再出现。",
-          "en": "Remediation should encode for the HTML text context, keep untrusted values out of innerHTML, document.write, and raw template output, and use a strict CSP as defense in depth. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "按 HTML 文本上下文编码输出，禁止不可信值进入 innerHTML、document.write 或模板原样输出，严格 CSP 作为纵深防御；修复后重放样例应无活动节点与执行记录，合法内容正常显示。",
+          "en": "Encode output for the HTML text context, keep untrusted values out of innerHTML, document.write, and verbatim template output, with strict CSP as defense-in-depth; after the fix, replayed samples must show no active nodes or execution records while legitimate content renders normally."
         },
         "difficulty": "beginner"
       },
@@ -143,20 +143,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "HTML 事件处理器注入用于核对 HTML 解析器如何处理当前输出位置。具体审查目标为：浏览器是否把注入片段解析为 onerror、onload、onfocus 等事件属性并在对应生命周期触发。测试成立的前提为：模板允许用户值闭合现有属性或插入新元素，同时缺少属性值编码、元素白名单与 HTML 消毒。证据要求为：指定元素事件触发时记录的唯一标记，并同时保存最终 DOM 与事件类型。响应中出现输入文本或标签并不等同于脚本已经执行。",
-          "en": "HTML Event Handler Injection checks whether the browser parses the injected fragment as onerror, onload, onfocus, or another event attribute and triggers it at the relevant lifecycle point. It applies when a template lets user data close an existing attribute or create a new element without attribute encoding, an element allowlist, or HTML sanitization. A conclusion requires the unique marker recorded when the specified element event fires, together with the final DOM and event type; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖事件属性上下文的注入验证：img/svg/body/input 等元素上的 onerror/onload/onfocus 等事件处理器（含 javascript: 与实体编码变体），验证输入能否逃逸属性或元素边界。适用于属性值未编码、模板允许闭合属性的场景。",
+          "en": "Covers injection in the event-attribute context: onerror/onload/onfocus handlers on img/svg/body/input elements (with javascript: and entity-encoded variants), testing whether input escapes attribute or element boundaries. Suitable when attribute values go unencoded and templates allow attribute closure."
         },
         "vulnerability": {
-          "zh": "该问题的输入与输出前提为：模板允许用户值闭合现有属性或插入新元素，同时缺少属性值编码、元素白名单与 HTML 消毒。审查时必须确认“浏览器是否把注入片段解析为 onerror、onload、onfocus 等事件属性并在对应生命周期触发”，并把服务端响应、最终 DOM、事件条件和浏览器版本关联起来。若无法满足“指定元素事件触发时记录的唯一标记，并同时保存最终 DOM 与事件类型”这一证据要求，只能说明输入进入页面，不能确认 XSS。",
-          "en": "The risk exists when a template lets user data close an existing attribute or create a new element without attribute encoding, an element allowlist, or HTML sanitization, allowing whether the browser parses the injected fragment as onerror, onload, onfocus, or another event attribute and triggers it at the relevant lifecycle point. Review the input source, final parsing context, browser or policy version, and the unique marker recorded when the specified element event fires, together with the final DOM and event type; otherwise record only an unconfirmed control differential."
+          "zh": "根因是模板允许用户值闭合现有属性或插入新元素，缺少属性值编码、元素白名单与 HTML 消毒；浏览器把注入片段解析为事件属性并在对应生命周期触发。",
+          "en": "The root cause is templates allowing user values to close existing attributes or insert new elements without attribute-value encoding, element allowlists, or HTML sanitization; the browser parses injected fragments into event attributes fired at their lifecycle points."
         },
         "exploitation": {
-          "zh": "分别选择自动触发与需要焦点、悬停或展开的样例，在相同页面状态下逐一重放，记录哪些元素与事件仍被消毒器允许。为每行样例分配独立的无害标记，每轮只改变一种标签、属性或编码形式；同时保存原始响应、最终 DOM、控制台和事件记录，以排除缓存、浏览器容错及人工交互造成的假阳性。",
-          "en": "In an authorized isolated environment, replay automatic and interaction-dependent samples separately under the same page state, recording which elements and events survive sanitization. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令逐行提交 img/svg/body/input 等标签上的事件处理器（含 javascript: 与实体编码变体）；任一行触发执行即确认对应事件形式未过滤。区分自动触发与需要焦点/悬停的样例，在相同页面状态下逐一重放，记录哪些元素与事件仍被消毒器放行。",
+          "en": "Use the step 1 command to submit event handlers on img/svg/body/input tags line by line (with javascript: and entity-encoded variants); any row firing confirms that event form is unfiltered. Separate auto-triggering samples from those needing focus/hover, replay them under identical page state, and record which elements and events the sanitizer still allows."
         },
         "mitigation": {
-          "zh": "使用维护中的 HTML 消毒器移除事件属性和危险元素，对必须保留的属性执行上下文编码，并避免通过字符串拼接创建 DOM。修复后在同一输出位置重放普通文本、边界字符和最小异常样例，确认合法内容继续显示，同时活动节点、危险属性和对应执行记录均不再出现。",
-          "en": "Remediation should use a maintained HTML sanitizer to remove event attributes and dangerous elements, encode any retained attributes for their context, and avoid string-based DOM construction. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "用维护中的 HTML 消毒器移除事件属性与危险元素，必须保留的属性执行上下文编码，避免字符串拼接创建 DOM；修复后重放各事件形式应均被移除或转义，无执行记录。",
+          "en": "Remove event attributes and hazardous elements with a maintained HTML sanitizer, context-encode attributes that must stay, and avoid string-concatenated DOM creation; after the fix, replaying each event form must end up removed or escaped with no execution records."
         },
         "difficulty": "intermediate"
       },
@@ -263,20 +263,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "HTML 字符引用解码差异用于核对 HTML 解析器如何处理当前输出位置。具体审查目标为：安全过滤器与浏览器对 HTML 字符引用的解码次数、位置和结果是否一致。测试成立的前提为：过滤逻辑在编码形态上匹配危险字符，而后续 HTML 解析器把实体还原为括号、引号或可执行属性内容。证据要求为：解析后的 DOM 属性值与唯一执行标记同时出现，并能用普通编码对照排除模板二次转义。响应中出现输入文本或标签并不等同于脚本已经执行。",
-          "en": "HTML Character Reference Decoding Differences checks whether the security filter and browser agree on when, where, and how many times HTML character references are decoded. It applies when filtering matches the encoded representation while a later HTML parser restores parentheses, quotes, or executable attribute content. A conclusion requires the decoded DOM attribute value and unique execution marker appear together, with a normal-encoding control excluding template double escaping; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖 HTML 字符引用解码差异的验证：十进制与十六进制实体（&#40;/&#x28; 等）在属性值与脚本上下文中的解码时序，识别过滤前后的规范化不一致。适用于过滤层匹配编码形态、浏览器再解码的场景。",
+          "en": "Covers HTML character-reference decoding differentials: the decode timing of decimal and hex entities (&#40;/&#x28; and alike) in attribute values and script contexts, spotting normalization mismatches between filtering and later parsing. Suitable when filters match encoded shapes that browsers decode afterward."
         },
         "vulnerability": {
-          "zh": "该问题的输入与输出前提为：过滤逻辑在编码形态上匹配危险字符，而后续 HTML 解析器把实体还原为括号、引号或可执行属性内容。审查时必须确认“安全过滤器与浏览器对 HTML 字符引用的解码次数、位置和结果是否一致”，并把服务端响应、最终 DOM、事件条件和浏览器版本关联起来。若无法满足“解析后的 DOM 属性值与唯一执行标记同时出现，并能用普通编码对照排除模板二次转义”这一证据要求，只能说明输入进入页面，不能确认 XSS。",
-          "en": "The risk exists when filtering matches the encoded representation while a later HTML parser restores parentheses, quotes, or executable attribute content, allowing whether the security filter and browser agree on when, where, and how many times HTML character references are decoded. Review the input source, final parsing context, browser or policy version, and the decoded DOM attribute value and unique execution marker appear together, with a normal-encoding control excluding template double escaping; otherwise record only an unconfirmed control differential."
+          "zh": "根因是过滤逻辑在编码形态上匹配危险字符，而后续 HTML 解析器把实体还原为括号、引号或可执行属性内容；解码次数与位置的不一致即绕过点。",
+          "en": "The root cause is filter logic matching dangerous characters in encoded form while the subsequent HTML parser restores entities into parentheses, quotes, or executable attribute content; mismatched decode counts and positions are the bypass point."
         },
         "exploitation": {
-          "zh": "对同一危险字符依次提交原字符、十进制实体和十六进制实体，比较服务端响应、DOM 属性值与执行结果，确认差异发生在哪一层。为每行样例分配独立的无害标记，每轮只改变一种标签、属性或编码形式；同时保存原始响应、最终 DOM、控制台和事件记录，以排除缓存、浏览器容错及人工交互造成的假阳性。",
-          "en": "In an authorized isolated environment, submit the literal character, decimal reference, and hexadecimal reference through the same sink, comparing the response, DOM attribute value, and execution result to locate the differing layer. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令以 &#40;/&#x28; 实体编码括号提交事件载荷；解码后执行即确认字符引用解码差异可利用。对同一危险字符依次提交原字符、十进制实体与十六进制实体，比较服务端响应、DOM 属性值与执行结果，确认差异发生在哪一层。",
+          "en": "Use the step 1 command to submit event payloads with entity-encoded parentheses (&#40;/&#x28;); execution after decoding confirms the character-reference differential is exploitable. For the same dangerous character, submit the raw character, decimal entity, and hex entity in turn, comparing server response, DOM attribute values, and execution results to locate the differing layer."
         },
         "mitigation": {
-          "zh": "先按统一字符集解码和规范化输入，再依据最终输出上下文编码；不要依赖黑名单匹配编码片段，并避免重复解码不可信数据。修复后在同一输出位置重放普通文本、边界字符和最小异常样例，确认合法内容继续显示，同时活动节点、危险属性和对应执行记录均不再出现。",
-          "en": "Remediation should decode and canonicalize with one character set before validation, then encode for the final output context; avoid encoded-string blacklists and repeated decoding of untrusted data. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "先按统一字符集解码与规范化输入，再依据最终输出上下文编码，不依赖黑名单匹配编码片段并避免重复解码；修复后各实体形态重放应无执行差异。",
+          "en": "Decode and normalize input once under a unified charset, then encode for the final output context; never rely on blacklists matching encoded fragments and avoid re-decoding; after the fix, replaying each entity form must show no execution differential."
         },
         "difficulty": "intermediate"
       },
@@ -383,20 +383,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "JavaScript 转义与动态解码注入用于核对 HTML 解析器如何处理当前输出位置。具体审查目标为：脚本引擎是否在运行时把转义序列、字符串拼接或 Base64 内容恢复为原本被过滤的可调用标识符。测试成立的前提为：不可信数据已经进入可执行 JavaScript 上下文，而防护只匹配 alert、script 等表面词法形式，没有阻止动态求值。证据要求为：浏览器控制台或测试钩子记录到解码后的函数调用，且相同字符串放入纯文本节点时不会执行。响应中出现输入文本或标签并不等同于脚本已经执行。",
-          "en": "JavaScript Escape and Dynamic Decoding Injection checks whether the JavaScript engine reconstructs a filtered callable identifier at runtime from escape sequences, string concatenation, or Base64 content. It applies when untrusted data already reaches executable JavaScript while defenses only match surface tokens such as alert or script and still permit dynamic evaluation. A conclusion requires a browser console or test hook records the decoded function call while the same string remains inert in a plain text node; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖 JavaScript 解码上下文的标识符混淆验证：\\x 转义、八进制、atob、括号索引访问与属性拼接在运行时还原被过滤的调用。适用于不可信数据进入可执行 JS 上下文、防护只匹配表面词法的场景。",
+          "en": "Covers identifier obfuscation in the JavaScript decode context: \\x escapes, octal, atob, bracket indexing, and property concatenation restoring filtered calls at runtime. Suitable when untrusted data enters executable JS contexts while defenses match only surface lexemes."
         },
         "vulnerability": {
-          "zh": "该问题的输入与输出前提为：不可信数据已经进入可执行 JavaScript 上下文，而防护只匹配 alert、script 等表面词法形式，没有阻止动态求值。审查时必须确认“脚本引擎是否在运行时把转义序列、字符串拼接或 Base64 内容恢复为原本被过滤的可调用标识符”，并把服务端响应、最终 DOM、事件条件和浏览器版本关联起来。若无法满足“浏览器控制台或测试钩子记录到解码后的函数调用，且相同字符串放入纯文本节点时不会执行”这一证据要求，只能说明输入进入页面，不能确认 XSS。",
-          "en": "The risk exists when untrusted data already reaches executable JavaScript while defenses only match surface tokens such as alert or script and still permit dynamic evaluation, allowing whether the JavaScript engine reconstructs a filtered callable identifier at runtime from escape sequences, string concatenation, or Base64 content. Review the input source, final parsing context, browser or policy version, and a browser console or test hook records the decoded function call while the same string remains inert in a plain text node; otherwise record only an unconfirmed control differential."
+          "zh": "根因是不可信数据已进入可执行 JavaScript 上下文，而防护只匹配 alert、script 等表面词法，没有阻止动态求值；脚本引擎在运行时把转义、拼接或 Base64 还原为可调用标识符。",
+          "en": "The root cause is untrusted data already inside executable JavaScript contexts while defenses match surface lexemes like alert and script without stopping dynamic evaluation; the script engine restores escapes, concatenations, or Base64 into callable identifiers at runtime."
         },
         "exploitation": {
-          "zh": "在已确认的 JavaScript sink 中逐一重放转义、拼接与 atob 变体，比较源代码文本、运行时值和 CSP 违规日志，不跨上下文套用结论。为每行样例分配独立的无害标记，每轮只改变一种标签、属性或编码形式；同时保存原始响应、最终 DOM、控制台和事件记录，以排除缓存、浏览器容错及人工交互造成的假阳性。",
-          "en": "In an authorized isolated environment, replay escape, concatenation, and atob variants only in a confirmed JavaScript sink, comparing source text, runtime values, and CSP violation logs without extrapolating across contexts. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令以 \\x 转义、八进制、atob 与括号索引访问构造 alert 提交；求值后执行即确认 JS 解码与标识符混淆可绕过检测。在已确认的 JS sink 中逐一重放转义、拼接与 atob 变体，比较源代码文本、运行时值与 CSP 违规日志，不跨上下文套用结论。",
+          "en": "Use the step 1 command to build alert via \\x escapes, octal, atob, and bracket indexing; execution after evaluation confirms JS decoding and identifier obfuscation bypass detection. Replay escape, concatenation, and atob variants one by one inside a confirmed JS sink, comparing source text, runtime values, and CSP violation logs without importing conclusions across contexts."
         },
         "mitigation": {
-          "zh": "禁止把用户输入插入脚本源代码，使用 JSON 序列化传递数据并通过固定函数处理；移除 eval、Function 和字符串形式的定时器。修复后在同一输出位置重放普通文本、边界字符和最小异常样例，确认合法内容继续显示，同时活动节点、危险属性和对应执行记录均不再出现。",
-          "en": "Remediation should do not interpolate user input into script source; pass data through JSON serialization and fixed functions, and remove eval, Function, and string-based timers. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "禁止把用户输入插入脚本源代码，用 JSON 序列化传递数据并通过固定函数处理，移除 eval、Function 与字符串定时器；修复后各混淆变体应无法还原出被过滤调用。",
+          "en": "Never insert user input into script source code; pass data via JSON serialization handled by fixed functions, and remove eval, Function, and string timers; after the fix, no obfuscated variant may restore a filtered call."
         },
         "difficulty": "advanced"
       },
@@ -503,20 +503,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "SVG 活动内容注入用于核对 HTML 解析器如何处理当前输出位置。具体审查目标为：上传、富文本或内联模板是否允许 SVG 活动元素和事件穿过消毒边界进入文档命名空间。测试成立的前提为：系统仅按文件扩展名或 image/svg+xml 接受内容，却在同源文档中内联渲染或允许 foreignObject、script 与动画事件。证据要求为：SVG 进入最终 DOM 后的命名空间、被保留的活动节点以及唯一执行标记三者可以关联。响应中出现输入文本或标签并不等同于脚本已经执行。",
-          "en": "SVG Active Content Injection checks whether upload, rich-text, or inline-template handling lets active SVG elements and events cross the sanitization boundary into the document namespace. It applies when the system trusts an extension or image/svg+xml type but renders the file inline on the application origin or permits foreignObject, script, and animation events. A conclusion requires the final SVG namespace, surviving active node, and unique execution marker can be correlated after insertion into the DOM; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖 SVG 命名空间内活动内容的注入验证：script、animate/set 动画事件、foreignObject、use 外部引用与 CDATA 变体。用于确认上传、富文本或内联模板是否允许 SVG 活动元素穿过消毒边界。",
+          "en": "Covers active-content injection inside the SVG namespace: script, animate/set animation events, foreignObject, use external references, and CDATA variants. Used to determine whether uploads, rich text, or inline templates let SVG active elements cross the sanitizer boundary."
         },
         "vulnerability": {
-          "zh": "该问题的输入与输出前提为：系统仅按文件扩展名或 image/svg+xml 接受内容，却在同源文档中内联渲染或允许 foreignObject、script 与动画事件。审查时必须确认“上传、富文本或内联模板是否允许 SVG 活动元素和事件穿过消毒边界进入文档命名空间”，并把服务端响应、最终 DOM、事件条件和浏览器版本关联起来。若无法满足“SVG 进入最终 DOM 后的命名空间、被保留的活动节点以及唯一执行标记三者可以关联”这一证据要求，只能说明输入进入页面，不能确认 XSS。",
-          "en": "The risk exists when the system trusts an extension or image/svg+xml type but renders the file inline on the application origin or permits foreignObject, script, and animation events, allowing whether upload, rich-text, or inline-template handling lets active SVG elements and events cross the sanitization boundary into the document namespace. Review the input source, final parsing context, browser or policy version, and the final SVG namespace, surviving active node, and unique execution marker can be correlated after insertion into the DOM; otherwise record only an unconfirmed control differential."
+          "zh": "根因是系统按扩展名或 image/svg+xml 接受内容，却在同源文档中内联渲染或允许 foreignObject、script 与动画事件；SVG 命名空间元素在主动文档中具备完整脚本与事件能力。",
+          "en": "The root cause is content accepted by extension or image/svg+xml yet rendered inline in same-origin documents or allowed to carry foreignObject, script, and animation events; SVG-namespace elements hold full script and event capability inside active documents."
         },
         "exploitation": {
-          "zh": "分别以 img 引用、独立文件打开和内联 SVG 三种方式加载同一安全标记样例，确认只有真实产品渲染路径中的执行才算成立。为每行样例分配独立的无害标记，每轮只改变一种标签、属性或编码形式；同时保存原始响应、最终 DOM、控制台和事件记录，以排除缓存、浏览器容错及人工交互造成的假阳性。",
-          "en": "In an authorized isolated environment, load the same marker through img embedding, standalone navigation, and inline SVG, counting only execution in the actual product rendering path. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令逐行提交 SVG script/animate/set/foreignObject/use/CDATA 变体；任一行执行即确认 SVG 命名空间下对应向量可用。同一安全标记样例分别以 img 引用、独立文件打开与内联 SVG 三种方式加载，只有真实产品渲染路径中的执行才算成立。阳性样例同步记录浏览器版本与渲染路径供复现。",
+          "en": "Use the step 1 command to submit SVG script/animate/set/foreignObject/use/CDATA variants line by line; any row executing confirms that vector works in the SVG namespace. Load the same safely marked sample three ways — img reference, standalone file, and inline SVG — and only execution in the real product render path counts. Log browser version and render path alongside positive samples for reproducibility."
         },
         "mitigation": {
-          "zh": "将用户 SVG 作为隔离下载或可信转换后的位图提供；若必须保留 SVG，使用命名空间感知消毒器移除脚本、事件、foreignObject 与外部引用。修复后在同一输出位置重放普通文本、边界字符和最小异常样例，确认合法内容继续显示，同时活动节点、危险属性和对应执行记录均不再出现。",
-          "en": "Remediation should serve user SVG as an isolated download or trusted rasterized output; when SVG is required, use a namespace-aware sanitizer that removes scripts, events, foreignObject, and external references. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "用户 SVG 作为隔离下载或可信转换后的位图提供；必须保留时用命名空间感知消毒器移除 script、事件、foreignObject 与外部引用；修复后各向量重放应均被移除或拒绝。",
+          "en": "Serve user SVGs as isolated downloads or trusted bitmaps after conversion; when SVG must stay, strip script, events, foreignObject, and external references with a namespace-aware sanitizer; after the fix, replaying every vector must end up removed or rejected."
         },
         "difficulty": "advanced"
       },
@@ -751,20 +751,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "DOM XSS URL 源输入审查客户端源到 sink 的完整数据流。需要确认的核心行为为：客户端脚本是否把可控 URL 片段从 location 系列来源传到 href、src、innerHTML 或动态导航等执行 sink。适用前提为：源值未经过协议允许列表、Trusted Types 或上下文编码就进入 DOM sink，并且浏览器允许对应 URL 方案或文档类型。DOM XSS 的证据标准是：DevTools 数据流、最终 sink 值与唯一执行标记可对应到同一次客户端操作，而服务器响应中可以没有该字符串；服务器响应不包含载荷并不能排除客户端问题。",
-          "en": "DOM XSS URL Source Inputs checks whether client code moves a controllable URL fragment from location-derived sources into executable sinks such as href, src, innerHTML, or dynamic navigation. It applies when a source value reaches a DOM sink without a protocol allowlist, Trusted Types, or context encoding, and the browser permits the resulting URL scheme or document type. A conclusion requires DevTools data flow, the final sink value, and a unique execution marker correlate to one client action even when the server response never contains the string; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖 DOM XSS 的 URL 源输入验证：javascript: 与 data: URI 形态进入 location/hash/query 等客户端源后，流入 href、innerHTML 或动态导航等可执行汇。用于确认客户端源到汇数据流是否可达。",
+          "en": "Covers URL-source input verification for DOM XSS: javascript: and data: URI forms entering client sources such as location/hash/query and flowing into executable sinks like href, innerHTML, or dynamic navigation. Used to confirm reachability of the client source-to-sink dataflow."
         },
         "vulnerability": {
-          "zh": "客户端边界失效的前提为：源值未经过协议允许列表、Trusted Types 或上下文编码就进入 DOM sink，并且浏览器允许对应 URL 方案或文档类型。审计应围绕“客户端脚本是否把可控 URL 片段从 location 系列来源传到 href、src、innerHTML 或动态导航等执行 sink”记录源值、解码次数、赋值 API 与执行上下文。只有取得“DevTools 数据流、最终 sink 值与唯一执行标记可对应到同一次客户端操作，而服务器响应中可以没有该字符串”，才能证明可控数据到达了可执行 sink。",
-          "en": "The risk exists when a source value reaches a DOM sink without a protocol allowlist, Trusted Types, or context encoding, and the browser permits the resulting URL scheme or document type, allowing whether client code moves a controllable URL fragment from location-derived sources into executable sinks such as href, src, innerHTML, or dynamic navigation. Review the input source, final parsing context, browser or policy version, and DevTools data flow, the final sink value, and a unique execution marker correlate to one client action even when the server response never contains the string; otherwise record only an unconfirmed control differential."
+          "zh": "根因是客户端脚本把可控 URL 片段从 location 系列来源传到执行汇，源值未经协议允许列表、Trusted Types 或上下文编码；浏览器允许对应方案或文档类型时即形成执行。",
+          "en": "The root cause is client scripts carrying controllable URL fragments from the location family of sources into executable sinks without protocol allowlists, Trusted Types, or context encoding; execution forms when the browser permits the scheme or document type."
         },
         "exploitation": {
-          "zh": "对 hash、query 与完整 URL 分别设置同一标记，单步跟踪读取、解码和写入位置，确认危险方案是在赋值前还是赋值后形成。在 DevTools 中分别对真实读取点和写入点设置断点，使用一次性标记跟踪源值、规范化结果与最终 DOM；每轮只改变一个来源或 sink，避免把导航限制或 CSP 阻断误认为数据流已经修复。",
-          "en": "In an authorized isolated environment, place the same marker in hash, query, and full-URL sources, then step through reading, decoding, and assignment to determine whether the dangerous scheme forms before or after the sink. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令逐行提交 javascript: 与 data: URI 形态到 URL 源；任一行执行即确认 DOM XSS 的 URL 源输入可达。对 hash、query 与完整 URL 分别设置同一标记，在 DevTools 对读取点与写入点设断点，单步跟踪读取、解码与写入位置，确认危险方案在赋值前还是赋值后形成。",
+          "en": "Use the step 1 command to submit javascript: and data: URI forms into URL sources line by line; any row executing confirms DOM XSS URL-source reachability. Set the same marker across hash, query, and full URL, set DevTools breakpoints at read and write points, and single-step through reading, decoding, and writing to establish whether the dangerous scheme forms before or after assignment."
         },
         "mitigation": {
-          "zh": "用 textContent 和固定 DOM API 替代 HTML 字符串写入，对导航目标执行 https/http 同源或业务允许列表，并启用 Trusted Types 限制危险 sink。回归应覆盖原客户端来源、合法业务 URL 或文本以及最小危险值，确认安全 API 保留原功能，且危险 sink 不再收到攻击者可控字符串。",
-          "en": "Remediation should replace HTML string writes with textContent and fixed DOM APIs, allowlist same-origin or approved https/http navigation targets, and enforce Trusted Types for dangerous sinks. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "用 textContent 与固定 DOM API 替代 HTML 字符串写入，对导航目标执行 https/http 同源或业务允许列表，启用 Trusted Types 限制危险汇；回归覆盖原客户端来源、合法业务值与最小危险值。",
+          "en": "Replace HTML string writes with textContent and fixed DOM APIs, enforce https/http same-origin or business allowlists for navigation targets, and enable Trusted Types to gate hazardous sinks; regression covers original client sources, legitimate business values, and minimal dangerous values."
         },
         "difficulty": "intermediate"
       },
@@ -871,20 +871,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "跨上下文 XSS Polyglot用于核对 HTML 解析器如何处理当前输出位置。具体审查目标为：同一输入经过模板、HTML tokenizer 和 JavaScript 或 URL 子解析器后，是否在至少一个上下文形成可执行结构。测试成立的前提为：应用在不同视图复用同一字段或经过多次编码解码，导致开发者无法用单一 HTML 文本编码覆盖最终上下文。证据要求为：记录实际命中的闭合序列、最终 DOM 节点与执行事件，不能把任意响应变化归因于 Polyglot 成功。响应中出现输入文本或标签并不等同于脚本已经执行。",
-          "en": "Cross-Context XSS Polyglot checks whether one input becomes executable in at least one context after passing through templating, the HTML tokenizer, and JavaScript or URL subparsers. It applies when the application reuses one field across views or performs multiple encode/decode stages, so one HTML-text encoding rule does not match the final context. A conclusion requires the exact breakout sequence, final DOM node, and execution event are recorded rather than attributing any response change to a successful polyglot; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖跨上下文 XSS Polyglot 的组合验证：同时包含标签闭合、属性事件、URL 方案与 SVG/MathML 片段的大型通用载荷与 fromCharCode 变形。适用于识别未知或多阶段输出上下文中的解析突破点。",
+          "en": "Covers combined verification with cross-context XSS Polyglots: large universal payloads bundling tag closures, attribute events, URL schemes, and SVG/MathML fragments plus fromCharCode variants. Suitable for identifying parse breakouts in unknown or multi-stage output contexts."
         },
         "vulnerability": {
-          "zh": "该问题的输入与输出前提为：应用在不同视图复用同一字段或经过多次编码解码，导致开发者无法用单一 HTML 文本编码覆盖最终上下文。审查时必须确认“同一输入经过模板、HTML tokenizer 和 JavaScript 或 URL 子解析器后，是否在至少一个上下文形成可执行结构”，并把服务端响应、最终 DOM、事件条件和浏览器版本关联起来。若无法满足“记录实际命中的闭合序列、最终 DOM 节点与执行事件，不能把任意响应变化归因于 Polyglot 成功”这一证据要求，只能说明输入进入页面，不能确认 XSS。",
-          "en": "The risk exists when the application reuses one field across views or performs multiple encode/decode stages, so one HTML-text encoding rule does not match the final context, allowing whether one input becomes executable in at least one context after passing through templating, the HTML tokenizer, and JavaScript or URL subparsers. Review the input source, final parsing context, browser or policy version, and the exact breakout sequence, final DOM node, and execution event are recorded rather than attributing any response change to a successful polyglot; otherwise record only an unconfirmed control differential."
+          "zh": "根因是应用在不同视图复用同一字段或经多次编码解码，单一 HTML 文本编码无法覆盖最终上下文；同一输入经模板、HTML tokenizer 与 JS/URL 子解析器后在至少一个上下文形成可执行结构。",
+          "en": "The root cause is the same field reused across views or encoded/decoded repeatedly, so single HTML text encoding cannot cover the final context; one input passing templates, the HTML tokenizer, and JS/URL sub-parsers forms executable structure in at least one context."
         },
         "exploitation": {
-          "zh": "先用单字符探针判断引号、标签和脚本边界，再提交原 Polyglot 集合；每次只保留最小可复现片段以定位真正有效的解析分支。为每行样例分配独立的无害标记，每轮只改变一种标签、属性或编码形式；同时保存原始响应、最终 DOM、控制台和事件记录，以排除缓存、浏览器容错及人工交互造成的假阳性。",
-          "en": "In an authorized isolated environment, probe quote, tag, and script boundaries with single characters before submitting the original polyglot set, then minimize any success to the actual parser branch. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令逐行提交大型通用 Polyglot 与经典变形（含 fromCharCode 系列）；任一解析上下文触发执行即确认该输入位多上下文可达。先用单字符探针判断引号、标签和脚本边界，命中后逐段删减到最小可复现片段以定位有效解析分支。",
+          "en": "Use the step 1 command to submit the large universal Polyglot and classic mutations (including fromCharCode series) line by line; execution in any parsing context confirms the input position reaches multiple contexts. Probe quote, tag, and script boundaries with single-character probes first, then trim hits down to minimal reproducible fragments to locate the effective parsing branch."
         },
         "mitigation": {
-          "zh": "在数据写入每个最终 sink 时重新执行上下文编码，减少跨视图原样复用，并用模板自动转义、HTML 消毒与 Trusted Types 形成分层控制。修复后在同一输出位置重放普通文本、边界字符和最小异常样例，确认合法内容继续显示，同时活动节点、危险属性和对应执行记录均不再出现。",
-          "en": "Remediation should apply context encoding at every final sink, reduce raw reuse across views, and layer template auto-escaping, HTML sanitization, and Trusted Types. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "在数据写入每个最终汇时重新执行上下文编码，减少跨视图原样复用，用模板自动转义、HTML 消毒与 Trusted Types 分层控制；修复后重放 Polyglot 集合应无任何上下文执行。",
+          "en": "Re-encode per context at every final sink write, reduce verbatim cross-view reuse, and layer template autoescaping, HTML sanitization, and Trusted Types; after the fix, replaying the Polyglot set must yield no execution in any context."
         },
         "difficulty": "advanced"
       },
@@ -991,20 +991,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "XSS 过滤与规范化绕过评估边缘防护、源站和浏览器之间的解析差异，而不是把 WAF 放行视为成功。需要核对的行为为：边缘过滤器、服务端消毒器和浏览器是否对畸形标记与编码输入执行不同的规范化和 token 化。成立前提为：防护依赖关键字和正则黑名单，却没有在浏览器等价解析结果上实施元素、属性和 URL 协议允许列表。最终必须取得以下证据：同一请求在各层的规范化表示、WAF 动作、最终 DOM 和唯一执行标记能够完整关联。",
-          "en": "XSS Filter and Normalization Bypass checks whether edge filters, server-side sanitizers, and browsers canonicalize and tokenize malformed or encoded input differently. It applies when defenses rely on keyword or regular-expression blacklists instead of enforcing element, attribute, and URL-scheme allowlists on the browser-equivalent parse result. A conclusion requires the normalized representation at each layer, WAF action, final DOM, and unique execution marker can be correlated for one request; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖 XSS 过滤与规范化绕过的系统化复测：大小写、畸形标签、字符引用、控制符与动态求值等大样例集，定位边缘防护、源站与浏览器之间的解析差异。适用于黑名单式 XSS 防护的缺口评估。",
+          "en": "Covers systematic replay of XSS filter and normalization bypasses: large sample sets of case mutations, malformed tags, character references, control characters, and dynamic evaluation, pinpointing parsing differentials among edge defenses, origin, and browser. Suitable for gap assessment of blacklist XSS defenses."
         },
         "vulnerability": {
-          "zh": "多层处理出现风险的前提为：防护依赖关键字和正则黑名单，却没有在浏览器等价解析结果上实施元素、属性和 URL 协议允许列表。审计应使用同一请求标识关联边缘动作、源站接收字节、应用输出与浏览器结果，并据此判断“边缘过滤器、服务端消毒器和浏览器是否对畸形标记与编码输入执行不同的规范化和 token 化”。只有 200 响应、告警缺失或规则未命中均不足以证明 XSS。",
-          "en": "The risk exists when defenses rely on keyword or regular-expression blacklists instead of enforcing element, attribute, and URL-scheme allowlists on the browser-equivalent parse result, allowing whether edge filters, server-side sanitizers, and browsers canonicalize and tokenize malformed or encoded input differently. Review the input source, final parsing context, browser or policy version, and the normalized representation at each layer, WAF action, final DOM, and unique execution marker can be correlated for one request; otherwise record only an unconfirmed control differential."
+          "zh": "根因是防护依赖关键字与正则黑名单，未在浏览器等价解析结果上实施元素、属性与 URL 协议允许列表；边缘过滤器、服务端消毒器与浏览器对畸形标记的规范化与 token 化不一致。",
+          "en": "The root cause is defenses relying on keyword and regex blacklists without element, attribute, and URL-protocol allowlists applied to browser-equivalent parse results; edge filters, server sanitizers, and browsers normalize and tokenize malformed markup differently."
         },
         "exploitation": {
-          "zh": "以普通标签作为基线，对大小写、空白、空字节与实体变体逐类重放；命中后缩减到单一变换，避免把组合串误当成必要条件。固定 WAF 规则集、源站版本与浏览器版本，先重放未编码基线，再逐类测试大小写、实体、空白或结构变化；命中后缩减为单一变换，并按“同一请求在各层的规范化表示、WAF 动作、最终 DOM 和唯一执行标记能够完整关联”完成确认。",
-          "en": "In an authorized isolated environment, use ordinary markup as a baseline, replay case, whitespace, null-byte, and entity variants by class, and minimize a hit to one transformation instead of treating a compound string as required. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令逐行提交经典过滤绕过大样例集；某行被放行且执行即为该样例对当前过滤器有效。以普通标签作基线，对大小写、空白、空字节与实体变体逐类重放；命中后缩减到单一变换，避免把组合串误当成必要条件，并按层记录 WAF 动作与最终 DOM。",
+          "en": "Use the step 1 command to replay the classic filter-bypass sample set line by line; a row passing through and executing is effective against the current filter. Baseline with plain tags, then replay case, whitespace, null-byte, and entity variants class by class; on a hit, reduce to a single mutation so combined strings are not mistaken for prerequisites, recording WAF actions and final DOM per layer."
         },
         "mitigation": {
-          "zh": "在统一解码后使用解析器型 HTML 消毒器，对 URL 方案和事件属性执行允许列表，并让 WAF 仅作为检测与纵深防御层。修复同时覆盖边缘规则和最终应用 sink，再使用相同请求标识重放正常与异常样例，确认 WAF 动作、源站规范化和浏览器 DOM 三层结果一致。",
-          "en": "Remediation should canonicalize once, use a parser-based HTML sanitizer, allowlist URL schemes and event-free attributes, and treat the WAF as detection and defense in depth. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "统一解码后使用解析器型 HTML 消毒器，对 URL 方案与事件属性执行允许列表，WAF 仅作检测与纵深防御；修复同时覆盖边缘规则与最终应用汇，三层结果回归一致。",
+          "en": "After unified decoding, use a parser-based HTML sanitizer with URL-scheme and event-attribute allowlists, keeping the WAF for detection and defense-in-depth; fixes must cover both edge rules and the final application sink, with consistent results across all three layers in regression."
         },
         "difficulty": "advanced"
       },
@@ -1111,20 +1111,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "CSP 可信源 JSONP 回调滥用用于核对 CSP 指令与具体浏览器能力之间的控制边界。审查目标为：允许列表中的 JSONP 端点是否接受任意回调表达式，并被浏览器作为跨源 script 响应执行。策略问题的成立前提为：页面已有脚本元素注入能力，生效 CSP 使用主机允许列表而非 nonce 或 hash，且可信主机提供未约束的 JSONP。判定证据为：目标页面实际 CSP、JSONP 响应 Content-Type 与回调体、以及唯一标记执行三项证据同时成立；普通导航、预取或单次外连必须与脚本执行分开记录。",
-          "en": "CSP Trusted-Origin JSONP Callback Abuse checks whether an allowlisted JSONP endpoint accepts an arbitrary callback expression and is executed by the browser as a cross-origin script response. It applies when the page already permits script-element injection, the effective CSP trusts hosts instead of nonces or hashes, and a trusted host exposes unconstrained JSONP. A conclusion requires the target policy, JSONP response content type and callback body, and unique marker execution are all captured together; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖 CSP 可信源上 JSONP 回调滥用的验证：script-src 允许的源暴露可控 callback 端点，把可信响应转化为脚本执行。适用于已存在 HTML 注入、评估 CSP 主机允许列表弱点的场景。",
+          "en": "Covers JSONP callback-abuse verification on CSP-trusted origins: script-src-permitted origins exposing controllable callback endpoints, converting trusted responses into script execution. Suitable when HTML injection already exists and CSP host-allowlist weaknesses are under assessment."
         },
         "vulnerability": {
-          "zh": "策略风险的前提为：页面已有脚本元素注入能力，生效 CSP 使用主机允许列表而非 nonce 或 hash，且可信主机提供未约束的 JSONP。评估需要从最终响应中的生效 CSP 出发，逐项判断“允许列表中的 JSONP 端点是否接受任意回调表达式，并被浏览器作为跨源 script 响应执行”。若没有“目标页面实际 CSP、JSONP 响应 Content-Type 与回调体、以及唯一标记执行三项证据同时成立”，策略警告、资源请求或页面跳转都不能单独证明 CSP 被绕过。",
-          "en": "The risk exists when the page already permits script-element injection, the effective CSP trusts hosts instead of nonces or hashes, and a trusted host exposes unconstrained JSONP, allowing whether an allowlisted JSONP endpoint accepts an arbitrary callback expression and is executed by the browser as a cross-origin script response. Review the input source, final parsing context, browser or policy version, and the target policy, JSONP response content type and callback body, and unique marker execution are all captured together; otherwise record only an unconfirmed control differential."
+          "zh": "根因是生效 CSP 使用主机允许列表而非 nonce/hash，且可信主机提供接受任意回调表达式的 JSONP 端点；已有脚本元素注入能力时，攻击者借可信源绕过脚本来源限制。",
+          "en": "The root cause is an effective CSP using host allowlists rather than nonce/hash, with trusted hosts offering JSONP endpoints accepting arbitrary callback expressions; with script-element injection already available, attackers ride trusted origins past script-origin restrictions."
         },
         "exploitation": {
-          "zh": "先用无害回调名确认端点语法，再从目标页面加载同一端点并观察 CSP 控制台；只有回调在目标 origin 执行时才判定绕过。先保存完整响应头并展开指令回退关系，再以自有无害端点替换示例地址，记录 CSP 违规事件、网络 Initiator、最终 origin 和执行标记，分别评价每一种浏览器能力。",
-          "en": "In an authorized isolated environment, confirm endpoint syntax with a harmless callback name, then load it from the target page while observing CSP diagnostics; count a bypass only when the callback executes in the target origin. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令以真实公共端点的 JSONP 回调携带 alert 提交，把示例地址替换为目标 CSP 实际允许的可信源端点；CSP 放行且回调在目标 origin 执行即确认可信源 JSONP 滥用成立。先用无害回调名确认端点语法，再从目标页面加载并观察 CSP 控制台与网络 Initiator。",
+          "en": "Use the step 1 command to submit a JSONP callback carrying alert against real public endpoints, swapping the sample addresses for trusted-origin endpoints actually allowed by the target CSP; CSP letting it through plus the callback executing in the target origin confirms trusted-source JSONP abuse. Confirm endpoint syntax with a harmless callback name first, then load from the target page and watch the CSP console and network Initiator."
         },
         "mitigation": {
-          "zh": "采用 nonce 或 hash 的严格 CSP，移除不必要的主机允许列表；JSONP 应迁移为 CORS JSON，并将回调参数限制为安全标识符或彻底取消。在同一浏览器与缓存状态下重放合法资源、业务导航和原异常样例，确认必要功能仍可用，并且相关指令稳定阻断越界脚本、框架、基地址或资源外连。",
-          "en": "Remediation should adopt a nonce- or hash-based strict CSP, remove unnecessary host allowlists, replace JSONP with CORS JSON, and constrain or eliminate callback parameters. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "采用 nonce 或 hash 的严格 CSP，移除不必要的主机允许列表；JSONP 迁移为 CORS JSON 并把回调参数限制为安全标识符；修复后相关指令应稳定阻断越界脚本执行。",
+          "en": "Adopt strict nonce or hash CSP and remove unnecessary host allowlists; migrate JSONP to CORS-based JSON with callback parameters constrained to safe identifiers; after the fix, the directives must consistently block out-of-bounds script execution."
         },
         "difficulty": "advanced"
       },
@@ -1231,20 +1231,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "base 元素基地址劫持用于核对 CSP 指令与具体浏览器能力之间的控制边界。审查目标为：攻击者控制的 base href 是否在应用自己的相对资源解析前生效，并把请求或交互导航导向外部 origin。策略问题的成立前提为：应用允许在 head 前部或首个有效 base 位置注入 HTML，同时 CSP 未设置 base-uri none 或可信源限制。判定证据为：document.baseURI 的变化与至少一个真实相对 URL 的解析结果一致，且没有把 target=_blank 行为误报为脚本执行；普通导航、预取或单次外连必须与脚本执行分开记录。",
-          "en": "Base Element URL Hijacking checks whether an attacker-controlled base href takes effect before application-relative URL resolution and redirects resource or interaction requests to another origin. It applies when the application permits HTML injection before or at the first effective base position while CSP omits base-uri none or an appropriate origin restriction. A conclusion requires a change in document.baseURI matches resolution of a real relative URL, without misreporting target=_blank behavior as script execution; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖 base 元素基地址劫持的验证：以 base href 变体（含 target=_blank）劫持相对资源解析目标。该问题属于 HTML 注入与 CSP base-uri 边界问题，而非自动脚本执行。",
+          "en": "Covers base-element base-URL hijack verification: base href variants (including target=_blank) hijacking relative-resource resolution targets. This is an HTML-injection and CSP base-uri boundary issue, not automatic script execution."
         },
         "vulnerability": {
-          "zh": "策略风险的前提为：应用允许在 head 前部或首个有效 base 位置注入 HTML，同时 CSP 未设置 base-uri none 或可信源限制。评估需要从最终响应中的生效 CSP 出发，逐项判断“攻击者控制的 base href 是否在应用自己的相对资源解析前生效，并把请求或交互导航导向外部 origin”。若没有“document.baseURI 的变化与至少一个真实相对 URL 的解析结果一致，且没有把 target=_blank 行为误报为脚本执行”，策略警告、资源请求或页面跳转都不能单独证明 CSP 被绕过。",
-          "en": "The risk exists when the application permits HTML injection before or at the first effective base position while CSP omits base-uri none or an appropriate origin restriction, allowing whether an attacker-controlled base href takes effect before application-relative URL resolution and redirects resource or interaction requests to another origin. Review the input source, final parsing context, browser or policy version, and a change in document.baseURI matches resolution of a real relative URL, without misreporting target=_blank behavior as script execution; otherwise record only an unconfirmed control differential."
+          "zh": "根因是应用允许在 head 前部或首个有效 base 位置注入 HTML，同时 CSP 未设置 base-uri none 或可信源限制；攻击者控制的 base href 抢先改变相对 URL 解析基址。",
+          "en": "The root cause is HTML injectable into the head area or at the first valid base position while CSP lacks base-uri none or trusted-source restrictions; the attacker-controlled base href preempts relative-URL resolution."
         },
         "exploitation": {
-          "zh": "记录注入前 document.baseURI 与关键相对资源 URL，再提交原 base 变体并观察解析后的绝对地址；禁止让测试端点收集真实凭据。先保存完整响应头并展开指令回退关系，再以自有无害端点替换示例地址，记录 CSP 违规事件、网络 Initiator、最终 origin 和执行标记，分别评价每一种浏览器能力。",
-          "en": "In an authorized isolated environment, record document.baseURI and critical relative URLs before injection, submit the original base variants, and observe resolved absolute addresses without allowing the test endpoint to collect real credentials. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令逐行以 base href 变体（含 target=_blank）劫持基地址；相对资源请求转向 {ATTACKER_HOST} 即确认 base 注入边界，渲染后观察网络请求即可判定。先记录注入前 document.baseURI 与关键相对资源 URL 作对照，测试端点不收集真实凭据。仅首个生效 base 参与解析，后续注入位置按阴性记录。",
+          "en": "Use the step 1 command to hijack the base URL with base href variants line by line (including target=_blank); relative-resource requests turning toward {ATTACKER_HOST} confirm the base-injection boundary, judged by post-render network requests. Record pre-injection document.baseURI and key relative-resource URLs as controls, and never collect real credentials on the test endpoint. Only the first effective base participates in resolution; later injection positions record as negative."
         },
         "mitigation": {
-          "zh": "阻止不可信 HTML 进入 head，固定或绝对化敏感资源与表单 URL，并在 CSP 中设置 base-uri none 或精确的 self 策略。在同一浏览器与缓存状态下重放合法资源、业务导航和原异常样例，确认必要功能仍可用，并且相关指令稳定阻断越界脚本、框架、基地址或资源外连。",
-          "en": "Remediation should keep untrusted HTML out of head, use fixed or absolute URLs for sensitive resources and forms, and set CSP base-uri to none or a precise self policy. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "阻止不可信 HTML 进入 head，固定或绝对化敏感资源与表单 URL，CSP 设置 base-uri none 或精确 self 策略；修复后 base 变体应被拒绝或保持原基址。",
+          "en": "Block untrusted HTML from entering head, pin or absolutize sensitive resource and form URLs, and set CSP base-uri none or a precise self policy; after the fix, base variants must be rejected or leave the original base intact."
         },
         "difficulty": "intermediate"
       },
@@ -1351,20 +1351,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "link 资源提示与外连探测用于核对 CSP 指令与具体浏览器能力之间的控制边界。审查目标为：可注入 link 元素是否触发 DNS 查询或资源获取，以及对应请求受哪一条 CSP 指令和浏览器缓存策略控制。策略问题的成立前提为：富文本或模板允许 link 元素，资源目标可控，并且适用的 default-src、script-src、style-src、font-src 或 connect-src 边界过宽。判定证据为：浏览器网络面板或受控 DNS 日志显示与唯一标记对应的请求，同时记录 Initiator、资源类型和 CSP 决策；普通导航、预取或单次外连必须与脚本执行分开记录。",
-          "en": "Link Resource Hint and Outbound Fetch Testing checks whether an injected link element triggers DNS resolution or resource fetching and which CSP directive and cache policy govern the request. It applies when rich text or templating permits link elements, the destination is controllable, and the applicable default-src, script-src, style-src, font-src, or connect-src boundary is too broad. A conclusion requires browser network data or controlled DNS logs show a marker-correlated request together with its initiator, resource type, and CSP decision; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖 link 资源提示四类形态的外连探测：prefetch、dns-prefetch、preload 与 modulepreload 的网络行为差异及各 CSP 指令的管辖范围。用于确认 HTML 注入造成资源外连而不误称为 XSS。",
+          "en": "Covers egress probing across four link resource-hint forms: prefetch, dns-prefetch, preload, and modulepreload network-behavior differences and which CSP directives govern each. Used to confirm HTML injection causes resource egress without mislabeling it as XSS."
         },
         "vulnerability": {
-          "zh": "策略风险的前提为：富文本或模板允许 link 元素，资源目标可控，并且适用的 default-src、script-src、style-src、font-src 或 connect-src 边界过宽。评估需要从最终响应中的生效 CSP 出发，逐项判断“可注入 link 元素是否触发 DNS 查询或资源获取，以及对应请求受哪一条 CSP 指令和浏览器缓存策略控制”。若没有“浏览器网络面板或受控 DNS 日志显示与唯一标记对应的请求，同时记录 Initiator、资源类型和 CSP 决策”，策略警告、资源请求或页面跳转都不能单独证明 CSP 被绕过。",
-          "en": "The risk exists when rich text or templating permits link elements, the destination is controllable, and the applicable default-src, script-src, style-src, font-src, or connect-src boundary is too broad, allowing whether an injected link element triggers DNS resolution or resource fetching and which CSP directive and cache policy govern the request. Review the input source, final parsing context, browser or policy version, and browser network data or controlled DNS logs show a marker-correlated request together with its initiator, resource type, and CSP decision; otherwise record only an unconfirmed control differential."
+          "zh": "根因是富文本或模板允许 link 元素且资源目标可控，适用的 default-src/script-src/style-src/font-src/connect-src 边界过宽；资源提示产生的外连不执行 JavaScript，应按网络泄漏评级。",
+          "en": "The root cause is rich text or templates allowing link elements with controllable targets while applicable default-src/script-src/style-src/font-src/connect-src boundaries are overly broad; resource-hint egress executes no JavaScript and is rated as network leakage."
         },
         "exploitation": {
-          "zh": "清空缓存后逐一测试各 rel 值，使用不可识别用户的数据标记区分 DNS 与 HTTP 访问，并在不同浏览器中记录不保证触发的资源提示行为。先保存完整响应头并展开指令回退关系，再以自有无害端点替换示例地址，记录 CSP 违规事件、网络 Initiator、最终 origin 和执行标记，分别评价每一种浏览器能力。",
-          "en": "In an authorized isolated environment, clear caches, test each rel value separately, distinguish DNS from HTTP activity with non-user-identifying markers, and record browser-specific best-effort resource-hint behavior. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令逐行以 prefetch/dns-prefetch/preload/modulepreload 触发外连；对应请求到达 {ATTACKER_HOST} 即确认 link 资源提示外带通道，并按 as 类型记录哪些提示绕过了 CSP。清空缓存后逐一测试各 rel 值，用不可识别用户的数据标记区分 DNS 与 HTTP 访问。无请求到达时按 rel 值与 CSP 指令逐项归因后记为阴性。",
+          "en": "Use the step 1 command to trigger egress with prefetch/dns-prefetch/preload/modulepreload line by line; corresponding requests reaching {ATTACKER_HOST} confirm the link resource-hint exfiltration channel, noting by as-type which hints bypassed CSP. Clear caches before testing each rel value, distinguishing DNS from HTTP access with non-user-identifying markers. When no request arrives, attribute per rel value and CSP directive before recording negative."
         },
         "mitigation": {
-          "zh": "消毒不需要的 link 元素和 rel 值，收紧各资源类型 CSP 指令，并通过出口策略限制前端可访问的非业务域名。在同一浏览器与缓存状态下重放合法资源、业务导航和原异常样例，确认必要功能仍可用，并且相关指令稳定阻断越界脚本、框架、基地址或资源外连。",
-          "en": "Remediation should sanitize unnecessary link elements and rel values, tighten resource-specific CSP directives, and use outbound policy to restrict non-business destinations. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "消毒不需要的 link 元素与 rel 值，收紧各资源类型 CSP 指令，出口策略限制前端可访问的非业务域名；修复后各提示请求应被阻断并产生 CSP 违规记录。",
+          "en": "Sanitize away unneeded link elements and rel values, tighten CSP directives per resource type, and restrict non-business domains reachable from the frontend via egress policy; after the fix, hint requests must be blocked with CSP violation records."
         },
         "difficulty": "intermediate"
       },
@@ -1471,20 +1471,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "meta refresh 导航与活动 URL 注入用于核对 CSP 指令与具体浏览器能力之间的控制边界。审查目标为：浏览器对 http-equiv=refresh 的 URL 解析是否允许外部跳转或活动文档方案，以及现有 CSP 是否真正约束该路径。策略问题的成立前提为：攻击者可以在文档允许位置插入 meta 元素，应用未限制跳转目标，且安全设计错误地假设 script-src 会覆盖所有导航。判定证据为：分别保存最终导航 URL、页面 origin 变化和任何脚本执行标记，普通外部跳转不能被报告为 XSS；普通导航、预取或单次外连必须与脚本执行分开记录。",
-          "en": "Meta Refresh Navigation and Active URL Injection checks whether URL parsing for http-equiv=refresh permits external navigation or active-document schemes and whether the deployed CSP constrains that path. It applies when an attacker can insert a meta element in an effective document position, redirect targets are unrestricted, and security design incorrectly assumes script-src governs all navigation. A conclusion requires the final navigation URL, origin change, and any script marker are captured separately; an ordinary external redirect is not reported as XSS; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖 meta refresh 导航与活动 URL 的注入验证：javascript:/data:/外域三类跳转目标在实际浏览器与 CSP 下的执行差异。跨源导航与脚本执行两类结果必须分别记录。",
+          "en": "Covers meta-refresh navigation and active-URL injection verification: execution differences of javascript:/data:/external-domain targets in real browsers under CSP. Cross-origin navigation and script execution must be recorded as separate outcomes."
         },
         "vulnerability": {
-          "zh": "策略风险的前提为：攻击者可以在文档允许位置插入 meta 元素，应用未限制跳转目标，且安全设计错误地假设 script-src 会覆盖所有导航。评估需要从最终响应中的生效 CSP 出发，逐项判断“浏览器对 http-equiv=refresh 的 URL 解析是否允许外部跳转或活动文档方案，以及现有 CSP 是否真正约束该路径”。若没有“分别保存最终导航 URL、页面 origin 变化和任何脚本执行标记，普通外部跳转不能被报告为 XSS”，策略警告、资源请求或页面跳转都不能单独证明 CSP 被绕过。",
-          "en": "The risk exists when an attacker can insert a meta element in an effective document position, redirect targets are unrestricted, and security design incorrectly assumes script-src governs all navigation, allowing whether URL parsing for http-equiv=refresh permits external navigation or active-document schemes and whether the deployed CSP constrains that path. Review the input source, final parsing context, browser or policy version, and the final navigation URL, origin change, and any script marker are captured separately; an ordinary external redirect is not reported as XSS; otherwise record only an unconfirmed control differential."
+          "zh": "根因是攻击者可插入 meta 元素、应用未限制跳转目标，且安全设计错误假设 script-src 覆盖所有导航；浏览器对 http-equiv=refresh 的 URL 解析决定外部跳转或活动方案是否成立。",
+          "en": "The root cause is injectable meta elements, unrestricted jump targets, and a security design wrongly assuming script-src covers all navigation; the browser's URL parsing of http-equiv=refresh decides whether external jumps or active schemes stand."
         },
         "exploitation": {
-          "zh": "以受控同源路径建立 refresh 基线，再测试跨源、data 与 javascript 变体；使用自动化浏览器记录最终 URL、控制台和 CSP 事件。先保存完整响应头并展开指令回退关系，再以自有无害端点替换示例地址，记录 CSP 违规事件、网络 Initiator、最终 origin 和执行标记，分别评价每一种浏览器能力。",
-          "en": "In an authorized isolated environment, establish a controlled same-origin refresh baseline, then test cross-origin, data, and javascript variants while recording final URL, console output, and CSP events in an automated browser. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令逐行以 meta refresh 导航 javascript:/data:/外域；导航发生或脚本执行即确认 meta 活动内容边界，并记录带引号与不带引号两种属性形态的差异。以受控同源路径建立 refresh 基线，用自动化浏览器记录最终 URL、控制台与 CSP 事件。导航结果与脚本执行分开记录，不合并为同一结论。",
+          "en": "Use the step 1 command to navigate via meta refresh to javascript:/data:/external domains line by line; navigation occurring or script executing confirms the meta active-content boundary, recording differences between quoted and unquoted attribute forms. Baseline refresh against a controlled same-origin path, logging final URLs, console, and CSP events with an automated browser. Record navigation outcomes and script execution separately, never merging into one conclusion."
         },
         "mitigation": {
-          "zh": "从用户可控内容中移除 meta http-equiv，服务端只允许业务目标跳转，并同时部署合适的导航策略、frame 限制和上下文 HTML 消毒。在同一浏览器与缓存状态下重放合法资源、业务导航和原异常样例，确认必要功能仍可用，并且相关指令稳定阻断越界脚本、框架、基地址或资源外连。",
-          "en": "Remediation should remove meta http-equiv from user-controlled content, allow only business redirect destinations on the server, and combine navigation policy, frame restrictions, and context-aware HTML sanitization. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "从用户可控内容中移除 meta http-equiv，服务端只允许业务目标跳转，配合导航策略、frame 限制与上下文 HTML 消毒；修复后各跳转变体应被阻断或仅达业务目标。",
+          "en": "Remove meta http-equiv from user-controllable content, allow only business-target jumps server-side, and pair navigation policies, frame restrictions, and context-aware HTML sanitization; after the fix, each jump variant must be blocked or land only on business targets."
         },
         "difficulty": "advanced"
       },
@@ -1591,20 +1591,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Blind XSS 带外执行探针用于核对 HTML 解析器如何处理当前输出位置。具体审查目标为：前台提交的值是否在另一个用户、后台任务或管理视图中未经编码地渲染并加载受控脚本资源。测试成立的前提为：输入在写入时只做浅层校验，后续高权限界面将其作为 HTML 展示，并允许连接到测试回调域或加载外部脚本。证据要求为：回调必须携带不可猜测的单次标记、目标环境时间戳与授权测试记录，禁止收集真实 Cookie、页面内容或个人数据。响应中出现输入文本或标签并不等同于脚本已经执行。",
-          "en": "Blind XSS Out-of-Band Execution Probe checks whether a submitted value is later rendered without encoding for another user, background workflow, or administrative view and loads a controlled script resource. It applies when input receives only shallow validation at write time, a later privileged view renders it as HTML, and the page can connect to a controlled callback origin or load external script. A conclusion requires the callback carries an unguessable one-time marker, environment timestamp, and authorized test record without collecting real cookies, page content, or personal data; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖 Blind XSS 的带外执行探针：把探针脚本指向自有接收域注入存储点，在管理员后台、日志查看器等不可见渲染链路中触发回调。用于确认前台不可见的高权限页面是否未编码渲染注入值。",
+          "en": "Covers out-of-band execution probes for Blind XSS: probe scripts pointing at your own collector injected into storage points, triggering callbacks in invisible render chains such as admin panels and log viewers. Used to confirm high-privilege pages unseen from the frontend render injected values unencoded."
         },
         "vulnerability": {
-          "zh": "该问题的输入与输出前提为：输入在写入时只做浅层校验，后续高权限界面将其作为 HTML 展示，并允许连接到测试回调域或加载外部脚本。审查时必须确认“前台提交的值是否在另一个用户、后台任务或管理视图中未经编码地渲染并加载受控脚本资源”，并把服务端响应、最终 DOM、事件条件和浏览器版本关联起来。若无法满足“回调必须携带不可猜测的单次标记、目标环境时间戳与授权测试记录，禁止收集真实 Cookie、页面内容或个人数据”这一证据要求，只能说明输入进入页面，不能确认 XSS。",
-          "en": "The risk exists when input receives only shallow validation at write time, a later privileged view renders it as HTML, and the page can connect to a controlled callback origin or load external script, allowing whether a submitted value is later rendered without encoding for another user, background workflow, or administrative view and loads a controlled script resource. Review the input source, final parsing context, browser or policy version, and the callback carries an unguessable one-time marker, environment timestamp, and authorized test record without collecting real cookies, page content, or personal data; otherwise record only an unconfirmed control differential."
+          "zh": "根因是输入写入时只做浅层校验，后续高权限界面（后台、审核、日志）将其作为 HTML 展示并允许连接测试回调域；执行发生在攻击者不可见的另一用户上下文中，需带外信号确认。",
+          "en": "The root cause is shallow validation at write time while later high-privilege views (admin, review, logs) render the value as HTML and allow connecting to test callback domains; execution happens in another user's context invisible to the attacker, requiring out-of-band signals."
         },
         "exploitation": {
-          "zh": "为每个输入位置生成独立无害回调标记，提交后等待已知审核流程；将 DNS/HTTP 命中与后台访问日志关联，并排除安全扫描器预取。为每行样例分配独立的无害标记，每轮只改变一种标签、属性或编码形式；同时保存原始响应、最终 DOM、控制台和事件记录，以排除缓存、浏览器容错及人工交互造成的假阳性。",
-          "en": "In an authorized isolated environment, generate a separate harmless callback marker for each input location, wait for the known review flow, correlate DNS or HTTP hits with backend access logs, and exclude security-scanner prefetches. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令逐行把探针脚本指向 {ATTACKER_HOST}（含属性事件与 base64 变体）注入存储点；后台管理或查看页触发后接收域收到回调即确认 Blind XSS 存储点可达。为每个输入位置生成独立回调标记，提交后等待已知审核流程，把命中与后台访问日志关联并排除扫描器预取。",
+          "en": "Use the step 1 command to inject probe scripts pointing at {ATTACKER_HOST} (including attribute-event and base64 variants) into storage points line by line; the collector receiving callbacks after admin or viewer pages trigger confirms Blind XSS reachability. Generate an independent callback marker per input position, wait through the known review flow after submitting, correlate hits with backend access logs, and exclude scanner prefetch."
         },
         "mitigation": {
-          "zh": "在每个展示点按 HTML 上下文编码，富文本使用严格消毒策略；管理界面部署 nonce CSP、限制外连，并清理历史存储值后执行回归。修复后在同一输出位置重放普通文本、边界字符和最小异常样例，确认合法内容继续显示，同时活动节点、危险属性和对应执行记录均不再出现。",
-          "en": "Remediation should encode at every display sink, sanitize rich text with a strict policy, deploy nonce-based CSP and outbound restrictions on administrative views, and clean historical values before regression testing. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "在每个展示点按 HTML 上下文编码，富文本用严格消毒策略，管理界面部署 nonce CSP 并限制外连；清理历史存储值后回归，修复后各探针不应再收到回调。",
+          "en": "Encode at every display point per HTML context, apply strict sanitization for rich text, deploy nonce CSP on admin interfaces with restricted egress; purge historical stored values before regression, and after the fix no probe should receive callbacks."
         },
         "difficulty": "advanced"
       },
@@ -1711,20 +1711,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "document.write HTML Sink 注入审查客户端源到 sink 的完整数据流。需要确认的核心行为为：用户数据进入 document.write 系列调用后是否触发文档流重解析并创建新的可执行元素。适用前提为：客户端代码把 URL、消息或接口返回拼接进 document.write，且没有 Trusted Types、HTML 消毒或严格类型边界。DOM XSS 的证据标准是：调用栈、传入字符串、写入后 DOM 和唯一执行标记可以关联到同一次 document.write 调用；服务器响应不包含载荷并不能排除客户端问题。",
-          "en": "Document.write HTML Sink Injection checks whether user data passed to document.write causes document-stream reparsing and creates a new executable element. It applies when client code concatenates URL, message, or API data into document.write without Trusted Types, HTML sanitization, or a strict type boundary. A conclusion requires the call stack, input string, resulting DOM, and unique execution marker correlate to one document.write invocation; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖 document.write 系 HTML Sink 的注入验证：可控字符串经 document.write/writeln 重新交给 HTML 解析器，生成带事件或脚本的活动 DOM。用于确认文档流重解析路径是否接收攻击者可控数据。",
+          "en": "Covers injection verification for the document.write family of HTML sinks: controllable strings handed back to the HTML parser via document.write/writeln, generating active DOM with events or scripts. Used to confirm whether document-stream re-parsing paths receive attacker-controlled data."
         },
         "vulnerability": {
-          "zh": "客户端边界失效的前提为：客户端代码把 URL、消息或接口返回拼接进 document.write，且没有 Trusted Types、HTML 消毒或严格类型边界。审计应围绕“用户数据进入 document.write 系列调用后是否触发文档流重解析并创建新的可执行元素”记录源值、解码次数、赋值 API 与执行上下文。只有取得“调用栈、传入字符串、写入后 DOM 和唯一执行标记可以关联到同一次 document.write 调用”，才能证明可控数据到达了可执行 sink。",
-          "en": "The risk exists when client code concatenates URL, message, or API data into document.write without Trusted Types, HTML sanitization, or a strict type boundary, allowing whether user data passed to document.write causes document-stream reparsing and creates a new executable element. Review the input source, final parsing context, browser or policy version, and the call stack, input string, resulting DOM, and unique execution marker correlate to one document.write invocation; otherwise record only an unconfirmed control differential."
+          "zh": "根因是客户端代码把 URL、消息或接口返回拼接进 document.write，且没有 Trusted Types、HTML 消毒或严格类型边界；写入触发文档流重解析并创建新的可执行元素。",
+          "en": "The root cause is client code concatenating URLs, messages, or API responses into document.write without Trusted Types, HTML sanitization, or strict type boundaries; writes trigger document-stream re-parsing and create new executable elements."
         },
         "exploitation": {
-          "zh": "在 DevTools 中断 document.write，先观察正常参数，再通过真实来源提交原集合；记录写入发生在解析期还是加载后及浏览器替换行为。在 DevTools 中分别对真实读取点和写入点设置断点，使用一次性标记跟踪源值、规范化结果与最终 DOM；每轮只改变一个来源或 sink，避免把导航限制或 CSP 阻断误认为数据流已经修复。",
-          "en": "In an authorized isolated environment, break on document.write, observe a normal argument, then submit the original set through the real source while recording parse-time versus post-load behavior and document replacement. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令以 document.write 写入各类事件载荷标签；写入后执行即确认 document.write HTML Sink 可控。在 DevTools 中断 document.write，先观察正常参数，再通过真实来源提交样例；记录写入发生在解析期还是加载后及浏览器替换行为。写入发生在解析期还是加载后决定触发条件，需分别记录。",
+          "en": "Use the step 1 command to write various event-payload tags via document.write; execution after writing confirms the document.write HTML sink is controllable. Breakpoint document.write in DevTools, observe normal parameters first, then submit samples through the real source; record whether writes happen during parsing or after load and how the browser replaces content. Whether writes occur during parsing or after load changes trigger conditions and must be logged separately."
         },
         "mitigation": {
-          "zh": "删除 document.write 路径，使用 createElement、textContent 和固定属性构建节点；必须渲染 HTML 时采用受审查消毒器与 TrustedHTML。回归应覆盖原客户端来源、合法业务 URL 或文本以及最小危险值，确认安全 API 保留原功能，且危险 sink 不再收到攻击者可控字符串。",
-          "en": "Remediation should remove document.write, build nodes with createElement, textContent, and fixed attributes, and require a reviewed sanitizer plus TrustedHTML when HTML rendering is unavoidable. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "删除 document.write 路径，使用 createElement、textContent 和固定属性构建节点；必须渲染 HTML 时采用受审查消毒器与 TrustedHTML。回归确认安全 API 保留原功能且危险汇不再收到可控字符串。",
+          "en": "Remove document.write paths and build nodes with createElement, textContent, and fixed attributes; when HTML rendering is required, use a reviewed sanitizer with TrustedHTML. Regression must confirm safe APIs preserve functionality and hazardous sinks no longer receive controllable strings."
         },
         "difficulty": "intermediate"
       },
@@ -1831,20 +1831,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "innerHTML 数据流注入审查客户端源到 sink 的完整数据流。需要确认的核心行为为：location.hash、search、href 或 URL 数据是否未经净化写入 innerHTML，并通过新建元素事件形成执行路径。适用前提为：应用将数据与标记拼接后赋给 innerHTML，误以为浏览器不执行插入的 script 就能阻止所有 XSS。DOM XSS 的证据标准是：源值、innerHTML 赋值点、新建事件属性和唯一执行标记构成可复现的完整客户端链路；服务器响应不包含载荷并不能排除客户端问题。",
-          "en": "InnerHTML Data-Flow Injection checks whether location.hash, search, href, or URL data is written to innerHTML without sanitization and becomes executable through events on newly created elements. It applies when the application concatenates data into innerHTML and incorrectly assumes that non-execution of inserted script elements prevents all XSS. A conclusion requires the source value, innerHTML assignment, newly created event attribute, and unique execution marker form a reproducible client-side chain; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖 innerHTML 数据流的注入验证：location 等客户端来源未经净化写入 innerHTML，经新建元素事件形成执行路径。script 标签不执行不代表汇安全，img/svg 等事件节点才是关键。",
+          "en": "Covers innerHTML dataflow injection verification: client sources such as location written into innerHTML without sanitization, forming execution paths through new-element events. A non-executing script tag does not make the sink safe — event nodes like img/svg are the key."
         },
         "vulnerability": {
-          "zh": "客户端边界失效的前提为：应用将数据与标记拼接后赋给 innerHTML，误以为浏览器不执行插入的 script 就能阻止所有 XSS。审计应围绕“location.hash、search、href 或 URL 数据是否未经净化写入 innerHTML，并通过新建元素事件形成执行路径”记录源值、解码次数、赋值 API 与执行上下文。只有取得“源值、innerHTML 赋值点、新建事件属性和唯一执行标记构成可复现的完整客户端链路”，才能证明可控数据到达了可执行 sink。",
-          "en": "The risk exists when the application concatenates data into innerHTML and incorrectly assumes that non-execution of inserted script elements prevents all XSS, allowing whether location.hash, search, href, or URL data is written to innerHTML without sanitization and becomes executable through events on newly created elements. Review the input source, final parsing context, browser or policy version, and the source value, innerHTML assignment, newly created event attribute, and unique execution marker form a reproducible client-side chain; otherwise record only an unconfirmed control differential."
+          "zh": "根因是应用将数据与标记拼接后赋给 innerHTML，误以为浏览器不执行插入的 script 就能阻止所有 XSS；事件属性元素在插入时同样形成可执行路径。",
+          "en": "The root cause is the application assigning concatenated data and markup to innerHTML under the misconception that browsers not executing inserted script tags stops all XSS; event-attribute elements form executable paths upon insertion all the same."
         },
         "exploitation": {
-          "zh": "对每个 location 来源使用独立标记，断点观察赋值前的解码值和赋值后的 DOM；重点检查 img、svg 等事件节点而非仅测试 script。在 DevTools 中分别对真实读取点和写入点设置断点，使用一次性标记跟踪源值、规范化结果与最终 DOM；每轮只改变一个来源或 sink，避免把导航限制或 CSP 阻断误认为数据流已经修复。",
-          "en": "In an authorized isolated environment, use a separate marker for each location source, inspect decoded values before assignment and DOM after assignment, and test event-capable nodes such as img and svg rather than script alone. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令以 innerHTML 写入源数据（location.*、document.URL）与事件载荷；写入后执行即确认 innerHTML 数据流可控。对每个 location 来源使用独立标记，断点观察赋值前的解码值和赋值后的 DOM；重点检查 img、svg 等事件节点而非仅测试 script。重点验证 img/svg 等事件节点，script 不执行不代表汇安全。",
+          "en": "Use the step 1 command to write source data (location.*, document.URL) and event payloads via innerHTML; execution after writing confirms the innerHTML dataflow is controllable. Use an independent marker per location source, breakpoint the pre-assignment decoded value and post-assignment DOM, and focus on event nodes like img/svg rather than testing script alone. Focus on event nodes like img/svg — a non-executing script tag never proves the sink safe."
         },
         "mitigation": {
-          "zh": "默认改用 textContent；需要结构化 UI 时通过 createElement 绑定固定属性，或在 Trusted Types 策略中调用维护中的 HTML 消毒器。回归应覆盖原客户端来源、合法业务 URL 或文本以及最小危险值，确认安全 API 保留原功能，且危险 sink 不再收到攻击者可控字符串。",
-          "en": "Remediation should prefer textContent, construct structured UI with createElement and fixed attributes, or invoke a maintained HTML sanitizer inside an enforced Trusted Types policy. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "默认改用 textContent；需要结构化 UI 时通过 createElement 绑定固定属性，或在 Trusted Types 策略中调用维护中的 HTML 消毒器。回归确认安全 API 保留原功能且危险汇不再收到攻击者可控字符串。",
+          "en": "Default to textContent; for structured UI build via createElement with fixed attributes, or call a maintained HTML sanitizer within Trusted Types policies. Regression must confirm safe APIs preserve functionality and the hazardous sink no longer receives attacker-controllable strings."
         },
         "difficulty": "intermediate"
       },
@@ -1951,20 +1951,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "eval 与 Function 动态代码注入审查客户端源到 sink 的完整数据流。需要确认的核心行为为：不可信字符串是否到达 eval、Function、setTimeout 或 setInterval 的代码参数并在页面 origin 中求值。适用前提为：客户端把配置、URL 或消息数据当作表达式拼接，且 CSP 仍允许 unsafe-eval 或代码路径没有受类型约束。DOM XSS 的证据标准是：动态求值函数的调用栈、传入源码和唯一执行标记可关联，并排除浏览器地址栏主动阻止 javascript URL 的情况；服务器响应不包含载荷并不能排除客户端问题。",
-          "en": "Eval and Function Dynamic Code Injection checks whether an untrusted string reaches the code argument of eval, Function, setTimeout, or setInterval and is evaluated in the page origin. It applies when client code concatenates configuration, URL, or message data as an expression while CSP allows unsafe-eval or the path lacks a typed boundary. A conclusion requires the dynamic-evaluation call stack, source argument, and unique execution marker correlate, excluding cases where the browser blocks a javascript URL at navigation; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖动态 JavaScript 求值汇的注入验证：eval、Function、setTimeout/setInterval 字符串参数把可控 URL 或消息数据解释为代码。用于确认不可信字符串是否在页面 origin 中被求值。",
+          "en": "Covers injection verification for dynamic JavaScript evaluation sinks: eval, Function, and setTimeout/setInterval string arguments interpreting controllable URL or message data as code. Used to confirm whether untrusted strings are evaluated in the page origin."
         },
         "vulnerability": {
-          "zh": "客户端边界失效的前提为：客户端把配置、URL 或消息数据当作表达式拼接，且 CSP 仍允许 unsafe-eval 或代码路径没有受类型约束。审计应围绕“不可信字符串是否到达 eval、Function、setTimeout 或 setInterval 的代码参数并在页面 origin 中求值”记录源值、解码次数、赋值 API 与执行上下文。只有取得“动态求值函数的调用栈、传入源码和唯一执行标记可关联，并排除浏览器地址栏主动阻止 javascript URL 的情况”，才能证明可控数据到达了可执行 sink。",
-          "en": "The risk exists when client code concatenates configuration, URL, or message data as an expression while CSP allows unsafe-eval or the path lacks a typed boundary, allowing whether an untrusted string reaches the code argument of eval, Function, setTimeout, or setInterval and is evaluated in the page origin. Review the input source, final parsing context, browser or policy version, and the dynamic-evaluation call stack, source argument, and unique execution marker correlate, excluding cases where the browser blocks a javascript URL at navigation; otherwise record only an unconfirmed control differential."
+          "zh": "根因是客户端把配置、URL 或消息数据当作表达式拼接进动态求值汇，且 CSP 仍允许 unsafe-eval 或代码路径没有类型约束；字符串参数按 JavaScript 源码解释。",
+          "en": "The root cause is client code treating configuration, URL, or message data as expressions concatenated into dynamic evaluation sinks while CSP still allows unsafe-eval or code paths lack type constraints; string arguments are interpreted as JavaScript source."
         },
         "exploitation": {
-          "zh": "对每种 sink 设置断点，从真实数据源跟踪参数；先提交算术表达式确认求值，再使用原集合的无害标记验证是否具备任意代码语义。在 DevTools 中分别对真实读取点和写入点设置断点，使用一次性标记跟踪源值、规范化结果与最终 DOM；每轮只改变一个来源或 sink，避免把导航限制或 CSP 阻断误认为数据流已经修复。",
-          "en": "In an authorized isolated environment, break on each sink and trace arguments from the real source, first confirming evaluation with arithmetic before using harmless markers from the original set to establish arbitrary-code semantics. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令逐行以 eval/Function/setTimeout/setInterval 求值注入串；执行即确认动态求值汇对字符串输入未限制。对每种汇设置断点从真实数据源跟踪参数；先提交算术表达式确认求值，再用原集合的无害标记验证是否具备任意代码语义。",
+          "en": "Use the step 1 command to evaluate injected strings via eval/Function/setTimeout/setInterval line by line; execution confirms the dynamic evaluation sink places no limits on string input. Breakpoint each sink and trace parameters from the real data source; first confirm evaluation with an arithmetic expression, then verify arbitrary-code semantics with the harmless markers from the set."
         },
         "mitigation": {
-          "zh": "移除字符串求值，改为固定函数映射、JSON.parse 和类型化消息；删除 unsafe-eval，并使用 Trusted Types 或静态分析阻止新 sink。回归应覆盖原客户端来源、合法业务 URL 或文本以及最小危险值，确认安全 API 保留原功能，且危险 sink 不再收到攻击者可控字符串。",
-          "en": "Remediation should remove string evaluation in favor of fixed function maps, JSON.parse, and typed messages; remove unsafe-eval and use Trusted Types or static analysis to prevent new sinks. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "移除字符串求值，改为固定函数映射、JSON.parse 和类型化消息；删除 unsafe-eval，并使用 Trusted Types 或静态分析阻止新汇。回归确认原功能保留且求值汇不再接收不可信字符串。",
+          "en": "Remove string evaluation in favor of fixed function maps, JSON.parse, and typed messages; drop unsafe-eval and block new sinks via Trusted Types or static analysis. Regression must confirm original functionality survives and evaluation sinks no longer receive untrusted strings."
         },
         "difficulty": "advanced"
       },
@@ -2071,20 +2071,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Location 活动方案赋值审查客户端源到 sink 的完整数据流。需要确认的核心行为为：应用是否把攻击者控制的字符串直接赋给 Location API，并允许 javascript 或其他活动方案在目标页面上下文执行。适用前提为：跳转逻辑缺少 URL 解析与协议、origin 允许列表，只通过前缀或字符串替换判断安全目标。DOM XSS 的证据标准是：最终 URL、导航类型和页面 origin 中的唯一标记分别记录；仅跳往外部 HTTPS 地址只能证明重定向；服务器响应不包含载荷并不能排除客户端问题。",
-          "en": "Location Active-Scheme Assignment checks whether an application assigns an attacker-controlled string directly to a Location API and permits javascript or another active scheme to execute in the target page context. It applies when redirect logic lacks parsed protocol and origin allowlists and relies only on prefixes or string replacement to classify safe destinations. A conclusion requires the final URL, navigation type, and unique marker in the page origin are recorded separately; navigation to external HTTPS alone proves only a redirect; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖 Location 导航汇的活动方案验证：location、href、assign 与 replace 接收可控 javascript URL 时的导航与执行行为，区分 DOM XSS 与普通开放重定向。",
+          "en": "Covers active-scheme verification for Location navigation sinks: navigation and execution behavior when location, href, assign, and replace receive controllable javascript URLs, distinguishing DOM XSS from plain open redirects."
         },
         "vulnerability": {
-          "zh": "客户端边界失效的前提为：跳转逻辑缺少 URL 解析与协议、origin 允许列表，只通过前缀或字符串替换判断安全目标。审计应围绕“应用是否把攻击者控制的字符串直接赋给 Location API，并允许 javascript 或其他活动方案在目标页面上下文执行”记录源值、解码次数、赋值 API 与执行上下文。只有取得“最终 URL、导航类型和页面 origin 中的唯一标记分别记录；仅跳往外部 HTTPS 地址只能证明重定向”，才能证明可控数据到达了可执行 sink。",
-          "en": "The risk exists when redirect logic lacks parsed protocol and origin allowlists and relies only on prefixes or string replacement to classify safe destinations, allowing whether an application assigns an attacker-controlled string directly to a Location API and permits javascript or another active scheme to execute in the target page context. Review the input source, final parsing context, browser or policy version, and the final URL, navigation type, and unique marker in the page origin are recorded separately; navigation to external HTTPS alone proves only a redirect; otherwise record only an unconfirmed control differential."
+          "zh": "根因是跳转逻辑缺少 URL 解析与协议、origin 允许列表，只通过前缀或字符串替换判断安全目标；攻击者字符串直接赋给 Location API 后活动方案在目标页面上下文执行。",
+          "en": "The root cause is navigation logic lacking URL parsing and protocol/origin allowlists, judging safe targets only by prefixes or string replacement; attacker strings assigned directly to the Location API execute active schemes in the target page context."
         },
         "exploitation": {
-          "zh": "对 href 赋值、assign 和 replace 分别使用同源 HTTPS、跨源 HTTPS 与活动方案基线，记录浏览器差异和用户手势要求。在 DevTools 中分别对真实读取点和写入点设置断点，使用一次性标记跟踪源值、规范化结果与最终 DOM；每轮只改变一个来源或 sink，避免把导航限制或 CSP 阻断误认为数据流已经修复。",
-          "en": "In an authorized isolated environment, compare same-origin HTTPS, cross-origin HTTPS, and active-scheme baselines across href assignment, assign, and replace while recording browser differences and gesture requirements. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令逐行以 location 各赋值/assign/replace 形式导航 javascript: 串；执行即确认导航汇对活动 scheme 未限制。对 href 赋值、assign 和 replace 分别使用同源 HTTPS、跨源 HTTPS 与活动方案基线，记录浏览器差异和用户手势要求。活动方案导航受用户手势限制时按浏览器差异分别记录。",
+          "en": "Use the step 1 command to navigate javascript: strings through location assignment/assign/replace forms line by line; execution confirms the navigation sink does not restrict active schemes. Baseline href assignment, assign, and replace separately with same-origin HTTPS, cross-origin HTTPS, and active schemes, recording browser differences and user-gesture requirements. When user-gesture limits apply to active-scheme navigation, record per browser differences."
         },
         "mitigation": {
-          "zh": "使用 URL 构造器解析目标，只允许明确的 https/http origin 与路径；不要把原始用户值传给 Location API，并在跳转前绑定服务端生成的目标 ID。回归应覆盖原客户端来源、合法业务 URL 或文本以及最小危险值，确认安全 API 保留原功能，且危险 sink 不再收到攻击者可控字符串。",
-          "en": "Remediation should parse destinations with the URL constructor, allow only explicit https/http origins and paths, never pass raw user values to Location APIs, and bind redirects to server-generated destination IDs. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "使用 URL 构造器解析目标，只允许明确的 https/http origin 与路径；不要把原始用户值传给 Location API，并在跳转前绑定服务端生成的目标 ID。回归确认原功能保留且导航汇不再收到可控活动串。",
+          "en": "Parse targets with the URL constructor, allowing only explicit https/http origins and paths; never pass raw user values to the Location API, and bind server-generated target IDs before jumping. Regression must confirm functionality survives and the navigation sink no longer receives controllable active strings."
         },
         "difficulty": "advanced"
       },
@@ -2191,20 +2191,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "JavaScript 标识符混淆变体评估边缘防护、源站和浏览器之间的解析差异，而不是把 WAF 放行视为成功。需要核对的行为为：运行时重建的函数名和参数是否绕过静态字符串规则，同时保持与直接调用相同的执行语义。成立前提为：攻击者已控制 JavaScript 执行上下文，而防护把风险简化为 alert、eval 等字面关键字，没有消除代码注入 sink。最终必须取得以下证据：混淆表达式的运行时值、实际调用目标与唯一执行标记可在调试器中还原，不能仅凭 WAF 放行认定漏洞。",
-          "en": "JavaScript Identifier Obfuscation Variants checks whether runtime reconstruction of function names and arguments bypasses static string rules while retaining the semantics of a direct call. It applies when the attacker already controls a JavaScript execution context while defenses reduce risk to literal tokens such as alert or eval instead of removing the code-injection sink. A conclusion requires the runtime value, actual call target, and unique execution marker can be reconstructed in the debugger; WAF acceptance alone is not a vulnerability; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖 JavaScript 词法混淆变体的验证：String.fromCharCode、字符串拼接、括号索引、逗号求值、atob 与 Function 构造在运行时重建调用。用于确认只识别危险关键字的过滤策略是否可绕过。",
+          "en": "Covers JavaScript lexical-obfuscation variants: String.fromCharCode, string concatenation, bracket indexing, comma evaluation, atob, and Function construction rebuilding calls at runtime. Used to test whether filters recognizing only dangerous keywords can be bypassed."
         },
         "vulnerability": {
-          "zh": "多层处理出现风险的前提为：攻击者已控制 JavaScript 执行上下文，而防护把风险简化为 alert、eval 等字面关键字，没有消除代码注入 sink。审计应使用同一请求标识关联边缘动作、源站接收字节、应用输出与浏览器结果，并据此判断“运行时重建的函数名和参数是否绕过静态字符串规则，同时保持与直接调用相同的执行语义”。只有 200 响应、告警缺失或规则未命中均不足以证明 XSS。",
-          "en": "The risk exists when the attacker already controls a JavaScript execution context while defenses reduce risk to literal tokens such as alert or eval instead of removing the code-injection sink, allowing whether runtime reconstruction of function names and arguments bypasses static string rules while retaining the semantics of a direct call. Review the input source, final parsing context, browser or policy version, and the runtime value, actual call target, and unique execution marker can be reconstructed in the debugger; WAF acceptance alone is not a vulnerability; otherwise record only an unconfirmed control differential."
+          "zh": "根因是攻击者已控制 JavaScript 执行上下文，而防护把风险简化为 alert、eval 等字面关键字，没有消除代码注入汇；运行时重建的函数名与参数绕过静态字符串规则。",
+          "en": "The root cause is the attacker already controlling a JavaScript execution context while defenses reduce risk to literal keywords like alert and eval without eliminating code-injection sinks; runtime-rebuilt function names and arguments bypass static string rules."
         },
         "exploitation": {
-          "zh": "在确认可执行的 sink 中先测试直接调用，再逐个替换字符编码、属性拼接和 Function 构造，定位是哪一种词法规则产生差异。固定 WAF 规则集、源站版本与浏览器版本，先重放未编码基线，再逐类测试大小写、实体、空白或结构变化；命中后缩减为单一变换，并按“混淆表达式的运行时值、实际调用目标与唯一执行标记可在调试器中还原，不能仅凭 WAF 放行认定漏洞”完成确认。",
-          "en": "In an authorized isolated environment, in a confirmed executable sink, test a direct call first and then substitute character encoding, property concatenation, and Function construction one at a time to locate the differing rule. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令逐行以 fromCharCode、字符串拼接、括号索引、逗号求值、atob 等混淆构造执行；执行即确认词法混淆可绕过标识符检测，SVG 行外发 cookie 到 {ATTACKER_HOST} 作为外带验证。在确认可执行的汇中先测试直接调用，再逐个替换编码形态，定位产生差异的词法规则。",
+          "en": "Use the step 1 command to execute via fromCharCode, string concatenation, bracket indexing, comma evaluation, atob, and similar obfuscation line by line; execution confirms lexical obfuscation bypasses identifier detection, with the SVG line exfiltrating cookies to {ATTACKER_HOST} as out-of-band proof. Inside a confirmed-executable sink, test direct calls first, then swap encodings one by one to locate which lexical rule makes the difference."
         },
         "mitigation": {
-          "zh": "从根本上移除用户可控代码上下文，采用固定调用映射和数据序列化；服务端与前端都不要依赖危险函数名黑名单。修复同时覆盖边缘规则和最终应用 sink，再使用相同请求标识重放正常与异常样例，确认 WAF 动作、源站规范化和浏览器 DOM 三层结果一致。",
-          "en": "Remediation should remove user-controlled code contexts, use fixed call maps and data serialization, and avoid dangerous-function-name blacklists on both server and client. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "从根本上移除用户可控代码上下文，采用固定调用映射和数据序列化；服务端与前端都不要依赖危险函数名黑名单。修复后混淆表达式的运行时值与调用目标应无法还原为有效执行。",
+          "en": "Remove user-controllable code contexts at the root, adopting fixed call maps and data serialization; neither server nor frontend should rely on dangerous-function-name blacklists. After the fix, obfuscated expressions must be unable to resolve into valid execution at runtime."
         },
         "difficulty": "advanced"
       },
@@ -2435,20 +2435,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "AWS WAF/CloudFront XSS 规范化差异评估边缘防护、源站和浏览器之间的解析差异，而不是把 WAF 放行视为成功。需要核对的行为为：CloudFront、AWS WAF 文本转换、源站框架和浏览器对 CRLF、URL 编码与属性闭合是否得到不同字节序列。成立前提为：Web ACL 的转换顺序或匹配范围与源站解码链不一致，且应用最终把参数放入可执行 HTML 上下文。最终必须取得以下证据：同一请求的边缘动作日志、源站接收值、响应 DOM 与唯一执行标记可以通过请求 ID 关联。",
-          "en": "AWS WAF and CloudFront XSS Normalization Differential checks whether CloudFront, AWS WAF text transformations, the origin framework, and the browser derive different byte sequences from CRLF, URL encoding, and attribute closure. It applies when Web ACL transformation order or match scope differs from the origin decoding chain and the application finally places the parameter in an executable HTML context. A conclusion requires edge action logs, the origin-received value, response DOM, and unique execution marker for one request correlate through a request identifier; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖 AWS WAF/CloudFront 与源站、浏览器之间的规范化差异测试：以 CRLF、引号闭合和 URL 编码 SVG 等小型探针对比放行差异。用于确认 Web ACL 转换顺序与源站解码链是否一致。",
+          "en": "Covers normalization-differential testing across AWS WAF/CloudFront, origin, and browser: small probes with CRLF, quote closure, and URL-encoded SVG comparing pass-through differences. Used to confirm whether Web ACL transformation order matches the origin decode chain."
         },
         "vulnerability": {
-          "zh": "多层处理出现风险的前提为：Web ACL 的转换顺序或匹配范围与源站解码链不一致，且应用最终把参数放入可执行 HTML 上下文。审计应使用同一请求标识关联边缘动作、源站接收字节、应用输出与浏览器结果，并据此判断“CloudFront、AWS WAF 文本转换、源站框架和浏览器对 CRLF、URL 编码与属性闭合是否得到不同字节序列”。只有 200 响应、告警缺失或规则未命中均不足以证明 XSS。",
-          "en": "The risk exists when Web ACL transformation order or match scope differs from the origin decoding chain and the application finally places the parameter in an executable HTML context, allowing whether CloudFront, AWS WAF text transformations, the origin framework, and the browser derive different byte sequences from CRLF, URL encoding, and attribute closure. Review the input source, final parsing context, browser or policy version, and edge action logs, the origin-received value, response DOM, and unique execution marker for one request correlate through a request identifier; otherwise record only an unconfirmed control differential."
+          "zh": "根因是 Web ACL 的转换顺序或匹配范围与源站解码链不一致，且应用最终把参数放入可执行 HTML 上下文；边缘放行的字节序列在源站解码后恢复为可执行标记。",
+          "en": "The root cause is Web ACL transformation order or matching scope diverging from the origin decode chain while the application ultimately places parameters into executable HTML contexts; byte sequences passed at the edge revert to executable markup after origin decoding."
         },
         "exploitation": {
-          "zh": "在测试 Web ACL 中逐项记录 URL_DECODE、HTML_ENTITY_DECODE 等转换顺序，分别提交原始和单层编码样例，并对比源站日志与浏览器 DOM。固定 WAF 规则集、源站版本与浏览器版本，先重放未编码基线，再逐类测试大小写、实体、空白或结构变化；命中后缩减为单一变换，并按“同一请求的边缘动作日志、源站接收值、响应 DOM 与唯一执行标记可以通过请求 ID 关联”完成确认。",
-          "en": "In an authorized isolated environment, record the order of URL_DECODE, HTML_ENTITY_DECODE, and related transformations in a test Web ACL, submit raw and single-encoded samples, and compare origin logs with browser DOM. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令提交 4 条 CloudFront/AWS WAF 规范化探针；直连放行且执行作为基线，叠加 CloudFront 后对比放行差异即可判断规范化差异。在测试 Web ACL 中逐项记录 URL_DECODE、HTML_ENTITY_DECODE 等转换顺序，分别提交原始和单层编码样例并对比源站日志与浏览器 DOM。",
+          "en": "Use the step 1 command to submit four CloudFront/AWS WAF normalization probes; direct access passing and executing is the baseline, and comparing pass differences once CloudFront is layered in reveals normalization differentials. Record transformation orders such as URL_DECODE and HTML_ENTITY_DECODE in the test Web ACL item by item, submitting raw and single-encoded samples and contrasting origin logs with browser DOM."
         },
         "mitigation": {
-          "zh": "让边缘与源站采用一致的单次规范化模型，使用 AWS 托管规则与精确作用域，并在应用最终 HTML sink 执行上下文编码和消毒。修复同时覆盖边缘规则和最终应用 sink，再使用相同请求标识重放正常与异常样例，确认 WAF 动作、源站规范化和浏览器 DOM 三层结果一致。",
-          "en": "Remediation should align edge and origin on a single canonicalization model, use scoped AWS managed rules, and apply context encoding and sanitization at the final application HTML sink. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "让边缘与源站采用一致的单次规范化模型，使用 AWS 托管规则与精确作用域，并在应用最终 HTML 汇执行上下文编码和消毒；修复后同一请求的三层（边缘、源站、浏览器）结果应一致。",
+          "en": "Align edge and origin on a single-pass normalization model, use AWS managed rules with precise scope, and apply context encoding and sanitization at the application's final HTML sinks; after the fix, all three layers (edge, origin, browser) must agree for the same request."
         },
         "difficulty": "advanced"
       },
@@ -2803,20 +2803,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "结构闭合型 XSS Polyglot 集合用于核对 HTML 解析器如何处理当前输出位置。具体审查目标为：组合闭合序列是否把 tokenizer 从 RCDATA、RAWTEXT、属性值或外来内容状态切换到可创建事件节点的状态。测试成立的前提为：不可信值落在不透明的嵌套模板中，应用只对常规 HTML 文本编码，或中间组件对编码结果再次解码和拼接。证据要求为：解析器状态对应的最小闭合前缀、生成节点和执行事件均可从最终 DOM 解释，避免保留无法说明原因的超长字符串。响应中出现输入文本或标签并不等同于脚本已经执行。",
-          "en": "Structural-Breakout XSS Polyglot Set checks whether a compound breakout moves the tokenizer from RCDATA, RAWTEXT, attribute-value, or foreign-content states into one that creates an event-capable node. It applies when untrusted data lands in an opaque nested template where only ordinary HTML-text encoding is applied or an intermediate component decodes and concatenates the value again. A conclusion requires the minimal state-specific breakout prefix, generated node, and execution event can all be explained from the final DOM rather than retaining an unexplained long string; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖结构闭合型 XSS Polyglot 的 tokenizer 状态突破验证：title、style、textarea、script、属性与 MathML/SVG 嵌套结构的闭合序列。用于确认复杂输出位置中 tokenizer 能否切换到可创建事件节点的状态。",
+          "en": "Covers tokenizer state-breakout verification with structurally closed XSS Polyglots: closure sequences across title, style, textarea, script, attributes, and MathML/SVG nesting. Used to confirm whether the tokenizer can switch to states that create event nodes in complex output positions."
         },
         "vulnerability": {
-          "zh": "该问题的输入与输出前提为：不可信值落在不透明的嵌套模板中，应用只对常规 HTML 文本编码，或中间组件对编码结果再次解码和拼接。审查时必须确认“组合闭合序列是否把 tokenizer 从 RCDATA、RAWTEXT、属性值或外来内容状态切换到可创建事件节点的状态”，并把服务端响应、最终 DOM、事件条件和浏览器版本关联起来。若无法满足“解析器状态对应的最小闭合前缀、生成节点和执行事件均可从最终 DOM 解释，避免保留无法说明原因的超长字符串”这一证据要求，只能说明输入进入页面，不能确认 XSS。",
-          "en": "The risk exists when untrusted data lands in an opaque nested template where only ordinary HTML-text encoding is applied or an intermediate component decodes and concatenates the value again, allowing whether a compound breakout moves the tokenizer from RCDATA, RAWTEXT, attribute-value, or foreign-content states into one that creates an event-capable node. Review the input source, final parsing context, browser or policy version, and the minimal state-specific breakout prefix, generated node, and execution event can all be explained from the final DOM rather than retaining an unexplained long string; otherwise record only an unconfirmed control differential."
+          "zh": "根因是不可信值落在不透明的嵌套模板中，应用只对常规 HTML 文本编码，或中间组件对编码结果再次解码拼接；组合闭合序列把 tokenizer 从 RCDATA、RAWTEXT、属性值或外来内容状态切出。",
+          "en": "The root cause is untrusted values landing inside opaque nested templates with only plain HTML text encoded, or intermediate components re-decoding and re-concatenating encoded results; combined closure sequences switch the tokenizer out of RCDATA, RAWTEXT, attribute-value, or foreign-content states."
         },
         "exploitation": {
-          "zh": "先确认当前元素和属性状态，再提交原 Polyglot；对命中项逐段删除前缀和后缀，直到得到能解释 tokenizer 转换的最小样例。为每行样例分配独立的无害标记，每轮只改变一种标签、属性或编码形式；同时保存原始响应、最终 DOM、控制台和事件记录，以排除缓存、浏览器容错及人工交互造成的假阳性。",
-          "en": "In an authorized isolated environment, identify the current element and attribute state before submitting the original polyglot, then delete prefixes and suffixes from a hit until the tokenizer transition has a minimal explainable sample. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令逐行提交结构闭合型 Polyglot（含 MathML/mglyph 分支与模块脚本形态）；任一上下文突破执行即确认对应 Tokenizer 状态可达。先确认当前元素和属性状态再提交；对命中项逐段删除前缀和后缀，直到得到能解释状态转换的最小样例。",
+          "en": "Use the step 1 command to submit structurally closed Polyglots line by line (including MathML/mglyph branches and module-script forms); breakout execution in any context confirms the corresponding tokenizer state is reachable. Confirm the current element and attribute state before submitting; on hits, strip prefixes and suffixes segment by segment until a minimal sample explaining the state transition remains."
         },
         "mitigation": {
-          "zh": "由模板引擎在最终上下文自动转义，禁止组件重复解码，并对富 HTML 采用命名空间感知消毒器与 Trusted Types。修复后在同一输出位置重放普通文本、边界字符和最小异常样例，确认合法内容继续显示，同时活动节点、危险属性和对应执行记录均不再出现。",
-          "en": "Remediation should use template auto-escaping at the final context, prohibit repeated decoding by components, and protect rich HTML with a namespace-aware sanitizer and Trusted Types. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "由模板引擎在最终上下文自动转义，禁止组件重复解码，并对富 HTML 采用命名空间感知消毒器与 Trusted Types；修复后各闭合序列应停留在原解析状态，无事件节点生成。",
+          "en": "Let the template engine auto-escape in the final context, forbid component re-decoding, and apply namespace-aware sanitizers with Trusted Types for rich HTML; after the fix, closure sequences must remain in their original parse states with no event nodes created."
         },
         "difficulty": "expert"
       },
@@ -2923,20 +2923,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Cloudflare WAF XSS 解析差异评估边缘防护、源站和浏览器之间的解析差异，而不是把 WAF 放行视为成功。需要核对的行为为：Cloudflare 规则集与浏览器对混合大小写、实体编码、外来内容和事件属性是否产生不同解析结果。成立前提为：规则版本或自定义跳过规则未覆盖实际参数，源站继续把被放行值输出到可执行 HTML 上下文。最终必须取得以下证据：Cloudflare 安全事件、Ray ID、源站日志、最终 DOM 与唯一执行标记能够逐请求关联。",
-          "en": "Cloudflare WAF XSS Parsing Differential checks whether Cloudflare rules and the browser derive different results from mixed case, entity encoding, foreign content, and event attributes. It applies when the active rule version or a custom skip rule does not inspect the relevant parameter and the origin still emits the accepted value into an executable HTML context. A conclusion requires Cloudflare security events, Ray ID, origin logs, final DOM, and a unique execution marker correlate per request; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖 Cloudflare 托管规则与源站、浏览器之间的 XSS 解析差异测试：11 条事件、实体编码、动态求值与 MathML 分支探针，以直连基线对比经 Cloudflare 的拦截差异。用于确认放行差异是否构成真实可执行 XSS。",
+          "en": "Covers XSS parsing-differential testing across Cloudflare managed rules, origin, and browser: eleven probes of events, entity encoding, dynamic evaluation, and MathML branches, comparing block differences with and without Cloudflare against a direct baseline. Used to confirm whether pass-through differences constitute real executable XSS."
         },
         "vulnerability": {
-          "zh": "多层处理出现风险的前提为：规则版本或自定义跳过规则未覆盖实际参数，源站继续把被放行值输出到可执行 HTML 上下文。审计应使用同一请求标识关联边缘动作、源站接收字节、应用输出与浏览器结果，并据此判断“Cloudflare 规则集与浏览器对混合大小写、实体编码、外来内容和事件属性是否产生不同解析结果”。只有 200 响应、告警缺失或规则未命中均不足以证明 XSS。",
-          "en": "The risk exists when the active rule version or a custom skip rule does not inspect the relevant parameter and the origin still emits the accepted value into an executable HTML context, allowing whether Cloudflare rules and the browser derive different results from mixed case, entity encoding, foreign content, and event attributes. Review the input source, final parsing context, browser or policy version, and Cloudflare security events, Ray ID, origin logs, final DOM, and a unique execution marker correlate per request; otherwise record only an unconfirmed control differential."
+          "zh": "根因是 Cloudflare 规则集与浏览器对混合大小写、实体编码、外来内容与事件属性的解析结果不一致，且源站把被放行值输出到可执行 HTML 上下文；规则未覆盖或跳过条件即形成缺口。",
+          "en": "The root cause is Cloudflare rules and browsers parsing mixed case, entity encoding, foreign content, and event attributes differently while the origin outputs passed values into executable HTML contexts; uncovered rules or skip conditions form the gap."
         },
         "exploitation": {
-          "zh": "固定规则集和浏览器版本，对每个变体记录阻断、挑战或放行动作；仅对放行项在隔离页面复核 DOM 与执行，不进行高频批量探测。固定 WAF 规则集、源站版本与浏览器版本，先重放未编码基线，再逐类测试大小写、实体、空白或结构变化；命中后缩减为单一变换，并按“Cloudflare 安全事件、Ray ID、源站日志、最终 DOM 与唯一执行标记能够逐请求关联”完成确认。",
-          "en": "In an authorized isolated environment, pin the ruleset and browser version, record block, challenge, or allow actions per variant, and verify DOM plus execution only for accepted cases in an isolated page without high-rate probing. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令提交 11 条 Cloudflare 常见探针；直连放行作为基线，经 Cloudflare 复测对比拦截差异。固定规则集与浏览器版本，对每个变体记录阻断、挑战或放行动作；仅对放行项在隔离页面复核 DOM 与执行，不做高频批量探测。",
+          "en": "Use the step 1 command to submit eleven common Cloudflare probes; direct-access pass-through is the baseline, and replaying through Cloudflare reveals block differences. Pin the rule set and browser version, recording block, challenge, or pass actions per variant; re-verify only pass items for DOM and execution in isolated pages, avoiding high-frequency bulk probing."
         },
         "mitigation": {
-          "zh": "升级并调优 Cloudflare 托管规则，删除不必要的跳过条件，同时在源站统一解码、按上下文编码并部署严格 CSP。修复同时覆盖边缘规则和最终应用 sink，再使用相同请求标识重放正常与异常样例，确认 WAF 动作、源站规范化和浏览器 DOM 三层结果一致。",
-          "en": "Remediation should update and tune Cloudflare managed rules, remove unnecessary skip conditions, and still canonicalize once, encode by context, and deploy strict CSP at the origin. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "升级并调优 Cloudflare 托管规则，删除不必要的跳过条件，源站统一解码、按上下文编码并部署严格 CSP；修复后边缘动作、源站规范化与浏览器 DOM 三层对同一请求应一致。",
+          "en": "Upgrade and tune Cloudflare managed rules, remove unnecessary skip conditions, and unify decoding, context encoding, and strict CSP at the origin; after the fix, edge actions, origin normalization, and browser DOM must agree for the same request."
         },
         "difficulty": "advanced"
       },
@@ -3043,20 +3043,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Akamai App & API Protector XSS 差异评估边缘防护、源站和浏览器之间的解析差异，而不是把 WAF 放行视为成功。需要核对的行为为：Akamai 策略对自动焦点、媒体错误和 SVG onload 等事件入口的检测是否与最终浏览器事件模型一致。成立前提为：生产策略处于告警模式、例外范围过宽或参数解析不完整，并且源站允许事件属性进入 HTML。最终必须取得以下证据：Akamai 请求参考、策略动作、源站接收值和实际事件触发标记四项信息必须对应同一请求。",
-          "en": "Akamai App and API Protector XSS Differential checks whether Akamai policy detection for autofocus, media errors, and SVG onload matches the browser's final event model. It applies when the production policy is in alert mode, exceptions are too broad, or parameter parsing is incomplete while the origin permits event attributes in HTML. A conclusion requires the Akamai request reference, policy action, origin-received value, and actual event marker must correspond to one request; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖 Akamai App & API Protector 与源站之间的 XSS 检测差异：9 条 SVG、焦点事件与媒体错误事件短探针。用于核对策略对自动聚焦、onerror、SVG onload 等事件入口的检测是否与浏览器事件模型一致。",
+          "en": "Covers XSS detection differentials between Akamai App & API Protector and the origin: nine short probes of SVG, focus events, and media error events. Used to check whether policy detection of autofocus, onerror, SVG onload, and similar event entries matches the browser event model."
         },
         "vulnerability": {
-          "zh": "多层处理出现风险的前提为：生产策略处于告警模式、例外范围过宽或参数解析不完整，并且源站允许事件属性进入 HTML。审计应使用同一请求标识关联边缘动作、源站接收字节、应用输出与浏览器结果，并据此判断“Akamai 策略对自动焦点、媒体错误和 SVG onload 等事件入口的检测是否与最终浏览器事件模型一致”。只有 200 响应、告警缺失或规则未命中均不足以证明 XSS。",
-          "en": "The risk exists when the production policy is in alert mode, exceptions are too broad, or parameter parsing is incomplete while the origin permits event attributes in HTML, allowing whether Akamai policy detection for autofocus, media errors, and SVG onload matches the browser's final event model. Review the input source, final parsing context, browser or policy version, and the Akamai request reference, policy action, origin-received value, and actual event marker must correspond to one request; otherwise record only an unconfirmed control differential."
+          "zh": "根因是生产策略处于告警模式、例外范围过宽或参数解析不完整，且源站允许事件属性进入 HTML；策略对无需交互、需焦点与依赖错误事件的触发条件覆盖不全。",
+          "en": "The root cause is production policy in alert mode, overly broad exceptions, or incomplete parameter parsing while the origin allows event attributes into HTML; policy coverage misses interaction-free, focus-dependent, and error-event triggers."
         },
         "exploitation": {
-          "zh": "在测试配置中逐条发送原样例，区分无需交互、需要焦点和依赖错误事件的触发条件，记录策略动作后才在隔离浏览器复核。固定 WAF 规则集、源站版本与浏览器版本，先重放未编码基线，再逐类测试大小写、实体、空白或结构变化；命中后缩减为单一变换，并按“Akamai 请求参考、策略动作、源站接收值和实际事件触发标记四项信息必须对应同一请求”完成确认。",
-          "en": "In an authorized isolated environment, send each original sample against a test configuration, separate automatic, focus-dependent, and error-dependent triggers, record the policy action, and only then verify in an isolated browser. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令提交 9 条 Akamai 常见探针；直连放行作为基线，经 Akamai 复测对比拦截差异。逐条区分无需交互、需要焦点和依赖错误事件的触发条件，记录策略动作后在隔离浏览器复核；请求参考、策略动作、源站值与事件触发须对应同一请求。",
+          "en": "Use the step 1 command to submit nine common Akamai probes; direct-access pass-through is the baseline, and replaying through Akamai reveals block differences. Separate interaction-free, focus-dependent, and error-event triggers per probe, record policy actions, then re-verify in an isolated browser; request reference, policy action, origin value, and event firing must map to the same request."
         },
         "mitigation": {
-          "zh": "将相关保护策略设为阻断并收紧例外和参数范围；源站应移除事件属性、执行上下文编码并以 CSP 限制脚本来源。修复同时覆盖边缘规则和最终应用 sink，再使用相同请求标识重放正常与异常样例，确认 WAF 动作、源站规范化和浏览器 DOM 三层结果一致。",
-          "en": "Remediation should place the relevant protection policy in blocking mode, narrow exceptions and parameter scope, and remove event attributes, encode output contexts, and restrict script sources at the origin. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "将相关保护策略设为阻断并收紧例外与参数范围；源站移除事件属性、执行上下文编码并以 CSP 限制脚本来源；修复后三层结果一致且策略动作可追溯。",
+          "en": "Set the relevant protection policies to block and tighten exceptions and parameter scope; remove event attributes at the origin, apply context encoding, and restrict script sources via CSP; after the fix, the three layers must agree with traceable policy actions."
         },
         "difficulty": "advanced"
       },
@@ -3163,20 +3163,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Imperva Cloud WAF 活动文档差异评估边缘防护、源站和浏览器之间的解析差异，而不是把 WAF 放行视为成功。需要核对的行为为：边缘规则是否理解嵌套 HTML 文档载体及其 MIME 和 CSP 约束，还是只匹配外层标签名称。成立前提为：Imperva 策略允许含活动文档的属性通过，源站不消毒 object、embed、iframe srcdoc 等元素，且浏览器支持相应载体。最终必须取得以下证据：Imperva 事件 ID、最终元素属性、嵌套文档 origin 与唯一执行标记完整记录，已废弃 link import 不应算成功。",
-          "en": "Imperva Cloud WAF Active-Document Differential checks whether edge rules understand nested HTML document carriers and their MIME and CSP constraints or only match outer tag names. It applies when Imperva policy accepts attributes containing active documents, the origin does not sanitize object, embed, or iframe srcdoc elements, and the browser supports the carrier. A conclusion requires the Imperva event ID, final element attribute, nested-document origin, and unique marker are recorded, while obsolete link imports are not counted as success; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖 Imperva Cloud WAF 与浏览器活动文档处理的差异测试：data: 链接、srcdoc、object/embed 与旧式 link import 五条探针。用于确认边缘规则是否理解嵌套文档载体而非只匹配标签名。",
+          "en": "Covers active-document differentials between Imperva Cloud WAF and browsers: five probes of data: links, srcdoc, object/embed, and legacy link import. Used to confirm whether edge rules understand nested-document carriers rather than matching only outer tag names."
         },
         "vulnerability": {
-          "zh": "多层处理出现风险的前提为：Imperva 策略允许含活动文档的属性通过，源站不消毒 object、embed、iframe srcdoc 等元素，且浏览器支持相应载体。审计应使用同一请求标识关联边缘动作、源站接收字节、应用输出与浏览器结果，并据此判断“边缘规则是否理解嵌套 HTML 文档载体及其 MIME 和 CSP 约束，还是只匹配外层标签名称”。只有 200 响应、告警缺失或规则未命中均不足以证明 XSS。",
-          "en": "The risk exists when Imperva policy accepts attributes containing active documents, the origin does not sanitize object, embed, or iframe srcdoc elements, and the browser supports the carrier, allowing whether edge rules understand nested HTML document carriers and their MIME and CSP constraints or only match outer tag names. Review the input source, final parsing context, browser or policy version, and the Imperva event ID, final element attribute, nested-document origin, and unique marker are recorded, while obsolete link imports are not counted as success; otherwise record only an unconfirmed control differential."
+          "zh": "根因是 Imperva 策略放行含活动文档的属性，源站不消毒 object、embed、iframe srcdoc 等元素且浏览器支持相应载体；边缘只匹配外层标签名时嵌套文档执行被漏检。",
+          "en": "The root cause is Imperva policy passing attributes carrying active documents while the origin does not sanitize object, embed, or iframe srcdoc elements and browsers support the carriers; nested-document execution escapes detection when the edge matches only outer tag names."
         },
         "exploitation": {
-          "zh": "先确认目标浏览器对每种载体的支持，再向测试策略提交原集合；分开记录 WAF 放行、资源加载与嵌套脚本执行三个阶段。固定 WAF 规则集、源站版本与浏览器版本，先重放未编码基线，再逐类测试大小写、实体、空白或结构变化；命中后缩减为单一变换，并按“Imperva 事件 ID、最终元素属性、嵌套文档 origin 与唯一执行标记完整记录，已废弃 link import 不应算成功”完成确认。",
-          "en": "In an authorized isolated environment, confirm browser support for every carrier before submitting the original set to a test policy, and record WAF acceptance, resource loading, and nested script execution as separate stages. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令提交 5 条 Imperva 活动文档探针；直连放行作为基线，经 Imperva 复测对比拦截差异。先确认目标浏览器对每种载体的支持，再分开记录 WAF 放行、资源加载与嵌套脚本执行三个阶段；已废弃特性（如 link import）按兼容性单独记录。",
+          "en": "Use the step 1 command to submit five Imperva active-document probes; direct-access pass-through is the baseline, and replaying through Imperva reveals block differences. First confirm target-browser support per carrier, then record three stages separately — WAF pass, resource load, and nested-script execution — noting deprecated features like link import separately for compatibility."
         },
         "mitigation": {
-          "zh": "在 Imperva 中启用并调优 XSS 防护，但以源站 HTML 消毒移除活动文档元素为主；同时设置 object-src none、frame-src 和严格脚本策略。修复同时覆盖边缘规则和最终应用 sink，再使用相同请求标识重放正常与异常样例，确认 WAF 动作、源站规范化和浏览器 DOM 三层结果一致。",
-          "en": "Remediation should enable and tune Imperva XSS protection while relying primarily on origin HTML sanitization to remove active-document elements, plus object-src none, precise frame-src, and a strict script policy. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "在 Imperva 启用并调优 XSS 防护，但以源站 HTML 消毒移除活动文档元素为主，设置 object-src none、frame-src 与严格脚本策略；修复后三层结果一致。",
+          "en": "Enable and tune Imperva XSS protection, but prioritize origin HTML sanitization removing active-document elements, with object-src none, frame-src, and strict script policies; after the fix, the three layers must agree."
         },
         "difficulty": "advanced"
       },
@@ -3283,20 +3283,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "Wordfence WAF 动态求值差异评估边缘防护、源站和浏览器之间的解析差异，而不是把 WAF 放行视为成功。需要核对的行为为：Wordfence 规则对动态重建和求值语法的覆盖是否与 WordPress 输出过滤及浏览器执行结果一致。成立前提为：插件或主题把可控值原样输出，Wordfence 处于学习或例外模式，且页面 CSP 允许内联脚本或 unsafe-eval。最终必须取得以下证据：Wordfence 实时流量记录、命中规则、WordPress 模板位置、最终 DOM 与唯一执行标记必须相互对应。",
-          "en": "Wordfence WAF Dynamic-Evaluation Differential checks whether Wordfence coverage of runtime reconstruction and evaluation syntax matches WordPress output filtering and browser execution. It applies when a plugin or theme emits a controllable value raw, Wordfence is learning or bypassed by an exception, and page CSP permits inline script or unsafe-eval. A conclusion requires Wordfence live-traffic data, matched rule, WordPress template location, final DOM, and unique marker must correlate; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖 WordPress 环境下 Wordfence WAF 与浏览器的动态求值差异测试：7 条 javascript URL、属性拼接、字符串定时器、Function 与 eval 探针。用于核对规则对动态重建与求值语法的覆盖。",
+          "en": "Covers dynamic-evaluation differentials between Wordfence WAF and browsers on WordPress: seven probes of javascript URLs, attribute concatenation, string timers, Function, and eval. Used to check rule coverage of dynamic reconstruction and evaluation syntax."
         },
         "vulnerability": {
-          "zh": "多层处理出现风险的前提为：插件或主题把可控值原样输出，Wordfence 处于学习或例外模式，且页面 CSP 允许内联脚本或 unsafe-eval。审计应使用同一请求标识关联边缘动作、源站接收字节、应用输出与浏览器结果，并据此判断“Wordfence 规则对动态重建和求值语法的覆盖是否与 WordPress 输出过滤及浏览器执行结果一致”。只有 200 响应、告警缺失或规则未命中均不足以证明 XSS。",
-          "en": "The risk exists when a plugin or theme emits a controllable value raw, Wordfence is learning or bypassed by an exception, and page CSP permits inline script or unsafe-eval, allowing whether Wordfence coverage of runtime reconstruction and evaluation syntax matches WordPress output filtering and browser execution. Review the input source, final parsing context, browser or policy version, and Wordfence live-traffic data, matched rule, WordPress template location, final DOM, and unique marker must correlate; otherwise record only an unconfirmed control differential."
+          "zh": "根因是插件或主题把可控值原样输出，Wordfence 处于学习或例外模式，且页面 CSP 允许内联脚本或 unsafe-eval；规则对动态重建与求值语法的覆盖与浏览器执行结果不一致。",
+          "en": "The root cause is plugins or themes outputting controllable values verbatim, Wordfence in learning or exception mode, and page CSP allowing inline scripts or unsafe-eval; rule coverage of dynamic reconstruction and evaluation syntax diverges from browser execution."
         },
         "exploitation": {
-          "zh": "在测试站点固定 WordPress、插件和规则版本，逐类比较直接调用与动态重建变体；先确认模板 sink，再评价 WAF 差异。固定 WAF 规则集、源站版本与浏览器版本，先重放未编码基线，再逐类测试大小写、实体、空白或结构变化；命中后缩减为单一变换，并按“Wordfence 实时流量记录、命中规则、WordPress 模板位置、最终 DOM 与唯一执行标记必须相互对应”完成确认。",
-          "en": "In an authorized isolated environment, pin WordPress, plugin, and ruleset versions on a test site, compare direct calls with runtime reconstruction by class, and confirm the template sink before assessing WAF differences. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令提交 7 条动态求值探针；直连放行作为基线，经 Wordfence 复测对比拦截差异。固定 WordPress、插件和规则版本，逐类比较直接调用与动态重建变体；先确认模板 sink 再评价 WAF 差异，命中记录与模板位置关联。命中规则与放行差异均写入报告，供规则调优参照。",
+          "en": "Use the step 1 command to submit seven dynamic-evaluation probes; direct-access pass-through is the baseline, and replaying through Wordfence reveals block differences. Pin WordPress, plugin, and rule versions, comparing direct calls versus dynamic-reconstruction variants class by class; confirm the template sink before judging WAF differentials, and correlate hits with template locations. Write both rule hits and pass differentials into the report for tuning reference."
         },
         "mitigation": {
-          "zh": "更新 Wordfence 与易受影响插件主题，移除宽泛允许规则；开发代码应使用 esc_html、esc_attr 等匹配上下文的 WordPress 转义 API。修复同时覆盖边缘规则和最终应用 sink，再使用相同请求标识重放正常与异常样例，确认 WAF 动作、源站规范化和浏览器 DOM 三层结果一致。",
-          "en": "Remediation should update Wordfence and affected plugins or themes, remove broad allow rules, and use WordPress context-specific escaping APIs such as esc_html and esc_attr in application code. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "更新 Wordfence 与易受影响插件主题，移除宽泛允许规则；开发使用 esc_html、esc_attr 等上下文匹配的 WordPress 转义 API；修复后边缘动作、源站规范化与浏览器 DOM 三层结果一致。",
+          "en": "Update Wordfence and affected plugins/themes, removing broad allow rules; develop with context-matched WordPress escaping APIs such as esc_html and esc_attr; after the fix, edge actions, origin normalization, and browser DOM must agree."
         },
         "difficulty": "advanced"
       },
@@ -3403,20 +3403,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "CSP 允许列表与 Nonce 失效模式用于核对 CSP 指令与具体浏览器能力之间的控制边界。审查目标为：script-src 是否依赖可被攻击者借用的主机允许列表，或 nonce 是否可预测、复用、泄露并应用到注入脚本。策略问题的成立前提为：页面已存在脚本元素注入，可信源提供可控 JavaScript 响应，或者 nonce 没有为每个响应随机生成并受到模板隔离。判定证据为：生效响应头、脚本请求来源、nonce 生成与复用证据以及唯一执行标记共同证明策略失效；普通导航、预取或单次外连必须与脚本执行分开记录。",
-          "en": "CSP Allowlist and Nonce Failure Modes checks whether script-src relies on attacker-usable host allowlists or a nonce is predictable, reused, leaked, and applicable to an injected script. It applies when the page already permits script-element injection, a trusted origin serves controllable JavaScript, or the nonce is not freshly randomized per response and isolated from untrusted templates. A conclusion requires the effective response header, script request origin, nonce generation or reuse evidence, and unique execution marker jointly prove policy failure; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖 CSP 允许列表与 Nonce 失效模式验证：同源或可信 CDN 的 JSONP、可控脚本资源与泄露 nonce 四类失效样例。用于确认 CSP 脚本信任模型的设计缺陷而非示例域名的可达性。",
+          "en": "Covers CSP allowlist and nonce failure-mode verification: four failure samples of same-origin or trusted-CDN JSONP, controllable script resources, and leaked nonces. Used to confirm design flaws in the CSP script trust model rather than reachability of the sample domains."
         },
         "vulnerability": {
-          "zh": "策略风险的前提为：页面已存在脚本元素注入，可信源提供可控 JavaScript 响应，或者 nonce 没有为每个响应随机生成并受到模板隔离。评估需要从最终响应中的生效 CSP 出发，逐项判断“script-src 是否依赖可被攻击者借用的主机允许列表，或 nonce 是否可预测、复用、泄露并应用到注入脚本”。若没有“生效响应头、脚本请求来源、nonce 生成与复用证据以及唯一执行标记共同证明策略失效”，策略警告、资源请求或页面跳转都不能单独证明 CSP 被绕过。",
-          "en": "The risk exists when the page already permits script-element injection, a trusted origin serves controllable JavaScript, or the nonce is not freshly randomized per response and isolated from untrusted templates, allowing whether script-src relies on attacker-usable host allowlists or a nonce is predictable, reused, leaked, and applicable to an injected script. Review the input source, final parsing context, browser or policy version, and the effective response header, script request origin, nonce generation or reuse evidence, and unique execution marker jointly prove policy failure; otherwise record only an unconfirmed control differential."
+          "zh": "根因是 script-src 依赖可被借用的主机允许列表，或 nonce 可预测、复用、泄露并应用到注入脚本；页面已有脚本元素注入且可信源提供可控 JS 响应时策略即失效。",
+          "en": "The root cause is script-src relying on borrowable host allowlists, or nonces being predictable, reused, leaked, and applied to injected scripts; the policy fails once script-element injection exists and trusted origins serve controllable JS responses."
         },
         "exploitation": {
-          "zh": "从实际页面提取生效策略，确认可信源响应内容是否可控，并比较两次响应 nonce；仅用自有无害端点替换示例 URL 复核。先保存完整响应头并展开指令回退关系，再以自有无害端点替换示例地址，记录 CSP 违规事件、网络 Initiator、最终 origin 和执行标记，分别评价每一种浏览器能力。",
-          "en": "In an authorized isolated environment, extract the effective policy from the real page, determine whether trusted-origin response content is controllable, compare nonces across two responses, and verify only with a harmless owned endpoint substituted for examples. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令以 JSONP 回调、可信 CDN 脚本与泄漏 nonce 构造 4 类 CSP 失效样例；对应脚本执行即确认该信任模型缺陷可利用。从实际页面提取生效策略，确认可信源响应内容是否可控，比较两次响应 nonce，示例 URL 以自有无害端点替换复核。",
+          "en": "Use the step 1 command to build four CSP failure samples from JSONP callbacks, trusted-CDN scripts, and leaked nonces; the corresponding script executing confirms the trust-model flaw is exploitable. Extract the effective policy from the real page, confirm whether trusted-origin responses are controllable, compare nonces across two responses, and re-verify with sample URLs replaced by your own harmless endpoints."
         },
         "mitigation": {
-          "zh": "采用 strict-dynamic 配合每响应随机 nonce 或稳定脚本 hash，移除通配主机和不必要 JSONP，并确保 nonce 不进入用户可控模板或缓存。在同一浏览器与缓存状态下重放合法资源、业务导航和原异常样例，确认必要功能仍可用，并且相关指令稳定阻断越界脚本、框架、基地址或资源外连。",
-          "en": "Remediation should use strict-dynamic with a fresh per-response nonce or stable script hashes, remove wildcard hosts and unnecessary JSONP, and keep nonces out of user-controlled templates and shared caches. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "采用 strict-dynamic 配合每响应随机 nonce 或稳定脚本 hash，移除通配主机与不必要 JSONP，确保 nonce 不进入用户可控模板或缓存；修复后相关指令应稳定阻断越界脚本执行。",
+          "en": "Adopt strict-dynamic with per-response random nonces or stable script hashes, remove wildcard hosts and unnecessary JSONP, and keep nonces out of user-controllable templates and caches; after the fix, the directives must consistently block out-of-bounds script execution."
         },
         "difficulty": "expert"
       },
@@ -3523,20 +3523,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "DOM Clobbering 命名属性覆盖检查浏览器命名属性访问。需要验证的行为为：浏览器命名属性访问是否让注入元素替代代码期望的普通对象、配置字段或函数引用，并进一步影响危险 sink。成立前提为：应用依赖 window.foo、document.foo 或隐式全局变量，允许不可信 HTML 设置 id/name，并未验证取回值的类型和所有权。判定标准为：覆盖前后对象类型、属性解析路径与后续控制流差异可以在调试器中复现；仅创建同名元素不等于可利用。仅创建同名元素只能证明发生名称冲突，不能证明控制流或危险 sink 已被改变。",
-          "en": "DOM Clobbering Named-Property Override checks whether browser named-property access lets injected elements replace ordinary objects, configuration fields, or function references expected by code and then influence a dangerous sink. It applies when the application relies on window.foo, document.foo, or implicit globals, permits untrusted HTML with id or name, and does not validate the retrieved value's type and ownership. A conclusion requires the before-and-after object types, property resolution path, and downstream control-flow difference are reproducible in the debugger; creating a same-name element alone is not exploitation; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖 DOM Clobbering 命名属性覆盖验证：以 id/name 命名元素覆盖 window/document 上脚本可达的全局属性（含 javascript: 属性形态），使安全检查或配置读取转向攻击者节点。",
+          "en": "Covers DOM clobbering named-property-overwrite verification: id/name-named elements overwriting script-reachable globals on window/document (including javascript: attribute forms), steering security checks or configuration reads toward attacker nodes."
         },
         "vulnerability": {
-          "zh": "命名属性覆盖的前提为：应用依赖 window.foo、document.foo 或隐式全局变量，允许不可信 HTML 设置 id/name，并未验证取回值的类型和所有权。审计必须跟踪“浏览器命名属性访问是否让注入元素替代代码期望的普通对象、配置字段或函数引用，并进一步影响危险 sink”涉及的属性类型、所有权与后续使用点。只有类型变化和控制流影响连续可见时，才可从 id/name 冲突进一步判断安全影响。",
-          "en": "The risk exists when the application relies on window.foo, document.foo, or implicit globals, permits untrusted HTML with id or name, and does not validate the retrieved value's type and ownership, allowing whether browser named-property access lets injected elements replace ordinary objects, configuration fields, or function references expected by code and then influence a dangerous sink. Review the input source, final parsing context, browser or policy version, and the before-and-after object types, property resolution path, and downstream control-flow difference are reproducible in the debugger; creating a same-name element alone is not exploitation; otherwise record only an unconfirmed control differential."
+          "zh": "根因是应用依赖 window.foo、document.foo 或隐式全局变量，允许不可信 HTML 设置 id/name 且未验证取回值的类型与所有权；注入元素替代代码期望的对象或函数引用。",
+          "en": "The root cause is the application relying on window.foo, document.foo, or implicit globals while untrusted HTML may set id/name without validating the retrieved value's type and ownership; injected elements substitute for expected objects or function references."
         },
         "exploitation": {
-          "zh": "先记录目标全局属性的预期类型，再注入原集合中的同名元素并单步执行读取点；只有值进入 URL、HTML 或代码 sink 才扩展影响验证。先记录目标属性的预期类型与所有权，再逐个注入同名元素并单步观察解析和后续分支；仅当可控值到达 URL、HTML 或代码 sink 时继续验证，并按“覆盖前后对象类型、属性解析路径与后续控制流差异可以在调试器中复现；仅创建同名元素不等于可利用”确认结果。",
-          "en": "In an authorized isolated environment, record the expected type of the target global property, inject same-name elements from the original set, step through the read, and extend impact testing only when the value reaches a URL, HTML, or code sink. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令以 id/name 命名元素覆盖脚本可达的全局属性；覆盖生效且行为改变（执行或导航）即确认 DOM Clobbering 成立。先记录目标全局属性的预期类型，逐个注入同名元素并单步观察解析与分支；仅当可控值到达 URL、HTML 或代码汇时才扩展影响验证。",
+          "en": "Use the step 1 command to overwrite script-reachable globals with id/name-named elements; the overwrite taking effect with changed behavior (execution or navigation) confirms DOM clobbering. Record the expected type of the target global first, inject same-named elements one by one while stepping through resolution and branches, and extend impact verification only when controllable values reach URL, HTML, or code sinks."
         },
         "mitigation": {
-          "zh": "避免隐式全局和命名属性访问，使用模块局部变量与显式 getElementById，并验证对象类型；消毒 id/name 冲突并通过 CSP/Trusted Types 约束后续 sink。重放合法 DOM 标识和冲突样例，确认显式查询与类型检查保留正常组件行为，同时命名属性不再覆盖配置对象、函数或安全决策。",
-          "en": "Remediation should avoid implicit globals and named-property access, use module-local variables and explicit getElementById with type checks, sanitize id or name conflicts, and constrain downstream sinks with CSP and Trusted Types. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "避免隐式全局与命名属性访问，用模块局部变量与显式 getElementById 并验证对象类型；消毒 id/name 冲突并以 CSP/Trusted Types 约束后续汇；修复后命名属性不再覆盖配置对象、函数或安全决策。",
+          "en": "Avoid implicit globals and named-property access, using module-local variables and explicit getElementById with object-type checks; sanitize id/name collisions and constrain downstream sinks via CSP/Trusted Types; after the fix, named properties must no longer override config objects, functions, or security decisions."
         },
         "difficulty": "advanced"
       },
@@ -3643,20 +3643,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "CSS 注入属性匹配外带属于 CSS 条件资源加载侧信道。验证目标为：攻击者控制的 CSS 是否能根据 DOM 属性或字符匹配条件选择性加载远程资源，从请求标记推断页面中的受保护值。该测试要求：应用允许 style、link 或外部样式输入，敏感值存在于 CSS 可匹配的 DOM 属性或可渲染文本中，并允许向外部域加载资源。有效证据标准为：只有与预置测试值相对应的条件请求序列才能证明推断能力；无条件 @import 或 background 请求仅证明 CSS 外连。无条件字体、图片或样式请求只能证明存在外连，不能证明敏感值已被推断。",
-          "en": "CSS Injection Attribute-Match Exfiltration checks whether attacker-controlled CSS can conditionally load a remote resource based on DOM attribute or character matches and reveal protected page values through request markers. It applies when the application accepts style, link, or external stylesheet input, a sensitive value is present in CSS-matchable DOM attributes or rendered text, and external resource loading is permitted. A conclusion requires only a conditional request sequence matching a planted test value proves inference; an unconditional @import or background request proves only CSS-originated egress; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖 CSS 注入的可观察外带验证：属性选择器、@import、外部样式表与背景图四种通道产生网络请求。用于确认攻击者 CSS 能按 DOM 匹配条件选择性加载远程资源，不把静态外连直接等同于敏感数据泄露。",
+          "en": "Covers observable exfiltration via CSS injection: network requests through four channels — attribute selectors, @import, external stylesheets, and background images. Used to confirm attacker CSS selectively loads remote resources on DOM-match conditions, without equating plain egress with sensitive data disclosure."
         },
         "vulnerability": {
-          "zh": "侧信道成立的前提为：应用允许 style、link 或外部样式输入，敏感值存在于 CSS 可匹配的 DOM 属性或可渲染文本中，并允许向外部域加载资源。审计围绕“攻击者控制的 CSS 是否能根据 DOM 属性或字符匹配条件选择性加载远程资源，从请求标记推断页面中的受保护值”使用预置的非敏感哨兵值，并严格控制缓存、预加载和字体回退。否则，网络请求与字符或属性条件之间无法建立可靠因果关系。",
-          "en": "The risk exists when the application accepts style, link, or external stylesheet input, a sensitive value is present in CSS-matchable DOM attributes or rendered text, and external resource loading is permitted, allowing whether attacker-controlled CSS can conditionally load a remote resource based on DOM attribute or character matches and reveal protected page values through request markers. Review the input source, final parsing context, browser or policy version, and only a conditional request sequence matching a planted test value proves inference; an unconditional @import or background request proves only CSS-originated egress; otherwise record only an unconfirmed control differential."
+          "zh": "根因是应用允许 style、link 或外部样式输入，敏感值存在于 CSS 可匹配的 DOM 属性或可渲染文本中，且允许向外部域加载资源；条件资源加载形成推断侧信道。",
+          "en": "The root cause is the application allowing style, link, or external stylesheet input with sensitive values present in CSS-matchable DOM attributes or renderable text, plus remote resource loading permitted; conditional resource loads form an inference side channel."
         },
         "exploitation": {
-          "zh": "在隔离页面放置非敏感哨兵属性，先测试无条件资源加载，再按单字符前缀规则观察选择性请求；不接触真实令牌或用户字段。先建立无条件资源加载基线，再逐个启用字符或属性条件；每轮清理缓存并记录 Initiator、请求 URL 与已知哨兵值，最终按“只有与预置测试值相对应的条件请求序列才能证明推断能力；无条件 @import 或 background 请求仅证明 CSS 外连”判断条件侧信道是否可重复。",
-          "en": "In an authorized isolated environment, place a non-sensitive sentinel attribute in an isolated page, establish unconditional resource loading, then observe conditional requests from one-character prefix rules without touching real tokens or user fields. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令以属性选择器、@import、link 样式表与背景图四种通道外带；{ATTACKER_HOST} 按通道收到对应请求即确认 CSS 注入外带通道可用，逐行注入并记录网络请求。在隔离页面放置非敏感哨兵属性，先测无条件加载基线，再按单字符前缀规则观察选择性请求。",
+          "en": "Use the step 1 command to exfiltrate via attribute selectors, @import, link stylesheets, and background images; {ATTACKER_HOST} receiving the matching requests per channel confirms the CSS-injection exfiltration channel, injecting line by line and recording network requests. Place a non-sensitive sentinel attribute in an isolated page, baseline unconditional loads first, then observe selective requests under single-character prefix rules."
         },
         "mitigation": {
-          "zh": "禁止不可信 CSS、style 和任意外部样式 URL，使用严格 HTML/CSS 消毒；通过 CSP style-src、img-src、font-src 与出口域允许列表阻断外带。回归分别覆盖合法主题样式、受控字体和原条件规则，确认业务样式仍可加载，而用户样式无法接触敏感 DOM，也不能向非允许域发送选择性请求。",
-          "en": "Remediation should disallow untrusted CSS, style elements, and arbitrary stylesheet URLs, sanitize HTML and CSS strictly, and block egress with CSP style-src, img-src, font-src, and destination allowlists. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "禁止不可信 CSS、style 与任意外部样式 URL，使用严格 HTML/CSS 消毒；以 CSP style-src/img-src/font-src 与出口域允许列表阻断外带；修复后用户样式无法接触敏感 DOM 或发送选择性请求。",
+          "en": "Forbid untrusted CSS, style, and arbitrary external stylesheet URLs, applying strict HTML/CSS sanitization; block exfiltration via CSP style-src/img-src/font-src and egress-domain allowlists; after the fix, user styles must not touch sensitive DOM or send selective requests."
         },
         "difficulty": "advanced"
       },
@@ -3763,20 +3763,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "低频 HTML 事件处理器变体用于核对 HTML 解析器如何处理当前输出位置。具体审查目标为：非主流元素的 onload、onstart 等事件是否在目标浏览器版本和实际资源状态下触发，而不是仅被解析进 DOM。测试成立的前提为：富文本消毒器允许这些元素及事件属性，目标浏览器仍实现相应事件，并且 CSP 或资源策略没有阻断必要加载。证据要求为：元素支持状态、事件监听记录和唯一执行标记一起保存；不支持或从不触发的历史标签应标为兼容性失败。响应中出现输入文本或标签并不等同于脚本已经执行。",
-          "en": "Less-Common HTML Event Handler Variants checks whether onload, onstart, and related events on less-common elements fire in the target browser and resource state rather than merely appearing in the DOM. It applies when the rich-text sanitizer allows these elements and event attributes, the target browser still implements the event, and CSP or resource policy does not block the required load. A conclusion requires element support, event-listener records, and a unique execution marker are captured together; obsolete tags that never fire are marked as compatibility failures; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖低频 HTML 事件处理器变体验证：marquee、iframe、object、embed、link、style 等冷门元素上的 load/start 类事件，验证元素支持、资源状态与浏览器差异下的执行。",
+          "en": "Covers uncommon HTML event-handler variant verification: load/start-class events on rare elements such as marquee, iframe, object, embed, link, and style, testing execution across element support, resource states, and browser differences."
         },
         "vulnerability": {
-          "zh": "该问题的输入与输出前提为：富文本消毒器允许这些元素及事件属性，目标浏览器仍实现相应事件，并且 CSP 或资源策略没有阻断必要加载。审查时必须确认“非主流元素的 onload、onstart 等事件是否在目标浏览器版本和实际资源状态下触发，而不是仅被解析进 DOM”，并把服务端响应、最终 DOM、事件条件和浏览器版本关联起来。若无法满足“元素支持状态、事件监听记录和唯一执行标记一起保存；不支持或从不触发的历史标签应标为兼容性失败”这一证据要求，只能说明输入进入页面，不能确认 XSS。",
-          "en": "The risk exists when the rich-text sanitizer allows these elements and event attributes, the target browser still implements the event, and CSP or resource policy does not block the required load, allowing whether onload, onstart, and related events on less-common elements fire in the target browser and resource state rather than merely appearing in the DOM. Review the input source, final parsing context, browser or policy version, and element support, event-listener records, and a unique execution marker are captured together; obsolete tags that never fire are marked as compatibility failures; otherwise record only an unconfirmed control differential."
+          "zh": "根因是富文本消毒器允许冷门元素及事件属性，目标浏览器仍实现相应事件且 CSP 未阻断必要加载；事件黑名单未覆盖这些元素-事件组合。",
+          "en": "The root cause is rich-text sanitizers allowing uncommon elements and event attributes while target browsers still implement the events and CSP does not block required loads; event blacklists miss these element-event combinations."
         },
         "exploitation": {
-          "zh": "在应用支持的浏览器矩阵逐一加载元素，分别记录解析、资源请求和事件触发；对需要网络失败的样例使用本地不可达测试地址。为每行样例分配独立的无害标记，每轮只改变一种标签、属性或编码形式；同时保存原始响应、最终 DOM、控制台和事件记录，以排除缓存、浏览器容错及人工交互造成的假阳性。",
-          "en": "In an authorized isolated environment, load each element across the application's supported browser matrix, recording parsing, resource requests, and event firing separately, and use a local unreachable test URL for failure-dependent cases. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令在 marquee/iframe/object/embed/link/style 等冷门元素上挂载 load/start 类事件；任一行执行即确认事件黑名单未覆盖该组合。在应用支持的浏览器矩阵逐一加载元素，分别记录解析、资源请求与事件触发；需要网络失败的样例使用本地不可达测试地址。",
+          "en": "Use the step 1 command to attach load/start-class events on uncommon elements like marquee/iframe/object/embed/link/style; any row executing confirms the event blacklist misses that combination. Load elements one by one across the application's supported browser matrix, recording parsing, resource requests, and event firing separately; use locally unreachable test addresses for samples requiring network failure."
         },
         "mitigation": {
-          "zh": "消毒策略采用最小元素与属性允许列表并统一移除 on* 属性，删除业务不需要的旧元素；用 addEventListener 绑定固定代码而非内联事件。修复后在同一输出位置重放普通文本、边界字符和最小异常样例，确认合法内容继续显示，同时活动节点、危险属性和对应执行记录均不再出现。",
-          "en": "Remediation should use a minimal element and attribute allowlist that removes all on-star attributes, drop obsolete elements not needed by the product, and bind fixed code through addEventListener instead of inline handlers. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "消毒策略采用最小元素与属性允许列表并统一移除 on* 属性，删除业务不需要的旧元素，用 addEventListener 绑定固定代码；修复后各冷门组合重放应无执行记录。",
+          "en": "Adopt minimal element and attribute allowlists in sanitization, stripping on* attributes uniformly, delete legacy elements the business does not need, and bind fixed code via addEventListener; after the fix, replaying each uncommon combination must show no execution records."
         },
         "difficulty": "intermediate"
       },
@@ -3883,20 +3883,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "CSS 属性选择器逐字符外带属于 CSS 条件资源加载侧信道。验证目标为：属性前缀选择器是否能根据隐藏或可见 input 的 value 属性选择性加载背景资源并泄露字符匹配结果。该测试要求：不可信样式能作用于含敏感 value 属性的同一文档，浏览器允许选择器匹配该属性，并能向测试域发出图片请求。有效证据标准为：一次实验只放置一个已知哨兵值，收到的字符 URL 必须与其首字符一致；静态页面缓存和预取需要先排除。无条件字体、图片或样式请求只能证明存在外连，不能证明敏感值已被推断。",
-          "en": "CSS Attribute Selector Character Exfiltration checks whether attribute-prefix selectors conditionally load background resources based on a hidden or visible input value and reveal character matches. It applies when untrusted styles apply to the same document as a sensitive value attribute, the browser permits matching that attribute, and image requests can reach the test origin. A conclusion requires each experiment uses one known sentinel value and the requested character URL must match its first character, after excluding page cache and prefetch behavior; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖 CSS 属性选择器逐字符外带验证：input[value^=] 前缀规则触发不同背景图请求，逐字符推断 DOM 属性中的预置测试值。用于确认攻击者可控样式的条件推断能力。",
+          "en": "Covers character-by-character exfiltration via CSS attribute selectors: input[value^=] prefix rules triggering distinct background-image requests to infer a preset test value in a DOM attribute character by character. Used to confirm the conditional inference capability of attacker-controlled styles."
         },
         "vulnerability": {
-          "zh": "侧信道成立的前提为：不可信样式能作用于含敏感 value 属性的同一文档，浏览器允许选择器匹配该属性，并能向测试域发出图片请求。审计围绕“属性前缀选择器是否能根据隐藏或可见 input 的 value 属性选择性加载背景资源并泄露字符匹配结果”使用预置的非敏感哨兵值，并严格控制缓存、预加载和字体回退。否则，网络请求与字符或属性条件之间无法建立可靠因果关系。",
-          "en": "The risk exists when untrusted styles apply to the same document as a sensitive value attribute, the browser permits matching that attribute, and image requests can reach the test origin, allowing whether attribute-prefix selectors conditionally load background resources based on a hidden or visible input value and reveal character matches. Review the input source, final parsing context, browser or policy version, and each experiment uses one known sentinel value and the requested character URL must match its first character, after excluding page cache and prefetch behavior; otherwise record only an unconfirmed control differential."
+          "zh": "根因是不可信样式能作用于含敏感 value 属性的同一文档，浏览器允许属性选择器匹配且可向外部域发出图片请求；前缀命中的选择器触发对应资源请求形成字符 oracle。",
+          "en": "The root cause is untrusted styles applying to the same document holding sensitive value attributes, browsers allowing attribute-selector matches with image requests to external domains; prefix-hit selectors fire matching resource requests, forming a character oracle."
         },
         "exploitation": {
-          "zh": "以随机非敏感字符串设置测试 input value，清理缓存后加载原选择器集合，核对唯一命中的前缀请求；不要针对真实密码或令牌字段。先建立无条件资源加载基线，再逐个启用字符或属性条件；每轮清理缓存并记录 Initiator、请求 URL 与已知哨兵值，最终按“一次实验只放置一个已知哨兵值，收到的字符 URL 必须与其首字符一致；静态页面缓存和预取需要先排除”判断条件侧信道是否可重复。",
-          "en": "In an authorized isolated environment, set a random non-sensitive test input value, clear caches, load the original selector set, and verify the single matching prefix request without targeting real password or token fields. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令以属性选择器按前缀逐字符构造背景请求；{ATTACKER_HOST} 按字符收到请求序列即可重组字段值，确认逐字符外带成立。以随机非敏感字符串设置测试 input value，清缓存后加载选择器集合并核对唯一命中的前缀请求；不针对真实密码或令牌字段。",
+          "en": "Use the step 1 command to build background requests character by character via attribute-selector prefixes; {ATTACKER_HOST} receiving the per-character request sequence reassembles the field value, confirming character-wise exfiltration. Set the test input value to a random non-sensitive string, clear caches before loading the selector set, and verify uniquely hit prefix requests; never target real password or token fields."
         },
         "mitigation": {
-          "zh": "禁止用户样式进入受信页面，消毒 style 与选择器；敏感值不要写入可匹配 DOM 属性，并用 CSP img-src/style-src 和网络出口限制远程请求。回归分别覆盖合法主题样式、受控字体和原条件规则，确认业务样式仍可加载，而用户样式无法接触敏感 DOM，也不能向非允许域发送选择性请求。",
-          "en": "Remediation should keep user styles out of trusted pages, sanitize style content and selectors, avoid placing secrets in matchable DOM attributes, and restrict remote requests with CSP img-src, style-src, and network egress policy. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "禁止用户样式进入受信页面并消毒 style 与选择器；敏感值不写入可匹配 DOM 属性，以 CSP img-src/style-src 与网络出口限制远程请求；修复后条件选择器不再产生外发请求。",
+          "en": "Keep user styles out of trusted pages and sanitize style and selectors; never write sensitive values into matchable DOM attributes, and restrict remote requests via CSP img-src/style-src and network egress; after the fix, conditional selectors must produce no outbound requests."
         },
         "difficulty": "advanced"
       },
@@ -4003,20 +4003,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "CSS @font-face Unicode 范围外带属于 CSS 条件资源加载侧信道。验证目标为：浏览器是否只在页面实际使用某个 Unicode 码位时请求对应字体资源，从而向外部观察者暴露字符集合。该测试要求：攻击者能够注入 @font-face 并将自定义字体应用到目标文本，CSP 允许外部 font-src，且敏感字符真实参与布局和字体选择。有效证据标准为：使用已知哨兵文本时仅收到对应 unicode-range 的字体请求，并在清缓存和禁用预加载后仍可重复，才证明条件侧信道。无条件字体、图片或样式请求只能证明存在外连，不能证明敏感值已被推断。",
-          "en": "CSS Font-Face Unicode-Range Exfiltration checks whether the browser requests a font resource only when the page uses a corresponding Unicode code point, exposing the rendered character set to an external observer. It applies when an attacker can inject font-face rules and apply the custom font to target text, CSP permits external font-src, and the sensitive character participates in layout and font selection. A conclusion requires only font requests matching known sentinel text, reproducible after cache clearing and with preload disabled, prove the conditional side channel; reflected text, simple network acceptance, or a browser compatibility difference alone is not proof."
+          "zh": "覆盖 @font-face unicode-range 字体加载侧信道验证：为不同字符配置独立字体 URL，浏览器仅在页面实际使用对应码位时请求字体，据此推断渲染字符集合。",
+          "en": "Covers the @font-face unicode-range font-loading side channel: distinct font URLs per character with the browser requesting a font only when the page actually uses the corresponding code point, inferring the set of rendered characters."
         },
         "vulnerability": {
-          "zh": "侧信道成立的前提为：攻击者能够注入 @font-face 并将自定义字体应用到目标文本，CSP 允许外部 font-src，且敏感字符真实参与布局和字体选择。审计围绕“浏览器是否只在页面实际使用某个 Unicode 码位时请求对应字体资源，从而向外部观察者暴露字符集合”使用预置的非敏感哨兵值，并严格控制缓存、预加载和字体回退。否则，网络请求与字符或属性条件之间无法建立可靠因果关系。",
-          "en": "The risk exists when an attacker can inject font-face rules and apply the custom font to target text, CSP permits external font-src, and the sensitive character participates in layout and font selection, allowing whether the browser requests a font resource only when the page uses a corresponding Unicode code point, exposing the rendered character set to an external observer. Review the input source, final parsing context, browser or policy version, and only font requests matching known sentinel text, reproducible after cache clearing and with preload disabled, prove the conditional side channel; otherwise record only an unconfirmed control differential."
+          "zh": "根因是攻击者能注入 @font-face 并把自定义字体应用到目标文本，CSP 允许外部 font-src 且敏感字符真实参与布局；浏览器按字符使用情况发起条件字体请求暴露字符集合。",
+          "en": "The root cause is injectable @font-face applied to target text with CSP permitting external font-src while sensitive characters genuinely participate in layout; browsers issue conditional font requests by character usage, exposing the character set."
         },
         "exploitation": {
-          "zh": "在隔离页渲染固定的 A、B、C 与数字哨兵文本，加载原 @font-face 集合并记录字体网络请求；比较未应用自定义字体的对照页面。先建立无条件资源加载基线，再逐个启用字符或属性条件；每轮清理缓存并记录 Initiator、请求 URL 与已知哨兵值，最终按“使用已知哨兵文本时仅收到对应 unicode-range 的字体请求，并在清缓存和禁用预加载后仍可重复，才证明条件侧信道”判断条件侧信道是否可重复。",
-          "en": "In an authorized isolated environment, render fixed A, B, C, and numeric sentinel text in an isolated page, load the original font-face set, record font requests, and compare against a control page without the custom font. Replay the original command set with one-time harmless markers, change one encoding, element, event, or policy variable at a time, and retain request, final DOM, console, network, and server evidence to exclude cache, prefetch, and manual-interaction false positives."
+          "zh": "使用第 1 步命令以 @font-face unicode-range 把字符命中映射到字体请求；{ATTACKER_HOST} 收到的请求即指示命中字符，确认 Unicode 范围外带成立。在隔离页渲染固定 A、B、C 与数字哨兵文本，加载字体集合并记录请求，与未应用自定义字体的对照页比较。",
+          "en": "Use the step 1 command to map character hits to font requests via @font-face unicode-range; requests received at {ATTACKER_HOST} indicate the hit characters, confirming Unicode-range exfiltration. Render fixed A, B, C, and digit sentinel texts in an isolated page, load the font set, record requests, and compare against a control page without the custom fonts."
         },
         "mitigation": {
-          "zh": "禁止不可信 @font-face 和任意字体 URL，收紧 CSP font-src/style-src，敏感文本使用隔离渲染且不允许用户样式作用于同一 DOM。回归分别覆盖合法主题样式、受控字体和原条件规则，确认业务样式仍可加载，而用户样式无法接触敏感 DOM，也不能向非允许域发送选择性请求。",
-          "en": "Remediation should disallow untrusted font-face rules and arbitrary font URLs, tighten CSP font-src and style-src, and render sensitive text in an isolated context not reachable by user styles. Retest the normal baseline and minimized abnormal case in the same browser, policy, and input location to confirm required rendering, navigation, or resource loading remains available while execution, conditional requests, or object override evidence disappears."
+          "zh": "禁止不可信 @font-face 与任意字体 URL，收紧 CSP font-src/style-src，敏感文本用隔离渲染且不允许用户样式作用于同一 DOM；修复后哨兵文本不再触发条件字体请求。",
+          "en": "Forbid untrusted @font-face and arbitrary font URLs, tighten CSP font-src/style-src, and render sensitive text in isolation where user styles cannot apply to the same DOM; after the fix, sentinel texts must no longer trigger conditional font requests."
         },
         "difficulty": "expert"
       },

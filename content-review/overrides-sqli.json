@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contentStandard": 2,
+  "contentStandard": 3,
   "sourcePrefix": "sqli",
   "entries": [
     {
@@ -23,63 +23,92 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "覆盖布尔对照、列数推断、UNION 类型对齐、information_schema 元数据读取与 MySQL 注释/版本注释变体，用于确认字符串输入是否改变真实 MySQL 查询结构。 本教程把“能被输入触达”“数据库实际解释”和“形成可复验证据”分开审查。已通过错误签名、驱动或版本函数确认后端为 MySQL，并知道参数处于字符串、数字或排序上下文。隔离数据库只包含专用 schema、表和 marker 行，能够记录最终 SQL、绑定参数、数据库错误和同一请求 ID。",
-          "en": "Covers Boolean controls, column-count inference, UNION type alignment, information_schema metadata reads, and MySQL comment or version-comment variants to confirm whether string input alters a real MySQL query. This tutorial reviews input reachability, actual database interpretation, and reproducible evidence as separate claims. The backend is confirmed as MySQL through errors, driver evidence, or version output, and the parameter context is known as string, numeric, or ordering. An isolated database contains a dedicated schema, table, and marker row, with final SQL, bind parameters, database errors, and the same request identifier observable."
+          "zh": "覆盖 MySQL 注入从注入点探测到数据枚举的完整链路：布尔对照确认可控性、ORDER BY/NULL 推断列数、UNION 对齐后读取 database()/user() 等元数据，并用 information_schema 遍历库表列。适用于字符串或数字型参数已确认后端为 MySQL 的场景。",
+          "en": "Covers the full MySQL injection chain from injection point discovery to data enumeration: boolean comparison to confirm controllability, ORDER BY/NULL to infer column count, UNION alignment to read database()/user() metadata, and information_schema traversal of databases, tables, and columns. Suitable for scenarios where a string or numeric parameter is confirmed to run against a MySQL backend."
         },
         "vulnerability": {
-          "zh": "阳性证据是同一入口的真/假谓词产生可重复差异，或列数/类型对齐后 UNION 返回专用 marker；最终数据库语句须显示可控片段脱离数据绑定。 核心判断是受控输入是否越过预期的数据绑定或查询构造边界，并由同一请求的应用与数据库证据相互印证。仅有 HTTP 200/500、语法错误、WAF 告警、页面长度波动、information_schema 字样回显、错误列数或人工在数据库控制台执行都不能证明应用 SQL 注入。",
-          "en": "Positive evidence requires repeatable true and false predicate differences at the same entry or a dedicated marker returned after UNION column and type alignment; the final database statement must show controlled text escaping data binding. The core decision is whether controlled input crosses the intended data-binding or query-construction boundary, corroborated by application and database evidence for the same request. HTTP 200 or 500, syntax errors, WAF alerts, page-length noise, reflected information_schema text, wrong column counts, or manual database-console execution does not prove application SQL injection."
+          "zh": "根因是用户输入被直接拼接进 SQL 语句，攻击者构造的片段进入 SQL 语法上下文并改变查询结构，而应用缺少参数化绑定与输入白名单校验。单引号闭合加恒真/恒假条件即可证明查询语义随输入变化。",
+          "en": "The root cause is user input concatenated directly into SQL statements: attacker-crafted fragments enter the SQL grammar context and alter query structure because the application lacks parameterized binding and allowlist validation. Quote closure plus always-true/always-false conditions alone proves query semantics change with input."
         },
         "exploitation": {
-          "zh": "先用 1=1/1=2 建立响应与查询日志基线，再逐列使用 NULL 对齐，只从合成表读取固定 marker；每轮只提交一行并保留 MySQL 版本、字符集与 sql_mode。 条目中的源命令仅作为逐字节审校与路由证据保留；标记为需覆盖的行在得到安全替代、隔离环境和明确授权前不执行，也不从本教程推导新的攻击命令。",
-          "en": "Establish response and query-log baselines with 1=1 and 1=2, align one column at a time with NULL, and read only a fixed marker from a synthetic table; submit one line per run and retain MySQL version, character set, and sql_mode. The source command is retained only as byte-exact editorial and routing evidence. Any line flagged for override remains unexecuted until a safe substitute, an isolated environment, and explicit authorization are in place; this tutorial derives no new attack command."
+          "zh": "按 Payload 列表顺序使用：先用第 1 步的单引号与恒真/恒假布尔载荷探测注入点，两次请求响应出现稳定差异或报错即确认可控；再用第 2 步 ORDER BY 递增与 UNION SELECT NULL 序列确定列数；列数确定后用第 3 步定位回显位，随后按第 4-8 步依次读取 database()/user() 等元数据、枚举库表列并提取数据。命令中的占位符在全局变量菜单中替换为目标值。被 WAF 拦截时改用 WAF 绕过区的大小写混淆、内联注释与编码变体。",
+          "en": "Use in Payload list order: first probe the injection point with step 1 quote and always-true/false boolean payloads; a stable response difference or database error confirms controllability. Then use step 2 increasing ORDER BY and UNION SELECT NULL sequences to determine the column count. Once fixed, use step 3 to locate echo positions, then follow steps 4-8 to read database()/user() metadata, enumerate databases, tables, and columns, and extract data. Replace placeholders via the global variables menu. When blocked by a WAF, switch to the case-mixing, inline-comment, and encoding variants in the WAF bypass section."
         },
         "mitigation": {
-          "zh": "对所有值和分页/排序选择使用参数化查询与服务端允许列表，数据库账户只授予业务 schema 的最小 SELECT 权限，并统一错误响应。 修复验收必须在相同入口重放正常业务输入、阳性对照和阴性对照，核对最终语句、绑定参数、权限与副作用均回到预期边界，并确认清理完成。",
-          "en": "Use parameterized queries for values and server-side allowlists for pagination or ordering choices, grant the database identity minimal SELECT rights to the business schema, and normalize error responses. Acceptance testing replays normal business input plus positive and negative controls at the same entry point, verifies final statements, bindings, privileges, and side effects return to the intended boundary, and confirms cleanup is complete."
+          "zh": "所有动态值改用参数化查询，排序字段等服务端白名单固定；数据库账户仅授予业务 schema 的最小 SELECT 权限并统一错误响应。修复后在同一入口重放布尔对照与 UNION 载荷，确认响应不再随注入条件变化、information_schema 不可读。",
+          "en": "Switch all dynamic values to parameterized queries and pin server-side allowlists for ordering fields; grant the database account only minimal SELECT on the business schema and normalize error responses. After the fix, replay boolean and UNION payloads at the same entry point: responses must no longer vary with injected conditions and information_schema must be unreadable."
         },
         "difficulty": "intermediate"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认MySQL UNION 与元数据前提",
-            "en": "Confirm MySQL UNION and Metadata prerequisites"
+            "zh": "提交恒真恒假条件确认注入点",
+            "en": "Submit true/false conditions to confirm the injection point"
           },
           "description": {
-            "zh": "针对MySQL 联合查询与元数据注入验证先确认数据库类型、输入上下文、隔离资产、最小权限和可观测日志，未满足两项前置条件时不进入命令审查。",
-            "en": "For MySQL Union and Metadata Injection Validation, confirm the database type, input context, isolated asset, least privilege, and observable logs; do not proceed to command review until both prerequisites hold."
+            "zh": "在目标参数提交单引号与恒真、恒假布尔条件，恒真响应明显异于恒假或直接触发数据库报错，即可判定该参数存在注入点。",
+            "en": "Submit a single quote plus true/false boolean conditions to the target parameter; a stable response difference or a database error confirms the injection point."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "建立MySQL UNION 与元数据对照",
-            "en": "Establish MySQL UNION and Metadata controls"
+            "zh": "ORDER BY 递增探测列数并对齐 UNION",
+            "en": "Determine column count with ORDER BY and align UNION"
           },
           "description": {
-            "zh": "为MySQL 联合查询与元数据注入验证记录正常输入、无效输入和固定 marker 的响应、查询日志、绑定值及请求标识，先量化自然波动再判断差异。",
-            "en": "For MySQL Union and Metadata Injection Validation, record responses, query logs, bound values, and request identifiers for normal input, invalid input, and a fixed marker, measuring natural variation before judging differences."
+            "zh": "用第 1 步的注入点递增 ORDER BY 序号直到报错确定列数，再以 UNION SELECT NULL 序列占位，列数正确时查询恢复正常返回。",
+            "en": "Increase the ORDER BY index at the injection point until an error reveals the column count, then pad a UNION SELECT NULL series to align columns."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 1
           }
         },
         {
           "title": {
-            "zh": "逐行审校MySQL UNION 与元数据源命令",
-            "en": "Review the MySQL UNION and Metadata source command line by line"
+            "zh": "注入数字序列定位回显位",
+            "en": "Inject numbered columns to locate output positions"
           },
           "description": {
-            "zh": "原始首条命令在此逐字节保留，只用于证明条目来源和行路由；任何实际运行都必须遵守本条记录的隔离、marker、停止和清理条件。",
-            "en": "The original first command is retained here byte for byte only to prove provenance and line routing; any execution must obey this entry's isolation, marker, stop, and cleanup conditions."
+            "zh": "提交 UNION SELECT 1,2,3 与字符序列，观察页面哪个位置回显数字或字符，这些列即可承载后续提取的数据内容。",
+            "en": "Submit UNION SELECT 1,2,3 and string variants, then note which page positions echo the markers; those columns will carry extracted data."
           },
-          "payload": "' OR '1'='1\n' OR 1=1--\n1' AND '1'='1\n1' AND '1'='2"
+          "payloadRef": {
+            "area": "execution",
+            "index": 2
+          }
         },
         {
           "title": {
-            "zh": "修复并回归MySQL UNION 与元数据",
-            "en": "Remediate and regress MySQL UNION and Metadata"
+            "zh": "读取当前库账户与版本信息",
+            "en": "Read current database, user and version"
           },
           "description": {
-            "zh": "应用MySQL 联合查询与元数据注入验证对应修复后，重放三组对照并关联同一请求证据，确认业务结果保持正常、注入证据消失且测试状态已清理。",
-            "en": "After applying the remediation for MySQL Union and Metadata Injection Validation, replay all three controls with correlated request evidence and confirm business behavior remains correct, injection evidence disappears, and test state is removed."
+            "zh": "把 database()、user()、version()、@@hostname 依次放进回显位，拿到当前库名、数据库账户与版本，为后续语句构造定方向。",
+            "en": "Place database(), user(), version() and @@hostname into the echo position to obtain the current database, account and version for follow-up payloads."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 3
+          }
+        },
+        {
+          "title": {
+            "zh": "枚举库表并提取目标数据",
+            "en": "Enumerate schemas and dump target data"
+          },
+          "description": {
+            "zh": "先查 information_schema 拿到库表列结构，锁定 users 等敏感表后，用 group_concat 拼接用户名密码批量提取，回显出凭据即完成拿取。",
+            "en": "Query information_schema for schema, table and column names, then dump credentials from tables like users via group_concat; echoed user:pass pairs complete the extraction."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 7
           }
         }
       ],
@@ -295,63 +324,92 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "覆盖布尔条件、版本/身份、数据库、sys.* 与 information_schema 目录视图，以及 SQL Server 类型转换和注释语义。 本教程把“能被输入触达”“数据库实际解释”和“形成可复验证据”分开审查。已确认后端为 Microsoft SQL Server，并知道参数引号、列数、数据类型和当前数据库兼容级别。隔离数据库提供合成 schema/users marker，Extended Events 或等价审计可记录最终批次、登录身份和响应请求 ID。",
-          "en": "Covers Boolean predicates, version and identity, databases, sys and information_schema catalog views, plus SQL Server conversion and comment semantics. This tutorial reviews input reachability, actual database interpretation, and reproducible evidence as separate claims. The backend is confirmed as Microsoft SQL Server, with parameter quoting, column count, data types, and current database compatibility level known. An isolated database provides synthetic schema and user markers, while Extended Events or equivalent audit records final batches, login identity, and response request identifiers."
+          "zh": "覆盖 SQL Server 注入从布尔探测到数据枚举的完整链路：恒真/恒假确认可控性、@@version 与 SERVERPROPERTY 读版本、is_srvrolemember 判断权限，再经 sysobjects/sys.tables 与 information_schema 枚举库表列并提取数据。适用于确认后端为 Microsoft SQL Server 的字符串或数字型参数。",
+          "en": "Covers the full SQL Server injection chain from boolean probing to data enumeration: always-true/false conditions to confirm controllability, @@version and SERVERPROPERTY for version data, is_srvrolemember for privilege checks, then enumeration of databases, tables, and columns via sysobjects/sys.tables and information_schema before extracting data. Suitable for string or numeric parameters confirmed to run against Microsoft SQL Server."
         },
         "vulnerability": {
-          "zh": "阳性证据是布尔对照或类型对齐 UNION 稳定改变结果并返回合成目录/数据 marker，最终 T-SQL 显示输入突破参数边界。 核心判断是受控输入是否越过预期的数据绑定或查询构造边界，并由同一请求的应用与数据库证据相互印证。转换错误、对象名不存在、sysadmin 返回 NULL、HTTP 状态变化、客户端拼接结果、NUL 被上游拒绝或手工 SSMS 查询都不是应用注入证据。",
-          "en": "Positive evidence requires Boolean controls or a type-aligned UNION to change results consistently and return a synthetic catalog or data marker, with final T-SQL showing input escaping its parameter boundary. The core decision is whether controlled input crosses the intended data-binding or query-construction boundary, corroborated by application and database evidence for the same request. Conversion errors, missing objects, a NULL sysadmin result, HTTP status changes, client-side concatenation, upstream NUL rejection, or manual SSMS queries does not prove application injection."
+          "zh": "根因是输入被拼接进 T-SQL 语句，攻击者可借类型转换报错或 UNION 注入改变查询结构；缺少参数化绑定与统一错误处理时，@@version、目录视图等元数据沿回显或报错通道泄露。",
+          "en": "The root cause is input concatenated into T-SQL statements, letting attackers alter query structure via type-conversion errors or UNION injection. Without parameterized binding and unified error handling, metadata such as @@version and catalog views leaks through echo or error channels."
         },
         "exploitation": {
-          "zh": "从 1=1/1=2 和 NULL 列对齐开始，只读取专用目录对象与 marker 行，记录数据库/登录上下文和 NVARCHAR/VARCHAR 类型差异。 条目中的源命令仅作为逐字节审校与路由证据保留；标记为需覆盖的行在得到安全替代、隔离环境和明确授权前不执行，也不从本教程推导新的攻击命令。",
-          "en": "Start with 1=1 and 1=2 plus NULL column alignment, read only dedicated catalog objects and marker rows, and record database or login context plus NVARCHAR and VARCHAR differences. The source command is retained only as byte-exact editorial and routing evidence. Any line flagged for override remains unexecuted until a safe substitute, an isolated environment, and explicit authorization are in place; this tutorial derives no new attack command."
+          "zh": "按 Payload 列表顺序使用：第 1 步恒真/恒假布尔条件出现稳定响应差异即确认注入可控；第 2-3 步读取 @@version 与当前登录名，is_srvrolemember('sysadmin') 返回 1 即确认高权限上下文；第 4-6 步用 db_name(n) 与目录视图枚举库表列；第 7 步以 + 拼接提取凭据。占位符在全局变量菜单替换；被 WAF 拦截时改用 Hex 编码与注释绕过变体。",
+          "en": "Use in Payload list order: step 1 always-true/false conditions showing a stable response difference confirms controllability; steps 2-3 read @@version and the current login, with is_srvrolemember('sysadmin') returning 1 confirming a high-privilege context; steps 4-6 enumerate databases, tables, and columns via db_name(n) and catalog views; step 7 extracts credentials using + concatenation. Replace placeholders via the global variables menu; when blocked by a WAF, switch to the hex-encoding and comment variants."
         },
         "mitigation": {
-          "zh": "使用 sp_executesql 参数绑定而非字符串拼接，动态标识符采用固定映射，应用登录只授予业务 schema 权限并隐藏数据库错误。 修复验收必须在相同入口重放正常业务输入、阳性对照和阴性对照，核对最终语句、绑定参数、权限与副作用均回到预期边界，并确认清理完成。",
-          "en": "Use sp_executesql parameter binding instead of concatenation, map dynamic identifiers to fixed choices, grant the application login business-schema rights only, and hide database errors. Acceptance testing replays normal business input plus positive and negative controls at the same entry point, verifies final statements, bindings, privileges, and side effects return to the intended boundary, and confirms cleanup is complete."
+          "zh": "使用 sp_executesql 参数绑定替代字符串拼接，动态标识符走固定映射；应用登录仅授予业务 schema 最小权限并统一错误页。修复后重放布尔与 UNION 载荷，响应应无差异且目录视图不可读。",
+          "en": "Use sp_executesql parameter binding instead of string concatenation, map dynamic identifiers to fixed values, grant the application login only minimal business-schema rights, and normalize error pages. After the fix, replaying boolean and UNION payloads must produce no response differences and catalog views must be unreadable."
         },
         "difficulty": "intermediate"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认SQL Server 基础 UNION前提",
-            "en": "Confirm SQL Server Basic UNION prerequisites"
+            "zh": "提交布尔条件确认注入点",
+            "en": "Submit boolean conditions to confirm the injection"
           },
           "description": {
-            "zh": "针对SQL Server UNION 与目录视图注入验证先确认数据库类型、输入上下文、隔离资产、最小权限和可观测日志，未满足两项前置条件时不进入命令审查。",
-            "en": "For SQL Server UNION and Catalog-View Injection Validation, confirm the database type, input context, isolated asset, least privilege, and observable logs; do not proceed to command review until both prerequisites hold."
+            "zh": "对目标参数提交单引号与恒真、恒假条件，响应长度或内容出现稳定差异、或触发 SQL Server 报错，即确认注入点可控。",
+            "en": "Submit quote and true/false conditions to the parameter; stable response differences or SQL Server errors confirm controllable injection."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "建立SQL Server 基础 UNION对照",
-            "en": "Establish SQL Server Basic UNION controls"
+            "zh": "读取账户并判断 sysadmin 角色",
+            "en": "Read accounts and check sysadmin membership"
           },
           "description": {
-            "zh": "为SQL Server UNION 与目录视图注入验证记录正常输入、无效输入和固定 marker 的响应、查询日志、绑定值及请求标识，先量化自然波动再判断差异。",
-            "en": "For SQL Server UNION and Catalog-View Injection Validation, record responses, query logs, bound values, and request identifiers for normal input, invalid input, and a fixed marker, measuring natural variation before judging differences."
+            "zh": "用 UNION 回显 user_name() 与 system_user，并查 is_srvrolemember 判断 sysadmin，返回 1 说明当前连接具备最高数据库权限。",
+            "en": "Echo user_name() and system_user via UNION, then check is_srvrolemember('sysadmin'); a return of 1 marks the connection as highly privileged."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 2
           }
         },
         {
           "title": {
-            "zh": "逐行审校SQL Server 基础 UNION源命令",
-            "en": "Review the SQL Server Basic UNION source command line by line"
+            "zh": "枚举全部数据库",
+            "en": "Enumerate all databases"
           },
           "description": {
-            "zh": "原始首条命令在此逐字节保留，只用于证明条目来源和行路由；任何实际运行都必须遵守本条记录的隔离、marker、停止和清理条件。",
-            "en": "The original first command is retained here byte for byte only to prove provenance and line routing; any execution must obey this entry's isolation, marker, stop, and cleanup conditions."
+            "zh": "用 db_name 编号递增或查 master..sysdatabases，回显全部库名清单，锁定存有敏感数据的业务库作为下一步提取目标。",
+            "en": "Walk db_name(n) indexes or query master..sysdatabases to list every database and pick the sensitive business DB as the next target."
           },
-          "payload": "' OR 1=1--\n' OR '1'='1\n1' AND 1=1--\n1' AND 1=2--"
+          "payloadRef": {
+            "area": "execution",
+            "index": 3
+          }
         },
         {
           "title": {
-            "zh": "修复并回归SQL Server 基础 UNION",
-            "en": "Remediate and regress SQL Server Basic UNION"
+            "zh": "枚举目标库的表与列",
+            "en": "Enumerate tables and columns of the target DB"
           },
           "description": {
-            "zh": "应用SQL Server UNION 与目录视图注入验证对应修复后，重放三组对照并关联同一请求证据，确认业务结果保持正常、注入证据消失且测试状态已清理。",
-            "en": "After applying the remediation for SQL Server UNION and Catalog-View Injection Validation, replay all three controls with correlated request evidence and confirm business behavior remains correct, injection evidence disappears, and test state is removed."
+            "zh": "从 sysobjects 或 information_schema 拿到表名，再按表名查 syscolumns 取列结构，定位用户与凭据字段所在位置。",
+            "en": "Pull table names from sysobjects or information_schema, then resolve columns via syscolumns to locate user and credential fields."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 5
+          }
+        },
+        {
+          "title": {
+            "zh": "提取账户凭据数据",
+            "en": "Dump account credentials"
+          },
+          "description": {
+            "zh": "对锁定的 users 表执行 UNION 查询，用加号拼接 username 与 password 整行回显，拿到账户口令后可用于登录或撞库。",
+            "en": "UNION-query the identified users table, concatenating username and password with + to dump whole rows for login attempts or reuse."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 6
           }
         }
       ],
@@ -1102,63 +1160,92 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "验证标量凭据是否被客户端对象替换为 $ne、$gt、$regex、$where 等查询语义，并区分顶层逻辑操作符与字段操作符。 本教程把“能被输入触达”“数据库实际解释”和“形成可复验证据”分开审查。API 接受 JSON/BSON 对象并直接构造 MongoDB filter，schema validation、driver 版本和 $where/JavaScript 配置已确认。隔离集合只有合成账户与 marker，command/query profiler 可记录最终 filter、匹配文档和会话签发。",
-          "en": "Tests whether scalar credentials can be replaced by client objects using $ne, $gt, $regex, or $where semantics and distinguishes top-level logical operators from field operators. This tutorial reviews input reachability, actual database interpretation, and reproducible evidence as separate claims. The API accepts JSON or BSON objects and builds MongoDB filters directly, with schema validation, driver version, and $where or JavaScript settings confirmed. An isolated collection contains synthetic accounts and markers only, while command or query profiling records the final filter, matched documents, and session issuance."
+          "zh": "覆盖 MongoDB 操作符注入从探测到枚举的完整链路：$ne/$gt 恒真条件绕过认证、$or 逻辑注入、$regex 前缀正则逐字符枚举用户名、$where 服务端 JS 判断。适用于 API 直接把客户端 JSON 构造为查询 filter 的场景。",
+          "en": "Covers the full MongoDB operator-injection chain from probing to enumeration: $ne/$gt always-true conditions to bypass authentication, $or logic injection, $regex prefix matching to enumerate usernames character by character, and $where server-side JS checks. Suitable when an API turns client JSON directly into query filters."
         },
         "vulnerability": {
-          "zh": "阳性证据是客户端操作符保留到最终 filter 并替代预期等值条件，导致未授权合成账户登录、marker 返回或可重复的合成前缀 oracle。 核心判断是受控输入是否越过预期的数据绑定或查询构造边界，并由同一请求的应用与数据库证据相互印证。JSON 接受对象、CastError/BadValue、响应状态变化、正则超时、$where 被禁用、查询仍包含固定等值条件或已有测试会话均不是绕过。",
-          "en": "Positive evidence requires client operators to survive into the final filter and replace expected equality, causing unauthorized synthetic-account login, marker return, or a repeatable synthetic-prefix oracle. The core decision is whether controlled input crosses the intended data-binding or query-construction boundary, corroborated by application and database evidence for the same request. JSON object acceptance, CastError or BadValue, status changes, regex timeout, disabled $where, a query retaining fixed equality, or an existing test session does not prove bypass."
+          "zh": "根因是服务端直接把客户端提交的 JSON 对象当作 MongoDB filter，标量凭据被 $ne、$gt、$regex 等操作符对象替换后改变查询语义；缺少 DTO 类型约束与操作符白名单时认证比对即被绕过。",
+          "en": "The root cause is the server treating client-submitted JSON objects directly as MongoDB filters: scalar credentials replaced by operator objects such as $ne, $gt, and $regex change query semantics. Without DTO type constraints and an operator allowlist, authentication comparison is bypassed."
         },
         "exploitation": {
-          "zh": "比较字符串错误凭据与单一操作符对象，保存最终 BSON filter；只在合成字段做短前缀正则，不执行 $where JavaScript。 条目中的源命令仅作为逐字节审校与路由证据保留；标记为需覆盖的行在得到安全替代、隔离环境和明确授权前不执行，也不从本教程推导新的攻击命令。",
-          "en": "Compare an invalid string credential with one operator object and preserve the final BSON filter; use short-prefix regex only on synthetic fields and do not execute $where JavaScript. The source command is retained only as byte-exact editorial and routing evidence. Any line flagged for override remains unexecuted until a safe substitute, an isolated environment, and explicit authorization are in place; this tutorial derives no new attack command."
+          "zh": "按 Payload 列表顺序使用：第 1 步提交明文凭据与 $ne/$gt 变体对比响应，操作符版本登录成功即确认可控；第 2-3 步用恒真条件与 $or 绕过认证；第 4、6 步用 $regex 前缀正则以响应差异逐字符枚举用户名；第 5 步用 $where 验证服务端 JS 执行。被 WAF 拦截时改用操作符区的 Unicode 转义（\\u0024ne）变体。",
+          "en": "Use in Payload list order: step 1 submits plain credentials versus $ne/$gt variants to compare responses; operator versions logging in confirms controllability. Steps 2-3 bypass authentication with always-true conditions and $or; steps 4 and 6 use $regex prefix matching to enumerate usernames character by character via response differences; step 5 verifies server-side JS with $where. When blocked by a WAF, switch to the Unicode-escape variant (\\u0024ne) in the operator section."
         },
         "mitigation": {
-          "zh": "用 JSON Schema/DTO 强制标量类型，服务端构造固定 filter 并拒绝所有未允许的 $ 操作符，认证采用专用常量时间比较。 修复验收必须在相同入口重放正常业务输入、阳性对照和阴性对照，核对最终语句、绑定参数、权限与副作用均回到预期边界，并确认清理完成。",
-          "en": "Enforce scalar types with JSON Schema or DTOs, build fixed filters server-side and reject all nonallowed dollar operators, and use dedicated constant-time authentication comparison. Acceptance testing replays normal business input plus positive and negative controls at the same entry point, verifies final statements, bindings, privileges, and side effects return to the intended boundary, and confirms cleanup is complete."
+          "zh": "用 JSON Schema/DTO 强制凭据字段为标量类型，服务端构造固定 filter 并拒绝所有未允许的 $ 操作符，认证采用常量时间比较；修复后重放操作符载荷应被拒绝或登录失败。",
+          "en": "Enforce scalar credential fields with JSON Schema/DTOs, build fixed filters server-side, reject all non-allowlisted $ operators, and use constant-time comparison for authentication. After the fix, replaying operator payloads must be rejected or fail login."
         },
         "difficulty": "intermediate"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认MongoDB 操作符注入前提",
-            "en": "Confirm MongoDB Operator Injection prerequisites"
+            "zh": "操作符载荷探测注入点",
+            "en": "Probe injection with operator payloads"
           },
           "description": {
-            "zh": "针对MongoDB 查询操作符与正则注入验证先确认数据库类型、输入上下文、隔离资产、最小权限和可观测日志，未满足两项前置条件时不进入命令审查。",
-            "en": "For MongoDB Query-Operator and Regex Injection Validation, confirm the database type, input context, isolated asset, least privilege, and observable logs; do not proceed to command review until both prerequisites hold."
+            "zh": "把 password 值改写为 $ne、$gt 操作符对象提交登录，请求被接受且行为不同于普通字符串，即确认存在 NoSQL 注入点。",
+            "en": "Rewrite the password value as $ne/$gt operator objects at login; acceptance with changed behavior confirms NoSQL injection."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "建立MongoDB 操作符注入对照",
-            "en": "Establish MongoDB Operator Injection controls"
+            "zh": "$ne 绕过认证登录",
+            "en": "Bypass authentication with $ne"
           },
           "description": {
-            "zh": "为MongoDB 查询操作符与正则注入验证记录正常输入、无效输入和固定 marker 的响应、查询日志、绑定值及请求标识，先量化自然波动再判断差异。",
-            "en": "For MongoDB Query-Operator and Regex Injection Validation, record responses, query logs, bound values, and request identifiers for normal input, invalid input, and a fixed marker, measuring natural variation before judging differences."
+            "zh": "用非空判断条件同时作用于用户名口令字段，匹配任意非空口令直接通过校验，返回登录态响应即绕过成功拿到会话。",
+            "en": "Apply non-empty $ne conditions to both username and password to match any stored values and pass the check, yielding an authenticated session."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 1
           }
         },
         {
           "title": {
-            "zh": "逐行审校MongoDB 操作符注入源命令",
-            "en": "Review the MongoDB Operator Injection source command line by line"
+            "zh": "$where 注入 JavaScript 表达式",
+            "en": "Inject JavaScript via $where"
           },
           "description": {
-            "zh": "原始首条命令在此逐字节保留，只用于证明条目来源和行路由；任何实际运行都必须遵守本条记录的隔离、marker、停止和清理条件。",
-            "en": "The original first command is retained here byte for byte only to prove provenance and line routing; any execution must obey this entry's isolation, marker, stop, and cleanup conditions."
+            "zh": "提交 $where 字符串执行服务端 JS 表达式，match 配合正则做条件判断，为无回显场景提供布尔盲注提取通道。",
+            "en": "Submit a $where string to run server-side JavaScript, combining match with regex conditions as a boolean oracle for blind extraction."
           },
-          "payload": "{\"username\": \"admin\", \"password\": \"password\"}\n{\"username\": \"admin\", \"password\": {\"$ne\": \"\"}}\n{\"username\": \"admin\", \"password\": {\"$gt\": \"\"}}"
+          "payloadRef": {
+            "area": "execution",
+            "index": 4
+          }
         },
         {
           "title": {
-            "zh": "修复并回归MongoDB 操作符注入",
-            "en": "Remediate and regress MongoDB Operator Injection"
+            "zh": "$regex 逐字符枚举字段",
+            "en": "Enumerate fields character by character with $regex"
           },
           "description": {
-            "zh": "应用MongoDB 查询操作符与正则注入验证对应修复后，重放三组对照并关联同一请求证据，确认业务结果保持正常、注入证据消失且测试状态已清理。",
-            "en": "After applying the remediation for MongoDB Query-Operator and Regex Injection Validation, replay all three controls with correlated request evidence and confirm business behavior remains correct, injection evidence disappears, and test state is removed."
+            "zh": "提交 $where 字符串执行服务端 JS 表达式，match 配合正则做条件判断，为无回显场景提供稳定的布尔盲注提取通道。",
+            "en": "Probe prefixes like ^a and ^ad with $regex; response changes on match, and iterating reconstructs the full target string."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 5
+          }
+        },
+        {
+          "title": {
+            "zh": "转义被过滤时用 Unicode 变体",
+            "en": "Use Unicode-escaped operators when filtered"
+          },
+          "description": {
+            "zh": "美元符被转义或过滤时改用反斜杠 u0024 形式书写操作符，解析后语义不变，绕过针对美元字符的输入限制。",
+            "en": "When $ is escaped or filtered, write operators as \\u0024ne; after parsing the semantics hold, bypassing restrictions on the dollar character."
+          },
+          "payloadRef": {
+            "area": "wafBypass",
+            "index": 0
           }
         }
       ],
@@ -1647,63 +1734,92 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "覆盖 MySQL 5.7 XML 函数、重复键/RAND、数学、GIS 与 JSON 错误路径；许多函数已在 MySQL 8.x 移除或不稳定回显数据。 本教程把“能被输入触达”“数据库实际解释”和“形成可复验证据”分开审查。已确认 MySQL/MariaDB 精确版本、SQL mode、错误是否返回客户端，以及 extractvalue/updatexml/GIS/JSON 函数实际存在。只用固定 marker 字符串和合成表，保存数据库 error code/message、应用包装后的错误、最终 SQL 与请求 ID。",
-          "en": "Covers MySQL 5.7 XML functions, duplicate-key or RAND, mathematical, GIS, and JSON error paths, many of which were removed in MySQL 8.x or do not reliably reflect data. This tutorial reviews input reachability, actual database interpretation, and reproducible evidence as separate claims. The exact MySQL or MariaDB version, SQL mode, client error visibility, and availability of extractvalue, updatexml, GIS, and JSON functions are confirmed. Only fixed marker strings and a synthetic table are used, preserving database error code and message, application-wrapped error, final SQL, and request identifier."
+          "zh": "覆盖 MySQL 报错回显注入链：extractvalue/updatexml 触发报错并拼接 version()/database() 等数据，另有 FLOOR/RAND 与 EXP 等多报错函数轮换。适用于错误信息返回客户端、UNION 回显不可用的 MySQL 场景。",
+          "en": "Covers the MySQL error-based echo chain: extractvalue/updatexml triggering errors that carry version()/database() data, with FLOOR/RAND and EXP as alternate error functions for rotation. Suitable when error messages return to the client and UNION echo is unavailable on MySQL."
         },
         "vulnerability": {
-          "zh": "阳性证据是可控子查询结果进入数据库生成的错误文本并以同一请求返回 marker，且错误函数在目标版本确实执行。 核心判断是受控输入是否越过预期的数据绑定或查询构造边界，并由同一请求的应用与数据库证据相互印证。普通语法错误、函数不存在、错误页固定模板、路径/函数名回显、应用自行拼接 marker、NTILE 正常窗口结果或其他版本 PoC 都不是报错数据回显。",
-          "en": "Positive evidence requires the controlled subquery result to enter database-generated error text and return the marker in the same request, with the error function executing on the target version. The core decision is whether controlled input crosses the intended data-binding or query-construction boundary, corroborated by application and database evidence for the same request. Ordinary syntax errors, missing functions, fixed error pages, reflected paths or function names, application-added markers, a normal NTILE window result, or proof on another version does not establish error-based reflection."
+          "zh": "根因是输入拼接进 SQL 且应用把数据库错误原文返回客户端，报错函数把子查询结果并入错误文本形成回显通道；缺少参数化与统一错误处理时，错误即成为数据出口。",
+          "en": "The root cause is input concatenated into SQL with raw database errors returned to the client: error functions merge subquery results into error text, forming an echo channel. Without parameterization and unified error handling, errors become a data outlet."
         },
         "exploitation": {
-          "zh": "先用常量 marker 验证目标版本可回显，再对合成表一行做最小子查询；每个函数族独立测试并记录弃用/移除状态。 条目中的源命令仅作为逐字节审校与路由证据保留；标记为需覆盖的行在得到安全替代、隔离环境和明确授权前不执行，也不从本教程推导新的攻击命令。",
-          "en": "First verify marker reflection for the target version, then use one minimal subquery against a synthetic row; test each function family independently and record deprecation or removal state. The source command is retained only as byte-exact editorial and routing evidence. Any line flagged for override remains unexecuted until a safe substitute, an isolated environment, and explicit authorization are in place; this tutorial derives no new attack command."
+          "zh": "按 Payload 列表顺序使用：第 1 步以 extractvalue/updatexml 触发报错并拼接 version()，错误信息出现版本号即确认通道成立；第 2-4 步同法读取基础信息、表名与数据，超过 32 字符截断用 SUBSTRING 分段；第 5 步用 FLOOR/RAND、EXP 等函数复测以便轮换。被 WAF 拦截时改用替代报错函数与编码变体。",
+          "en": "Use in Payload list order: step 1 triggers errors with extractvalue/updatexml concatenating version(); a version string in the error confirms the channel. Steps 2-4 read basic info, table names, and data the same way, using SUBSTRING segmentation past the 32-character truncation; step 5 retests with FLOOR/RAND, EXP, and similar functions for rotation. When blocked by a WAF, switch to alternate error functions and encoding variants."
         },
         "mitigation": {
-          "zh": "参数化查询、生产关闭详细数据库错误、统一异常映射，应用账户限制 information_schema/业务敏感列并升级移除旧危险路径。 修复验收必须在相同入口重放正常业务输入、阳性对照和阴性对照，核对最终语句、绑定参数、权限与副作用均回到预期边界，并确认清理完成。",
-          "en": "Parameterize queries, suppress detailed database errors in production, normalize exception mapping, limit information_schema and sensitive-column access, and upgrade away from legacy error paths. Acceptance testing replays normal business input plus positive and negative controls at the same entry point, verifies final statements, bindings, privileges, and side effects return to the intended boundary, and confirms cleanup is complete."
+          "zh": "参数化查询消除注入点，生产环境关闭详细数据库错误并统一异常映射，应用账户限制敏感表访问；修复后重放报错载荷应返回统一错误页且无数据泄露。",
+          "en": "Eliminate the injection point with parameterized queries, disable verbose database errors in production with unified exception mapping, and restrict application-account access to sensitive tables. After the fix, replaying error payloads must return a uniform error page with no data leakage."
         },
         "difficulty": "intermediate"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认MySQL 错误 Oracle前提",
-            "en": "Confirm MySQL Error Oracle prerequisites"
+            "zh": "报错函数触发回显",
+            "en": "Trigger echo with error functions"
           },
           "description": {
-            "zh": "针对MySQL 版本相关报错回显注入先确认数据库类型、输入上下文、隔离资产、最小权限和可观测日志，未满足两项前置条件时不进入命令审查。",
-            "en": "For Version-Specific MySQL Error-Reflection Injection, confirm the database type, input context, isolated asset, least privilege, and observable logs; do not proceed to command review until both prerequisites hold."
+            "zh": "注入 extractvalue 或 updatexml 拼接版本信息，数据库报错信息中带出版本字符串即确认报错注入通道可用。",
+            "en": "Inject extractvalue or updatexml wrapping version info; the error text carrying @@version confirms an error-based channel."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "建立MySQL 错误 Oracle对照",
-            "en": "Establish MySQL Error Oracle controls"
+            "zh": "报错读取库与账户",
+            "en": "Read database and user through errors"
           },
           "description": {
-            "zh": "为MySQL 版本相关报错回显注入记录正常输入、无效输入和固定 marker 的响应、查询日志、绑定值及请求标识，先量化自然波动再判断差异。",
-            "en": "For Version-Specific MySQL Error-Reflection Injection, record responses, query logs, bound values, and request identifiers for normal input, invalid input, and a fixed marker, measuring natural variation before judging differences."
+            "zh": "把 database()、user() 换进报错载荷，错误消息持续回显当前库名与账户身份，为后续定向构造语句收集情报。",
+            "en": "Swap database() and user() into the error payload; recurring echoes of the current database and account feed target selection."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 1
           }
         },
         {
           "title": {
-            "zh": "逐行审校MySQL 错误 Oracle源命令",
-            "en": "Review the MySQL Error Oracle source command line by line"
+            "zh": "报错枚举表名",
+            "en": "Enumerate tables through error messages"
           },
           "description": {
-            "zh": "原始首条命令在此逐字节保留，只用于证明条目来源和行路由；任何实际运行都必须遵守本条记录的隔离、marker、停止和清理条件。",
-            "en": "The original first command is retained here byte for byte only to prove provenance and line routing; any execution must obey this entry's isolation, marker, stop, and cleanup conditions."
+            "zh": "把 group_concat 表名子查询嵌入报错函数，错误信息整段带出当前库全部表清单，直接锁定敏感目标表推进。",
+            "en": "Embed a group_concat table list into the error function to dump every table in the current database via the error text."
           },
-          "payload": "' AND extractvalue(1,concat(0x7e,version()))--\n' AND updatexml(1,concat(0x7e,version()),1)--"
+          "payloadRef": {
+            "area": "execution",
+            "index": 2
+          }
         },
         {
           "title": {
-            "zh": "修复并回归MySQL 错误 Oracle",
-            "en": "Remediate and regress MySQL Error Oracle"
+            "zh": "报错提取目标数据",
+            "en": "Extract target data via errors"
           },
           "description": {
-            "zh": "应用MySQL 版本相关报错回显注入对应修复后，重放三组对照并关联同一请求证据，确认业务结果保持正常、注入证据消失且测试状态已清理。",
-            "en": "After applying the remediation for Version-Specific MySQL Error-Reflection Injection, replay all three controls with correlated request evidence and confirm business behavior remains correct, injection evidence disappears, and test state is removed."
+            "zh": "对锁定表的口令字段做子查询报错回显，用 LIMIT 逐行推进，口令字符串随错误信息直接返回页面完成收割。",
+            "en": "Wrap the target table's password column in an error subquery and step through rows with LIMIT; secrets return inside error text."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 3
+          }
+        },
+        {
+          "title": {
+            "zh": "函数被禁时换等价报错",
+            "en": "Swap to equivalent error functions when banned"
+          },
+          "description": {
+            "zh": "extractvalue 被过滤时改用 FLOOR、EXP、GEOMETRYCOLLECTION 等等价报错函数，保持错误回显通道不中断继续提取。",
+            "en": "If extractvalue is filtered, switch to FLOOR, EXP or GEOMETRYCOLLECTION error primitives to keep the echo channel alive."
+          },
+          "payloadRef": {
+            "area": "wafBypass",
+            "index": 0
           }
         }
       ],
@@ -1776,63 +1892,92 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "验证首次写入时作为数据保存的值，是否在登录、密码修改、重置、评论后台等后续路径被当作可信 SQL 重新拼接。 本教程把“能被输入触达”“数据库实际解释”和“形成可复验证据”分开审查。已定位首次参数化写入与后续动态 SQL sink 的两个独立代码路径，能用唯一 token 关联存储记录、任务/会话和最终 SQL。隔离事务只使用合成用户/评论和 marker 行，后续动作只读或可回滚，不触发真实密码重置、管理员数据或通知。",
-          "en": "Tests whether a value stored as data during an initial write is later treated as trusted SQL and concatenated in login, password change, reset, or administrative-comment flows. This tutorial reviews input reachability, actual database interpretation, and reproducible evidence as separate claims. The initial parameterized write and later dynamic-SQL sink are located as separate code paths, with a unique token correlating stored record, job or session, and final SQL. An isolated transaction uses synthetic users or comments and marker rows only, with later actions read-only or reversible and no real password reset, administrator data, or notification."
+          "zh": "覆盖二阶 SQL 注入的存储到触发验证：首次写入时作为数据保存的值，在登录、密码修改等后续路径被重新拼接进 SQL。包含闭合注释、报错提取、恒真登录绕过与 UNION 提取四种触发形态。",
+          "en": "Covers stored-to-trigger verification of second-order SQL injection: values saved as data on first write are later re-concatenated into SQL on login, password-change, and similar paths. Four trigger forms are included: closure comments, error-based extraction, always-true login bypass, and UNION extraction."
         },
         "vulnerability": {
-          "zh": "阳性证据是同一存储 token 在后续路径脱离绑定参数、改变最终 SQL AST 并访问/影响专用 marker；首次写入与二次执行连续。 核心判断是受控输入是否越过预期的数据绑定或查询构造边界，并由同一请求的应用与数据库证据相互印证。首次保存成功、立即请求可注入、后续普通错误、字符串出现在日志、手工复制到 SQL 控制台、全角引号未标准化或 CONCAT 文本仍作为用户名均不是二阶执行。",
-          "en": "Positive evidence requires the same stored token to leave parameter binding in a later path, alter the final SQL AST, and access or affect a dedicated marker, continuously linking initial write and second execution. The core decision is whether controlled input crosses the intended data-binding or query-construction boundary, corroborated by application and database evidence for the same request. Successful storage, immediate injection, a later ordinary error, strings in logs, manual SQL-console copying, unnormalized full-width quotes, or literal CONCAT text remaining a username does not prove second-order execution."
+          "zh": "根因是写入路径参数化了输入，但读取该值的后续查询仍用字符串拼接构造 SQL，存储数据被误当作可信代码；缺少对存储值的同等参数化处理时，二阶注入即成立。",
+          "en": "The root cause is write paths parameterizing input while later queries reading that value build SQL by string concatenation, treating stored data as trusted code. Without equally parameterized handling of stored values, second-order injection holds."
         },
         "exploitation": {
-          "zh": "用短 token 写入合成记录，完成真实后续业务动作并捕获最终 SQL；只验证 marker 选择/条件变化，不运行源凭据提取、重置或管理员评论命令。 条目中的源命令仅作为逐字节审校与路由证据保留；标记为需覆盖的行在得到安全替代、隔离环境和明确授权前不执行，也不从本教程推导新的攻击命令。",
-          "en": "Store a short token in a synthetic record, execute the real later business action, and capture final SQL; validate marker selection or predicate change only and do not run source credential extraction, reset, or administrator-comment commands. The source command is retained only as byte-exact editorial and routing evidence. Any line flagged for override remains unexecuted until a safe substitute, an isolated environment, and explicit authorization are in place; this tutorial derives no new attack command."
+          "zh": "按 Payload 列表顺序使用：先在注册/资料页把 admin'-- 或 admin' OR '1'='1 存入账户字段，再触发登录等后续路径；第 1 步验证存储值的闭合与逻辑可控，第 2 步以 FLOOR/RAND 报错把第二条查询的数据带回错误信息，第 3 步验证恒真登录绕过，第 4 步用 UNION 提取凭据。被 WAF 拦截时改用 CHAR 拼接或全角引号变体。",
+          "en": "Use in Payload list order: first store admin'-- or admin' OR '1'='1 in an account field via registration or profile pages, then trigger the later path such as login; step 1 verifies closure and logic control of the stored value, step 2 brings back second-query data via FLOOR/RAND errors, step 3 verifies the always-true login bypass, and step 4 extracts credentials via UNION. When blocked by a WAF, switch to CHAR-concatenation or fullwidth-quote variants."
         },
         "mitigation": {
-          "zh": "所有后续查询仍使用绑定参数，存储值不得成为 SQL 片段；动态标识符映射固定值，并对跨任务/后台流程做同等代码审计。 修复验收必须在相同入口重放正常业务输入、阳性对照和阴性对照，核对最终语句、绑定参数、权限与副作用均回到预期边界，并确认清理完成。",
-          "en": "Keep every later query parameterized and never treat stored values as SQL fragments, map dynamic identifiers to fixed values, and audit background and cross-job flows equally. Acceptance testing replays normal business input plus positive and negative controls at the same entry point, verifies final statements, bindings, privileges, and side effects return to the intended boundary, and confirms cleanup is complete."
+          "zh": "后续查询同样使用绑定参数，存储值一律作为数据而非 SQL 片段，动态标识符映射固定值。修复后以存储型载荷回归注册到登录全链路，确认查询结构不再被改变。",
+          "en": "Use bound parameters in later queries too, always treat stored values as data rather than SQL fragments, and map dynamic identifiers to fixed values. After the fix, regression-test the full registration-to-login chain with stored payloads to confirm query structure stays unchanged."
         },
         "difficulty": "intermediate"
       },
       "attackChain": [
         {
           "title": {
-            "zh": "确认二阶存储型 SQL 注入前提",
-            "en": "Confirm Second-Order Stored SQL Injection prerequisites"
+            "zh": "存储点提交闭合恒真载荷",
+            "en": "Plant closure-tautology payloads at the storage point"
           },
           "description": {
-            "zh": "针对二阶 SQL 存储到后续查询注入先确认数据库类型、输入上下文、隔离资产、最小权限和可观测日志，未满足两项前置条件时不进入命令审查。",
-            "en": "For Second-Order SQL Storage-to-Later-Query Injection, confirm the database type, input context, isolated asset, least privilege, and observable logs; do not proceed to command review until both prerequisites hold."
+            "zh": "在注册、资料等写入处提交注释截断与 OR 恒真变体，载荷先落地存储，等待后续查询取出时触发二次注入生效。",
+            "en": "Submit admin'-- and OR-tautology variants at registration or profile fields so the payload lands in storage awaiting later execution."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
           }
         },
         {
           "title": {
-            "zh": "建立二阶存储型 SQL 注入对照",
-            "en": "Establish Second-Order Stored SQL Injection controls"
+            "zh": "恒真条件绕过二次查询",
+            "en": "Bypass the downstream query with tautologies"
           },
           "description": {
-            "zh": "为二阶 SQL 存储到后续查询注入记录正常输入、无效输入和固定 marker 的响应、查询日志、绑定值及请求标识，先量化自然波动再判断差异。",
-            "en": "For Second-Order SQL Storage-to-Later-Query Injection, record responses, query logs, bound values, and request identifiers for normal input, invalid input, and a fixed marker, measuring natural variation before judging differences."
+            "zh": "存储值被拼进登录等后续 SQL 时恒真条件整体命中，OR 恒真使校验直接通过，拿到本不可达的授权会话。",
+            "en": "When the stored value is concatenated into a later query, the OR tautology forces the check to pass and yields an unauthorized session."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 2
           }
         },
         {
           "title": {
-            "zh": "逐行审校二阶存储型 SQL 注入源命令",
-            "en": "Review the Second-Order Stored SQL Injection source command line by line"
+            "zh": "二阶报错提取口令",
+            "en": "Extract passwords via second-order errors"
           },
           "description": {
-            "zh": "原始首条命令在此逐字节保留，只用于证明条目来源和行路由；任何实际运行都必须遵守本条记录的隔离、marker、停止和清理条件。",
-            "en": "The original first command is retained here byte for byte only to prove provenance and line routing; any execution must obey this entry's isolation, marker, stop, and cleanup conditions."
+            "zh": "换用报错型存储载荷，二次查询执行时 FLOOR 报错把 users 表口令字段带回页面，实现无直接回显点的数据提取。",
+            "en": "Switch to error-based stored payloads; on second execution FLOOR errors carry the users password column back to the page."
           },
-          "payload": "admin＇ OR ＇1＇=＇1\ntest@test.com' UNION SELECT password FROM users WHERE '1'='1\n\\x27 OR 1=1--"
+          "payloadRef": {
+            "area": "execution",
+            "index": 1
+          }
         },
         {
           "title": {
-            "zh": "修复并回归二阶存储型 SQL 注入",
-            "en": "Remediate and regress Second-Order Stored SQL Injection"
+            "zh": "UNION 直取完整凭据",
+            "en": "Dump full credentials with UNION"
           },
           "description": {
-            "zh": "应用二阶 SQL 存储到后续查询注入对应修复后，重放三组对照并关联同一请求证据，确认业务结果保持正常、注入证据消失且测试状态已清理。",
-            "en": "After applying the remediation for Second-Order SQL Storage-to-Later-Query Injection, replay all three controls with correlated request evidence and confirm business behavior remains correct, injection evidence disappears, and test state is removed."
+            "zh": "存储载荷改为 UNION SELECT 用户名口令双列，二次查询输出即整表凭据行，完成二阶链路的数据收割闭环。",
+            "en": "Make the stored payload UNION SELECT username,password so the later query outputs whole credential rows, completing the second-order dump."
+          },
+          "payloadRef": {
+            "area": "execution",
+            "index": 3
+          }
+        },
+        {
+          "title": {
+            "zh": "过滤时换全角与十六进制变体",
+            "en": "Use fullwidth and hex variants when filtered"
+          },
+          "description": {
+            "zh": "存储载荷改为联合查询同时选取用户名与口令两列，二次查询输出即整表凭据行，完成二阶链路的数据收割闭环。",
+            "en": "When quotes are escaped, rewrite the payload with fullwidth quotes or \\x27 hex escapes to dodge escaping while keeping step 4 semantics."
+          },
+          "payloadRef": {
+            "area": "wafBypass",
+            "index": 1
           }
         }
       ],

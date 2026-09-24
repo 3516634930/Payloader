@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contentStandard": 2,
+  "contentStandard": 3,
   "sourcePrefix": "bizlogic",
   "entries": [
     {
@@ -47,20 +47,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "该记录不是通用 URL 字典，而是面向支持远程资源的 LaTeX 编译链。测试要区分应用下载资源、编译器解析包含指令和外部代理代取三个阶段，并以受控回连作为最低证据。",
-          "en": "This entry targets LaTeX compilation chains that support remote resources rather than generic URL fields. Testing separates application fetching, compiler inclusion, and proxy retrieval, with a controlled callback as the minimum evidence."
+          "zh": "LaTeX 远程资源包含 SSRF 覆盖服务端文档编译场景：针对启用了网络访问的 LaTeX 渲染链，验证 \\input 与 \\lstinputlisting 等包含指令能否让编译进程访问受控回连或内部地址。验证维度涵盖回连确认、回环/私网/元数据地址解析与编译日志关联。",
+          "en": "LaTeX Remote Resource Inclusion SSRF covers server-side document compilation: for LaTeX rendering chains with network access enabled, verify whether inclusion commands such as \\input and \\lstinputlisting make the compile process reach controlled callbacks or internal addresses. Verification dimensions cover callback confirmation, loopback/private/metadata address resolution, and compile-log correlation."
         },
         "vulnerability": {
-          "zh": "当用户可控的 TeX 内容进入启用了网络访问的渲染器时，包含指令可能让服务端请求内网、环回或云元数据地址。只有请求确由目标发出且响应影响渲染结果时，才能确认 SSRF。",
-          "en": "When attacker-controlled TeX reaches a renderer with network access, inclusion directives may request loopback, internal, or cloud metadata addresses. SSRF is confirmed only when the target originates the request and the response affects rendering."
+          "zh": "根因是用户可控的 TeX 内容进入启用网络访问的编译器，远程包含指令让编译进程代替应用发起请求；应用下载、编译器解析与代理代取三个阶段必须区分，只有请求确由目标发出且影响渲染结果时才构成 SSRF。",
+          "en": "The root cause is user-controlled TeX content reaching a network-enabled compiler, where remote inclusion commands make the compile process request on the application's behalf; application download, compiler resolution, and proxy fetching must be distinguished, and only requests proven to originate from the target that influence rendering constitute SSRF."
         },
         "exploitation": {
-          "zh": "1. 先向唯一受控 HTTPS 端点发送无害包含请求并记录 DNS、连接源与时间；2. 逐项提交原始指令集合，但仅使用实验室地址观察解析差异；3. 将回连、编译日志和输出文档关联。浏览器预取、运维代理或外部扫描器产生的访问属于误报。",
-          "en": "1. Send a harmless inclusion request to a unique controlled HTTPS endpoint and record DNS, source, and time. 2. Submit the original directive set one item at a time using laboratory addresses only. 3. Correlate callbacks, compiler logs, and the rendered document. Browser prefetches, operational proxies, and external scanners are false positives."
+          "zh": "按 Payload 列表顺序使用：第 1 步先向唯一受控 HTTPS 回连端点发送无害包含请求，记录 DNS、连接源与时间；再逐条编译 \\input 与 \\lstinputlisting 变体（回连域名、127.0.0.1、169.254.169.254 及 RFC1918 地址），带外域名收到取回请求或编译日志显示远程包含成功即确认；最后将回连、编译日志与输出文档关联，排除浏览器预取或运维代理误报。占位符在全局变量菜单中替换。",
+          "en": "Use in Payload list order: step 1 first sends a harmless inclusion to a unique controlled HTTPS callback, recording DNS, connection source, and timing; then compile the \\input and \\lstinputlisting variants one by one (callback domain, 127.0.0.1, 169.254.169.254, and RFC1918 addresses) — an out-of-band fetch or a compile log showing successful inclusion confirms; finally correlate callback, compile log, and output document while excluding browser prefetch and ops-proxy false positives. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. 禁止渲染器访问网络并在隔离容器中执行编译；2. 对 TeX 语法采用允许列表并移除远程包含能力；3. 对出站流量实施域名与地址双重限制，同时阻断环回、私网和链路本地地址。",
-          "en": "1. Disable renderer network access and compile in an isolated container. 2. Allowlist TeX syntax and remove remote inclusion features. 3. Restrict egress by both hostname and resolved address while blocking loopback, private, and link-local ranges."
+          "zh": "禁止渲染器访问网络并在隔离容器中执行编译，对 TeX 语法采用允许列表移除远程包含能力；确需网络时对出站流量实施域名与地址双重限制，同时阻断回环、私网与链路本地地址。修复后用第 1 步样例回归，回连不应再发生。",
+          "en": "Deny network access for the renderer and compile in isolated containers, and apply TeX syntax allowlists removing remote inclusion; where networking is required, dual-restrict egress by domain and address while blocking loopback, private, and link-local ranges. After the fix, regress with the step 1 sample: no callback should occur."
         },
         "difficulty": "advanced"
       },
@@ -156,20 +156,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "该记录针对 TeX 的写出执行能力，不应作为普通业务逻辑案例展示。评估应先确认编译引擎、启动参数、工作目录与容器边界，再使用无害标记观察子进程是否由编译器创建。",
-          "en": "This entry concerns TeX write-and-execute capability rather than business logic. Assessment first identifies the engine, launch flags, working directory, and container boundary, then uses a harmless marker to observe compiler-created processes."
+          "zh": "LaTeX Shell Escape 命令执行针对服务端 TeX 编译器错误启用 shell escape 的场景：文档指令可启动操作系统进程。验证 \\immediate\\write18 指令能否由编译进程执行并留下输出证据。",
+          "en": "LaTeX shell-escape command execution targets server-side TeX compilers wrongly enabling shell escape, where document directives launch operating-system processes. It validates whether \\immediate\\write18 directives execute under the compile process and leave output evidence."
         },
         "vulnerability": {
-          "zh": "若渲染服务以启用 shell escape 的方式编译不可信文档，攻击者可让编译进程执行系统命令，并继承服务账号的文件与网络权限。仅出现 TeX 语法错误或命令字符串回显不代表执行成功。",
-          "en": "If a rendering service compiles untrusted documents with shell escape enabled, an attacker can execute system commands with the service account's file and network privileges. A TeX error or reflected command string does not prove execution."
+          "zh": "根因是渲染服务以启用 shell escape 的方式编译不可信文档，攻击者可让编译进程执行系统命令并继承服务账号的文件与网络权限；仅出现 TeX 语法错误或命令字符串回显不代表执行成功。",
+          "en": "The root cause is the rendering service compiling untrusted documents with shell escape enabled, letting the compile process execute system commands and inherit the service account's file and network permissions; TeX syntax errors or echoed command strings alone do not prove execution."
         },
         "exploitation": {
-          "zh": "1. 在隔离环境建立正常文档编译基线并记录进程树；2. 从原始集合选择只创建随机标记文件的测试项，逐次提交且不访问敏感数据；3. 核对文件所有者、编译任务和子进程审计。只有服务器侧副作用与任务一致时才确认，客户端生成文件属于误报。",
-          "en": "1. Establish a normal compilation baseline in isolation and record the process tree. 2. Select a test item from the original set that creates only a random marker file, submitting one at a time without accessing sensitive data. 3. Verify file ownership, compilation job, and child-process audit events. Confirm only server-side effects tied to the job; client-created files are false positives."
+          "zh": "按第 1 步逐条提交含 \\immediate\\write18 指令的文档到编译入口，命令依次为 id、whoami、读标记与列目录；命中判据为编译日志或 PDF 中出现命令输出，或 /tmp/output.txt 被生成。先提交无害 echo 命令确认 shell escape 是否开启，再执行读取标记文件形成证据；记录编译引擎（pdflatex 等）、启动参数与容器边界。",
+          "en": "Submit documents containing \\immediate\\write18 directives to the compile entry one by one per step 1, with commands cycling through id, whoami, marker reads, and directory listings; a hit is command output in the compile log or PDF, or /tmp/output.txt being created. First submit a harmless echo to confirm shell escape is on, then read marker files for evidence; record the compile engine (pdflatex, etc.), launch flags, and container boundaries."
         },
         "mitigation": {
-          "zh": "1. 永久关闭 shell escape 与同类外部执行选项；2. 在无特权、只读文件系统和无网络容器中运行编译器；3. 对宏包和控制序列建立允许列表，并限制 CPU、内存、进程数与执行时间。",
-          "en": "1. Permanently disable shell escape and equivalent external-execution options. 2. Run the compiler unprivileged in a read-only, networkless container. 3. Allowlist packages and control sequences and limit CPU, memory, processes, and execution time."
+          "zh": "永久关闭 shell escape 与同类外部执行选项；在无特权、只读文件系统和无网络的容器中运行编译器；对宏包和控制序列建立允许列表，并限制 CPU、内存、进程数与执行时间。修复后重放第 1 步文档，确认 write18 指令被忽略且正常编译可用。",
+          "en": "Permanently disable shell escape and similar external-execution options; run compilers in unprivileged containers with read-only filesystems and no network; build allowlists for packages and control sequences, and cap CPU, memory, process count, and runtime. After the fix, replay the step-1 documents and confirm write18 directives are ignored while normal compilation works."
         },
         "difficulty": "advanced"
       },
@@ -378,20 +378,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "该集合是 JavaScript 正则引擎的对抗输入，不是业务流程绕过。测试应围绕具体正则、输入长度和事件循环阻塞建立增长曲线，避免一次超长请求直接拖垮共享环境。",
-          "en": "This collection contains adversarial inputs for JavaScript regex engines rather than business-flow bypasses. Testing builds a growth curve for a specific regex, input length, and event-loop blocking without sending one oversized request to shared infrastructure."
+          "zh": "该 Payload 覆盖 JavaScript 正则灾难性回溯场景，检验处理端点的耗时随输入长度的增长曲线。验证维度为渐增长度近似匹配输入的计时测量，对应第 1 步。",
+          "en": "This payload covers catastrophic regex backtracking in JavaScript, testing how endpoint processing time scales with input length. Validation times progressively longer near-match inputs, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "包含重叠量词或歧义分支的正则在失败匹配时可能出现指数级回溯，使单个请求长时间占用 Node.js 主线程。仅看到高延迟但没有随长度增长的可重复曲线，不能确认 ReDoS。",
-          "en": "Regexes with overlapping quantifiers or ambiguous alternation can backtrack exponentially on failed matches and occupy the Node.js main thread. High latency without a reproducible input-length growth curve does not confirm ReDoS."
+          "zh": "根因在于正则表达式存在嵌套量词或重叠分支：近似匹配输入迫使引擎在失败前穷举指数级回溯路径，单请求即可耗尽事件循环，形成拒绝服务。",
+          "en": "The root cause is regexes with nested quantifiers or overlapping branches: near-match inputs force the engine through exponential backtracking before failing, so one request can exhaust the event loop and deny service."
         },
         "exploitation": {
-          "zh": "1. 在隔离副本上记录正常输入的匹配时间与事件循环延迟；2. 从原始字符串中按长度递增逐个测试，并设置严格超时；3. 重复采样后比较增长率、CPU 和请求队列。网络抖动、冷启动或下游慢查询造成的延迟应判为误报。",
-          "en": "1. Record match time and event-loop delay for normal input on an isolated replica. 2. Test original strings one at a time in increasing length with a strict timeout. 3. Repeat samples and compare growth rate, CPU, and request queueing. Network jitter, cold starts, and slow downstream queries are false positives."
+          "zh": "第 1 步把长度递增的重复字符加终止符输入逐条提交到使用正则的端点并记录响应时间：耗时应随长度非线性激增，出现秒级以上延迟即确认 ReDoS，绘制长度与耗时曲线作为量化证据。成功判据以时间增长曲线为准。占位符在全局变量菜单替换；测试并发控制为 1 避免叠加影响。",
+          "en": "In step 1, submit inputs of increasing length made of repeated characters plus a terminator to the regex-using endpoint one by one, recording response times; time should explode nonlinearly with length, and delays beyond a second confirm ReDoS, with the length-versus-time curve as quantitative evidence. Judge success by the growth curve. Replace placeholders via the global variables menu; hold concurrency at 1 to avoid compounded impact."
         },
         "mitigation": {
-          "zh": "1. 重写存在嵌套量词或重叠分支的表达式并采用线性时间引擎；2. 限制输入长度和正则执行时间；3. 把高风险匹配移出主线程，并为延迟斜率与事件循环阻塞建立回归测试。",
-          "en": "1. Rewrite expressions with nested quantifiers or overlapping alternatives and prefer a linear-time engine. 2. Limit input length and regex execution time. 3. Move risky matching off the main thread and add regression tests for latency slope and event-loop blocking."
+          "zh": "重构高危正则消除嵌套量词或改用 RE2 类线性引擎，对用户输入限长并异步化校验。修复后重放第 1 步，耗时应随长度线性且无超时出现。",
+          "en": "Refactor risky regexes to remove nested quantifiers or adopt linear engines like RE2, cap user-input length, and move validation off the hot path. After the fix, replay step 1: time should scale linearly with no timeouts."
         },
         "difficulty": "intermediate"
       },
@@ -491,20 +491,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "顺序 ID 只提供测试候选，真正评估对象是服务端对每个读取、修改和删除操作执行的所有权检查。测试需要至少两个隔离账号和明确的自有对象、他人对象基线。",
-          "en": "Sequential IDs only provide test candidates; the real control is server-side ownership enforcement on every read, update, and delete operation. Testing requires at least two isolated accounts with known owned and foreign objects."
+          "zh": "该 Payload 覆盖顺序对象 ID 的越权枚举场景，检验对象级授权是否把访问绑定到当前主体而非 ID 可猜性。验证维度为相邻 ID 的批量替换请求，对应第 1 步。",
+          "en": "This payload covers sequential object-ID enumeration, testing whether object-level authorization binds access to the current principal rather than ID guessability. Validation batch-swaps adjacent IDs in requests, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "如果低权限用户替换对象 ID 后能够读取或改变另一主体的数据，就形成对象级授权缺失。响应为 200 但只返回公开字段、统一占位对象或无状态变化时，不足以确认越权。",
-          "en": "An object-level authorization flaw exists when a low-privilege user can replace an object ID and read or change another principal's data. A 200 response containing only public fields, placeholders, or no state change is insufficient."
+          "zh": "根因在于接口按 ID 直取数据而缺少归属校验：可预测编号让攻击者批量遍历他人对象，授权缺位使顺序性直接转化为越权访问路径。",
+          "en": "The root cause is interfaces fetching by ID without ownership checks: predictable numbering lets attackers sweep others' objects in bulk, and missing authorization turns sequentiality directly into an escalation path."
         },
         "exploitation": {
-          "zh": "1. 分别创建账号 A 与 B 的测试对象并记录标识；2. 以账号 A 逐项替换为原始 ID 候选，仅执行无害读取；3. 将响应对象所有者、字段差异和审计日志关联。公开目录、缓存数据或不存在对象的相同响应属于误报。",
-          "en": "1. Create test objects for accounts A and B and record their identifiers. 2. As account A, replace the identifier with original candidates one at a time and perform harmless reads only. 3. Correlate owner, field differences, and audit logs. Public listings, cached data, and identical not-found responses are false positives."
+          "zh": "第 1 步按脚本把清单中的相邻 ID 逐条替换进受保护请求并记录响应，凡返回他人对象内容即确认对象级授权缺失，同时统计可访问区间作为影响面证据。成功判据以越权返回记录为准。占位符在全局变量菜单替换；请求频率限制在授权范围内。",
+          "en": "In step 1, swap adjacent IDs from the list into protected requests one by one per the script, recording responses; any return of another user's object confirms missing object-level authorization, tallied into an accessible range as impact evidence. Judge success by unauthorized-return records. Replace placeholders via the global variables menu; keep request rates within authorization."
         },
         "mitigation": {
-          "zh": "1. 对每次对象访问执行主体与对象关系授权，不依赖不可预测 ID；2. 使用间接引用并限制查询范围到当前租户；3. 为跨账号读取、修改和批量接口建立负向测试与审计告警。",
-          "en": "1. Authorize every object access against the principal-object relationship rather than relying on unpredictable IDs. 2. Use indirect references and scope queries to the current tenant. 3. Add negative tests and audit alerts for cross-account reads, updates, and bulk endpoints."
+          "zh": "每个对象访问执行主体归属校验并统一返回 404，标识可改用不可枚举 UUID；异常遍历速率触发限流。修复后重放第 1 步，相邻 ID 请求应全部被拒绝。",
+          "en": "Enforce principal-ownership checks on every object access with uniform 404s, switch to non-enumerable UUIDs, and throttle anomalous sweep rates. After the fix, replay step 1: adjacent-ID requests should all be rejected."
         },
         "difficulty": "beginner"
       },
@@ -600,20 +600,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原记录因空尾 ID 和中英文缺失而难以理解，实际内容是一组可预测优惠码候选。评估重点不是猜中字符串，而是未授权兑换、跨用户转让、重复使用和并发超额发放。",
-          "en": "The original entry has an ambiguous trailing ID and missing English text, but its content is a predictable coupon-code candidate set. Assessment focuses on unauthorized redemption, cross-user transfer, reuse, and concurrent over-issuance."
+          "zh": "该 Payload 覆盖优惠券与积分码枚举滥用场景，检验优惠码的不可预测性、用户绑定关系与核销原子性。验证维度为规律码本候选的批量核销提交矩阵，对应第 1 步。",
+          "en": "This payload covers coupon and points-code enumeration abuse, testing code unpredictability, user binding and redemption atomicity. Validation is a submission matrix batching regular-codebook candidates, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "当代码空间过小且兑换接口缺少速率限制、主体绑定或原子状态转换时，攻击者可能枚举有效权益或重复消费。仅返回“代码存在”但无法增加余额或生成订单折扣不构成实际影响。",
-          "en": "When the code space is small and redemption lacks rate limits, principal binding, or atomic state transitions, valid benefits may be enumerated or reused. A message that a code exists without a balance or order discount does not establish impact."
+          "zh": "根因在于优惠码按可预测规律生成而核销缺少用户绑定与频率控制：批量提交规律候选即可命中有效码，权益被无成本套取且事后难以追责。",
+          "en": "The root cause is codes generated on predictable patterns with redemption lacking user binding and rate controls: batch-submitting patterned candidates hits valid codes, extracting entitlements cost-free with little traceability."
         },
         "exploitation": {
-          "zh": "1. 创建只在实验室生效的一次性优惠码并记录所有者与额度；2. 从原始候选中低速逐项测试不存在、已使用和他人代码；3. 并发兑换仅在零价值代码上执行并核对账本。缓存提示、前端折扣预览或回滚事务属于误报。",
-          "en": "1. Create a laboratory-only single-use coupon and record owner and value. 2. Test original candidates slowly against nonexistent, used, and other-user codes. 3. Exercise concurrency only with zero-value codes and verify the ledger. Cached messages, client-side discount previews, and rolled-back transactions are false positives."
+          "zh": "第 1 步按脚本把规律命名的码本候选逐条提交核销端点，记录接受结果与响应差异：任一候选被成功核销即确认可枚举，统计命中率并核对权益入账以评估影响。成功判据以核销成功记录为准。占位符在全局变量菜单替换；仅对测试账号核销并事后回滚。",
+          "en": "In step 1, submit patterned codebook candidates to the redemption endpoint one by one per the script, recording acceptances and response differences; any candidate redeeming confirms enumerability, with hit rates tallied and entitlement postings checked for impact. Judge success by successful-redemption records. Replace placeholders via the global variables menu; redeem only on test accounts and roll back afterwards."
         },
         "mitigation": {
-          "zh": "1. 使用高熵不可预测代码并绑定活动、用户与有效期；2. 对查询和兑换统一限速且避免可枚举响应；3. 在数据库中通过唯一约束和条件更新实现一次性原子兑换，并审计异常失败率。",
-          "en": "1. Use high-entropy codes bound to campaign, user, and expiry. 2. Rate-limit lookup and redemption with non-enumerable responses. 3. Enforce one-time atomic redemption with database constraints and conditional updates, and audit abnormal failure rates."
+          "zh": "优惠码改用 CSPRNG 生成并与用户或订单绑定，核销接口限频且失败计数锁定，权益发放走异步对账。修复后重放第 1 步，候选命中应为零且批量请求被限流。",
+          "en": "Generate codes with a CSPRNG bound to users or orders, rate-limit redemption with lockouts on failures, and post entitlements through asynchronous reconciliation. After the fix, replay step 1: candidate hits should be zero with batches throttled."
         },
         "difficulty": "intermediate"
       },
@@ -709,20 +709,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原记录名称强调竞态，但内容主要是金额边界值；两者必须分开验证。先确认客户端金额是否被服务端忽略，再检查高精度舍入、上下限和并发提交是否破坏账本守恒。",
-          "en": "The original name emphasizes races while the content is primarily amount boundary values, so the two concerns must be tested separately. First verify server-side pricing, then rounding, bounds, and concurrent ledger conservation."
+          "zh": "该 Payload 覆盖金额边界与竞态一致性场景，检验服务端对零负极值与高精度金额的计算与事务处理。验证维度为边界金额矩阵与并发扣减的对照提交，对应第 1 步。",
+          "en": "This payload covers amount-boundary and race consistency, testing server calculation and transaction handling for zero, negative, extreme and high-precision amounts. Validation contrasts boundary-amount matrices with concurrent deductions, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "若服务端信任客户端金额、允许负数或在并发事务中重复扣减或入账，可能造成少付、退款放大或余额异常。请求被接受但最终订单按服务端价格结算时，不构成金额篡改。",
-          "en": "If the server trusts client amounts, accepts negatives, or duplicates debit or credit under concurrency, underpayment, amplified refunds, or balance corruption may result. An accepted request settled at the server price is not tampering."
+          "zh": "根因在于金额校验缺失非负与上限约束且计算存在浮点或舍入误差：极小与负值通过校验改变订单金额，并发提交下重复扣减或退款放大资损。",
+          "en": "The root cause is amounts lacking non-negativity and cap checks plus floating-point or rounding drift: tiny and negative values pass validation and alter orders, while concurrent submissions double-deduct or refund, magnifying losses."
         },
         "exploitation": {
-          "zh": "1. 记录固定商品的服务端报价、税费和账本基线；2. 逐项提交原始金额边界值，保持商品与数量不变；3. 对零价值订单做受控并发并核对最终借贷平衡。网关格式化、前端显示精度或已回滚授权不算漏洞证据。",
-          "en": "1. Record server price, tax, and ledger baseline for a fixed test product. 2. Submit original amount boundary values one at a time while keeping product and quantity fixed. 3. Run controlled concurrency on zero-value orders and verify final debit-credit balance. Gateway formatting, display precision, and rolled-back authorizations are not evidence."
+          "zh": "第 1 步按脚本把零、负、极小与高精度金额逐条替换进支付请求，记录订单实际金额变化；对可计费端点再以两笔并发提交验证扣减一致性。任一边界值生效或并发异常即确认校验缺陷。成功判据以账务状态对照为准。占位符在全局变量菜单替换；全部操作使用测试账户并事后对账回滚。",
+          "en": "In step 1, swap zero, negative, tiny and high-precision amounts into payment requests one by one per the script, recording actual order-amount changes; then double-submit concurrently against billable endpoints to verify deduction consistency. Any boundary value taking effect or concurrency anomaly confirms the validation defect. Judge success by ledger-state comparison. Replace placeholders via the global variables menu; operate only on test accounts and reconcile-and-rollback afterwards."
         },
         "mitigation": {
-          "zh": "1. 服务端根据受信商品与促销数据重新计算所有金额；2. 使用定点小数、明确舍入规则和范围验证；3. 通过幂等键、条件更新、唯一约束和事务锁保证支付与退款只记账一次。",
-          "en": "1. Recalculate every amount server-side from trusted product and promotion data. 2. Use fixed-point decimals with explicit rounding and bounds. 3. Enforce single-entry payment and refund with idempotency keys, conditional updates, unique constraints, and transaction locking."
+          "zh": "金额以整数最小单位存储并校验非负与上限，计算用十进制库，扣减与退款走幂等事务。修复后重放第 1 步，全部边界值应被拒绝且并发结果与单次一致。",
+          "en": "Store amounts as integer minor units with non-negativity and cap checks, compute with decimal libraries, and route deductions and refunds through idempotent transactions. After the fix, replay step 1: every boundary value should be rejected with concurrency results matching single runs."
         },
         "difficulty": "advanced"
       },
@@ -818,20 +818,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "该集合由顺序 token 与 session 字符串组成，适合验证测试环境中的可预测标识。评估必须区分无效令牌、匿名会话、已失效会话和其他测试账号的有效会话。",
-          "en": "This collection contains sequential token and session strings for testing predictable identifiers. Assessment distinguishes invalid tokens, anonymous sessions, expired sessions, and valid sessions belonging to another test account."
+          "zh": "该 Payload 覆盖会话标识可预测性场景，检验顺序令牌与服务端主体授权之间的联动缺失。验证维度为规律候选令牌与 Session 值的批量认证提交，对应第 1 步。",
+          "en": "This payload covers session-identifier predictability, testing missing linkage between sequential tokens and server-side principal authorization. Validation batch-submits patterned token and session candidates, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "若令牌空间可枚举且接口缺少速率限制，攻击者可能命中其他主体的活动会话；若服务端还未绑定设备、用途或权限，就会导致账户接管。仅错误消息不同或创建新匿名会话不是泄露。",
-          "en": "If the token space is enumerable and lacks rate limits, another principal's active session may be found; missing device, purpose, or privilege binding can then cause account takeover. Different errors or a newly created anonymous session are not leakage."
+          "zh": "根因在于令牌按可枚举规则生成而服务端校验只比对存在性：规律候选命中有效令牌即继承对应会话全部权限，熵与绑定校验双双缺位。",
+          "en": "The root cause is tokens generated by enumerable rules while server checks compare existence only: patterned candidates hitting valid tokens inherit their full session privileges, with entropy and binding checks both absent."
         },
         "exploitation": {
-          "zh": "1. 为两个隔离账号签发并记录测试会话，同时准备过期样本；2. 低速提交原始候选，每次清除客户端状态；3. 核对服务端会话主体、签发时间和审计事件。只有候选继承另一个账号权限才成立，统一 200 或匿名身份属于误报。",
-          "en": "1. Issue and record test sessions for two isolated accounts and prepare an expired sample. 2. Submit original candidates slowly, clearing client state each time. 3. Verify server-side session principal, issue time, and audit events. Confirm only inheritance of another account's privileges; generic 200 responses or anonymous identities are false positives."
+          "zh": "第 1 步按脚本把规律命名的令牌与 Session 候选逐条提交认证端点，记录放行结果与获得的主体身份：任一候选通过验证即确认可预测性缺陷，统计命中区间评估泄露范围。成功判据以认证放行矩阵为准。占位符在全局变量菜单替换；命中会话仅做只读验证。",
+          "en": "In step 1, submit patterned token and session candidates to the authentication endpoint one by one per the script, recording allowances and acquired principal identities; any candidate passing confirms the predictability defect, with hit ranges tallied to bound exposure. Judge success by the authentication-allowance matrix. Replace placeholders via the global variables menu; verify hit sessions read-only."
         },
         "mitigation": {
-          "zh": "1. 使用密码学安全随机数生成足够高熵的会话标识；2. 登录、提权和密码变更后轮换并撤销旧会话；3. 对令牌验证实施限速、用途与主体绑定、短有效期以及异常枚举告警。",
-          "en": "1. Generate sufficiently high-entropy session identifiers with a cryptographically secure random source. 2. Rotate and revoke sessions after login, privilege changes, and password changes. 3. Apply rate limits, purpose and principal binding, short lifetimes, and enumeration alerts."
+          "zh": "令牌与 Session 全部由 CSPRNG 生成并绑定主体，认证失败计数锁定，定期轮换存量会话。修复后重放第 1 步，候选命中应为零且批量提交触发限流。",
+          "en": "Generate all tokens and sessions from a CSPRNG bound to principals, lock accounts on failure counts, and rotate legacy sessions periodically. After the fix, replay step 1: candidate hits should be zero with batches throttled."
         },
         "difficulty": "intermediate"
       },
@@ -927,20 +927,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原始 JSON 集合针对 JavaScript 对象合并边界，不属于普通业务逻辑。测试应识别解析器、合并库、对象生命周期和可观察的无害哨兵属性，避免直接使用管理员字段作为唯一证据。",
-          "en": "The original JSON set targets JavaScript object-merge boundaries rather than ordinary business logic. Testing identifies the parser, merge library, object lifetime, and a harmless observable sentinel instead of relying only on administrative properties."
+          "zh": "JSON 请求体原型链污染针对 JSON 解析与深度合并逻辑接受特殊原型键的场景：污染属性可影响后续对象或授权判断。验证 __proto__ 直写、isAdmin/admin/role 三类属性注入的继承效果。",
+          "en": "JSON body prototype pollution targets JSON parsing and deep-merge logic accepting special prototype keys, where polluted properties affect subsequent objects or authorization decisions. It validates inheritance effects of direct __proto__ writes and the isAdmin/admin/role property classes."
         },
         "vulnerability": {
-          "zh": "若不可信 JSON 的 __proto__、constructor 或 prototype 路径被递归复制到共享原型，后续新对象可能继承攻击者属性并改变配置或授权。仅请求对象自身含有同名字段不等于全局污染。",
-          "en": "If untrusted JSON paths such as __proto__, constructor, or prototype are recursively copied into a shared prototype, later objects may inherit attacker properties and alter configuration or authorization. An own property on the request object is not global pollution."
+          "zh": "若不可信 JSON 的 __proto__、constructor 或 prototype 路径被递归复制到共享原型，后续新对象可能继承攻击者属性并改变配置或授权；仅请求对象自身含有同名字段不等于全局污染。",
+          "en": "If __proto__, constructor, or prototype paths in untrusted JSON are recursively copied onto the shared prototype, subsequent fresh objects may inherit attacker properties and change configuration or authorization; a same-named field on the request object itself is not global pollution."
         },
         "exploitation": {
-          "zh": "1. 在隔离进程中建立新对象不含随机哨兵属性的基线；2. 逐项发送原始 JSON，但将敏感字段替换为无害哨兵；3. 在独立后续请求创建新对象并检查继承来源。仅当前请求回显、数据库持久字段或测试夹具预置值属于误报。",
-          "en": "1. Establish that a fresh object lacks a random sentinel in an isolated process. 2. Send original JSON items one at a time with sensitive fields replaced by a harmless sentinel. 3. Create a new object in an independent request and inspect inheritance. Current-request reflection, persisted database fields, and fixture defaults are false positives."
+          "zh": "按第 1 步逐条提交 {\"__proto__\":{\"evilProperty\":\"evilPayload\"}} 与 isAdmin/admin/role 变体到目标 JSON 入口；命中判据为响应行为随注入属性变化（权限字段生效、新对象继承属性）。每次提交后用全新对象检查继承关系并排除缓存与单例状态干扰；识别解析器、合并库与对象生命周期，避免直接使用管理员字段作为唯一证据。",
+          "en": "Per step 1, submit {\"__proto__\":{\"evilProperty\":\"evilPayload\"}} and the isAdmin/admin/role variants to the target JSON entry one by one; a hit is response behavior changing with the injected property (permission fields taking effect, fresh objects inheriting properties). After each submission check inheritance on brand-new objects, excluding cache and singleton-state interference; identify the parser, merge library, and object lifecycle, and never use admin fields alone as evidence."
         },
         "mitigation": {
-          "zh": "1. 使用无原型对象或 Map 保存不可信键值；2. 拒绝 __proto__、prototype、constructor 等危险路径并避免递归合并用户对象；3. 升级受影响依赖，冻结关键原型并加入跨请求污染回归测试。",
-          "en": "1. Store untrusted key-value data in null-prototype objects or Maps. 2. Reject dangerous paths such as __proto__, prototype, and constructor and avoid recursive user-object merges. 3. Upgrade affected dependencies, freeze critical prototypes, and add cross-request pollution tests."
+          "zh": "使用无原型对象或 Map 保存不可信键值；拒绝 __proto__、prototype、constructor 等危险路径并避免递归合并用户对象；升级受影响依赖，冻结关键原型并加入跨请求污染回归测试。修复后重放第 1 步样例，确认新对象原型保持未污染。",
+          "en": "Store untrusted key-values in prototype-less objects or Map; reject dangerous paths like __proto__, prototype, and constructor and avoid recursively merging user objects; upgrade affected dependencies, freeze critical prototypes, and add cross-request pollution regression tests. After the fix, replay the step-1 samples and confirm fresh-object prototypes stay unpolluted."
         },
         "difficulty": "advanced"
       },
@@ -1036,20 +1036,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "该集合覆盖 __proto__ 与 constructor 路径的多种 URL 编码形态，风险取决于查询解析器和后续合并方式。测试应保持业务参数不变，仅改变一条键路径并观察跨请求对象。",
-          "en": "This collection covers URL-encoded forms of __proto__ and constructor paths, with risk determined by query parsing and subsequent merges. Testing holds business parameters constant, changes one key path, and observes objects across requests."
+          "zh": "URL 参数原型链污染针对查询字符串解析器把括号或点号路径转换为危险原型键的场景：解析结果可污染服务端共享对象。验证 __proto__[key] 与嵌套路径多种 URL 编码形态的解析行为。",
+          "en": "URL parameter prototype pollution targets query-string parsers converting bracket or dot paths into dangerous prototype keys, where parse results pollute server-side shared objects. It validates parsing of __proto__[key] and nested paths across multiple URL-encoded forms."
         },
         "vulnerability": {
-          "zh": "当解析器允许攻击者构造嵌套危险键，且应用把结果递归合并到普通对象时，共享原型可能被修改并影响配置、模板或授权。查询参数显示在调试页并不能证明原型已变化。",
-          "en": "When a parser permits nested dangerous keys and the application recursively merges the result into ordinary objects, shared prototypes may change and affect configuration, templates, or authorization. Seeing the query on a debug page does not prove prototype mutation."
+          "zh": "当解析器允许攻击者构造嵌套危险键，且应用把结果递归合并到普通对象时，共享原型可能被修改并影响配置、模板或授权；查询参数显示在调试页并不能证明原型已变化。",
+          "en": "When parsers let attackers construct nested dangerous keys and the application recursively merges results into ordinary objects, the shared prototype can change and affect configuration, templates, or authorization; query parameters shown on debug pages do not prove prototype change."
         },
         "exploitation": {
-          "zh": "1. 记录解析前后对象结构并确认新对象无哨兵；2. 逐项请求原始 URL 参数结构，将值替换为随机无害标记；3. 在另一请求中检查新对象及敏感分支。只有非自有属性跨请求出现才成立，参数回显和缓存响应是假阳性。",
-          "en": "1. Record object structure before and after parsing and confirm fresh objects lack the sentinel. 2. Request original URL parameter structures one at a time with random harmless values. 3. Inspect a new object and sensitive branch in another request. Confirm only cross-request inherited properties; reflected parameters and cached responses are false positives."
+          "zh": "按第 1 步逐条提交 ?__proto__[evilProperty]=evilPayload 与 isAdmin/admin/role 变体，保持业务参数不变仅改变一条键路径；命中判据为解析后的对象继承注入属性并在响应中体现。每次提交后跨请求检查共享对象（配置、模板选项），排除缓存与单例状态；识别解析器（qs、querystring 等）对括号与点号路径的支持差异并分别记录。",
+          "en": "Per step 1, submit ?__proto__[evilProperty]=evilPayload and the isAdmin/admin/role variants one by one, keeping business parameters unchanged and changing only one key path; a hit is parsed objects inheriting injected properties reflected in the response. After each submission check shared objects (configuration, template options) across requests, excluding cache and singleton states; identify parser differences (qs, querystring, etc.) on bracket versus dot paths and record each."
         },
         "mitigation": {
-          "zh": "1. 配置查询解析器拒绝原型相关键并关闭不必要的深层解析；2. 对允许参数使用严格 schema 和附加属性禁用；3. 避免把解析结果合并到全局配置，升级依赖并监控原型变更。",
-          "en": "1. Configure query parsing to reject prototype-related keys and disable unnecessary deep parsing. 2. Use strict schemas with additional properties disabled. 3. Avoid merging parsed results into global configuration, upgrade dependencies, and monitor prototype mutation."
+          "zh": "配置查询解析器拒绝原型相关键并关闭不必要的深层解析；对允许参数使用严格 schema 和附加属性禁用；避免把解析结果合并到全局配置，升级依赖并监控原型变更。修复后重放第 1 步变体，确认危险键被解析层拒绝且业务参数正常。",
+          "en": "Configure query parsers to reject prototype-related keys and disable unnecessary deep parsing; apply strict schemas with additionalProperties disabled to allowed parameters; avoid merging parse results into global configuration, upgrade dependencies, and monitor prototype changes. After the fix, replay the step-1 variants and confirm dangerous keys are rejected at the parse layer while business parameters work."
         },
         "difficulty": "advanced"
       },
@@ -1145,20 +1145,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原集合是 AngularJS 模板表达式，不属于业务逻辑载荷。是否可利用取决于页面是否由 AngularJS 编译该节点、输入是否保持表达式语义以及 CSP 与 Trusted Types 等浏览器策略。",
-          "en": "The original set contains AngularJS template expressions rather than business-logic payloads. Exploitability depends on AngularJS compiling the node, expression syntax surviving, and browser controls such as CSP and Trusted Types."
+          "zh": "覆盖 AngularJS 1.6+（沙箱已移除）的表达式注入验证：表达式注入与各标签 ng-app 变体作用于模板上下文，表达式求值执行即确认注入成立。适用于输入进入 ng-bind-html、模板或动态编译路径的场景。",
+          "en": "Covers expression injection verification for AngularJS 1.6+ (sandbox removed): expression injections and per-tag ng-app variants against template contexts, with evaluated execution confirming injection. Suitable when input reaches ng-bind-html, templates, or dynamic compilation paths."
         },
         "vulnerability": {
-          "zh": "当攻击者可控文本被插入 ng-bind-html、模板或动态编译路径，并被 AngularJS 当作表达式求值时，构造器访问等语法可能执行脚本。纯文本回显、服务端转义或未启动 AngularJS 的页面不成立。",
-          "en": "When attacker-controlled text enters ng-bind-html, templates, or dynamic compilation and AngularJS evaluates it as an expression, constructor access may execute script. Plain-text reflection, server escaping, or a page without AngularJS bootstrap is not exploitable."
+          "zh": "根因是攻击者可控文本被 AngularJS 当作表达式求值，1.6+ 移除沙箱后构造器访问等语法直接执行脚本；纯文本回显、服务端转义或未启动 AngularJS 的页面不成立。",
+          "en": "The root cause is attacker-controlled text evaluated by AngularJS as expressions — with the sandbox removed in 1.6+, constructor-access syntax executes scripts directly; plain text echo, server escaping, or pages without AngularJS bootstrapped do not qualify."
         },
         "exploitation": {
-          "zh": "1. 确认页面版本、模块启动点和输入对应的 DOM 上下文；2. 从原始集合选择只写入随机 DOM 标记的表达式，在隔离浏览器逐项提交；3. 记录执行堆栈、CSP 报告和 DOM 变化。字符串显示、编码实体或扩展脚本触发属于误报。",
-          "en": "1. Confirm framework version, bootstrap point, and the input's DOM context. 2. Select an original expression that writes only a random DOM marker and submit items one at a time in an isolated browser. 3. Record execution stack, CSP reports, and DOM changes. Displayed strings, encoded entities, and extension scripts are false positives."
+          "zh": "使用第 1 步命令在 AngularJS 1.6+ 页面逐行提交表达式注入与各标签 ng-app 变体；表达式求值执行即确认未限制表达式注入成立，弹出内容指示可读取的上下文。先确认页面版本、模块启动点与输入对应的 DOM 上下文，在隔离浏览器逐项提交并记录执行堆栈、CSP 报告与 DOM 变化。",
+          "en": "Use the step 1 command to submit expression injections and per-tag ng-app variants line by line on AngularJS 1.6+ pages; evaluated execution confirms unrestricted expression injection, with popup contents indicating the readable context. Confirm page version, bootstrap points, and the input's DOM context first, then submit in an isolated browser logging execution stacks, CSP reports, and DOM changes."
         },
         "mitigation": {
-          "zh": "1. 停止动态编译不可信 HTML 和 AngularJS 表达式；2. 采用上下文输出编码与成熟净化器，并迁移出已停止维护的 AngularJS；3. 部署严格 CSP、Trusted Types 和表达式注入浏览器回归测试。",
-          "en": "1. Stop dynamically compiling untrusted HTML and AngularJS expressions. 2. Apply context-aware output encoding and a mature sanitizer, and migrate away from unsupported AngularJS. 3. Deploy strict CSP, Trusted Types, and browser regression tests for expression injection."
+          "zh": "停止动态编译不可信 HTML 与 AngularJS 表达式，采用上下文输出编码与成熟净化器并迁移出已停止维护的 AngularJS；部署严格 CSP、Trusted Types 与表达式注入回归测试。",
+          "en": "Stop dynamically compiling untrusted HTML and AngularJS expressions, apply context output encoding with mature sanitizers, and migrate off end-of-life AngularJS; deploy strict CSP, Trusted Types, and expression-injection regression tests."
         },
         "difficulty": "advanced"
       },
@@ -1254,20 +1254,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "CSV 本身只是文本，风险发生在导出文件被桌面表格程序打开时。测试要记录输入字段、生成文件的原始单元格字节、目标软件版本与安全提示，不能把服务端存储成功直接当作执行。",
-          "en": "CSV is plain text; risk occurs when a desktop spreadsheet application opens the export. Testing records the input field, raw exported cell bytes, application version, and security prompts rather than treating server-side storage as execution."
+          "zh": "CSV 公式注入针对导出到电子表格的用户字段以公式前缀开头的场景：受控办公软件打开时按公式解释。验证 =cmd|、+cmd|、-cmd| 与 @SUM 四类前缀在目标软件中的执行行为。",
+          "en": "CSV formula injection targets exported spreadsheet fields beginning with formula prefixes, interpreted as formulas when opened in controlled office software. It validates execution behavior of the =cmd|, +cmd|, -cmd|, and @SUM prefix classes in the target software."
         },
         "vulnerability": {
-          "zh": "若应用未经转义地把以 =、+、- 或 @ 开头的用户数据放入单元格，表格软件可能按公式处理并造成外联或本地命令风险。公式被显示为文本或被受保护视图阻止时，尚未形成执行证据。",
-          "en": "If an application exports user data beginning with =, +, -, or @ without safe handling, spreadsheet software may interpret it as a formula and enable external requests or local-command risk. Display as text or blocking by protected view is not execution evidence."
+          "zh": "若应用未经转义地把以 =、+、- 或 @ 开头的用户数据放入单元格，表格软件可能按公式处理并造成外联或本地命令风险；公式被显示为文本或被受保护视图阻止时，尚未形成执行证据。",
+          "en": "If the application places user data starting with =, +, -, or @ into cells without escaping, spreadsheet software may treat it as formulas, creating callback or local-command risk; formulas displayed as text or blocked by protected view do not yet constitute execution evidence."
         },
         "exploitation": {
-          "zh": "1. 在测试记录中写入只引用本地固定单元格的无害公式并导出；2. 保留原始集合但禁用其中系统命令项，只在隔离办公软件逐项查看解析；3. 比较 CSV 字节、单元格类型和安全提示。预览页渲染或文本显示属于误报。",
-          "en": "1. Put a harmless formula referencing a fixed local cell into a test record and export it. 2. Preserve the original set but disable system-command items, inspecting parsing one item at a time in an isolated office application. 3. Compare CSV bytes, cell type, and security prompts. Preview rendering or text display is a false positive."
+          "zh": "把第 1 步的四类公式样例写入导出功能接受的输入字段并生成 CSV，在隔离环境用目标办公软件打开并允许提示；命中判据为打开导出文件后目标弹出计算器/记事本或攻击者域名收到数据请求。逐条记录软件版本、保护视图状态与用户交互；服务端存储成功不等于执行，需以打开后的行为作为判定。",
+          "en": "Write the four formula sample classes into input fields the export feature accepts per step 1, generate the CSV, and open it with the target office software in an isolated environment accepting prompts; a hit is the target launching Calculator/Notepad or your domain receiving data requests after opening the export. Record software version, protected-view state, and user interaction per sample; server-side storage success is not execution—judgment rests on post-open behavior."
         },
         "mitigation": {
-          "zh": "1. 对导出字段执行电子表格专用转义，并把潜在公式值强制为文本；2. 使用能够声明单元格类型的格式与库，避免手工拼接 CSV；3. 对四类公式前缀、制表符和换行绕过建立导出回归测试。",
-          "en": "1. Apply spreadsheet-specific escaping and force potential formulas to text. 2. Use formats and libraries that declare cell types instead of manually concatenating CSV. 3. Add export regression tests for formula prefixes, tabs, and newline bypasses."
+          "zh": "对导出字段执行电子表格专用转义，并把潜在公式值强制为文本；使用能够声明单元格类型的格式与库，避免手工拼接 CSV；对四类公式前缀、制表符和换行绕过建立导出回归测试。修复后重放第 1 步样例并重新打开导出文件，确认按文本显示且无执行行为。",
+          "en": "Apply spreadsheet-specific escaping to exported fields and force potential formula values to text; use formats and libraries that declare cell types instead of hand-building CSV; build export regression tests over the four prefix classes plus tab and newline bypasses. After the fix, replay the step-1 samples and re-open the export, confirming text display with no execution behavior."
         },
         "difficulty": "intermediate"
       },
@@ -1367,20 +1367,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "该记录属于 OAuth 协议边界而非一般业务逻辑。原集合覆盖路径规范化、用户信息段、子域、编码和开放跳转组合，评估必须串联授权请求、浏览器跳转与最终接收端。",
-          "en": "This entry concerns an OAuth protocol boundary rather than general business logic. The original set covers path normalization, userinfo, subdomains, encoding, and open-redirect composition, so assessment follows the authorization request through the final receiver."
+          "zh": "该 Payload 覆盖 OAuth 回调地址绑定场景，检验授权服务器对注册回调的路径穿越与斜杠变体放行。验证维度为回调路径的点段、多斜杠与编码变体矩阵，对应第 1 步。",
+          "en": "This payload covers OAuth callback-address binding, testing authorization-server allowance of path-traversal and slash variants on registered callbacks. Validation is a callback matrix of dot segments, multi-slashes and encoded variants, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "授权服务器若使用前缀、子串或不一致的规范化方式匹配 redirect_uri，攻击者可能让授权响应落到未注册地址并截获一次性凭据。仅跳转到合法客户端错误页，不代表授权码已泄露。",
-          "en": "If an authorization server matches redirect_uri using prefixes, substrings, or inconsistent normalization, an authorization response may reach an unregistered location and expose one-time credentials. Reaching a legitimate client's error page does not prove code leakage."
+          "zh": "根因在于回调匹配按字符串前缀执行或忽略路径差异：点段与多余斜杠让请求落进未注册路径仍通过校验，授权码被引导至可监听地址。",
+          "en": "The root cause is callback matching by string prefix or with path-difference ignorance: dot segments and extra slashes land requests on unregistered paths yet pass checks, steering codes to attacker-listening addresses."
         },
         "exploitation": {
-          "zh": "1. 为测试客户端记录唯一注册回调并建立正常授权基线；2. 逐项提交原始回调变体，使用两个隔离浏览器会话；3. 在最终接收端核对授权码、state、客户端和用户。只有凭据到达未注册接收端才成立，中间 302 或错误页是假阳性。",
-          "en": "1. Record the sole registered callback for a test client and establish a normal authorization baseline. 2. Submit original callback variants one at a time using two isolated browser sessions. 3. Verify code, state, client, and user at the final receiver. Confirm only when credentials reach an unregistered receiver; intermediate redirects and error pages are false positives."
+          "zh": "第 1 步按脚本把注册回调的点段、多斜杠与编码变体逐条提交授权端点，记录 code 签发与跳转行为：任一变体仍完成签发即确认绑定不严，落地路径与注册路径的差值即为利用窗口。成功判据以签发记录为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, submit dot-segment, multi-slash and encoded variants of the registered callback to the authorization endpoint one by one per the script, recording code issuance and redirect behavior; any variant completing issuance confirms loose binding, with the gap between landing and registered paths marking the exploitation window. Judge success by issuance records. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. 对每个客户端预注册完整 HTTPS 回调并执行严格字符串匹配；2. 禁止通配符、开放跳转和不受控子域作为回调；3. 强制 PKCE、一次性授权码、state 绑定和重放检测，并记录最终回调。",
-          "en": "1. Preregister complete HTTPS callbacks per client and use exact string matching. 2. Disallow wildcards, open redirects, and uncontrolled subdomains as callbacks. 3. Enforce PKCE, one-time codes, state binding, replay detection, and final-redirect logging."
+          "zh": "回调校验先规范化路径再与注册值全等比对，禁止点段与多余分隔符；授权服务器拒绝解析歧义的 redirect_uri。修复后重放第 1 步矩阵，全部变体应返回错误。",
+          "en": "Normalize callback paths before full-equality comparison against registered values, banning dot segments and extra separators; the server should refuse ambiguous redirect_uris. After the fix, replay the step 1 matrix: every variant should error."
         },
         "difficulty": "advanced"
       },
@@ -1476,20 +1476,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原集合把 URL 和脚本字符串当作 state 值，但关键不是字符内容，而是服务端是否生成、保存并在回调时校验 state 与用户会话的对应关系。评估应使用两条隔离授权事务。",
-          "en": "The original set places URLs and script-like strings in state, but the security property is whether the server generates, stores, and validates state against the user's session. Assessment uses two isolated authorization transactions."
+          "zh": "该 Payload 覆盖 OAuth state 处理缺陷场景，检验 state 被当作跳转或注入载体时的服务端校验缺失。验证维度为 URL、脚本协议与类型混淆 state 的变体矩阵，对应第 1 步。",
+          "en": "This payload covers OAuth state-handling defects, testing missing server validation when state doubles as a redirect or injection carrier. Validation is a variant matrix of URL, script-scheme and type-confused states, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "客户端若接受缺失、可预测、跨会话或可重放的 state，攻击者可把自己的授权响应注入受害者浏览器，造成账户错误绑定。state 被原样返回或含特殊字符本身不构成漏洞。",
-          "en": "If a client accepts missing, predictable, cross-session, or replayed state, an attacker can inject an authorization response into a victim browser and cause incorrect account binding. Reflection or special characters in state are not vulnerabilities by themselves."
+          "zh": "根因在于 state 回传后被直接用于跳转或拼进输出且未校验原始随机值：攻击者把 state 变成开放重定向或注入通道，登录 CSRF 与钓鱼链路随之打通。",
+          "en": "The root cause is returned state used directly for redirects or output concatenation without verifying the original random value: attackers turn state into an open redirect or injection channel, opening login-CSRF and phishing chains."
         },
         "exploitation": {
-          "zh": "1. 在浏览器 A 与 B 分别启动授权并记录各自 state、Cookie 与 PKCE；2. 逐项使用原始 state 变体交换、删除或重放回调；3. 核对最终登录账号与服务端事务。只有跨会话响应被接受才成立，错误页差异或回显是假阳性。",
-          "en": "1. Start authorization in browsers A and B and record each state, cookie, and PKCE value. 2. Use original state variants to swap, remove, or replay callbacks one at a time. 3. Verify the final account and server transaction. Confirm only acceptance of a cross-session response; error-page differences and reflection are false positives."
+          "zh": "第 1 步按脚本把外部 URL、脚本协议与数组对象形态的 state 逐条注入回调流程，记录跳转行为与会话绑定结果：state 引发跳转、注入或忽略校验即确认处理缺陷。成功判据以回调后的行为记录为准。占位符在全局变量菜单替换；全程使用测试会话。",
+          "en": "In step 1, inject external-URL, script-scheme and array-object state shapes into the callback flow one by one per the script, recording redirect behavior and session binding; state causing jumps, injections or skipped validation confirms the handling defect. Judge success by post-callback behavior records. Replace placeholders via the global variables menu; use test sessions throughout."
         },
         "mitigation": {
-          "zh": "1. 使用密码学随机、足够长度且一次性的 state；2. 将 state 与浏览器会话、客户端、回调和 PKCE 事务绑定；3. 在首次使用或超时后立即失效，并对缺失、交换和重放场景建立自动化测试。",
-          "en": "1. Use cryptographically random, sufficiently long, one-time state values. 2. Bind state to browser session, client, callback, and PKCE transaction. 3. Invalidate after first use or timeout and automate missing, swapped, and replayed-state tests."
+          "zh": "state 仅作不透明随机值与会话绑定比对，禁止参与跳转或输出拼接，类型异常直接拒绝。修复后重放第 1 步矩阵，全部变体 state 应被拒绝且无跳转发生。",
+          "en": "Treat state as an opaque random value compared against session binding, barring redirects and output concatenation, rejecting type anomalies. After the fix, replay the step 1 matrix: every variant state should be rejected with no redirects."
         },
         "difficulty": "intermediate"
       },
@@ -1586,20 +1586,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原集合前半是递增长度的失败匹配字符串，后半是嵌套量词和歧义分支模式。两类数据的使用方法不同：输入用于受控计时，模式用于源码或配置审查，不能作为同一种请求批量发送。",
-          "en": "The first portion contains increasing failed-match strings, while the latter contains nested-quantifier and ambiguous-alternation patterns. Inputs support controlled timing; patterns support source or configuration review and should not be sent as one request list."
+          "zh": "该 Payload 覆盖回溯复杂度测量场景，检验处理耗时随输入长度阶梯的增长关系以定位高危正则表达式。验证维度为固定终止符与递减长度的对照输入阶梯，对应第 1 步。",
+          "en": "This payload covers backtracking-complexity measurement, testing how processing time scales across input-length ladders to locate risky regexes. Validation is a control ladder of fixed terminators with decreasing lengths, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "当高风险表达式处理接近匹配但最终失败的输入时，回溯复杂度可能随长度超线性增长并耗尽线程或 CPU。字符串长、模式看起来复杂或单次请求超时，都不足以独立证明 ReDoS。",
-          "en": "When a risky expression handles near-matching input that ultimately fails, backtracking complexity may grow superlinearly and exhaust threads or CPU. Long strings, complex-looking patterns, or one timeout do not independently prove ReDoS."
+          "zh": "根因在于业务正则包含嵌套量词或重叠可选分支：近似匹配输入触发指数级回溯，单请求即可占满处理线程，形成可复现的拒绝服务点。",
+          "en": "The root cause is business regexes with nested quantifiers or overlapping optional branches: near-match inputs trigger exponential backtracking, letting one request saturate threads into a reproducible denial-of-service point."
         },
         "exploitation": {
-          "zh": "1. 将原始集合按输入与模式分组，并定位实际使用的正则；2. 对输入组按长度递增计时，对模式组只做静态复杂度检查；3. 重复采样 CPU、线程和延迟斜率。冷启动、下游阻塞或把模式文本当输入导致的异常属于误报。",
-          "en": "1. Separate the original set into inputs and patterns and locate the regex actually used. 2. Time the input group by increasing length and use the pattern group only for static complexity review. 3. Repeat CPU, thread, and latency-slope measurements. Cold starts, downstream blocking, and errors from sending pattern text as input are false positives."
+          "zh": "第 1 步按脚本以固定终止字符构造长度递减的对照输入逐条提交并计时，绘制长度与耗时曲线：耗时呈指数级增长即确认回溯缺陷，再以二分定位最短可复现长度作为证据。成功判据以增长曲线为准。占位符在全局变量菜单替换；并发保持 1 并限定总请求量。",
+          "en": "In step 1, build decreasing-length control inputs with a fixed terminator per the script, submitting and timing each to chart length versus time; exponential growth confirms the backtracking defect, then bisect for the shortest reproducible length as evidence. Judge success by the growth curve. Replace placeholders via the global variables menu; hold concurrency at 1 and cap total requests."
         },
         "mitigation": {
-          "zh": "1. 用线性时间表达式或专用解析器替换歧义模式；2. 限制输入长度、执行时间和并发；3. 在 CI 中对正则做静态检查，并用递增长度样本监控复杂度斜率与资源上限。",
-          "en": "1. Replace ambiguous expressions with linear-time patterns or dedicated parsers. 2. Limit input length, execution time, and concurrency. 3. Statically analyze regexes in CI and monitor complexity slope and resource caps with increasing samples."
+          "zh": "重构高危正则消除嵌套量词并加输入长度上限，超时保护正则执行线程，监控处理耗时基线。修复后重放第 1 步，耗时增长应转为线性。",
+          "en": "Refactor risky regexes to remove nested quantifiers with input-length caps, guard regex execution with timeouts, and monitor processing-time baselines. After the fix, replay step 1: growth should turn linear."
         },
         "difficulty": "advanced"
       },
@@ -1698,20 +1698,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原集合列出公共重绑定服务和编码 IP 主机名。评估重点是目标在校验、解析、重定向和实际连接之间是否重新解析，以及每次解析后的地址是否再次执行网络边界检查。",
-          "en": "The original set lists public rebinding services and encoded-IP hostnames. Assessment focuses on whether validation, resolution, redirects, and connection trigger new lookups and whether every resolved address is rechecked against network boundaries."
+          "zh": "DNS 重绑定主机名测试覆盖解析一致性场景：针对在解析后信任主机名的应用，验证可变解析主机名能否让后续连接访问内网地址。验证维度涵盖公共重绑定服务可用性核对、自有权威 DNS 交替解析与 DNS/连接日志关联三类。",
+          "en": "DNS Rebinding Hostname Testing covers resolution consistency: for applications trusting hostnames after a first resolution, verify whether variably resolving names steer later connections into intranets. Verification dimensions cover public rebinding-service availability checks, owned authoritative-DNS alternating resolution, and DNS/connection log correlation."
         },
         "vulnerability": {
-          "zh": "如果应用只校验第一次 DNS 结果或只比较主机名，攻击者可让后续解析指向环回或私网地址，绕过 SSRF 允许列表。仅 DNS 返回不同地址但目标未建立内网连接，不构成实际访问。",
-          "en": "If an application validates only the first DNS result or compares only hostnames, later resolution can point to loopback or private addresses and bypass an SSRF allowlist. Different DNS answers without an internal connection do not establish access."
+          "zh": "根因是应用只校验第一次 DNS 结果或只比较主机名，攻击者可让后续解析指向回环或私网地址绕过 SSRF 允许列表；仅 DNS 返回不同地址而目标未建立内网连接不构成实际访问，必须以连接证据为准。",
+          "en": "The root cause is the application validating only the first DNS answer or merely comparing hostnames, letting later resolutions point at loopback or private addresses to bypass SSRF allowlists; differing DNS answers without an established intranet connection are not actual access — connection evidence decides."
         },
         "exploitation": {
-          "zh": "1. 在自有权威 DNS 中配置可审计、低 TTL 的测试域并建立外部地址基线；2. 逐项使用原始主机名形态，在隔离网络让后续解析指向测试内网服务；3. 关联 DNS 查询和连接日志。浏览器 DNS、扫描器查询或未连接解析属于误报。",
-          "en": "1. Configure an auditable low-TTL test domain in an owned authoritative DNS zone and establish an external-address baseline. 2. Use original hostname forms one at a time in an isolated network, directing later resolution to a test internal service. 3. Correlate DNS and connection logs. Browser DNS, scanner lookups, and unconnected resolutions are false positives."
+          "zh": "按 Payload 列表顺序使用：第 1 步在自有权威 DNS 中配置可审计、低 TTL 的测试域并建立外部地址基线；随后逐项使用原始主机名形态（1u.ms、nip.io、sslip.io、rbndr.us 等），在隔离网络让后续解析指向测试内网服务，关联 DNS 查询与连接日志，目标建立内网连接即确认重绑定窗口成立；浏览器 DNS 或未连接的解析属于误报。占位符在全局变量菜单中替换。",
+          "en": "Use in Payload list order: step 1 configures an auditable, low-TTL test zone on owned authoritative DNS and establishes an external-address baseline; then exercise the original hostname forms one by one (1u.ms, nip.io, sslip.io, rbndr.us, etc.), steering later resolutions to a test intranet service on an isolated network and correlating DNS queries with connection logs — the target establishing an intranet connection confirms the rebinding window; browser DNS or unconnected resolutions are false positives. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. 在实际连接前解析并校验所有 A 与 AAAA 地址，阻断环回、私网和链路本地范围；2. 固定已批准目标或使用受控出口代理；3. 对重定向和每次重新解析重复校验，并防止 DNS 缓存投毒。",
-          "en": "1. Resolve and validate every A and AAAA address immediately before connection, blocking loopback, private, and link-local ranges. 2. Pin approved destinations or use a controlled egress proxy. 3. Revalidate redirects and every re-resolution and protect DNS caches."
+          "zh": "在实际连接前解析并校验所有 A 与 AAAA 地址，阻断回环、私网和链路本地范围；固定已批准目标或使用受控出口代理，对重定向与每次重新解析重复校验并防止 DNS 缓存投毒。修复后用样例回归，后续解析变化不再改变连接目标。",
+          "en": "Resolve and validate all A and AAAA addresses before the actual connection, blocking loopback, private, and link-local ranges; pin approved targets or use a controlled egress proxy, recheck on redirects and every re-resolution, and guard against DNS cache poisoning. After the fix, regress with the samples: later resolution changes no longer move the connection target."
         },
         "difficulty": "advanced"
       },
@@ -1807,20 +1807,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原集合包含不同定位、透明度和层级的 iframe 模板，属于点击劫持验证。风险由目标页面是否可被嵌入、敏感控件位置和操作确认机制共同决定，而不是仅凭 HTML 能加载。",
-          "en": "The original set contains iframe templates with different positioning, opacity, and stacking for clickjacking validation. Risk depends on framing, sensitive-control placement, and confirmation controls rather than HTML loading alone."
+          "zh": "该 Payload 覆盖透明 iframe 点击劫持场景，检验不同透明度与定位方式下敏感页面诱导点击的可行性。验证维度为全透明、半透明与局部覆盖的三类叠加样例，对应第 1 步。",
+          "en": "This payload covers transparent-iframe clickjacking, testing lure-click feasibility against sensitive pages under varying opacities and positioning. Validation covers fully transparent, semi-transparent and partial-overlay samples, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "若敏感页面未通过 CSP frame-ancestors 或有效 X-Frame-Options 限制祖先，攻击者可把透明界面叠加到诱饵页面并劫持点击。页面可嵌入但没有可触发的敏感操作时，影响有限。",
-          "en": "If a sensitive page lacks CSP frame-ancestors or effective X-Frame-Options restrictions, an attacker can overlay it transparently and hijack clicks. Frameability without an actionable sensitive control has limited impact."
+          "zh": "根因在于敏感页面可被嵌入且响应头防护缺失：攻击者按透明度分级叠加 iframe 对齐真实按钮，用户在诱饵语境下完成非预期操作。",
+          "en": "The root cause is sensitive pages being embeddable with missing response-header protection: attackers layer iframes by transparency grade aligned onto real buttons, completing unintended actions inside a decoy context."
         },
         "exploitation": {
-          "zh": "1. 在自有测试源加载目标的无副作用页面并记录控制台策略结果；2. 使用原始 iframe 样式对齐一个测试按钮，不提交真实交易；3. 通过浏览器截图、点击坐标和服务端审计确认事件命中内层页面。加载失败、同源测试或诱饵按钮响应属于误报。",
-          "en": "1. Load a harmless target page from an owned test origin and record browser policy results. 2. Use original iframe styles to align a test button without submitting a real transaction. 3. Confirm the event reaches the framed page using screenshots, coordinates, and server audit data. Load failure, same-origin tests, and decoy-button responses are false positives."
+          "zh": "第 1 步按脚本部署三类透明度叠加页并分别对齐目标按钮，逐一点击验证操作触发与用户感知差异：低可见度帧仍完成操作即确认覆盖可行，记录各档位下的辨识度作为风险分级。成功判据以操作执行与感知对照为准。占位符在全局变量菜单替换；目标操作使用合成端点。",
+          "en": "In step 1, deploy the three transparency-overlay pages aligned onto target buttons per the script and click each, verifying action triggers against user perception; low-visibility frames still completing actions confirm overlay feasibility, graded by recognizability per tier. Judge success by action-execution versus perception comparison. Replace placeholders via the global variables menu; target actions use synthetic endpoints."
         },
         "mitigation": {
-          "zh": "1. 为所有敏感页面设置严格 CSP frame-ancestors，必要时兼容发送 X-Frame-Options；2. 对高风险操作要求重新认证和明确确认；3. 在真实浏览器中对跨源嵌入、嵌套 frame 与策略继承建立测试。",
-          "en": "1. Set strict CSP frame-ancestors on every sensitive page and send X-Frame-Options where legacy support is needed. 2. Require reauthentication and explicit confirmation for high-risk actions. 3. Test cross-origin framing, nested frames, and policy inheritance in real browsers."
+          "zh": "敏感页面统一返回 frame 防护头并对关键操作加确认层，用户界面采用 CSP frame-ancestors 精确限定。修复后重放第 1 步，三类叠加均应被浏览器拒绝加载。",
+          "en": "Serve uniform frame-protection headers on sensitive pages with confirmation layers on critical actions, precisely limiting framing via CSP frame-ancestors. After the fix, replay step 1: all three overlays should fail to load."
         },
         "difficulty": "intermediate"
       },
@@ -2140,20 +2140,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原集合利用浏览器命名属性访问规则，让元素通过 id 和 name 暴露为全局或集合属性。评估必须结合具体脚本读取点，确认应用是否把该属性当作字符串、URL 或受信配置。",
-          "en": "The original set uses browser named-property access rules so elements become global or collection properties through id and name. Assessment pairs each structure with a concrete script read and verifies whether the property is treated as a trusted string, URL, or configuration."
+          "zh": "覆盖重复 id/name 的 DOM Clobbering 验证：以重复 id/name 与表单元素构造命名属性覆盖，脚本读取到的属性变为注入值即确认覆盖成立。适用于应用依赖命名属性读取配置或 URL 的场景。",
+          "en": "Covers DOM clobbering via duplicate id/name: building named-property overwrites with duplicate id/name and form elements, confirmed when script-read properties become injected values. Suitable when applications rely on named properties for configuration or URLs."
         },
         "vulnerability": {
-          "zh": "当应用把 window、document 或表单命名属性当作可信配置，且攻击者可注入相应元素时，DOM 引用可能被覆盖并改变导航、资源加载或安全判断。仅能创建重复元素但脚本不读取该名称时没有可利用影响。",
-          "en": "When an application trusts named properties on window, document, or forms and an attacker can inject matching elements, DOM references may be clobbered and alter navigation, resource loading, or security checks. Duplicate elements without a script read have no exploitable impact."
+          "zh": "根因是应用把 window、document 或表单命名属性当作可信配置且攻击者可注入相应元素，DOM 引用被覆盖后改变导航、资源加载或安全判断；仅创建重复元素而脚本不读取该名称时无可利用影响。",
+          "en": "The root cause is applications trusting window, document, or form named properties as configuration while attackers inject matching elements: overwritten DOM references alter navigation, resource loading, or security decisions; duplicate elements no script reads have no exploitable impact."
         },
         "exploitation": {
-          "zh": "1. 定位读取目标名称的脚本并记录未注入时的属性类型；2. 逐项插入原始 id/name 结构，但指向自有无害 URL；3. 检查属性解析、调用栈和最终网络请求。静态 DOM 出现元素、开发者工具补全或未被脚本使用属于误报。",
-          "en": "1. Locate the script reading the target name and record the baseline property type. 2. Insert original id/name structures one at a time, pointing only to an owned harmless URL. 3. Inspect property resolution, call stack, and final network request. Static element presence, developer-tool completion, or an unread property is a false positive."
+          "zh": "使用第 1 步命令以重复 id/name 与表单元素构造命名属性覆盖；脚本读取到的属性变为注入值（如 URL 指向收集域）即确认覆盖成立。先定位读取目标名称的脚本并记录未注入时的属性类型，逐项插入 id/name 结构但指向自有无害 URL，检查属性解析、调用栈与最终网络请求。",
+          "en": "Use the step 1 command to build named-property overwrites with duplicate id/name and form elements; script-read properties becoming injected values (such as URLs pointing at your collector) confirms the overwrite. Locate scripts reading the target names and record pre-injection property types first, insert id/name structures one by one pointing at your own harmless URLs, and inspect property resolution, call stacks, and final network requests."
         },
         "mitigation": {
-          "zh": "1. 不依赖全局命名属性读取配置，使用显式局部变量与可信 JSON；2. 净化不可信 HTML 并限制 id、name、form 和 URL 属性；3. 使用类型检查、对象冻结和 DOM Clobbering 回归测试保护关键读取点。",
-          "en": "1. Do not read configuration through global named properties; use explicit local variables and trusted JSON. 2. Sanitize untrusted HTML and restrict id, name, form, and URL attributes. 3. Protect critical reads with type checks, object freezing, and DOM-clobbering regression tests."
+          "zh": "不依赖全局命名属性读取配置，用显式局部变量与可信 JSON；净化不可信 HTML 并限制 id、name、form 与 URL 属性；以类型检查、对象冻结与 DOM Clobbering 回归保护关键读取点。",
+          "en": "Never read configuration via global named properties — use explicit local variables and trusted JSON; sanitize untrusted HTML restricting id, name, form, and URL attributes; protect critical read points with type checks, object freezing, and DOM-clobbering regressions."
         },
         "difficulty": "advanced"
       },
@@ -2249,20 +2249,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "该集合枚举 cookie、domain、location、URL、referrer 等名称，但现代浏览器对内建只读属性的处理并不一致。测试必须先识别应用实际读取的自定义名称与浏览器行为，不能假设每个名称都可覆盖。",
-          "en": "The set enumerates names such as cookie, domain, location, URL, and referrer, but modern browsers handle built-in read-only properties differently. Testing first identifies names actually read by the application and browser behavior rather than assuming every property is clobberable."
+          "zh": "覆盖 document 命名属性污染验证：以 a[id] 覆盖 document 各命名属性（cookie、domain、location、URL、referrer 等），脚本读取属性得到注入值即确认污染成立。",
+          "en": "Covers document named-property pollution verification: a[id] elements overwriting document named properties (cookie, domain, location, URL, referrer, and alike), confirmed when script reads return injected values instead of native ones."
         },
         "vulnerability": {
-          "zh": "若应用通过 document 的命名属性获取配置且未验证类型，攻击者注入的元素可能取代预期值并控制后续导航或资源地址。内建属性保持原值、元素只在集合中出现或没有后续危险使用时，不构成漏洞。",
-          "en": "If an application retrieves configuration through document named properties without type validation, injected elements may replace expected values and control later navigation or resource URLs. Preserved built-ins, collection-only exposure, or no dangerous downstream use is not a vulnerability."
+          "zh": "根因是应用通过 document 命名属性获取配置且未验证类型，注入元素取代预期值并控制后续导航或资源地址；现代浏览器对内建只读属性处理不一致，须以应用实际读取的自定义名称为准。",
+          "en": "The root cause is applications fetching configuration through document named properties without type validation, letting injected elements replace expected values and steer later navigation or resource addresses; modern browsers treat built-in read-only properties inconsistently, so only custom names the app actually reads count."
         },
         "exploitation": {
-          "zh": "1. 在目标浏览器记录 document 相关属性的描述符和应用读取堆栈；2. 逐项插入原始元素，所有 href 仅指向本地测试端点；3. 观察属性类型、分支和最终请求。浏览器版本差异、控制台求值副作用或静态元素存在属于误报。",
-          "en": "1. Record property descriptors and application read stacks for relevant document properties in the target browser. 2. Insert original elements one at a time with every href pointing to a local test endpoint. 3. Observe property type, branches, and final requests. Browser-version differences, console-evaluation effects, and static element presence are false positives."
+          "zh": "使用第 1 步命令以 a[id] 覆盖 document 各命名属性；脚本读取属性得到注入值而非原生值即确认 document 属性可被污染。先在目标浏览器记录 document 相关属性描述符与应用读取堆栈，逐项插入元素且 href 仅指向本地测试端点，观察属性类型、分支与最终请求。",
+          "en": "Use the step 1 command to overwrite document named properties with a[id] elements; script reads returning injected values instead of natives confirm document property pollution. Record document property descriptors and application read stacks in the target browser first, insert elements one by one with hrefs pointing only at local test endpoints, and observe property types, branches, and final requests."
         },
         "mitigation": {
-          "zh": "1. 从模块私有配置对象读取值，不使用 document 命名属性作为信任边界；2. 对 HTML 输入应用严格净化并禁止危险 id/name；3. 在使用 URL 前执行类型与来源校验，并覆盖主流浏览器的回归测试。",
-          "en": "1. Read values from module-private configuration rather than document named properties. 2. Apply strict HTML sanitization and block dangerous id/name values. 3. Validate type and origin before URL use and add regression tests across major browsers."
+          "zh": "从模块私有配置对象读取值，不把 document 命名属性作为信任边界；对 HTML 输入严格净化并禁止危险 id/name；使用 URL 前执行类型与来源校验，覆盖主流浏览器回归。",
+          "en": "Read values from module-private config objects rather than trusting document named properties; strictly sanitize HTML input forbidding hazardous id/name; validate types and origins before using URLs, with regressions across major browsers."
         },
         "difficulty": "advanced"
       },
@@ -2358,20 +2358,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原集合覆盖 window、self、top、parent、navigator 等大量名称，但部分是不可配置内建属性。可靠测试要以应用自定义全局变量为主，并记录污染前后的类型与属性描述符。",
-          "en": "The original set includes window, self, top, parent, navigator, and many other names, but some are nonconfigurable built-ins. Reliable testing focuses on application-defined globals and records type and descriptor changes before and after injection."
+          "zh": "覆盖 window 全局属性污染验证：以 a[id] 覆盖 window 全局属性，脚本读取属性得到注入值即确认污染成立并逐条记录可覆盖清单。适用于脚本初始化前读取未定义全局配置的场景。",
+          "en": "Covers window global-property pollution verification: a[id] elements overwriting window globals, confirmed when script reads return injected values, with an itemized list of overwritable properties. Suitable when scripts read undefined global configs before initialization."
         },
         "vulnerability": {
-          "zh": "当脚本在初始化前从 window 读取尚未定义的全局配置，浏览器命名属性可能让攻击者元素占据该名称，并把 href 或子属性送入危险接收点。无法覆盖内建属性或后续代码重新赋值时，不存在实际影响。",
-          "en": "When script reads an undefined global configuration from window before initialization, browser named properties may let an attacker element occupy the name and feed href or child properties into a dangerous sink. Non-overridable built-ins or later reassignment prevent impact."
+          "zh": "根因是脚本在初始化前从 window 读取尚未定义的全局配置，浏览器命名属性让攻击者元素占据该名称并把 href 或子属性送入危险接收点；内建属性不可覆盖或后续代码重新赋值时无实际影响。",
+          "en": "The root cause is scripts reading yet-undefined global configs from window before initialization: browser named properties let attacker elements take the name and feed href or sub-properties into hazardous sinks; non-overwritable built-ins or later reassignment leaves no real impact."
         },
         "exploitation": {
-          "zh": "1. 选择应用真实读取且初始未定义的全局名，记录脚本执行顺序；2. 逐项插入原始 window 结构并使用本地无害 URL；3. 通过断点确认值进入具体接收点并记录网络或 DOM 结果。仅 window 上可见元素而无脚本消费属于误报。",
-          "en": "1. Select an application-read global that is initially undefined and record script order. 2. Insert original window structures one at a time using a local harmless URL. 3. Use breakpoints to confirm the value reaches a concrete sink and record network or DOM results. An element visible on window without script consumption is a false positive."
+          "zh": "使用第 1 步命令以 a[id] 覆盖 window 全局属性；脚本读取属性得到注入值即确认 window 命名属性可被污染，逐条记录可覆盖属性清单。选择应用真实读取且初始未定义的全局名并记录脚本执行顺序，逐项插入结构并使用本地无害 URL，通过断点确认值进入具体接收点。",
+          "en": "Use the step 1 command to overwrite window globals with a[id] elements; script reads returning injected values confirm window named-property pollution, with an itemized list of overwritable properties. Choose global names the app truly reads that start undefined, record script execution order, insert structures one by one with local harmless URLs, and use breakpoints to confirm values reach specific sinks."
         },
         "mitigation": {
-          "zh": "1. 在模块作用域显式初始化配置并避免隐式全局变量；2. 对所有动态 HTML 使用可靠净化器并限制命名属性；3. 对关键全局值做类型、来源和 URL 校验，配合 CSP 与 Trusted Types 限制危险接收点。",
-          "en": "1. Explicitly initialize configuration in module scope and avoid implicit globals. 2. Sanitize all dynamic HTML and restrict named attributes. 3. Validate type, origin, and URLs for critical globals and constrain dangerous sinks with CSP and Trusted Types."
+          "zh": "在模块作用域显式初始化配置并避免隐式全局变量；对所有动态 HTML 使用可靠净化器并限制命名属性；对关键全局值做类型、来源与 URL 校验，配合 CSP 与 Trusted Types 限制危险接收点。",
+          "en": "Initialize configuration explicitly in module scope avoiding implicit globals; apply reliable sanitizers to all dynamic HTML restricting named attributes; validate types, origins, and URLs for critical global values, with CSP and Trusted Types gating hazardous sinks."
         },
         "difficulty": "advanced"
       },
@@ -2579,20 +2579,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原集合是 Referer 请求头样例，目标是检查密码重置令牌在 URL 中时是否随外部导航或资源请求泄露。评估必须使用测试令牌、自有接收端和真实浏览器 Referrer-Policy 行为。",
-          "en": "The original set contains Referer header examples for checking whether a reset token in a URL leaks during external navigation or resource loading. Assessment uses a test token, an owned receiver, and real-browser Referrer-Policy behavior."
+          "zh": "该 Payload 覆盖重置令牌传输泄露场景，检验重置页面令牌经外部引用进入第三方服务日志的路径。验证维度为外部域引用与多类外发路径的泄露对照，对应第 1 步。",
+          "en": "This payload covers reset-token transport leakage, testing paths by which reset-page tokens reach third-party service logs via external references. Validation contrasts external references and multiple outbound paths, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "如果重置令牌位于 URL 查询或路径中，且页面加载第三方资源或允许外跳而未设置严格 Referrer-Policy，完整 URL 可能进入第三方日志。手工伪造 Referer 被服务器接收并不能证明浏览器会泄露令牌。",
-          "en": "If a reset token appears in a URL path or query and the page loads third-party resources or permits navigation without a strict Referrer-Policy, the full URL may reach third-party logs. A server accepting a forged Referer does not prove browser leakage."
+          "zh": "根因在于重置链接令牌位于 URL 而页面允许外发引用：跳转或加载第三方资源时完整链接进入 Referer，一次性令牌在消费前即被记录。",
+          "en": "The root cause is reset-link tokens living in URLs while pages allow outbound references: on jumps or third-party loads the full link enters Referer, logging the one-time token before consumption."
         },
         "exploitation": {
-          "zh": "1. 签发一次性测试重置令牌并在隔离浏览器打开重置页；2. 使用原始外部目标形态触发自有接收端的无害图片或链接请求；3. 检查接收端 Referer、浏览器网络记录和令牌状态。仅代理注入头、手工请求或不含令牌的源信息属于误报。",
-          "en": "1. Issue a one-time test reset token and open the reset page in an isolated browser. 2. Use original external-target forms to trigger a harmless image or link request to an owned receiver. 3. Inspect receiver Referer, browser network records, and token state. Proxy-injected headers, manual requests, and origins without a token are false positives."
+          "zh": "第 1 步在外部测试域部署引用收集端点，把携带重置令牌的页面经由跳转、外链与子资源三类路径引出，检查收集记录中的完整链接：令牌出现即确认泄露链成立。成功判据以收集端点日志为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, deploy a reference-collection endpoint on an external test domain and route the token-carrying page out via jumps, outbound links and subresources, checking collection records for full links; a token appearing completes the leak chain. Judge success by collection-endpoint logs. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. 使用短期、一次性、高熵且与用户和用途绑定的重置令牌；2. 在重置页面设置 Referrer-Policy: no-referrer 并禁止第三方资源；3. 成功使用后立即失效令牌，避免将敏感值放入可传播的 URL。",
-          "en": "1. Use short-lived, one-time, high-entropy reset tokens bound to user and purpose. 2. Set Referrer-Policy: no-referrer on reset pages and prohibit third-party resources. 3. Invalidate tokens immediately after use and keep sensitive values out of propagating URLs."
+          "zh": "重置页面设置 Referrer-Policy 为 no-referrer 并杜绝外部资源引用，令牌改经 POST 表单提交。修复后重放第 1 步，收集端点应无任何含令牌的引用。",
+          "en": "Set Referrer-Policy no-referrer on reset pages and eliminate external references, moving tokens to POST-form submission. After the fix, replay step 1: the collection endpoint should see no token-bearing references."
         },
         "difficulty": "intermediate"
       },
@@ -2688,20 +2688,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原集合包含短数字、常见单词、空值和类型边界，适用于测试令牌验证器的熵与解析一致性。评估必须在隔离账号上进行，并区分无效参数、缺失参数和真实有效事务。",
-          "en": "The original set includes short numbers, common words, empty values, and type boundaries for testing token entropy and parser consistency. Assessment uses isolated accounts and distinguishes invalid, missing, and genuinely valid reset transactions."
+          "zh": "该 Payload 覆盖弱密码重置令牌验证场景，检验低熵与常见值令牌能否顺利进入重置流程。验证维度为短值、顺序与常见词候选的批量提交及接受度矩阵，对应第 1 步。",
+          "en": "This payload covers weak password-reset tokens, testing whether low-entropy and common-value tokens enter the reset flow. Validation is a batch submission and acceptance matrix of short, sequential and common-word candidates, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "如果重置令牌来源可预测、空间过小、未绑定用户或验证接口允许高频尝试，攻击者可能枚举有效事务并重置他人密码。错误文案差异、参数被解析或返回重置表单都不是成功证据。",
-          "en": "If reset tokens are predictable, drawn from a small space, not user-bound, or accepted at high request rates, valid transactions may be enumerated and another user's password reset. Different errors, parsed parameters, or a displayed reset form are not success evidence."
+          "zh": "根因在于重置令牌生成熵不足或服务端接受弱值：常见与顺序候选命中有效令牌即可重置任意目标，尝试限制缺失进一步放大攻击效率。",
+          "en": "The root cause is insufficient token-generation entropy or server acceptance of weak values: common and sequential candidates hitting valid tokens reset arbitrary targets, amplified by missing attempt limits."
         },
         "exploitation": {
-          "zh": "1. 为两个测试账号生成有效与过期令牌并记录服务端事务；2. 低速逐项提交原始候选，保持账号和客户端状态可追踪；3. 仅通过完成无害密码变更或服务端事务绑定确认结果。统一响应、验证码页面和新建匿名事务属于误报。",
-          "en": "1. Generate valid and expired tokens for two test accounts and record server transactions. 2. Submit original candidates slowly while keeping account and client state traceable. 3. Confirm only through a harmless password change or server-side transaction binding. Generic responses, challenge pages, and newly created anonymous transactions are false positives."
+          "zh": "第 1 步按脚本把弱值候选逐条提交重置确认端点并携带 dry_run 类标记，记录接受情况：任一候选进入流程即确认可猜测性，统计命中与失败分布评估搜索空间。成功判据以候选接受矩阵为准。占位符在全局变量菜单替换；仅使用测试账号并事后复位。",
+          "en": "In step 1, submit weak-value candidates to the reset-confirm endpoint one by one with dry-run-style flags per the script, recording acceptances; any candidate entering the flow confirms guessability, tallying hit and failure distributions to bound the search space. Judge success by the candidate-acceptance matrix. Replace placeholders via the global variables menu; use test accounts only and reset afterwards."
         },
         "mitigation": {
-          "zh": "1. 使用密码学安全随机源生成至少 128 位有效熵的令牌；2. 绑定账号、用途和短有效期，首次使用后原子失效；3. 对验证接口限速并返回统一响应，记录枚举模式和跨账号尝试。",
-          "en": "1. Generate tokens with at least 128 bits of effective entropy from a cryptographically secure source. 2. Bind account, purpose, and short lifetime and invalidate atomically on first use. 3. Rate-limit validation, return uniform responses, and log enumeration and cross-account attempts."
+          "zh": "重置令牌以 CSPRNG 生成高熵值并限时单次，连续失败锁定账号与来源。修复后重放第 1 步，弱候选命中应为零且批量请求被锁定。",
+          "en": "Generate high-entropy reset tokens with a CSPRNG, time-limited and single-use, locking accounts and sources on consecutive failures. After the fix, replay step 1: weak-candidate hits should be zero with batches locked out."
         },
         "difficulty": "intermediate"
       },
@@ -2797,20 +2797,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原集合是 Node.js 项目清单和包管理路径字典，合理用途是低速内容发现。风险取决于文件是否真实可读以及其中是否包含依赖版本、脚本、令牌占位或私有 registry 信息。",
-          "en": "The original set is a Node.js project-manifest and package-manager path wordlist for low-rate content discovery. Risk depends on actual readability and disclosure of dependency versions, scripts, token material, or private registry information."
+          "zh": "Node.js 依赖与包管理文件探测针对 package.json、锁文件与包管理配置被 Web 根目录意外公开的场景。验证四类路径的可达性与内容格式，评估依赖与私有仓库信息泄露。",
+          "en": "Node.js dependency and package-manager file discovery targets package.json, lockfiles, and package-manager configuration unexpectedly exposed under the web root. It validates reachability and content format across the four path classes to assess dependency and private-registry leakage."
         },
         "vulnerability": {
-          "zh": "若构建产物错误包含 package.json、锁文件或 .npmrc，攻击者可获取精确依赖图、内部包名或凭证配置，扩大供应链与已知漏洞攻击面。只返回前端路由 HTML 或空目录页不构成文件泄露。",
-          "en": "If deployment artifacts expose package.json, lockfiles, or .npmrc, an attacker may learn exact dependency graphs, internal package names, or credential configuration and expand supply-chain risk. A client-route HTML fallback or empty directory page is not disclosure."
+          "zh": "若构建产物错误包含 package.json、锁文件或 .npmrc，攻击者可获取精确依赖图、内部包名或凭证配置，扩大供应链与已知漏洞攻击面；只返回前端路由 HTML 或空目录页不构成文件泄露。",
+          "en": "When build artifacts wrongly include package.json, lockfiles, or .npmrc, attackers obtain exact dependency graphs, internal package names, or credential configuration, widening supply-chain and known-vulnerability attack surface; responses returning SPA-route HTML or empty directory pages are not file disclosure."
         },
         "exploitation": {
-          "zh": "1. 记录不存在随机路径的状态、类型、长度和哈希基线；2. 逐项请求原始文件名，使用 HEAD 后再对小文件执行 GET；3. 验证响应是否能被相应包管理器解析并检查敏感字段。统一 200、错误模板或公开示例文件属于误报。",
-          "en": "1. Record status, type, length, and hash for a random nonexistent path. 2. Request original filenames one at a time, using HEAD before GET for small files. 3. Verify that responses parse as the expected package format and inspect sensitive fields. Generic 200 pages, error templates, and public example files are false positives."
+          "zh": "按第 1 步对 package.json、package-lock.json、yarn.lock、.npmrc 逐条发起请求；命中判据为路径返回 200 且内容为对应清单 JSON/YAML（.npmrc 含 registry 或令牌行）。记录每个文件的暴露状态与敏感字段（依赖版本、私有 registry、令牌占位）；对照随机路径排除软 404，区分真实文件与 SPA 路由回退。",
+          "en": "Per step 1, request package.json, package-lock.json, yarn.lock, and .npmrc one by one; a hit is 200 responses whose content is the corresponding manifest JSON/YAML (.npmrc containing registry or token lines). Record exposure status and sensitive fields per file (dependency versions, private registries, token placeholders); contrast random paths to exclude soft 404s, separating real files from SPA-route fallbacks."
         },
         "mitigation": {
-          "zh": "1. 仅部署编译后的必要静态产物并从 Web 根排除清单、锁文件和配置；2. 在 CI 中扫描发布包与镜像层；3. 将仓库令牌放入密钥存储并轮换任何曾暴露的凭证。",
-          "en": "1. Deploy only required built assets and exclude manifests, lockfiles, and configuration from the web root. 2. Scan release bundles and image layers in CI. 3. Store registry tokens in a secret manager and rotate any exposed credentials."
+          "zh": "仅部署编译后的必要静态产物并从 Web 根排除清单、锁文件和配置；在 CI 中扫描发布包与镜像层；将仓库令牌放入密钥存储并轮换任何曾暴露的凭证。修复后重放第 1 步路径，确认全部不可读且业务静态资源可用。",
+          "en": "Deploy only compiled static essentials and exclude manifests, lockfiles, and configuration from the web root; scan release packages and image layers in CI; keep repository tokens in secret storage and rotate any previously exposed credentials. After the fix, replay the step-1 paths and confirm all are unreadable while business static assets work."
         },
         "difficulty": "beginner"
       },
@@ -2910,20 +2910,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原集合覆盖 pip、Poetry、Pipenv、Conda 和传统 setup 文件。验证重点是响应内容是否符合对应语法，以及依赖版本、私有索引 URL、可编辑安装路径或环境变量引用是否敏感。",
-          "en": "The original set covers pip, Poetry, Pipenv, Conda, and traditional setup files. Validation focuses on format authenticity and whether dependency versions, private index URLs, editable paths, or environment references are sensitive."
+          "zh": "Python 依赖与环境文件探测针对 requirements、Pipfile、pyproject 与环境清单被公开的场景：可泄露 Python 依赖和部署信息。验证四类清单文件的可达性与内容语法。",
+          "en": "Python dependency and environment file discovery targets requirements, Pipfile, pyproject, and environment manifests being exposed, leaking Python dependencies and deployment details. It validates reachability and content syntax across the four manifest classes."
         },
         "vulnerability": {
-          "zh": "公开 Python 依赖清单可暴露精确版本、内部包、开发路径和私有源配置，为组件漏洞与依赖混淆提供信息。仅文件名匹配、搜索引擎缓存或返回应用首页时，不应报告真实文件暴露。",
-          "en": "Public Python manifests can reveal exact versions, internal packages, development paths, and private indexes, informing component exploitation or dependency confusion. Filename matches, search caches, and application-homepage responses do not prove file exposure."
+          "zh": "公开 Python 依赖清单可暴露精确版本、内部包、开发路径和私有源配置，为组件漏洞与依赖混淆提供信息；仅文件名匹配、搜索引擎缓存或返回应用首页时，不应报告真实文件暴露。",
+          "en": "Exposed Python dependency manifests reveal exact versions, internal packages, development paths, and private-source configuration, informing component vulnerabilities and dependency confusion; filename matches alone, search-engine caches, or responses returning the app homepage must not be reported as real file exposure."
         },
         "exploitation": {
-          "zh": "1. 为目标记录随机路径和常见错误页指纹；2. 逐项请求原始 Python 清单名称并限制下载大小；3. 使用对应解析规则检查节标题、依赖约束和锁文件结构。响应是 HTML、网关错误或无关文本时判为误报。",
-          "en": "1. Record a random-path and common error-page fingerprint for the target. 2. Request original Python manifest names one at a time with a download-size cap. 3. Check section headers, dependency constraints, and lock structures using format-specific rules. HTML, gateway errors, and unrelated text are false positives."
+          "zh": "按第 1 步对 requirements.txt、requirements.in、Pipfile、Pipfile.lock 逐条发起请求；命中判据为路径返回 200 且内容为依赖清单语法（pip 行、TOML 段、JSON 锁结构）。记录每个文件的暴露状态与敏感字段（内部包名、私有索引 URL、可编辑安装路径）；对照随机路径排除软 404，验证响应内容符合对应语法而非错误页。",
+          "en": "Per step 1, request requirements.txt, requirements.in, Pipfile, and Pipfile.lock one by one; a hit is 200 responses whose content follows the manifest syntax (pip lines, TOML sections, JSON lock structures). Record exposure status and sensitive fields per file (internal package names, private index URLs, editable install paths); contrast random paths to exclude soft 404s, verifying content matches the expected syntax rather than error pages."
         },
         "mitigation": {
-          "zh": "1. 通过构建阶段只复制运行所需产物，不把源码根目录作为静态目录；2. 从发布包排除依赖清单与开发配置，必要公开时移除私有源；3. 使用 SBOM 和内部资产清单替代生产文件暴露。",
-          "en": "1. Copy only runtime artifacts during builds and never serve the source root as static content. 2. Exclude manifests and development configuration from releases, removing private indexes when publication is necessary. 3. Use SBOMs and internal inventories instead of production exposure."
+          "zh": "通过构建阶段只复制运行所需产物，不把源码根目录作为静态目录；从发布包排除依赖清单与开发配置，必要公开时移除私有源；使用 SBOM 和内部资产清单替代生产文件暴露。修复后重放第 1 步路径，确认全部不可读。",
+          "en": "Copy only runtime-essential artifacts at the build stage and never serve the source root as a static directory; exclude dependency manifests and development configuration from releases, removing private sources when exposure is unavoidable; replace production file exposure with SBOMs and internal asset inventories. After the fix, replay the step-1 paths and confirm all are unreadable."
         },
         "difficulty": "beginner"
       },
@@ -3023,20 +3023,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "该集合很小但涵盖 Composer 项目清单、锁文件与自动加载入口。清单可用于识别依赖，autoload.php 若被当作文本泄露则还可能暴露服务器路径；若正常执行为空响应则不能据此判定泄露。",
-          "en": "This compact set covers Composer manifests, lockfiles, and the autoloader entry point. Manifests identify dependencies, while source disclosure of autoload.php may reveal server paths; a normally executed empty response is not disclosure."
+          "zh": "PHP Composer 清单与自动加载文件探测针对 composer.json、composer.lock 或 autoload.php 被公开的场景：可泄露 PHP 包、路径或自动加载结构。验证三类文件的可达性与内容形态。",
+          "en": "PHP Composer manifest and autoloader discovery targets composer.json, composer.lock, or autoload.php being exposed, leaking PHP packages, paths, or autoload structure. It validates reachability and content forms across the three file classes."
         },
         "vulnerability": {
-          "zh": "Web 根目录公开 Composer 清单可能暴露精确包版本和私有仓库，源码形式返回自动加载文件还会泄露目录结构。文件存在但由 PHP 正常执行、响应为空且无内容泄露时，影响不能按源码暴露计算。",
-          "en": "Public Composer manifests may reveal exact package versions and private repositories, while source delivery of autoload files can expose directory structure. A file that executes normally and returns no content is not source disclosure."
+          "zh": "Web 根目录公开 Composer 清单可能暴露精确包版本和私有仓库，源码形式返回自动加载文件还会泄露目录结构；文件存在但由 PHP 正常执行、响应为空且无内容泄露时，影响不能按源码暴露计算。",
+          "en": "Composer manifests exposed under the web root reveal exact package versions and private repositories, while autoload files returned as source also leak directory structure; files executed normally by PHP with empty responses and no content leakage must not be counted as source exposure."
         },
         "exploitation": {
-          "zh": "1. 记录随机 JSON、lock 和 PHP 路径的错误基线；2. 逐项请求原始名称并检查 Content-Type、正文起始和下载行为；3. 对 JSON 解析包字段，对 PHP 仅在源码文本出现时记录。空响应、重定向首页和统一错误属于误报。",
-          "en": "1. Record error baselines for random JSON, lock, and PHP paths. 2. Request original names one at a time and inspect Content-Type, body prefix, and download behavior. 3. Parse package fields in JSON and record PHP only when source text appears. Empty responses, homepage redirects, and generic errors are false positives."
+          "zh": "按第 1 步对 composer.json、composer.lock、autoload.php 逐条发起请求；命中判据为 composer.json 返回包含 require 段的 JSON，composer.lock 返回内容哈希与包清单，autoload.php 以源码形式返回。记录每个文件的暴露状态与敏感字段（包版本、仓库地址、绝对路径）；autoload.php 若被正常执行且响应为空，记录为不可判源码泄露而非命中。",
+          "en": "Per step 1, request composer.json, composer.lock, and autoload.php one by one; a hit is composer.json returning JSON with a require section, composer.lock returning content hashes and package inventory, or autoload.php returned as source. Record exposure status and sensitive fields per file (package versions, repository URLs, absolute paths); if autoload.php executed normally with an empty response, log it as indeterminate rather than a source-leak hit."
         },
         "mitigation": {
-          "zh": "1. 将 Web 根指向 public 目录而不是项目根目录；2. 通过服务器规则拒绝 composer 文件和 PHP 源码下载；3. 在部署流水线扫描公开路径与镜像层，并将私有仓库凭证迁移到密钥管理。",
-          "en": "1. Point the web root to the public directory rather than the project root. 2. Deny Composer files and PHP source downloads at the server. 3. Scan public paths and image layers during deployment and move private-repository credentials to secret management."
+          "zh": "将 Web 根指向 public 目录而不是项目根目录；通过服务器规则拒绝 composer 文件和 PHP 源码下载；在部署流水线扫描公开路径与镜像层，并将私有仓库凭证迁移到密钥管理。修复后重放第 1 步路径，确认全部不可读且应用正常加载。",
+          "en": "Point the web root at public rather than the project root; block composer files and PHP source downloads via server rules; scan public paths and image layers in the deployment pipeline and move private-repository credentials into secret management. After the fix, replay the step-1 paths and confirm all are unreadable while the application loads normally."
         },
         "difficulty": "beginner"
       },
@@ -3136,20 +3136,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原集合对应 Bundler 的依赖声明、锁定解析和 gem 元数据。验证应确认文本结构而非仅看状态码，并重点检查 source、git、path、平台和精确版本是否泄露内部开发信息。",
-          "en": "The original set covers Bundler dependency declarations, locked resolution, and gem metadata. Validation confirms text structure rather than status alone and reviews source, git, path, platform, and exact-version data for internal details."
+          "zh": "Ruby Bundler 清单文件探测针对 Gemfile、Gemfile.lock 和 gemspec 被 Web 服务公开的场景：可泄露 Ruby 依赖、源地址或内部 gem 信息。验证三类文件的可达性与 gem 指令内容。",
+          "en": "Ruby Bundler manifest file discovery targets Gemfile, Gemfile.lock, and gemspec files exposed by the web service, leaking Ruby dependencies, source addresses, or internal gem information. It validates reachability and gem-directive content across the three file classes."
         },
         "vulnerability": {
-          "zh": "公开 Gemfile 或锁文件可暴露私有 gem 名称、内部 Git 地址和组件版本，为供应链攻击或组件漏洞枚举提供线索。若响应是 Rails 路由页、错误模板或公开开源项目清单，则不能直接报告生产秘密泄露。",
-          "en": "Public Gemfiles or lockfiles may reveal private gem names, internal Git URLs, and component versions, informing supply-chain attacks or component enumeration. Rails route pages, error templates, and intentionally public open-source manifests are not production-secret leaks."
+          "zh": "公开 Gemfile 或锁文件可暴露私有 gem 名称、内部 Git 地址和组件版本，为供应链攻击或组件漏洞枚举提供线索；若响应是 Rails 路由页、错误模板或公开开源项目清单，则不能直接报告生产秘密泄露。",
+          "en": "Exposed Gemfiles or lockfiles reveal private gem names, internal Git addresses, and component versions, informing supply-chain attacks and component-vulnerability enumeration; responses that are Rails routing pages, error templates, or public open-source inventories must not be reported as production secret leakage."
         },
         "exploitation": {
-          "zh": "1. 获取随机路径与 Rails 404 页面指纹；2. 逐项请求原始 Bundler 文件名并限制响应体大小；3. 查验 source、GEM、DEPENDENCIES 和规格字段，结合部署归属确认敏感性。统一页面、源码仓库公开副本或无解析结构属于误报。",
-          "en": "1. Fingerprint a random path and the Rails 404 page. 2. Request original Bundler filenames one at a time with a body-size limit. 3. Inspect source, GEM, DEPENDENCIES, and specification fields and assess deployment ownership. Generic pages, public repository copies, and unparseable content are false positives."
+          "zh": "按第 1 步对 Gemfile、Gemfile.lock、.gemspec 逐条发起请求；命中判据为 Gemfile 返回包含 gem 指令的内容，锁文件返回依赖解析结构，gemspec 返回 gem 元数据。验证文本结构而非仅看状态码，重点记录 source、git、path、平台与精确版本是否泄露内部开发信息；对照随机路径排除软 404。",
+          "en": "Per step 1, request Gemfile, Gemfile.lock, and .gemspec one by one; a hit is Gemfile returning gem-directive content, lockfiles returning dependency-resolution structures, or gemspecs returning gem metadata. Validate text structure rather than status codes alone, focusing on whether source, git, path, platform, and exact versions leak internal development details; contrast random paths to exclude soft 404s."
         },
         "mitigation": {
-          "zh": "1. 只把 Rails public 目录暴露给 Web 服务器；2. 从静态发布物和对象存储排除 Gemfile、锁文件及 gemspec；3. 清理私有源凭据，生成内部 SBOM 并对发布产物做敏感路径检查。",
-          "en": "1. Expose only the Rails public directory through the web server. 2. Exclude Gemfiles, lockfiles, and gemspec files from static releases and object storage. 3. Remove private-source credentials, generate an internal SBOM, and scan release artifacts for sensitive paths."
+          "zh": "只把 Rails public 目录暴露给 Web 服务器；从静态发布物和对象存储排除 Gemfile、锁文件及 gemspec；清理私有源凭据，生成内部 SBOM 并对发布产物做敏感路径检查。修复后重放第 1 步路径，确认全部不可读且应用正常。",
+          "en": "Expose only the Rails public directory to the web server; exclude Gemfiles, lockfiles, and gemspecs from static releases and object storage; clean private-source credentials, generate internal SBOMs, and run sensitive-path checks on release artifacts. After the fix, replay the step-1 paths and confirm all are unreadable while the application works."
         },
         "difficulty": "beginner"
       },
@@ -3245,20 +3245,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "该集合同时覆盖 Maven 与 Gradle 项目配置。有效证据应包含可解析的 project、dependencies、plugins 或 repository 结构，并区分实际服务清单与文档示例、源码镜像和前端路由回退。",
-          "en": "This set covers both Maven and Gradle project configuration. Valid evidence includes parseable project, dependency, plugin, or repository structures and distinguishes deployed manifests from documentation samples, source mirrors, and client-route fallbacks."
+          "zh": "Java Maven 与 Gradle 构建文件探测针对 pom.xml、Gradle 脚本和属性文件可公开访问的场景：可泄露 Java 依赖、插件或内部仓库配置。验证四类构建文件的可达性与结构化内容。",
+          "en": "Java Maven and Gradle build-file discovery targets pom.xml, Gradle scripts, and properties files being publicly accessible, leaking Java dependencies, plugins, or internal repository configuration. It validates reachability and structured content across the four build-file classes."
         },
         "vulnerability": {
-          "zh": "生产站点公开构建文件可能泄露组件精确版本、内部仓库、插件任务和构建属性，帮助识别已知漏洞或供应链边界。只看到 XML 页面、Gradle 关键词或公开示例项目不代表当前应用配置泄露。",
-          "en": "Public production build files may reveal exact component versions, internal repositories, plugin tasks, and build properties, informing known-vulnerability or supply-chain analysis. An XML page, Gradle keywords, or a public sample project does not prove current-application disclosure."
+          "zh": "生产站点公开构建文件可能泄露组件精确版本、内部仓库、插件任务和构建属性，帮助识别已知漏洞或供应链边界；只看到 XML 页面、Gradle 关键词或公开示例项目不代表当前应用配置泄露。",
+          "en": "Build files exposed on production sites can reveal exact component versions, internal repositories, plugin tasks, and build properties, aiding known-vulnerability identification and supply-chain mapping; merely seeing XML pages, Gradle keywords, or public sample projects does not prove current application configuration leakage."
         },
         "exploitation": {
-          "zh": "1. 建立随机 XML、Gradle 和 properties 路径的错误指纹；2. 逐项请求原始文件名，限制响应体并记录缓存来源；3. 使用 Maven 或 Gradle 结构规则验证 group、artifact、dependency 和 repository。通用 XML、文档示例与缓存旧文件属于误报。",
-          "en": "1. Fingerprint errors for random XML, Gradle, and properties paths. 2. Request original filenames one at a time, limit body size, and record cache source. 3. Validate group, artifact, dependency, and repository structures using Maven or Gradle rules. Generic XML, documentation examples, and stale cached files are false positives."
+          "zh": "按第 1 步对 pom.xml、build.gradle、settings.gradle、gradle.properties 逐条发起请求；命中判据为 pom.xml 返回包含 project 根元素的 XML，Gradle 文件返回可解析的 dependencies/plugins/repository 结构。区分实际服务清单与文档示例、源码镜像和前端路由回退，记录依赖版本与仓库地址等敏感字段；对照随机路径排除软 404。",
+          "en": "Per step 1, request pom.xml, build.gradle, settings.gradle, and gradle.properties one by one; a hit is pom.xml returning XML with a project root element or Gradle files returning parseable dependencies/plugins/repository structures. Distinguish real service manifests from documentation samples, source mirrors, and SPA-route fallbacks, recording sensitive fields like dependency versions and repository addresses; contrast random paths to exclude soft 404s."
         },
         "mitigation": {
-          "zh": "1. 将构建上下文与运行时静态目录完全分离；2. 从 WAR、镜像和 CDN 发布清单中排除构建脚本与仓库配置；3. 对依赖信息使用内部 SBOM 管理，并轮换任何暴露的仓库凭证。",
-          "en": "1. Fully separate build context from runtime static directories. 2. Exclude build scripts and repository configuration from WAR files, images, and CDN manifests. 3. Manage dependency data with internal SBOMs and rotate any exposed repository credentials."
+          "zh": "将构建上下文与运行时静态目录完全分离；从 WAR、镜像和 CDN 发布清单中排除构建脚本与仓库配置；对依赖信息使用内部 SBOM 管理，并轮换任何暴露的仓库凭证。修复后重放第 1 步路径，确认全部不可读且业务正常。",
+          "en": "Fully separate build context from runtime static directories; exclude build scripts and repository configuration from WAR, image, and CDN release inventories; manage dependency information via internal SBOMs and rotate any exposed repository credentials. After the fix, replay the step-1 paths and confirm all are unreadable while the business works."
         },
         "difficulty": "beginner"
       },
@@ -3466,20 +3466,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "原集合包含仅有头部和空签名的 JWT 片段，适合作为验证器负向输入。测试必须从正常低权限令牌出发，并保持 issuer、audience、时间和请求上下文一致，避免把解析成功误认为验证成功。",
-          "en": "The original set contains header-only JWT fragments with empty signatures for validator negative testing. Testing starts from a valid low-privilege token and holds issuer, audience, time, and request context constant so parsing is not confused with validation."
+          "zh": "该 Payload 覆盖 JWT 签名验证负向测试场景，检验服务端对缺失与异常签名结构的拒绝边界。验证维度为去签名、空签名与空 kid 令牌的提交矩阵，对应第 1 步。",
+          "en": "This payload covers JWT signature-verification negative testing, testing rejection boundaries for missing and anomalous signature structures. Validation is a submission matrix of stripped, empty and empty-kid tokens, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "若服务端在缺少有效签名时仍信任 alg、kid 或权限声明，攻击者可伪造身份或提升权限。解码器能显示头部、前端接受字符串或接口返回统一 200 都不代表受保护操作通过。",
-          "en": "If a server trusts alg, kid, or privilege claims without a valid signature, an attacker may forge identity or escalate privileges. A decoder showing the header, client acceptance, or a generic 200 response does not mean a protected operation succeeded."
+          "zh": "根因在于解析与验签的执行顺序或失败处理存在缺口：截断签名或空 kid 的令牌落入宽松解析分支，声明在验签前即被采信并进入授权。",
+          "en": "The root cause is gaps in parse-then-verify ordering or failure handling: truncated-signature and empty-kid tokens fall into lenient parsing branches with claims trusted and authorized before verification."
         },
         "exploitation": {
-          "zh": "1. 用正常低权限 JWT 访问受保护接口并记录拒绝或允许基线；2. 逐项提交原始空签名结构，其他请求条件保持一致；3. 核对服务端主体、授权决策与审计日志。只有伪造令牌获得超出基线的权限才成立，解析错误差异属于误报。",
-          "en": "1. Access a protected endpoint with a valid low-privilege JWT and record the authorization baseline. 2. Submit original empty-signature structures one at a time with all other request conditions unchanged. 3. Verify server principal, authorization decision, and audit logs. Confirm only privileges beyond baseline; parser-error differences are false positives."
+          "zh": "第 1 步按脚本把去签名、空签名与空 kid 变体逐条提交受保护端点，记录响应与实际主体：任一变体被接受即确认验签缺失，同时以完整签名令牌对照确认解析本身无碍。成功判据以变体接受矩阵为准。占位符在全局变量菜单替换。",
+          "en": "In step 1, submit stripped-signature, empty-signature and empty-kid variants to the protected endpoint one by one per the script, recording responses and effective principals; any variant accepted confirms missing verification, contrasted with fully signed tokens to confirm parsing itself is intact. Judge success by the variant-acceptance matrix. Replace placeholders via the global variables menu."
         },
         "mitigation": {
-          "zh": "1. 在读取任何声明前验证签名并固定每个客户端允许的算法；2. 严格验证 issuer、audience、时间与密钥用途，禁止从不可信头部直接选取文件或 URL；3. 对空签名、截断令牌和算法混淆建立负向测试。",
-          "en": "1. Verify the signature before using any claim and fix allowed algorithms per client. 2. Strictly validate issuer, audience, time, and key usage and never select files or URLs directly from untrusted headers. 3. Add negative tests for empty signatures, truncated tokens, and algorithm confusion."
+          "zh": "验签失败或结构异常一律 401 且日志记录伪造尝试，签名段缺失不进入解析。修复后重放第 1 步矩阵，全部变体应被统一拒绝。",
+          "en": "Return 401 on verification failure or structural anomalies with forgery attempts logged, never parsing tokens missing signature segments. After the fix, replay the step 1 matrix: every variant should be uniformly rejected."
         },
         "difficulty": "intermediate"
       },
@@ -3575,20 +3575,20 @@
       },
       "tutorial": {
         "overview": {
-          "zh": "该集合比 JavaScript 专项条目更通用，提供 x 字符结尾变体以触发失败匹配。由于长度基本固定，它适合初筛，不足以独立绘制复杂度曲线；确认阶段仍需生成递增长度样本。",
-          "en": "This set is more generic than the JavaScript-specific entry and provides x-string suffix variants for failed matches. Because lengths are mostly fixed, it supports screening but not a complete complexity curve; confirmation still requires increasing samples."
+          "zh": "该 Payload 覆盖通用正则拒绝服务基线场景，检验近似失败输入下处理耗时的可重复增长曲线形态。验证维度为固定长度重复字符输入的多轮计时对照矩阵，对应第 1 步。",
+          "en": "This payload covers a generic regex denial-of-service baseline, testing the repeatable growth-curve shape of processing time under near-match inputs. Validation is a multi-round timing-comparison matrix of fixed-length repeated-character inputs, mapped to step 1."
         },
         "vulnerability": {
-          "zh": "存在嵌套量词、回溯歧义或重叠分支的正则可能在近似输入上消耗大量 CPU 或线程，造成应用层拒绝服务。某个固定字符串慢一次可能来自缓存未命中、网络或下游服务，不能直接定性。",
-          "en": "Regexes with nested quantifiers, ambiguous backtracking, or overlapping alternatives may consume excessive CPU or threads on near-matching input and cause application denial of service. One slow fixed string may instead reflect cache, network, or downstream behavior."
+          "zh": "根因在于匹配路径存在灾难性回溯结构：重复字符加终止符的输入迫使引擎在宣告失败前穷举全部路径，耗时随长度陡增且可稳定复现。",
+          "en": "The root cause is catastrophic backtracking in matching paths: repeated characters plus a terminator force the engine through every path before declaring failure, with time spiking by length and reproducing stably."
         },
         "exploitation": {
-          "zh": "1. 对正常输入和随机不存在输入记录端到端与正则内部计时；2. 逐项提交原始字符串进行初筛，命中后生成逐级长度样本；3. 重复测量 CPU、线程与延迟斜率并设置停止阈值。单次慢响应、冷启动和限流页面属于误报。",
-          "en": "1. Record end-to-end and internal regex timing for normal and random nonmatching input. 2. Submit original strings one at a time for screening, then generate increasing lengths for candidates. 3. Repeat CPU, thread, and latency-slope measurements with a stop threshold. Single slow responses, cold starts, and throttle pages are false positives."
+          "zh": "第 1 步按脚本把同长度重复字符加不同终止符的输入逐条提交目标端点并计时，重复多轮取均值：耗时长于基线且随长度增长即确认 ReDoS 基线，记录每轮数据保证可复现。成功判据以多轮计时一致性为准。占位符在全局变量菜单替换；控制请求总量避免真实影响。",
+          "en": "In step 1, submit inputs of repeated characters with different terminators at fixed lengths to the target endpoint one by one per the script, timing multiple rounds for averages; times above baseline growing with length confirm the ReDoS baseline, recorded per round for reproducibility. Judge success by multi-round timing consistency. Replace placeholders via the global variables menu; cap request totals to avoid real impact."
         },
         "mitigation": {
-          "zh": "1. 简化表达式并优先采用保证线性时间的引擎或解析器；2. 对输入长度、匹配时间和请求并发设置上限；3. 在代码审查与 CI 中检测危险结构，并为高风险端点增加资源斜率回归测试。",
-          "en": "1. Simplify expressions and prefer engines or parsers with linear-time guarantees. 2. Cap input length, matching time, and request concurrency. 3. Detect risky structures in review and CI and add resource-slope regression tests for high-risk endpoints."
+          "zh": "以线性引擎替换高危正则并对输入限制长度，耗时监控关联告警以定位具体接口。修复后重放第 1 步，耗时应与普通输入无显著差异。",
+          "en": "Replace risky regexes with linear engines and cap input lengths, tying timing monitors to alerts pinpointing specific APIs. After the fix, replay step 1: timings should show no significant difference from normal inputs."
         },
         "difficulty": "intermediate"
       },
