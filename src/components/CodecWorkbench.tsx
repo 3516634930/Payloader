@@ -21,6 +21,7 @@ import type {
 import { DetectStrip } from './codec/DetectStrip';
 import { GlobalSecretBar } from './codec/GlobalSecretBar';
 import { OperationParamsPanel } from './codec/OperationParamsPanel';
+import { SmartDetectBar } from './codec/SmartDetectBar';
 import { formatTextStats } from './codec/outputPanelUtils';
 import { WorkbenchMenuBar } from './codec/WorkbenchMenuBar';
 import { actionsOfOperation, hashAlgorithmValueOf, primaryActionOfOperation, variantValueOf } from './codec/workbenchActions';
@@ -168,23 +169,26 @@ function CodecWorkbench({ ref, groups, heading, description, registerTestApi = f
     if (autoRun) void run('decode', operationId);
   };
 
+  // 芯片/识别条共用的"聚焦即执行"：选中操作 + （带 seed 时）以 seed 立即跑解密方向。
+  const focusOperation = useCallback((id: OperationId, seedInput?: string) => {
+    const group = groups.find(item => item.operations.some(candidate => candidate.id === id));
+    if (!group) return;
+    const target = group.operations.find(item => item.id === id);
+    const autoRun = Boolean(target && target.supportsDecode !== false);
+    setActiveGroupId(group.id);
+    setActiveOperationId(id);
+    setActiveActionKey(autoRun ? `${id}-decode` : null);
+    if (seedInput !== undefined) setInput(seedInput);
+    setError('');
+    setOutput('');
+    workbenchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // 芯片点击 = 聚焦 + 立即执行（与菜单 runAction 对齐）；带 seed 以 seed 为输入（闭包 input 是旧值）。
+    if (autoRun) void run('decode', id, seedInput);
+  }, [groups, run]);
+
   useImperativeHandle(ref, () => ({
-    focusOperation: (id: OperationId, seedInput?: string) => {
-      const group = groups.find(item => item.operations.some(candidate => candidate.id === id));
-      if (!group) return;
-      const target = group.operations.find(item => item.id === id);
-      const autoRun = Boolean(target && target.supportsDecode !== false);
-      setActiveGroupId(group.id);
-      setActiveOperationId(id);
-      setActiveActionKey(autoRun ? `${id}-decode` : null);
-      if (seedInput !== undefined) setInput(seedInput);
-      setError('');
-      setOutput('');
-      workbenchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      // 芯片点击 = 聚焦 + 立即执行（与菜单 runAction 对齐）；带 seed 以 seed 为输入（闭包 input 是旧值）。
-      if (autoRun) void run('decode', id, seedInput);
-    },
-  }), [groups, run]);
+    focusOperation,
+  }), [focusOperation]);
 
   if (!operation) return null;
 
@@ -348,17 +352,15 @@ function CodecWorkbench({ ref, groups, heading, description, registerTestApi = f
             </div>
           </div>
 
-          {/* 全局密钥栏：仅渗透视图常驻（该视图无 hero，这里是唯一入口）；CTF 视图与 hero 全局密钥栏重复，不再渲染 */}
-          {!isCtfMode && (
-            <GlobalSecretBar
-              value={globalSecret}
-              onChange={setGlobalSecret}
-              placeholder={{
-                zh: '多步解密共用一把钥匙；在下方参数里填了私有密钥则优先用私有值',
-                en: 'One key for the whole chain; a per-operation key in the options takes precedence',
-              }}
-            />
-          )}
+          {/* 全局密钥栏：hero 退役后 CTF 视图也在此常驻（多步解密共用一把钥匙）；渗透视图保持原位。 */}
+          <GlobalSecretBar
+            value={globalSecret}
+            onChange={setGlobalSecret}
+            placeholder={{
+              zh: isCtfMode ? '全局密钥：多步解密共用，参数里填了私有密钥则优先' : '多步解密共用一把钥匙；在下方参数里填了私有密钥则优先用私有值',
+              en: isCtfMode ? 'Global key: shared across steps; per-operation keys take precedence' : 'One key for the whole chain; a per-operation key in the options takes precedence',
+            }}
+          />
 
           {isCtfMode ? null : actionPanel}
 
@@ -373,7 +375,18 @@ function CodecWorkbench({ ref, groups, heading, description, registerTestApi = f
             hashAlgorithmValue={hashAlgorithmValue}
           />
 
-          <DetectStrip detections={detections} onDetect={applyDetection} />
+          {/* 智能识别条（UI 编排优化批）：CTF 态识别能力内嵌输入区上方（CyberChef Magic 模式），
+              取代独立 hero；渗透态保留原识别芯片条。 */}
+          {isCtfMode ? (
+            <SmartDetectBar
+              input={input}
+              onDetection={id => { focusOperation(id, input || undefined); }}
+              onUseAsInput={pure => { setInput(pure); setOutput(''); setError(''); }}
+              onClear={clearAll}
+            />
+          ) : (
+            <DetectStrip detections={detections} onDetect={applyDetection} />
+          )}
 
           <div className="encoding-content">
             <div className="encoding-panel">

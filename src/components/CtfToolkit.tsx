@@ -2,102 +2,49 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent as ReactDragEvent } from 'react';
 import { SegmentedControl } from '@mantine/core';
 import { useLanguage } from '../appContext';
-import { buildCtfGroups, isOperationVisible } from '../utils/codec/audience';
-import {
-  detectFlagFormats,
-  detectInput,
-  extractPureDecodeResult,
-  smartDecode,
-  stripCandidateSection,
-} from '../utils/codec/smartDecode';
+import { isOperationVisible } from '../utils/codec/audience';
 import { hydrateCodecHeavyData } from '../utils/codec/heavyData';
-import { useDebouncedCallback } from '../utils/debounce';
 import type { OperationId } from '../utils/codec/types';
 import { ctfModules } from './ctf/registry';
 import { detectFileTypes, ROUTE_EXT_GROUPS } from '../utils/ctf/fileDetect';
 import CtfHero from './ctf/CtfHero';
+import { useSmartIdentify } from './codec/useSmartIdentify';
 import '../styles/ctf-toolkit.css';
 
-const AUTO_DECODE_LIMIT = 20000;
 const CIPHER_MODULE_ID = 'cipher';
 
 // CTF 解题工具箱框架壳（批次 J）：题域导航 + 模块插件化。
 // 各题型域由 src/components/ctf/registry.tsx 注册表组装（契约数据在 utils/ctf/moduleContracts.ts），
 // 加新域 = 追加一条契约并注册工作区组件，不改本框架。
-// 智能识别 hero 按域变形（heroMode 声明，缺省 full）：cipher 完整置顶；文件/速查域折叠为单行条，
-// 工作区升为该域首屏。检测芯片沿用密码与编码域（buildCtfGroups）的操作集合，行为与重构前一致。
+// UI 编排优化批（CyberChef「工具即首页」）：标题收敛为一行；密码域不渲染 hero——
+// 智能识别内嵌进工作台输入区（SmartDetectBar），首屏即主工作区；
+// 文件/速查域保留折叠条 hero（需要时可展开完整识别）。
 const CtfToolkit = memo(function CtfToolkit() {
   const { language } = useLanguage();
   const [activeModuleId, setActiveModuleId] = useState<string>(ctfModules[0]?.id ?? CIPHER_MODULE_ID);
   // pendingFile 定向投递：targetModuleId 标记路由目标域，框架只把它投给目标面板——
   // 常驻（keepMounted）的其它文件域不会误消费并弹出"解析失败"假告警。
   const [pendingFile, setPendingFile] = useState<{ file: File; token: number; targetModuleId: string } | null>(null);
-  const [input, setInput] = useState('');
-  const [output, setOutput] = useState('');
-  const [error, setError] = useState('');
-  const [running, setRunning] = useState(false);
-  const runTokenRef = useRef(0);
+  // hero 输入仅服务于非密码域的折叠 hero（展开后粘贴识别）；密码域识别走工作台内嵌 SmartDetectBar。
+  const [heroInput, setHeroInput] = useState('');
   const heroRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const focusApiRef = useRef<((id: OperationId, seedInput?: string) => void) | null>(null);
   const pendingFocusRef = useRef<{ id: OperationId; seed?: string } | null>(null);
 
-  const cipherOperationIds = useMemo(
-    () => new Set<OperationId>(buildCtfGroups().flatMap(group => group.operations.map(item => item.id))),
-    [],
-  );
-  const detections = useMemo(
-    // 与工作台识别条一致：只对前 4096 字符做形状检测（检测依赖前缀特征）。
-    () => detectInput(input.slice(0, 4096)).filter(detection => cipherOperationIds.has(detection.id)),
-    [input, cipherOperationIds],
-  );
-  const displayOutput = useMemo(() => (error ? '' : stripCandidateSection(output)), [output, error]);
-  const flagHits = useMemo(() => (error ? [] : detectFlagFormats(displayOutput)), [displayOutput, error]);
-
-  const runSmartDecode = useCallback(async () => {
-    const token = runTokenRef.current + 1;
-    runTokenRef.current = token;
-    setRunning(true);
-    setError('');
-    try {
-      // 评分表（609KB 异步 chunk）就绪后再跑：幂等，mount 预热后此处几乎总是立即返回。
-      await hydrateCodecHeavyData();
-      if (runTokenRef.current !== token) return;
-      const result = await smartDecode(input);
-      if (runTokenRef.current !== token) return;
-      setOutput(result);
-    } catch (reason) {
-      if (runTokenRef.current !== token) return;
-      setOutput('');
-      setError(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      if (runTokenRef.current === token) setRunning(false);
-    }
-  }, [input]);
+  const hero = useSmartIdentify(heroInput);
 
   // 重数据预热：进 CTF tab 即并行拉起评分表 chunk，不阻塞首屏渲染。
   useEffect(() => {
     void hydrateCodecHeavyData();
   }, []);
 
-  // 智能识别置顶体验：粘贴后 350ms 防抖自动解码；超长输入不自动跑（结果区给出手动提示）。
-  const debouncedSmartDecode = useDebouncedCallback(() => {
-    void runSmartDecode();
-  }, 350);
-  useEffect(() => {
-    if (!input.trim() || input.length > AUTO_DECODE_LIMIT) {
-      debouncedSmartDecode.cancel();
-      return;
-    }
-    debouncedSmartDecode.run();
-  }, [input, runSmartDecode, debouncedSmartDecode]);
-
   const registerFocus = useCallback((focus: ((id: OperationId, seedInput?: string) => void) | null) => {
     focusApiRef.current = focus;
   }, []);
 
-  // 跨域检测芯片：先切回密码与编码域，待工作台重新可见后再聚焦目标操作
-  //（隐藏容器内 scrollIntoView 不生效，需等渲染提交后执行）；seed 一并透传，与同域路径行为一致。
+  // 跨域检测芯片（非密码域展开 hero 时出现）：先切回密码与编码域，
+  // 待工作台重新可见后再聚焦目标操作（隐藏容器内 scrollIntoView 不生效，需等渲染提交后执行）。
   useEffect(() => {
     if (activeModuleId !== CIPHER_MODULE_ID) return;
     const pending = pendingFocusRef.current;
@@ -107,13 +54,8 @@ const CtfToolkit = memo(function CtfToolkit() {
   }, [activeModuleId]);
 
   const handleHeroInput = (value: string) => {
-    setInput(value);
-    if (!value.trim()) {
-      runTokenRef.current += 1;
-      setOutput('');
-      setError('');
-      setRunning(false);
-    }
+    setHeroInput(value);
+    if (!value.trim()) hero.clear();
   };
 
   const applyDetection = (operationId: OperationId) => {
@@ -124,17 +66,17 @@ const CtfToolkit = memo(function CtfToolkit() {
     if (!isOperationVisible(operationId, 'ctf')) return;
     if (activeModuleId === CIPHER_MODULE_ID) {
       // 芯片跳转把 hero 当前输入一并带进工作台（空输入不覆盖工作台现场）。
-      focusApiRef.current?.(operationId, input || undefined);
+      focusApiRef.current?.(operationId, heroInput || undefined);
       return;
     }
-    pendingFocusRef.current = { id: operationId, seed: input || undefined };
+    pendingFocusRef.current = { id: operationId, seed: heroInput || undefined };
     setActiveModuleId(CIPHER_MODULE_ID);
   };
 
   const activeModule = ctfModules.find(module => module.id === activeModuleId) ?? ctfModules[0];
   const showFileEntry = activeModule?.entryKinds.includes('file') ?? false;
-  // hero 按域变形：注册表未声明 heroMode 的域（如 cipher）缺省完整形态。
-  const heroMode = activeModule?.heroMode ?? 'full';
+  // 密码域不再渲染 hero（识别能力在工作台内）；其余域折叠条形态。
+  const showHero = activeModuleId !== CIPHER_MODULE_ID;
 
   // 工作区消费文件后回调清空：pendingFile 只投递给路由目标域（targetModuleId 过滤），
   // 消费即清空防残留；token 单调递增保证同一文件不会被再次投递。
@@ -178,6 +120,48 @@ const CtfToolkit = memo(function CtfToolkit() {
   // 引用稳定：内联箭头每次渲染换引用，会击穿 5 个 keepMounted 工作区的 memo。
   const handOffFile = useCallback((file: File) => { void handleFileSelected(file); }, [handleFileSelected]);
 
+  const heroNode = useMemo(() => showHero ? (
+    <CtfHero
+      input={heroInput}
+      output={hero.output}
+      error={hero.error}
+      running={hero.running}
+      autoDisabled={hero.autoDisabled}
+      autoDecodeLimit={20000}
+      detections={hero.detections}
+      flagHits={hero.flagHits}
+      displayOutput={hero.displayOutput}
+      showFileEntry={showFileEntry}
+      fileEntryLabel={activeModuleId === 'traffic'
+        ? { zh: '抓包分析', en: 'Capture analysis' }
+        : activeModuleId === 'reverse'
+          ? { zh: '逆向分析', en: 'Reverse analysis' }
+          : undefined}
+      fileEntryHint={activeModuleId === 'traffic'
+        ? {
+          zh: '选择或拖入 pcap / pcapng，在流量分析域本地解析包列表、协议统计、TCP 流与 HTTP 对象（上限 20MB，不上传）',
+          en: 'Pick or drop a pcap / pcapng for local parsing in Traffic Analysis: packet list, protocol stats, TCP streams, and HTTP objects (20MB limit, never uploaded)',
+        }
+        : activeModuleId === 'reverse'
+          ? {
+            zh: '选择或拖入 ELF / PE / Mach-O，自动做常量指纹扫描、块级熵图与字符串分析（上限 20MB，不上传）',
+            en: 'Pick or drop an ELF / PE / Mach-O for constant fingerprints, block entropy, and strings (20MB limit, never uploaded)',
+          }
+          : undefined}
+      heroRef={heroRef}
+      heroMode="collapsed"
+      // "需要解编码？"引导只在速查域折叠条出现（文件域首屏是文件工作区，无需引导）。
+      onSwitchToCipher={activeModule?.entryKinds.includes('cheatsheet')
+        ? () => setActiveModuleId(CIPHER_MODULE_ID)
+        : undefined}
+      onInputChange={handleHeroInput}
+      onDetection={applyDetection}
+      onFileEntry={() => fileInputRef.current?.click()}
+      onUseAsInput={() => { setHeroInput(hero.pureResult); hero.clear(); }}
+      onClear={() => { handleHeroInput(''); }}
+    />
+  ) : null, [showHero, heroInput, hero, showFileEntry, activeModuleId, activeModule]);
+
   return (
     <div
       className="ctf-toolkit"
@@ -195,11 +179,12 @@ const CtfToolkit = memo(function CtfToolkit() {
           event.target.value = '';
         }}
       />
-      <div className="encoding-header">
-        <h2>{language === 'zh' ? 'CTF 解题工具箱' : 'CTF Toolkit'}</h2>
-        <p>{language === 'zh'
-          ? '按题型域组织：智能识别置顶全域可用，粘贴即自动识别；密码与编码、杂项取证、流量分析、逆向、Pwn 已就绪，Web/AI 提供题型速查。'
-          : 'Organized by category: smart identify stays on top and works everywhere. Ciphers & Encoding, Misc & Forensics, Traffic Analysis, Reverse, and Pwn are ready; Web and AI offer curated cheat sheets.'}</p>
+      <div className="encoding-header encoding-header-compact">
+        <h2 title={language === 'zh'
+          ? '按题型域组织：密码与编码、杂项取证、流量分析、逆向、Pwn 已就绪，Web/AI 提供题型速查；粘贴即自动识别'
+          : 'Organized by category: Ciphers & Encoding, Misc & Forensics, Traffic Analysis, Reverse, and Pwn are ready; Web and AI offer cheat sheets. Paste to auto-identify.'}>
+          {language === 'zh' ? 'CTF 解题工具箱' : 'CTF Toolkit'}
+        </h2>
       </div>
 
       <nav className="ctf-domain-nav-wrap" aria-label={language === 'zh' ? '题型域导航' : 'Challenge categories'}>
@@ -212,45 +197,7 @@ const CtfToolkit = memo(function CtfToolkit() {
         />
       </nav>
 
-      <CtfHero
-        input={input}
-        output={output}
-        error={error}
-        running={running}
-        autoDisabled={input.length > AUTO_DECODE_LIMIT}
-        autoDecodeLimit={AUTO_DECODE_LIMIT}
-        detections={detections}
-        flagHits={flagHits}
-        displayOutput={displayOutput}
-        showFileEntry={showFileEntry}
-        fileEntryLabel={activeModuleId === 'traffic'
-          ? { zh: '抓包分析', en: 'Capture analysis' }
-          : activeModuleId === 'reverse'
-            ? { zh: '逆向分析', en: 'Reverse analysis' }
-            : undefined}
-        fileEntryHint={activeModuleId === 'traffic'
-          ? {
-            zh: '选择或拖入 pcap / pcapng，在流量分析域本地解析包列表、协议统计、TCP 流与 HTTP 对象（上限 20MB，不上传）',
-            en: 'Pick or drop a pcap / pcapng for local parsing in Traffic Analysis: packet list, protocol stats, TCP streams, and HTTP objects (20MB limit, never uploaded)',
-          }
-          : activeModuleId === 'reverse'
-            ? {
-              zh: '选择或拖入 ELF / PE / Mach-O，自动做常量指纹扫描、块级熵图与字符串分析（上限 20MB，不上传）',
-              en: 'Pick or drop an ELF / PE / Mach-O for constant fingerprints, block entropy, and strings (20MB limit, never uploaded)',
-            }
-            : undefined}
-        heroRef={heroRef}
-        heroMode={heroMode}
-        // "需要解编码？"引导只在速查域折叠条出现（文件域首屏是文件工作区，无需引导）。
-        onSwitchToCipher={activeModule?.entryKinds.includes('cheatsheet')
-          ? () => setActiveModuleId(CIPHER_MODULE_ID)
-          : undefined}
-        onInputChange={handleHeroInput}
-        onDetection={applyDetection}
-        onFileEntry={() => fileInputRef.current?.click()}
-        onUseAsInput={() => { setInput(extractPureDecodeResult(output)); setOutput(''); setError(''); }}
-        onClear={() => { handleHeroInput(''); }}
-      />
+      {heroNode}
 
       {ctfModules.map(module => {
         const workspaceProps = {

@@ -569,24 +569,30 @@ test('CTF workbench renders the menubar mode while the pentest view stays unchan
   assert.match(menuBar, /withinPortal/);
 });
 
-test('CTF file modules stay mounted across domain switches and hero mode defaults to full', async () => {
+test('CTF file modules stay mounted across domain switches; smart identify lives in the workbench (cipher) or folded strip (others)', async () => {
   // 注册表数据已拆到 moduleContracts.ts（零 React 依赖）：运行时加载真实断言，不再正则源码。
   const { ctfModuleContracts } = loadTsModule('src/utils/ctf/moduleContracts.ts');
-  const [toolkit, hero] = await Promise.all([
+  const [toolkit, hero, workbench] = await Promise.all([
     read('src/components/CtfToolkit.tsx'),
     read('src/components/ctf/CtfHero.tsx'),
+    read('src/components/CodecWorkbench.tsx'),
   ]);
   const contractById = Object.fromEntries(ctfModuleContracts.map(module => [module.id, module]));
 
   // misc/traffic keepMounted：文件与报告跨域切换保留（hidden 不卸载）。
   assert.equal(contractById.misc.keepMounted, true, 'misc 域必须 keepMounted');
   assert.equal(contractById.traffic.keepMounted, true, 'traffic 域必须 keepMounted');
-  // heroMode 缺省 full：未声明 collapsed 的域（cipher）保持完整智能识别 hero。
-  assert.ok(!('heroMode' in contractById.cipher), 'cipher 域不得声明 heroMode（保持缺省 full）');
-  assert.match(toolkit, /heroMode \?\? 'full'/);
-  assert.match(toolkit, /heroMode=\{heroMode\}/);
-  // 六个域显式注册 collapsed（misc/traffic + web/reverse/pwn/ai），cipher 保持缺省 full。
+  // UI 编排优化批（CyberChef「工具即首页」）：cipher 域不渲染 hero——智能识别内嵌工作台
+  // （SmartDetectBar 输入区上方）；六个非密码域保留折叠条 hero（可展开完整识别）。
+  assert.ok(!('heroMode' in contractById.cipher), 'cipher 域不得声明 heroMode（无 hero，识别在工作台）');
   assert.equal(ctfModuleContracts.filter(module => module.heroMode === 'collapsed').length, 6);
+  assert.match(toolkit, /activeModuleId !== CIPHER_MODULE_ID/, 'cipher 域不得渲染 hero');
+  assert.match(toolkit, /encoding-header-compact/, '标题必须收敛为一行紧凑形态');
+  assert.match(workbench, /SmartDetectBar/, 'CTF 态工作台必须内嵌智能识别条');
+  assert.match(workbench, /isCtfMode \? \(\s*<SmartDetectBar/, '识别条仅 CTF 态渲染（渗透态保留 DetectStrip）');
+  assert.match(workbench, /focusOperation\(id, input \|\| undefined\)/, '识别条芯片点击必须聚焦+以当前输入执行');
+  // 全局密钥栏 hero 退役后由工作台常驻承载（两种模态都渲染）。
+  assert.doesNotMatch(workbench, /!\{?isCtfMode && \(\s*<GlobalSecretBar/);
   // 折叠形态由 CtfHero（状态记忆）+ CtfHeroStrip（F4 拆出的折叠条组件）协同实现，单实例跨域保留。
   const heroStrip = await read('src/components/ctf/CtfHeroStrip.tsx');
   assert.match(heroStrip, /ctf-hero-strip/);
