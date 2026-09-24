@@ -575,6 +575,21 @@ const solveBytes = async (bytes, fileName, depth, label) => {
         for (const body of bodies) {
           if (!body?.length) continue;
           addText(latin1Of(body.subarray(0, 65536)), `${prefix}TCP/HTTP 载荷`);
+          // 菜刀型：响应体里直接嵌明文 zip（->|PK..）或密码 jpg（FFD8..FFD9）——提取提示 + zip 递归
+          const bodyBuf = Buffer.from(body);
+          const pkAt = bodyBuf.indexOf('PK\x03\x04');
+          if (pkAt >= 0) {
+            const eocd = bodyBuf.lastIndexOf('PK\x05\x06');
+            const zipBytes = bodyBuf.subarray(pkAt, eocd >= 0 ? Math.min(eocd + 22, bodyBuf.length) : Math.min(pkAt + 4096, bodyBuf.length));
+            paths.push(`${prefix}载荷内嵌 zip 提取（${zipBytes.length}B @${pkAt}）`);
+            if (zipBytes.length > 60 && depth < 3) {
+              const innerResult = await solveBytes(new Uint8Array(zipBytes), 'embedded.zip', depth + 1, `${prefix}http:zip`);
+              paths.push(...innerResult.paths.slice(0, 8));
+              for (const flag of innerResult.found) found.add(flag);
+            }
+          }
+          const jpgAt = bodyBuf.indexOf(Buffer.from([0xFF, 0xD8, 0xFF]));
+          if (jpgAt >= 0 && jpgAt < 65536) paths.push(`${prefix}载荷含 JPEG（@${jpgAt}）——若为密码图片需目检/OCR（引擎边界）`);
         }
       }
     } catch (error) { paths.push(`${prefix}pcap 解析失败：${error.message}`); }
