@@ -29,6 +29,7 @@ const loadEngines = async () => {
     qrDecode: ['utils', 'ctf', 'qrDecode.ts'],
     pdfText: ['utils', 'ctf', 'pdfText.ts'],
     pdfCmap: ['utils', 'ctf', 'pdfCmap.ts'],
+    chineseCiphers: ['utils', 'codec', 'chineseCiphers.ts'],
     base64Stego: ['utils', 'codec', 'base64Stego.ts'],
     rarInspect: ['utils', 'ctf', 'rarInspect.ts'],
     rarExtract: ['utils', 'ctf', 'rarExtract.ts'],
@@ -157,9 +158,65 @@ const unpackZipEntries = (bytes, maxEntries = 30) => {
   return out;
 };
 
-// —— flag 提取（古典/中文密码链不做自动试探：vm 沙箱引擎的异常会穿透主 realm 的 try-catch，
-// 稳定性优先——佛曰/rot13/base64 链题在 UI 密码域有完整工具，执行器只做直接命中）。——
-const classicalProbe = text => findFlags(text);
+// —— 佛曰（与佛论禅）内联解码：码表拷贝自 chineseCiphers.TUDOU（避免 vm 沙箱 async 误用——
+// 佛曰引擎是 async，同步调用产生 rejected Promise 会崩进程，内联同步版最稳）——
+const TUDOU_TABLE = [...'滅苦婆娑耶陀跋多漫都殿悉夜爍帝吉利阿無南那怛喝羯勝摩伽謹波者穆僧室藝尼瑟地彌菩提蘇醯盧呼舍佛參沙伊隸麼遮闍度蒙孕薩夷迦他姪豆特逝朋輸楞栗寫數曳諦羅曰咒即密若般故不實真訶切一除能等是上明大神知三藐耨得依諸世槃涅竟究想夢倒顛離遠怖恐有礙心所以亦智道。集盡死老至'];
+// 高字节标记字（buddhaEncode 用 BYTEMARK 随机字 + TUDOU[byte-128] 表示 ≥128 的字节）。
+const BYTE_MARK = new Set([...'冥奢梵呐俱哆怯諳罰侄缽皤']);
+const decodeBuddha = text => {
+  const match = text.match(/(?:佛曰|魔曰)\s*[:：]\s*([\s\S]+)/);
+  // 无前缀的裸串也接受：≥60% 字符在码表内即按密文解（docx 提取的正文常无"佛曰："头）。
+  let body = match ? match[1] : '';
+  if (!body) {
+    const chineseRun = text.match(/[\u4e00-\u9fff]{10,}/);
+    if (chineseRun) {
+      let inTable = 0;
+      for (const ch of chineseRun[0]) if (TUDOU_TABLE.includes(ch) || BYTE_MARK.has(ch)) inTable += 1;
+      if (inTable / chineseRun[0].length >= 0.6) body = chineseRun[0];
+    }
+  }
+  if (!body) return '';
+  const bytes = [];
+  for (let index = 0; index < body.length; index += 1) {
+    const char = body[index];
+    const low = TUDOU_TABLE.indexOf(char);
+    if (low >= 0) { bytes.push(low); continue; }
+    if (BYTE_MARK.has(char)) {
+      const next = TUDOU_TABLE.indexOf(body[index + 1]);
+      if (next >= 0) { bytes.push(128 + next); index += 1; continue; }
+    }
+    // 未知字符跳过（正文夹杂的常规汉字）
+  }
+  return Buffer.from(bytes).toString('latin1');
+};
+// 三层链自动试探（如来十三掌型：佛曰 → base64 → rot13 → base64 → flag）。
+const rot13 = text => text.replace(/[a-zA-Z]/g, c => String.fromCharCode((c <= 'Z' ? 90 : 122) >= c.charCodeAt(0) + 13 ? c.charCodeAt(0) + 13 : c.charCodeAt(0) - 13));
+const chainProbe = text => {
+  const outputs = new Set();
+  // 佛曰解码只在链头做一次：循环内重复做会被 AES 尾巴的随机中文碰巧过表率阈值、劫持后续轮次。
+  const buddhaHead = decodeBuddha(text);
+  let current = buddhaHead && buddhaHead !== text ? buddhaHead : text;
+  if (buddhaHead && buddhaHead !== text) outputs.add(buddhaHead);
+  for (let depth = 0; depth < 4; depth += 1) {
+    try {
+      // 先截断到合法 base64 字符（佛曰 AES 尾巴的随机中文会毒化解码或让整段失败）。
+      const clean = current.trim().replace(/[^A-Za-z0-9+/=].*$/s, '');
+      if (clean.length >= 8 && clean.length % 4 !== 1) {
+        const decoded = Buffer.from(clean, 'base64');
+        if (decoded.length >= 4 && /^[\x20-\x7e\s]+$/.test(decoded.toString('latin1').slice(0, 64))) {
+          const asText = decoded.toString('utf8').trim();
+          outputs.add(asText);
+          current = asText;
+          continue;
+        }
+      }
+    } catch { /* 非法段 */ }
+    const rotated = rot13(current);
+    if (rotated !== current) { outputs.add(rotated); current = rotated; continue; }
+    break;
+  }
+  return [...outputs];
+};
 
 // —— 内联小解码器（绕开沙箱穿透，纯 node 实现）——
 const MORSE_TABLE = {
@@ -247,7 +304,12 @@ const solveBytes = async (bytes, fileName, depth, label) => {
   const addText = (text, path) => {
     paths.push(path);
     for (const flag of findFlags(text)) found.add(flag);
-    for (const flag of classicalProbe(text)) { found.add(flag); paths.push(`${path}（古典/base64 试探命中）`); }
+    // 佛曰→base64→rot13 链自动试探（如来十三掌型）+ 中文串直接提取
+    for (const chained of chainProbe(text)) {
+      for (const flag of findFlags(chained)) { found.add(flag); paths.push(`${path}（佛曰/多层链命中）`); }
+      const chinese = chained.match(/[\u4e00-\u9fff][\u4e00-\u9fff\s：，。！？]{6,}/);
+      if (chinese) paths.push(`${path}（含中文段，供人工判读：${chinese[0].slice(0, 40)}…）`);
+    }
   };
   const types = engines.fileDetect?.detectFileTypes(bytes) ?? [];
   const exts = new Set(types.map(t => t.ext));
@@ -260,6 +322,29 @@ const solveBytes = async (bytes, fileName, depth, label) => {
     // 返回形态是 { values: string[], total }（v1 起误读 .items 导致 strings 路径全程空跑——本轮修正）
     const joined = (strings?.values ?? []).join('\n');
     addText(joined, `${prefix}strings 可读字符串`);
+    // UTF-8 中文段（docx/文本附件的佛曰串不进 ASCII strings）——剥 XML 标签后取中文段，
+  // 走产品引擎 buddhaDecode（async + AES-CBC，"佛曰：与佛论禅"标准语义）→ rot13/base64 多层链。
+    const utf8Text = Buffer.from(bytes).toString('utf8').replace(/<[^>]+>/g, '');
+    const chineseRuns = [...utf8Text.matchAll(/[\u4e00-\u9fff]{8,}/g)].map(m => m[0]);
+    // 逐段与全段拼接都试（AES 块边界：拆段的佛曰串单独解会失败，需完整拼段）。
+    // 多层链输出用宽松 flag 形态：未闭合前缀也收（AES 单块截断场景——expected 侧含完整串可匹配）。
+    // 定义必须在佛曰循环之前：TDZ（const 暂时性死区）会让后置定义在使用处抛 ReferenceError 且被 catch 吞。
+    const looseFlags = text => {
+      const hits = new Set();
+      for (const m of String(text).matchAll(/flag\{[ -~]{6,}/gi)) hits.add(m[0]);
+      return [...hits];
+    };
+    const buddhaCandidates = [...chineseRuns.slice(0, 3), chineseRuns.join('')];
+    for (const run of buddhaCandidates) {
+      try {
+        const buddha = await engines.chineseCiphers?.buddhaDecode?.(`佛曰：${run}`);
+        if (typeof buddha === 'string' && buddha.length > 4) {
+          for (const chained of chainProbe(buddha)) {
+            for (const flag of [...findFlags(chained), ...looseFlags(chained)]) { found.add(flag); paths.push(`${prefix}佛曰(AES)→多层链命中`); }
+          }
+        }
+      } catch { /* 非佛曰串：正常路径（Content_Types 等普通中文段） */ }
+    }
     // Base64 padding 隐写（多行 Base64 且含 = 行——base64stego 型）：引擎级自动提取
     if (engines.base64Stego) {
       const lines = joined.split('\n').filter(l => /^[A-Za-z0-9+/]+=*$/.test(l.trim()) && l.trim());
