@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useEffect, useMemo, useCallback, useDeferredValue } from 'react';
+import { lazy, Suspense, useState, useEffect, useMemo, useCallback, useDeferredValue, useRef } from 'react';
 import { useMantineColorScheme } from '@mantine/core';
 // 全局样式必须在组件 import 之前，保证 bundle 中先于组件 CSS（组件 <style> 迁出后级联改由 import 顺序决定）
 import './styles/global.css';
@@ -14,7 +14,6 @@ import {
 } from './appContext';
 import type { ActiveTab, ActiveView, PayloadMode, ThemeMode } from './appContext';
 import { emptyPublicData, parsePublicData } from './data/publicData';
-import { defaultGlobalVariables } from './data/globalVariables';
 import type { GlobalVariable, PublicClientBuildInfo, PublicData } from './types';
 import type { Language } from './i18n';
 import { getText } from './i18n';
@@ -22,8 +21,22 @@ import { buildSearchIndex, matchSearchIndex } from './searchIndex';
 
 const LazyEncodingTools = lazy(() => import('./components/EncodingTools'));
 
+// 全局变量（硬编码治理批）：默认值随 /api/public-data 的 DB 权威下发；用户编辑过的存档
+// 优先（localStorage），离线/无存档时空起步——前端不再打包 212 行硬编码默认值。
+const VARIABLES_STORAGE_KEY = 'cyber-arsenal-variables';
+
 function App() {
-  const [globalVariables, setGlobalVariables] = useState<GlobalVariable[]>(defaultGlobalVariables);
+  const [globalVariables, setGlobalVariables] = useState<GlobalVariable[]>(() => {
+    try {
+      const saved = localStorage.getItem(VARIABLES_STORAGE_KEY);
+      if (saved) {
+        const parsed: unknown = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed.filter((item): item is GlobalVariable =>
+          Boolean(item && typeof item === 'object' && typeof item.key === 'string' && typeof item.value === 'string'));
+      }
+    } catch { /* ignore */ }
+    return [];
+  });
   const [publicData, setPublicData] = useState<PublicData>(() => emptyPublicData());
   const [clientBuildInfo, setClientBuildInfo] = useState<PublicClientBuildInfo | null>(null);
   const [dataLoading, setDataLoading] = useState(true);
@@ -34,6 +47,7 @@ function App() {
   const allPayloadNavigation = useMemo(() => publicData.navigation, [publicData.navigation]);
   const allToolNavigation = useMemo(() => publicData.toolNavigation, [publicData.toolNavigation]);
   const settings = useMemo(() => publicData.settings, [publicData.settings]);
+  const ctfCheatsheets = useMemo(() => publicData.ctfCheatsheets ?? {}, [publicData.ctfCheatsheets]);
 
   const [selectedPayloadId, setSelectedPayloadId] = useState<string | null>(null);
   const [selectedToolId, setSelectedToolId] = useState<string | null>(null);
@@ -86,6 +100,19 @@ function App() {
     } catch { /* ignore */ }
   }, [theme, setColorScheme]);
 
+  // 变量编辑持久化：一旦用户动过变量，全量落 localStorage；刷新后存档优先于 DB 默认（现场不丢）。
+  const variablesTouchedRef = useRef(false);
+  useEffect(() => {
+    if (!variablesTouchedRef.current) return;
+    try {
+      localStorage.setItem(VARIABLES_STORAGE_KEY, JSON.stringify(globalVariables));
+    } catch { /* ignore */ }
+  }, [globalVariables]);
+  const updateGlobalVariables = useCallback((next: GlobalVariable[]) => {
+    variablesTouchedRef.current = true;
+    setGlobalVariables(next);
+  }, []);
+
   useEffect(() => {
     document.title = getText(settings.browserTitle, language) || 'Payloader';
   }, [settings.browserTitle, language]);
@@ -117,7 +144,12 @@ function App() {
       })
       .then(data => {
         if (isCurrent) {
-          setPublicData(parsePublicData(data));
+          const parsed = parsePublicData(data);
+          setPublicData(parsed);
+          // 无用户存档时以 DB 默认变量起步（不触发编辑持久化标记）。
+          if (parsed.globalVariables?.length && !localStorage.getItem(VARIABLES_STORAGE_KEY)) {
+            setGlobalVariables(parsed.globalVariables);
+          }
           setDataError(null);
         }
       })
@@ -205,10 +237,11 @@ function App() {
       allPayloadNavigation,
       allToolNavigation,
       settings,
+      ctfCheatsheets,
       dataLoading,
       dataError,
     }),
-    [allPayloads, allToolCommands, allPayloadNavigation, allToolNavigation, settings, dataLoading, dataError],
+    [allPayloads, allToolCommands, allPayloadNavigation, allToolNavigation, settings, ctfCheatsheets, dataLoading, dataError],
   );
   const languageValue = useMemo(() => ({ language, setLanguage }), [language]);
   const navValue = useMemo(
@@ -231,8 +264,8 @@ function App() {
     [searchQuery, deferredSearchQuery, searchMatches],
   );
   const sessionValue = useMemo(
-    () => ({ globalVariables, setGlobalVariables, theme, setTheme, globalSecret, setGlobalSecret }),
-    [globalVariables, theme, globalSecret],
+    () => ({ globalVariables, setGlobalVariables: updateGlobalVariables, theme, setTheme, globalSecret, setGlobalSecret }),
+    [globalVariables, updateGlobalVariables, theme, globalSecret],
   );
   // 引用稳定回调：内联箭头会在 App 每次渲染（含搜索键入）时换引用，击穿下游 memo。
   const openClientDownloads = useCallback(() => {

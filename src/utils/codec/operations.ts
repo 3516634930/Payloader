@@ -1072,7 +1072,7 @@ export const operations: Operation[] = [
     id: 'carbonaro',
     category: 'crypto',
     name: { zh: 'Carbonaro', en: 'Carbonaro' },
-    summary: { zh: '烧炭党单表替换（对合表，含 H/J/K/Q/U/W/X/Y 共 8 个不动点），加解同表，非字母原样。', en: 'Carbonari monoalphabetic substitution (involution table with 8 fixed points H/J/K/Q/U/W/X/Y); same table both ways.' },
+    summary: { zh: '烧炭党单表替换（对合表，含 H/J/K/M/N/Q/U/W/X/Y 共 10 个不动点），加解同表，非字母原样。', en: 'Carbonari monoalphabetic substitution (involution table with 8 fixed points H/J/K/M/N/Q/U/W/X/Y); same table both ways.' },
   },
   {
     id: 'brainfuck',

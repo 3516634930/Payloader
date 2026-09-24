@@ -1,6 +1,6 @@
 import { memo } from 'react';
-import { useLanguage } from '../../appContext';
-import { ctfCheatSheets } from '../../utils/ctf/cheatsheets';
+import { useLanguage, useStaticData } from '../../appContext';
+
 import type { CtfWorkspaceProps } from '../../utils/ctf/moduleContracts';
 import CheatsheetSection from './CheatsheetSection';
 import ModulePlaceholder from './ModulePlaceholder';
@@ -12,7 +12,8 @@ const CheatsheetWorkspace = memo(function CheatsheetWorkspace({ module }: CtfWor
   const { language } = useLanguage();
   const zh = language === 'zh';
 
-  const sheet = ctfCheatSheets[module.id];
+  const { ctfCheatsheets } = useStaticData();
+  const sheet = ctfCheatsheets?.[module.id];
   if (!sheet || sheet.entries.length === 0) {
     return <ModulePlaceholder module={module} />;
   }

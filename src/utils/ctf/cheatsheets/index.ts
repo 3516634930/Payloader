@@ -6,25 +6,9 @@ import { reverseCheatEntries } from './reverse';
 import { pwnCheatEntries } from './pwn';
 import { aiCheatEntries } from './ai';
 
-export interface CheatJump {
-  kind: 'payload' | 'tool';
-  id: string;
-}
+import type { CheatJump, CheatEntry, CheatSheet } from '../../../types';
 
-export interface CheatEntry {
-  id: string;
-  title: { zh: string; en: string };
-  summary: { zh: string; en: string };
-  // 可直接复制的命令 / payload 片段；点击复制。
-  snippet?: string;
-  tip?: { zh: string; en: string };
-  // 知识库跳转目标；缺省为纯文本条目（如实展示，不伪造跳转）。
-  jump?: CheatJump;
-}
-
-export interface CheatSheet {
-  entries: CheatEntry[];
-}
+export type { CheatJump, CheatEntry, CheatSheet };
 
 export const ctfCheatSheets: Record<string, CheatSheet> = {
   web: { entries: webCheatEntries },

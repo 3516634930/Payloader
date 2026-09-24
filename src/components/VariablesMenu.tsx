@@ -31,9 +31,7 @@ function VariablesMenu({ open, onToggle, onClose, variablesToggleRef, variablesP
   const [collapsedVariableGroups, setCollapsedVariableGroups] = useState<Set<string>>(() => new Set(['cloud', 'infra']));
 
   const updateVariable = (key: string, value: string) => {
-    setGlobalVariables(prev => 
-      prev.map(v => v.key === key ? { ...v, value } : v)
-    );
+    setGlobalVariables(globalVariables.map(v => v.key === key ? { ...v, value } : v));
   };
 
   const toggleVariableGroup = (group: string) => {

@@ -292,6 +292,21 @@ const assertMutableAdminItem = (resource, idOrItem) => {
 };
 
 
+const sanitizeGlobalVariables = value => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(item => item && typeof item === 'object' && typeof item.key === 'string' && item.key.trim()
+      && typeof item.value === 'string')
+    .map(item => ({
+      key: item.key,
+      value: item.value,
+      group: typeof item.group === 'string' ? item.group : 'general',
+      description: item.description && typeof item.description === 'object'
+        ? { zh: String(item.description.zh ?? ''), en: String(item.description.en ?? '') }
+        : { zh: '', en: '' },
+    }));
+};
+
 export const getPublicData = async ({ bypassCache = false } = {}) => {
   const cached = readPublicDataCache();
   if (cached && !bypassCache) return cached;
@@ -315,6 +330,9 @@ export const getPublicData = async ({ bypassCache = false } = {}) => {
     settings,
     payloads: publicPayloadData.payloads,
     tools: publicTools,
+    // 内容性元数据（硬编码治理批）：默认全局变量与 CTF 速查由 DB 权威下发，前端不再硬编码。
+    globalVariables: sanitizeGlobalVariables(readJsonMetadata(database, 'global_variables', null)),
+    ctfCheatsheets: readJsonMetadata(database, 'ctf_cheatsheets', {}) || {},
     navigation: publicPayloadData.navigation,
     toolNavigation: filterToolNavigation(
       xeyeEnabled ? withProtectedSystemToolNavigation(toolNavigation) : toolNavigation,

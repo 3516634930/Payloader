@@ -1,6 +1,6 @@
 import { createContext, useContext, useMemo } from 'react';
 import type { Language } from './i18n';
-import type { GlobalVariable, NavItem, PayloadItem, SiteSettings, ToolCommand } from './types';
+import type { CheatSheet, GlobalVariable, NavItem, PayloadItem, SiteSettings, ToolCommand } from './types';
 import type { SearchMatches } from './searchIndex';
 
 export type ThemeMode = 'dark' | 'light';
@@ -15,6 +15,8 @@ export interface StaticDataContextType {
   allPayloadNavigation: NavItem[];
   allToolNavigation: NavItem[];
   settings: SiteSettings;
+  // CTF 题型速查（硬编码治理批）：随 /api/public-data 的 DB 权威下发，前端不再打包静态种子。
+  ctfCheatsheets: Record<string, CheatSheet>;
   dataLoading: boolean;
   dataError: string | null;
 }
@@ -50,7 +52,7 @@ export interface SearchContextType {
 // ⑤ 会话：会话内用户可变数据。
 export interface SessionContextType {
   globalVariables: GlobalVariable[];
-  setGlobalVariables: React.Dispatch<React.SetStateAction<GlobalVariable[]>>;
+  setGlobalVariables: (next: GlobalVariable[]) => void;
   theme: ThemeMode;
   setTheme: React.Dispatch<React.SetStateAction<ThemeMode>>;
   // CTF 工作台全局密钥：带 key 参数的操作在私有值为空时自动回退到它（批次 M）。

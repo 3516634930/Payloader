@@ -4,7 +4,7 @@
 // - Pizzini：CacheSleuth pizzini.js 实装规则（序号+3 拼接，贪心自分隔），兼容历史流派 1-3→X/Y/Z。
 // - Cetacean：CyberChef CetaceanCipherEncode/Decode（16bit，1→e 0→E，空格原样），解码兼容 A/B 变体。
 // - Albam：默认 A↔N 半表互换（+13 对合，catencode/fidonode/GC Wizard 多源）；variant 切换 CacheSleuth +11 流派。
-// - Carbonaro：CacheSleuth carbonaro.js 对合表（8 个不动点 H/J/K/Q/U/W/X/Y）。
+// - Carbonaro：CacheSleuth carbonaro.js 对合表（10 个不动点 H/J/K/M/N/Q/U/W/X/Y）。
 // - Cisco Type 7：IOS 弱混淆，固定密钥表 dsfd;kfoA,.iyewrkldJKDHSUB 与种子异或，可逆。
 // 全部纯文本进出，不执行任何输入内容。
 
@@ -149,7 +149,7 @@ export const albamTransform = (value: string, direction: 'encode' | 'decode', va
   return [...value].map(char => shiftLetter(char, 13)).join('');
 };
 
-// Carbonaro：烧炭党对合表（CacheSleuth 实装），加解同表；不动点 H/J/K/Q/U/W/X/Y 为该表指纹。
+// Carbonaro：烧炭党对合表（CacheSleuth 实装），加解同表；不动点 H/J/K/M/N/Q/U/W/X/Y 为该表指纹。
 const CARBONARO_UPPER = 'OPGTIVCHEJKRNMABQLZDUFWXYS';
 const carbonaroByUpper = new Map<string, string>([...CARBONARO_UPPER].map((mapped, index) => [String.fromCharCode(65 + index), mapped]));
 const carbonaroByLower = new Map<string, string>([...CARBONARO_UPPER.toLowerCase()].map((mapped, index) => [String.fromCharCode(97 + index), mapped]));

@@ -98,12 +98,33 @@ export interface SiteSettings {
   xeyeEnabled: boolean;
 }
 
+export interface CheatJump {
+  kind: 'payload' | 'tool';
+  id: string;
+}
+
+export interface CheatEntry {
+  id: string;
+  title: { zh: string; en: string };
+  summary: { zh: string; en: string };
+  snippet?: string;
+  tip?: { zh: string; en: string };
+  jump?: CheatJump;
+}
+
+export interface CheatSheet {
+  entries: CheatEntry[];
+}
+
 export interface PublicData {
   settings: SiteSettings;
   payloads: PayloadItem[];
   tools: ToolCommand[];
   navigation: NavItem[];
   toolNavigation: NavItem[];
+  // 内容性元数据（硬编码治理批）：默认全局变量与 CTF 速查由 DB 权威下发。
+  globalVariables?: GlobalVariable[];
+  ctfCheatsheets?: Record<string, CheatSheet>;
 }
 
 export interface PublicClientBuildItem {

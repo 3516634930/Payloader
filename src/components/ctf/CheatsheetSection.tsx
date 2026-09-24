@@ -2,7 +2,6 @@ import { useCallback } from 'react';
 import { notifications } from '@mantine/notifications';
 import { useLanguage, useNav, useStaticData } from '../../appContext';
 import { openProtectedExternalLink } from '../../protectedLinks';
-import { ctfCheatSheets } from '../../utils/ctf/cheatsheets';
 import type { CheatEntry } from '../../utils/ctf/cheatsheets';
 import { copyToClipboard } from '../../utils/clipboard';
 import '../../styles/cheatsheet-section.css';
@@ -19,7 +18,8 @@ function CheatsheetSection({ moduleId, variant }: CheatsheetSectionProps) {
   const { language } = useLanguage();
   const { setActiveTab, setSelectedPayloadId, setSelectedToolId } = useNav();
   const { allToolCommands } = useStaticData();
-  const sheet = ctfCheatSheets[moduleId];
+  const { ctfCheatsheets } = useStaticData();
+  const sheet = ctfCheatsheets?.[moduleId];
   const zh = language === 'zh';
 
   const openEntry = useCallback((entry: CheatEntry) => {

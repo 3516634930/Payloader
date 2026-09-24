@@ -1,4 +1,4 @@
-import type { NavItem, PayloadItem, PublicData, SiteSettings, ToolCommand } from '../types';
+import type { GlobalVariable, NavItem, PayloadItem, PublicData, SiteSettings, ToolCommand } from '../types';
 
 const isObject = (value: unknown): value is Record<string, unknown> => (
   Boolean(value && typeof value === 'object' && !Array.isArray(value))
@@ -54,6 +54,10 @@ export const parsePublicData = (value: unknown): PublicData => {
       projectUrl: publicProjectRoute,
       xeyeEnabled: rawSettings.xeyeEnabled !== false,
     },
+    globalVariables: isArray<GlobalVariable>(value.globalVariables),
+    ctfCheatsheets: isObject(value.ctfCheatsheets)
+      ? value.ctfCheatsheets as PublicData['ctfCheatsheets']
+      : {},
     payloads: isArray<PayloadItem>(value.payloads),
     tools: isArray<ToolCommand>(value.tools),
     navigation: isArray<NavItem>(value.navigation),

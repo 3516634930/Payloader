@@ -255,9 +255,7 @@ export const navigationData: NavItem[] = [
         children: [
           { id: 'biz-idor-nav', name: { zh: 'IDOR越权遍历', en: 'IDOR Enumeration' }, payloadId: 'biz-idor' },
           { id: 'biz-race-condition-nav', name: { zh: '竞态条件攻击', en: 'Race Condition Attack' }, payloadId: 'biz-race-condition' },
-          { id: 'biz-price-tamper-nav', name: { zh: '价格篡改', en: 'Price Tampering' }, payloadId: 'biz-price-tamper' },
-          { id: 'biz-flow-bypass-nav', name: { zh: '流程绕过', en: 'Flow Bypass' }, payloadId: 'biz-flow-bypass' },
-          { id: 'biz-coupon-abuse-nav', name: { zh: '优惠券滥用', en: 'Coupon Abuse' }, payloadId: 'biz-coupon-abuse' },
+          { id: 'biz-price-tamper-nav', name: { zh: '价格篡改', en: 'Price Tampering' }, payloadId: 'biz-payment-tamper' },
           { id: 'biz-password-reset-nav', name: { zh: '密码重置逻辑缺陷', en: 'Password Reset Logic Flaws' }, payloadId: 'biz-password-reset' },
           { id: 'biz-captcha-bypass-nav', name: { zh: '验证码绕过技术', en: 'CAPTCHA Bypass Techniques' }, payloadId: 'biz-captcha-bypass' }
         ]
@@ -506,7 +504,6 @@ export const toolNavigationData: NavItem[] = [
     name: { zh: '🔍 信息收集工具', en: '🔍 Recon Tools' },
     children: [
       { id: 'nmap', name: 'Nmap', toolId: 'nmap' },
-      { id: 'masscan', name: 'Masscan', toolId: 'masscan' },
       { id: 'gobuster', name: 'Gobuster', toolId: 'gobuster' },
       { id: 'ffuf', name: 'FFUF', toolId: 'ffuf' },
       { id: 'dirsearch', name: 'Dirsearch', toolId: 'dirsearch' },
@@ -629,6 +626,8 @@ export const toolNavigationData: NavItem[] = [
           { id: 'powershell-all-cmdlets-index', name: { zh: 'PowerShell 全 Cmdlet 索引', en: 'PowerShell All Cmdlets Index' }, toolId: 'powershell-all-cmdlets-index' },
           { id: 'powershell-all-functions-index', name: { zh: 'PowerShell 全 Function 索引', en: 'PowerShell All Functions Index' }, toolId: 'powershell-all-functions-index' },
           { id: 'powershell-all-aliases-index', name: { zh: 'PowerShell 全 Alias 索引', en: 'PowerShell All Aliases Index' }, toolId: 'powershell-all-aliases-index' },
+        ]
+      },
       { id: 'macos-commands', name: { zh: 'macOS系统命令', en: 'macOS Commands' }, toolId: 'macos-commands' },
       { id: 'macos-security-deep', name: { zh: 'macOS深度安全', en: 'macOS Deep Security' }, toolId: 'macos-security-deep' },
       { id: 'freebsd-solaris-commands', name: { zh: 'FreeBSD/Solaris命令', en: 'FreeBSD/Solaris Commands' }, toolId: 'freebsd-solaris-commands' },
@@ -643,9 +642,7 @@ export const toolNavigationData: NavItem[] = [
       { id: 'linux-networking-commands', name: { zh: 'Linux网络命令', en: 'Linux Networking Commands' }, toolId: 'linux-networking-commands' },
       { id: 'powershell-remoting', name: { zh: 'PowerShell远程管理', en: 'PowerShell Remoting' }, toolId: 'powershell-remoting' },
       { id: 'nmap-advanced', name: { zh: 'Nmap高级用法', en: 'Nmap Advanced' }, toolId: 'nmap-advanced' },
-      { id: 'advanced-nmap-scripts', name: { zh: 'Nmap NSE脚本', en: 'Nmap NSE Scripts' }, toolId: 'advanced-nmap-scripts' }
-        ]
-      },
+      { id: 'advanced-nmap-scripts', name: { zh: 'Nmap NSE脚本', en: 'Nmap NSE Scripts' }, toolId: 'advanced-nmap-scripts' },
       {
         id: 'linux-full-command-index-group',
         name: { zh: 'Linux 全命令索引', en: 'Linux Full Command Index' },
@@ -884,7 +881,6 @@ export const toolNavigationData: NavItem[] = [
       { id: 'shodan-advanced', name: { zh: 'Shodan高级', en: 'Shodan Advanced' }, toolId: 'shodan-advanced' },
       { id: 'shodan-fofa-tools', name: { zh: '空间测绘工具', en: 'Cyberspace Mapping' }, toolId: 'shodan-fofa-tools' },
       { id: 'web-recon-tools', name: { zh: 'Web侦察工具集', en: 'Web Recon Toolkit' }, toolId: 'web-recon-tools' },
-      { id: 'web-enum-tools', name: { zh: 'Web枚举工具', en: 'Web Enum Tools' }, toolId: 'web-enum-tools' },
       { id: 'git-pentest', name: { zh: 'Git信息泄露', en: 'Git Info Disclosure' }, toolId: 'git-pentest' },
       { id: 'interactsh', name: 'Interactsh', toolId: 'interactsh' },
       { id: 'osint-tools', name: { zh: 'OSINT工具集', en: 'OSINT Toolkit' }, toolId: 'osint-tools' },

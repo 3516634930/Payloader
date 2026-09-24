@@ -14,12 +14,25 @@ import { webPayloads } from '../../scripts/legacy-seed/webPayloads.ts';
 import { intranetPayloads } from '../../scripts/legacy-seed/intranetPayloads.ts';
 import { toolCommands } from '../../src/data/toolCommands.ts';
 import { navigationData, toolNavigationData } from '../../src/data/navigation.ts';
+import { defaultGlobalVariables } from '../../src/data/globalVariables.ts';
+import { webCheatEntries } from '../../src/utils/ctf/cheatsheets/web.ts';
+import { reverseCheatEntries } from '../../src/utils/ctf/cheatsheets/reverse.ts';
+import { pwnCheatEntries } from '../../src/utils/ctf/cheatsheets/pwn.ts';
+import { aiCheatEntries } from '../../src/utils/ctf/cheatsheets/ai.ts';
 
 export const seedData = {
   payloads: [...webPayloads, ...intranetPayloads],
   tools: toolCommands,
   navigation: navigationData,
   toolNavigation: toolNavigationData,
+  // 内容性 metadata（硬编码治理批）：默认全局变量与 CTF 速查随种子入库，运行时由 DB 权威下发。
+  globalVariables: defaultGlobalVariables,
+  ctfCheatsheets: {
+    web: { entries: webCheatEntries },
+    reverse: { entries: reverseCheatEntries },
+    pwn: { entries: pwnCheatEntries },
+    ai: { entries: aiCheatEntries },
+  },
 };
 `;
 
@@ -36,6 +49,11 @@ const compileSeedData = async () => {
     join(rootDir, 'src/data/osToolCommandExtensions.ts'),
     join(rootDir, 'src/data/toolCommands.ts'),
     join(rootDir, 'src/data/navigation.ts'),
+    join(rootDir, 'src/data/globalVariables.ts'),
+    join(rootDir, 'src/utils/ctf/cheatsheets/web.ts'),
+    join(rootDir, 'src/utils/ctf/cheatsheets/reverse.ts'),
+    join(rootDir, 'src/utils/ctf/cheatsheets/pwn.ts'),
+    join(rootDir, 'src/utils/ctf/cheatsheets/ai.ts'),
     sourceFile,
   ];
   const output = [];
@@ -69,7 +87,11 @@ const compileSeedData = async () => {
     .replace(/export\s+const\s+osToolCommandExtensions/g, 'const osToolCommandExtensions')
     .replace(/export\s+const\s+toolCommands/g, 'const toolCommands')
     .replace(/export\s+const\s+navigationData/g, 'const navigationData')
-    .replace(/export\s+const\s+toolNavigationData/g, 'const toolNavigationData');
+    .replace(/export\s+const\s+toolNavigationData/g, 'const toolNavigationData')
+    .replace(/import\s+\{\s*defaultGlobalVariables\s*\}\s+from\s+['"][^'"]+globalVariables(?:\.ts)?['"];?\s*/g, '')
+    .replace(/import\s+\{\s*\w+CheatEntries\s*\}\s+from\s+['"][^'"]+cheatsheets\/\w+(?:\.ts)?['"];?\s*/g, '')
+    .replace(/export\s+const\s+defaultGlobalVariables/g, 'const defaultGlobalVariables')
+    .replace(/export\s+const\s*(\w+)CheatEntries/g, 'const $1CheatEntries');
   await writeFile(outputFile, bundled, 'utf8');
   return pathToFileURL(outputFile).href;
 };
