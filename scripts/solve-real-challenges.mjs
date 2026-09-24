@@ -27,6 +27,8 @@ const loadEngines = async () => {
     pcapProtocols: ['utils', 'ctf', 'pcap', 'protocols.ts'],
     pcapAnalyze: ['utils', 'ctf', 'pcap', 'analyze.ts'],
     qrDecode: ['utils', 'ctf', 'qrDecode.ts'],
+    pdfText: ['utils', 'ctf', 'pdfText.ts'],
+    pdfCmap: ['utils', 'ctf', 'pdfCmap.ts'],
   };
   for (const [name, parts] of Object.entries(defs)) {
     try { engines[name] = loadModule(src(...parts)); } catch { engines[name] = null; }
@@ -342,10 +344,28 @@ const solveBytes = async (bytes, fileName, depth, label) => {
       const result = engines.pdfInspect.inspectPdf(bytes);
       addText(result.comments.join('\n'), `${prefix}PDF 注释`);
       addText(result.suspiciousTexts.join('\n'), `${prefix}PDF 可疑文本`);
-      for (const stream of result.streams.filter(s => s.filter?.includes('FlateDecode')).slice(0, 40)) {
+      // CID/Identity-H 字体还原链：ToUnicode CMap 解析 → 内容流文本双字节映射（攻防世界 pdf 型遮挡题）
+      let cmap = null;
+      try {
+        const toUnicodeStreams = engines.pdfCmap?.findToUnicodeStreams(bytes, result.streams) ?? [];
+        for (const stream of toUnicodeStreams.slice(0, 4)) {
+          const raw = bytes.subarray(stream.offset, Math.min(bytes.length, stream.offset + stream.length));
+          const decoded = stream.flate
+            ? (() => { try { return new Uint8Array(zlib.inflateSync(Buffer.from(raw))); } catch { return null; } })()
+            : raw;
+          if (!decoded) continue;
+          const parsed = engines.pdfCmap.parseCmapFromDecoded(decoded);
+          if (parsed.size > (cmap?.size ?? 0)) cmap = parsed;
+        }
+        if (cmap && cmap.size > 0) paths.push(`${prefix}ToUnicode CMap（${cmap.size} 条映射）`);
+      } catch { /* CMap 缺失/坏流：无 CID 还原，直接文本路径 */ }
+      // 全部流都走（未压缩内容流 obj5 型真题：flag 在无 filter 的流里，只筛 Flate 会漏）。
+      for (const stream of result.streams.slice(0, 60)) {
         try {
           const raw = bytes.subarray(stream.offset, Math.min(bytes.length, stream.offset + stream.length));
-          const inflated = zlib.inflateSync(Buffer.from(raw));
+          const inflated = stream.filter?.includes('FlateDecode')
+            ? zlib.inflateSync(Buffer.from(raw))
+            : Buffer.from(raw);
           const text = inflated.toString('latin1');
           // 内层容器（foremost 类：PDF 流里嵌 zip/图片）魔数递归
           if (innerKindOf(inflated) && depth < 3) {
@@ -353,10 +373,22 @@ const solveBytes = async (bytes, fileName, depth, label) => {
             paths.push(...inner.paths.slice(0, 8));
             for (const flag of inner.found) found.add(flag);
           }
-          // 内容流粗提：(...) Tj / [ (..) ...] TJ 字符串（正则级，pdfText 引擎上线后替换）
-          const pieces = [...text.matchAll(/\(([^)\\]{2,})\)\s*Tj|\(([^)\\]{2,})\)/g)].map(m => m[1] ?? m[2]);
-          if (pieces.length) addText(pieces.join('\n'), `${prefix}PDF 内容流 Tj 文本（obj${stream.objectNumber}）`);
-          else addText(text, `${prefix}PDF 流解压 obj${stream.objectNumber}`);
+          // 内容流文本：pdfText 引擎提取 + CID 映射还原（twoByte 双字节码）
+          const pieces = engines.pdfText?.extractPdfContentText?.(inflated) ?? [];
+          const joined2 = pieces.join('\n');
+          if (joined2.trim()) {
+            addText(joined2, `${prefix}PDF 内容流文本（obj${stream.objectNumber}）`);
+            if (cmap && cmap.size > 0) {
+              // 单字节与双字节两种 CID 口径都还原（自定义编码字体是单字节查表、Identity-H 是双字节），
+              // 命中哪个算哪个——攻防世界 pdf 题实测走 single-byte。
+              for (const twoByte of [false, true]) {
+                const mapped = engines.pdfCmap.applyCmapToText(pieces.join(''), cmap, twoByte);
+                if (mapped !== pieces.join('')) addText(mapped, `${prefix}PDF CID 映射还原（obj${stream.objectNumber}，${twoByte ? '双' : '单'}字节）`);
+              }
+            }
+          } else {
+            addText(text, `${prefix}PDF 流解压 obj${stream.objectNumber}`);
+          }
         } catch { /* 坏流跳过 */ }
       }
     } catch (error) { paths.push(`${prefix}PDF 解析失败：${error.message}`); }
