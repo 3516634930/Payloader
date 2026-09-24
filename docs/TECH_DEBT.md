@@ -62,3 +62,4 @@
 - [ ] TD-批次MISC2-5 | AudioStegoCard 语言切换后 failed 文案语言陈旧（exhaustive-deps disable 的低频路径） | 2026-09-24 misc 批（reviewer P3） | `src/components/ctf/AudioStegoCard.tsx` | 修法：failed 存错误码而非文案，渲染时现算 | P3
 - [ ] TD-批次PICKER-1 | onScrollToCard 用全文档 getElementById：ff-card-summary 被 ReverseWorkspace 复用且五域 keepMounted 常驻，当前仅靠模块顺序正确；调序或新增同名锚点会静默滚到 hidden 容器 | 2026-09-24 题型卡批（reviewer P2） | `FileForensicsWorkspace.tsx` scrollToCard/选择卡回调 | 修法：容器内 rootRef.querySelector 或锚点 id 加域前缀 | P2
 - [ ] TD-批次PICKER-2 | 题型卡两处文案术语密度偏高（"zsteg 式 288 组合"/"DWT-DCT-SVD"）对新手不自解释 | 2026-09-24 题型卡批（reviewer P2） | `challengeCatalog.ts:77,113` | 修法：换大白话并保留术语在 title | P3
+- [ ] TD-批次KP-1 | zipBrute 掩码吞吐：JS 单线程 ~3.3 万口令/s（setTimeout 让步在 Windows 15ms 量级开销大），8 位纯数字 1 亿口令需 ~50 分钟——22 题自动通关受阻 | 2026-09-25 已知明文批 | `src/utils/ctf/zipBrute.ts` 节流 | 修法：Worker 内跑免让步 + 让步间隔自适应（连续无 UI 时降频） | P1
