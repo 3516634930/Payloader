@@ -395,13 +395,13 @@ test('onProgress：512 一批节流回报 + 结束终值', async () => {
 
 // ---- 内置字典 ----
 
-test('dictionaryCandidates：条目量级 ~120、去重、覆盖 CTF 高频弱口令', () => {
+test('dictionaryCandidates：条目量级 ~150、去重、覆盖 CTF 高频弱口令', () => {
   const dict = dictionaryCandidates();
-  assert.ok(dict.length >= 110 && dict.length <= 150, `字典长度 ${dict.length} 超出预期区间`);
+  assert.ok(dict.length >= 140 && dict.length <= 180, `字典长度 ${dict.length} 超出预期区间`);
   const copy = [];
   for (let index = 0; index < dict.length; index += 1) copy.push(dict[index]);
   assert.equal(new Set(copy).size, copy.length, '字典存在重复条目');
-  for (const must of ['123456', 'password', 'ctf', 'flag', 'infected', 'qwerty', 'admin', '2025']) {
+  for (const must of ['123456', 'password', 'ctf', 'flag', 'infected', 'qwerty', 'admin', '2025', 'fish', 'misc']) {
     assert.ok(dict.includes(must), `字典缺少高频口令 ${must}`);
   }
 });

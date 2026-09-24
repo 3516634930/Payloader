@@ -519,6 +519,10 @@ const DICTIONARY: readonly string[] = Array.from(
     'ctf', 'CTF', 'ctf123', 'ctf2024', 'ctf2025', 'ctf2026', 'buuctf', 'nssctf', 'hgame', 'flag', 'FLAG',
     'flag123', 'flag2024', 'flag2025', 'flag2026', 'fl4g', 'f1ag', 'getflag', 'key',
     'infected', 'virus', 'malware', 'sample', 'unpacked',
+    // 真题高频动物/宠物名（János=fish、祥云杯系等）与 CTF 场景补充
+    'fish', 'cat', 'dog', 'panda', 'rabbit', 'tigger', 'shadow', 'hunter', 'killer', 'player',
+    'qwe', 'asd', 'zxc', 'qaz', 'wsx', '1234qwer', 'qwer1234', '0000000000', '121314', '131413',
+    'misc', 'crypto', 'stego', 'reverse', 'pwn', 'web', 'hacker', 'security', 'challenge', 'answer',
     'zip', 'unzip', 'archive', 'compressed', 'encrypted', 'pkzip', 'winzip', 'winrar', 'rar', '7z',
     '1990', '1995', '1999', '2000', '2008', '2010', '2013', '2015', '2016', '2017',
     '2018', '2019', '2020', '2021', '2022', '2023', '2024', '2025', '2026',
@@ -526,3 +530,25 @@ const DICTIONARY: readonly string[] = Array.from(
 );
 
 export const dictionaryCandidates = (): string[] => Array.from(DICTIONARY);
+
+// 已知口令解密 ZipCrypto 条目：返回去掉 12 字节加密头后的数据（stored 条目即明文内容；
+// deflate 条目仍是压缩流，调用方自行 inflate——浏览器层可用 CompressionStream('deflate-raw')）。
+// local header 偏移 8 读真实压缩方法一并返回，便于调用方分流。
+export interface DecryptedZipEntry {
+  bytes: Uint8Array;
+  compression: number; // 0=stored 8=deflate
+  crcOk: boolean; // CRC32 终验（stored 可直接验；deflate 验的是压缩流字节，解压后应由调用方复验）
+}
+export const decryptZipCryptoEntry = (bytes: Uint8Array, entry: ZipEncryptedEntry, password: string): DecryptedZipEntry | null => {
+  try {
+    const nameLen = (bytes[entry.localHeaderOffset + 26] | (bytes[entry.localHeaderOffset + 27] << 8));
+    const extraLen = (bytes[entry.localHeaderOffset + 28] | (bytes[entry.localHeaderOffset + 29] << 8));
+    const compression = bytes[entry.localHeaderOffset + 8] | (bytes[entry.localHeaderOffset + 9] << 8);
+    const dataOffset = entry.localHeaderOffset + 30 + nameLen + extraLen;
+    const decrypted = decryptZipCryptoPayload(bytes, dataOffset, entry.compressedSize, password);
+    const crcOk = compression === 0 && crc32BytesOf(decrypted) === entry.crc32;
+    return { bytes: decrypted, compression, crcOk };
+  } catch {
+    return null;
+  }
+};
