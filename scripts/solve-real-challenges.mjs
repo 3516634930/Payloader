@@ -26,9 +26,7 @@ const loadEngines = async () => {
     pcapParser: ['utils', 'ctf', 'pcap', 'parser.ts'],
     pcapProtocols: ['utils', 'ctf', 'pcap', 'protocols.ts'],
     pcapAnalyze: ['utils', 'ctf', 'pcap', 'analyze.ts'],
-    chineseCiphers: ['utils', 'codec', 'chineseCiphers.ts'],
-    textEncodings: ['utils', 'codec', 'textEncodings.ts'],
-    bases: ['utils', 'codec', 'bases.ts'],
+    qrDecode: ['utils', 'ctf', 'qrDecode.ts'],
   };
   for (const [name, parts] of Object.entries(defs)) {
     try { engines[name] = loadModule(src(...parts)); } catch { engines[name] = null; }
@@ -257,10 +255,15 @@ const solveBytes = async (bytes, fileName, depth, label) => {
     }
   }
 
-  // 图片：PNG/BMP → 位平面全组合扫描（递归内层图片同样吃这条路径）
+  // 图片：PNG/BMP → 位平面全组合扫描（递归内层图片同样吃这条路径）+ 本体/位平面 QR 识别
   if (exts.has('png') || ext === 'png' || ext === 'bmp') {
     const decoded = ext === 'bmp' ? decodeBmpRgba(bytes) : decodePngRgba(bytes);
     if (decoded?.rgba) {
+      if (engines.qrDecode) {
+        for (const item of engines.qrDecode.decodeQrCodes(decoded.rgba, decoded.width, decoded.height)) {
+          addText(item.text, `${prefix}图片本体 QR`);
+        }
+      }
       const hits = engines.bitPlaneScan?.scanBitPlanes(decoded.rgba, decoded.width, decoded.height) ?? [];
       for (const hit of hits) {
         paths.push(`${prefix}位平面扫描 ${hit.channel}/${hit.bit}/${hit.lsbFirst ? 'lsb' : 'msb'}/${hit.pixelOrder}（${hit.reasons.join('+')}）`);
@@ -278,6 +281,41 @@ const solveBytes = async (bytes, fileName, depth, label) => {
       addText(result.plainTexts.join('\n'), `${prefix}GIF 文本扩展`);
       if (result.delayBits) {
         addText(`${result.delayBits.asBinary}\n${result.delayBits.asAscii}\n${result.delayBits.asSeconds}`, `${prefix}GIF 帧延时三口径`);
+      }
+      // 帧级 QR：单帧识别 + 全帧横拼/网格拼（glance/give_you_flag 型"帧拼二维码"）
+      if (engines.qrDecode && result.frames.length > 0 && result.frames.length <= 240) {
+        const decoded = engines.gifInspect.decodeGifFrames(bytes, result, { maxFrames: 240 });
+        const frames = result.frames.filter(frame => frame.imageData).slice(0, 240);
+        for (const frame of frames.slice(0, 30)) {
+          const qr = engines.qrDecode.decodeQrCodes(frame.imageData!, frame.width, frame.height);
+          if (qr.length) for (const item of qr) { addText(item.text, `${prefix}GIF 帧 ${frame.index + 1} QR`); }
+        }
+        if (frames.length >= 2) {
+          const w = frames[0].width, h = frames[0].height;
+          if (frames.every(f => f.width === w && f.height === h)) {
+            // 横条拼合（glance 型）
+            const strip = new Uint8ClampedArray(frames.length * w * h * 4);
+            frames.forEach((f, i) => strip.set(f.imageData!, i * w * h * 4));
+            const qrStrip = engines.qrDecode.decodeQrCodes(strip, frames.length * w, h);
+            for (const item of qrStrip) addText(item.text, `${prefix}GIF 帧横拼 QR（${frames.length} 帧）`);
+            // 网格拼合（每行 ceil(sqrt(n)) 帧）
+            const cols = Math.ceil(Math.sqrt(frames.length));
+            const rows = Math.ceil(frames.length / cols);
+            const grid = new Uint8ClampedArray(cols * w * rows * h * 4);
+            frames.forEach((f, i) => {
+              const gx = (i % cols) * w, gy = Math.floor(i / cols) * h;
+              for (let y = 0; y < h; y += 1) {
+                for (let x = 0; x < w; x += 1) {
+                  const src = (y * w + x) * 4, dst = ((gy + y) * cols * w + gx + x) * 4;
+                  grid[dst] = f.imageData![src]; grid[dst + 1] = f.imageData![src + 1];
+                  grid[dst + 2] = f.imageData![src + 2]; grid[dst + 3] = 255;
+                }
+              }
+            });
+            const qrGrid = engines.qrDecode.decodeQrCodes(grid, cols * w, rows * h);
+            for (const item of qrGrid) addText(item.text, `${prefix}GIF 帧网格拼 QR（${cols}×${rows}）`);
+          }
+        }
       }
     } catch (error) { paths.push(`${prefix}GIF 解析失败：${error.message}`); }
   }
