@@ -35,7 +35,7 @@ const payloadRefAliases = new Map([
   ['jwt-kid-injection', 'jwt-key-confusion'],
   ['jwt-jku-spoofing', 'jwt-jku-x5u-injection'],
 ]);
-const categoryBranchExceptions = new Map([
+export const categoryBranchExceptions = new Map([
   ['rce-file-upload', 'file-vulns'],
 ]);
 
@@ -57,7 +57,7 @@ export const PAYLOAD_BRANCH_RULES = Object.freeze([
   { payloadId: 'inject2-prince-xml-ssrf', branchId: 'ssrf' },
 ]);
 
-const categoryBranches = new Map([
+export const categoryBranches = new Map([
   ['SQL/NoSQL\u6ce8\u5165', 'sqli'],
   ['SQL/NoSQL Injection', 'sqli'],
   ['XSS\u8de8\u7ad9\u811a\u672c', 'xss'],
@@ -80,6 +80,58 @@ const categoryBranches = new Map([
   ['Framework Vulnerabilities', 'framework-vulns'],
   ['AI\u5b89\u5168', 'ai-security'],
   ['AI Security', 'ai-security'],
+  // 全量归类批（2026-09）：补齐拆分/遗留 payload 分类到 web 树分支
+  ['XXE\u5b9e\u4f53\u6ce8\u5165', 'xxe'],
+  ['XXE Injection', 'xxe'],
+  ['SSTI\u6a21\u677f\u6ce8\u5165', 'ssti'],
+  ['SSTI Injection', 'ssti'],
+  ['LFI/RFI\u6587\u4ef6\u5305\u542b', 'lfi-rfi'],
+  ['LFI/RFI File Inclusion', 'lfi-rfi'],
+  ['CSRF\u8de8\u7ad9\u8bf7\u6c42\u4f2a\u9020', 'csrf'],
+  ['CSRF', 'csrf'],
+  ['API\u5b89\u5168', 'api-security'],
+  ['API Security', 'api-security'],
+  ['\u8ba4\u8bc1\u6f0f\u6d1e', 'auth-vulns'],
+  ['Authentication Vulnerabilities', 'auth-vulns'],
+  ['\u6587\u4ef6\u6f0f\u6d1e', 'file-vulns'],
+  ['File Vulnerabilities', 'file-vulns'],
+  ['\u4e1a\u52a1\u903b\u8f91\u6f0f\u6d1e', 'biz-logic'],
+  ['Business Logic Vulnerabilities', 'biz-logic'],
+  ['JWT\u5b89\u5168', 'jwt-security'],
+  ['JWT Security', 'jwt-security'],
+  ['WebSocket \u5b89\u5168', 'websocket-security'],
+  ['WebSocket Security', 'websocket-security'],
+  ['Web \u7f13\u5b58\u5b89\u5168', 'web-cache'],
+  ['Web Cache Security', 'web-cache'],
+  ['CORS \u5b89\u5168', 'cors-security'],
+  ['CORS Security', 'cors-security'],
+  ['HTTP\u54cd\u5e94\u5206\u5272', 'http-response-splitting'],
+  ['HTTP Response Splitting', 'http-response-splitting'],
+  ['Host Header\u5b89\u5168', 'host-header-security'],
+  ['Host Header Security', 'host-header-security'],
+  ['\u62d2\u7edd\u670d\u52a1', 'denial-of-service'],
+  ['Denial of Service', 'denial-of-service'],
+  ['\u6587\u4ef6\u4e0e\u6e90\u7801\u6cc4\u9732', 'file-vulns'],
+  ['File and Source Disclosure', 'file-vulns'],
+  ['Web \u6e17\u900f\u5de5\u5177', 'sqli'],
+  ['Web Pentest Tools', 'sqli'],
+  // 内网树分支
+  ['\u6743\u9650\u63d0\u5347\u5de5\u5177', 'privilege-escalation'],
+  ['Privilege Escalation Tools', 'privilege-escalation'],
+  ['Active Directory \u5b89\u5168\u8fb9\u754c', 'ad-attack'],
+  ['Active Directory Security Boundary', 'ad-attack'],
+  ['Exchange \u5de5\u5177', 'exchange-attack'],
+  ['Exchange Tools', 'exchange-attack'],
+  ['\u51ed\u8bc1\u5ba1\u8ba1\u5de5\u5177', 'credential-theft'],
+  ['Credential Audit Tools', 'credential-theft'],
+  ['\u51ed\u8bc1\u4fdd\u62a4\u4e0e\u5ba1\u8ba1', 'credential-theft'],
+  ['Credential Protection and Auditing', 'credential-theft'],
+  ['\u8fdc\u7a0b\u7ba1\u7406\u4e0e\u6a2a\u5411\u8fb9\u754c', 'lateral-movement'],
+  ['Remote Management and Lateral Boundary', 'lateral-movement'],
+  ['\u7ec8\u7aef\u9632\u62a4\u4e0e\u9065\u6d4b\u5b8c\u6574\u6027', 'nav-cat-evasion-powershell'],
+  ['Endpoint Defense and Telemetry Integrity', 'nav-cat-evasion-powershell'],
+  ['\u7ec8\u7aef\u5b89\u5168\u5de5\u5177', 'nav-cat-evasion-powershell'],
+  ['Endpoint Security Tools', 'nav-cat-evasion-powershell'],
 ]);
 
 const isObject = value => Boolean(value && typeof value === 'object' && !Array.isArray(value));
@@ -210,7 +262,7 @@ const expectedBranch = payload => {
   return categoryBranches.get(category) || '';
 };
 
-const branchFromPath = path => path[0] === 'web' && path.length > 1 ? path[1] : (path[0] || '');
+const branchFromPath = path => (path[0] === 'web' || path[0] === 'intranet') && path.length > 1 ? path[1] : (path[0] || '');
 
 export const auditSnapshot = (input, options = {}) => {
   const snapshot = {

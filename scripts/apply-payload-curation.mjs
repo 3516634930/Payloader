@@ -6,7 +6,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as sqlite from 'node:sqlite';
 
 import {
+  alignOverrideChainToPatches,
   curatePayloadLibrary,
+  patchedCommandKeysFromOverrides,
   validatePayloadCommandOverrideDocument,
   validatePayloadOverrideDocument,
 } from './curate-payload-library.mjs';
@@ -263,8 +265,13 @@ export const loadReviewConfiguration = async directoryInput => {
 
 export const auditReviewConfiguration = (payloads, configuration) => {
   const coverage = auditCurationCoverage(payloads, configuration);
+  const { keys: patchedKeys, byPayload: patchedCommands } = patchedCommandKeysFromOverrides(configuration.payloadCommandOverrides);
   const overrideErrors = asList(configuration.overrideDocuments).flatMap(document => (
-    validatePayloadOverrideDocument(document, payloads).map(error => ({
+    validatePayloadOverrideDocument(
+      alignOverrideChainToPatches(document, patchedCommands),
+      payloads,
+      patchedKeys,
+    ).map(error => ({
       sourcePrefix: document?.sourcePrefix || '',
       ...error,
     }))
@@ -333,7 +340,8 @@ export const prepareCurationOptions = (options = {}, payloadsInput = [], toolsIn
       }
       if (typeof step?.payload !== 'string') return step;
       const patch = patches.find(item => String(item?.expectedCommand || '') === step.payload);
-      return patch ? { ...step, payload: String(patch.command || '') } : step;
+      // title/description-only patch（无新 command）不得触碰 chain payload，否则命令被清空。
+      return patch && String(patch.command || '').trim() ? { ...step, payload: String(patch.command || '') } : step;
     });
   };
   const alreadyAppliedOverrideIds = new Set();
@@ -425,9 +433,17 @@ export const prepareCurationOptions = (options = {}, payloadsInput = [], toolsIn
       .filter(entry => !isRetiredManagedSource(entry?.id))
       .map(entry => {
         const current = currentPayloadsById.get(String(entry?.id || '').trim());
-        const patches = asList(entry?.patches).filter(patch => (
-          String(current?.[patch?.area]?.[patch?.index]?.command || '') !== String(patch?.command || '')
-        ));
+        // 已应用判定必须覆盖全部可补丁字段：仅按 command 差异会把 title/description-only
+        // patch 误判为已应用而丢弃。
+        const patches = asList(entry?.patches).filter(patch => {
+          const currentEntry = current?.[patch?.area]?.[patch?.index];
+          if (!currentEntry) return true;
+          if (String(currentEntry?.command || '') !== String(patch?.command ?? '')) return true;
+          return ['title', 'description', 'syntaxBreakdown', 'platform', 'requiresAdmin'].some(field => (
+            patch?.[field] !== undefined
+            && JSON.stringify(currentEntry?.[field]) !== JSON.stringify(patch[field])
+          ));
+        });
         return patches.length ? { ...entry, patches } : null;
       })
       .filter(Boolean),

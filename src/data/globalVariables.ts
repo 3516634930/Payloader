@@ -181,6 +181,8 @@ export const defaultGlobalVariables: GlobalVariable[] = [
   { key: 'LAB_APPLICATION_DIRECTORY', value: 'C:\\PayloaderLab', group: 'infra', description: { zh: '隔离实验应用程序目录', en: 'Isolated lab application directory' } },
   { key: 'LAB_NONEXECUTABLE_BYTE_FIXTURE', value: 'C:\\PayloaderLab\\fixtures\\marker.bin', group: 'infra', description: { zh: '隔离实验非执行字节夹具', en: 'Isolated lab non-executable byte fixture' } },
   { key: 'LAB_BASE64_COMMAND', value: 'V3JpdGUtT3V0cHV0IFBBWUxPQURFUi1MQUI=', group: 'infra', description: { zh: '隔离实验 Base64 命令标记', en: 'Isolated lab Base64 command marker' } },
+  { key: 'LAB_CPASSWORD', value: 'AzVQm2hT8pXw1kL5qR7nB3eY', group: 'infra', description: { zh: '隔离实验 GPP cpassword 加密值', en: 'Isolated lab GPP cpassword encrypted value' } },
+  { key: 'LAB_PARENT_PID', value: '4242', group: 'infra', description: { zh: '隔离实验父进程 PID', en: 'Isolated lab parent process PID' } },
   { key: 'LAB_APP', value: 'app.lab.invalid', group: 'infra', description: { zh: '隔离实验 Web 应用主机名', en: 'Isolated lab web-application host name' } },
   { key: 'LAB_ORIGIN', value: 'origin.lab.invalid', group: 'infra', description: { zh: '隔离实验请求来源主机名', en: 'Isolated lab request-origin host name' } },
   { key: 'LAB_SSRF_APP', value: 'ssrf-fixture.lab.invalid', group: 'infra', description: { zh: '隔离实验 SSRF 取回应用主机名', en: 'Isolated lab SSRF fetch-application host name' } },

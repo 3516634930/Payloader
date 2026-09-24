@@ -97,7 +97,8 @@ test('published intranet snapshot retains offensive technique coverage', () => {
     ['privilege-token', /token::elevate|JuicyPotato|PrintSpoofer|GodPotato/i],
     ['uac-bypass', /reg add|fodhelper|eventvwr|Akagi/i],
     ['persistence-registry', /reg add|sc create/i],
-    ['persistence-wmi', /New-WmiEvent|New-WmiFilterToConsumerBinding/i],
+    // WMI 持久化断言对齐修正后的真实 cmdlet（Set-WmiInstance 为 PowerShell 内置；New-WmiEvent 并不存在）
+    ['persistence-wmi', /Set-WmiInstance|__FilterToConsumerBinding/i],
     ['dcsync-attack', /dcsync|secretsdump/i],
     ['golden-ticket', /kerberos::golden/i],
     ['resource-delegation', /New-MachineAccount|Rubeus/i],

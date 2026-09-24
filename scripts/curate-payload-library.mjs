@@ -1,4 +1,9 @@
 import { payloadContentHash } from './payload-editorial-review.mjs';
+import {
+  PAYLOAD_BRANCH_RULES,
+  categoryBranchExceptions,
+  categoryBranches,
+} from './verify-content-quality.mjs';
 
 const genericChainPattern = /\u5229\u7528\u6b65\u9aa4|\u9009\u62e9\u5bf9\u5e94\s*payload\s*\u6d4b\u8bd5|\u9009\u62e9\u7ed5\u8fc7\u6280\u672f|select the corresponding payload to test|select a bypass technique/i;
 const collectionResiduePattern = /\(\s*[^()]{0,80}\b\d+\s*lines?\s*\)|\u7684\s*Payload\s*\u96c6\u5408|Payload\s*\u96c6\u5408|\u5171\s*\d+\s*\u6761[\s\S]{0,20}\u5c55\u793a\u524d\s*\d+\s*\u6761/i;
@@ -46,7 +51,7 @@ const localizedText = (value, language) => typeof value === 'string'
 const clone = value => structuredClone(value);
 const hasHan = value => /\p{Script=Han}/u.test(String(value || ''));
 const requiredOverrideContentFields = ['name', 'description', 'category', 'subCategory', 'tutorial', 'attackChain', 'references'];
-const optionalOverrideContentFields = ['prerequisites', 'analysis', 'opsecTips'];
+const optionalOverrideContentFields = ['prerequisites', 'analysis', 'opsecTips', 'tags'];
 const overrideContentFields = [...requiredOverrideContentFields, ...optionalOverrideContentFields];
 export const normalizeReferenceUrls = references => [...new Set(asList(references)
   .map(reference => referenceUrlReplacements.get(String(reference)) || String(reference))
@@ -520,7 +525,7 @@ const collectCorruptLocalizedPaths = (value, path = [], output = []) => {
 
 const overrideError = (code, id, detail = '') => ({ code, id, ...(detail ? { detail } : {}) });
 
-export const validatePayloadOverrideDocument = (document, sourcePayloadsInput) => {
+export const validatePayloadOverrideDocument = (document, sourcePayloadsInput, patchedCommandKeys = new Map()) => {
   const sourcePayloads = asList(sourcePayloadsInput);
   const sourceById = new Map(sourcePayloads.map(item => [item.id, item]));
   const prefix = String(document?.sourcePrefix || '').trim();
@@ -579,6 +584,9 @@ export const validatePayloadOverrideDocument = (document, sourcePayloadsInput) =
     if (invalidChain) errors.push(overrideError('INVALID_CHAIN', id));
 
     const commandSet = new Set([...asList(source.execution), ...asList(source.wafBypass)].map(item => commandKey(item.command)));
+    // command patch 应用后命令文本会变化；expectedAttackChain 已把 chain 预对齐到 patch 新命令，
+    // 校验命令集必须同样纳入 patch 目标命令，否则预对齐的 chain 反被判为悬挂。
+    for (const key of patchedCommandKeys.get(id) || []) commandSet.add(key);
     for (const step of chain) {
       const referencedCommand = commandFromPayloadReference(source, step?.payloadRef);
       if (step?.payload && step?.payloadRef !== undefined) {
@@ -641,15 +649,17 @@ export const validatePayloadOverrideDocument = (document, sourcePayloadsInput) =
 
 export const applyPayloadOverrides = (payloadsInput, documentsInput, options = {}) => {
   const payloads = asList(payloadsInput).map(clone);
-  const documents = asList(documentsInput);
+  const patchedCommandKeys = options.patchedCommandKeys || new Map();
+  const patchedCommands = options.patchedCommands || new Map();
   const entriesById = new Map();
-  for (const document of documents) {
-    const errors = validatePayloadOverrideDocument(document, payloads);
+  for (const document of asList(documentsInput)) {
+    const preparedDocument = alignOverrideChainToPatches(document, patchedCommands);
+    const errors = validatePayloadOverrideDocument(preparedDocument, payloads, patchedCommandKeys);
     if (errors.length && options.allowInvalid !== true) {
       const preview = errors.slice(0, 8).map(error => `${error.code}:${error.id}`).join(', ');
       throw new Error(`Invalid payload override document ${document?.sourcePrefix || '<unknown>'}: ${preview}`);
     }
-    for (const entry of asList(document?.entries)) {
+    for (const entry of asList(preparedDocument.entries)) {
       if (entriesById.has(entry.id)) throw new Error(`Payload override appears in multiple documents: ${entry.id}`);
       entriesById.set(entry.id, entry);
     }
@@ -702,8 +712,14 @@ export const validatePayloadCommandOverrideDocument = (document, sourcePayloadsI
         errors.push(overrideError('STALE_COMMAND', id, key));
       }
       const nextCommand = String(patch?.command ?? '');
-      if (!nextCommand.trim()) errors.push(overrideError('EMPTY_COMMAND', id, key));
-      if (nextCommand === sourceCommand) errors.push(overrideError('NOOP_COMMAND', id, key));
+      // title/description-only patch（command 字段缺省）合法：不触碰命令，仅更新元数据字段。
+      if (patch?.command !== undefined && !nextCommand.trim()) errors.push(overrideError('EMPTY_COMMAND', id, key));
+      // command 相同但携带元数据修正（title/description 等）的 patch 合法，不算 NOOP。
+      const hasMetadataPatch = ['title', 'description', 'syntaxBreakdown', 'platform', 'requiresAdmin']
+        .some(field => patch?.[field] !== undefined);
+      if (patch?.command !== undefined && nextCommand === sourceCommand && !hasMetadataPatch) {
+        errors.push(overrideError('NOOP_COMMAND', id, key));
+      }
       if (patch.title !== undefined) {
         const zh = localizedText(patch.title, 'zh').trim();
         const en = localizedText(patch.title, 'en').trim();
@@ -749,7 +765,8 @@ export const applyPayloadCommandOverrides = (payloadsInput, document, options = 
       if (!current) continue;
       const previousCommand = String(current.command || '');
       const nextCommand = String(patch.command || '');
-      current.command = nextCommand;
+      // command 缺省的 patch 仅更新元数据字段，命令保持原文。
+      if (patch.command !== undefined) current.command = nextCommand;
       if (patch.title !== undefined) current.title = clone(patch.title);
       if (patch.description !== undefined) current.description = clone(patch.description);
       if (patch.syntaxBreakdown !== undefined) current.syntaxBreakdown = clone(patch.syntaxBreakdown);
@@ -1066,8 +1083,14 @@ const appendCollectionSplitNavigation = (navigation, splits, payloadById) => {
 
   for (const split of splits) {
     const originalReference = sourceReferences.get(split.sourceId)?.[0]?.node;
-    asList(split.replacements).forEach((replacement, index) => {
-      const payload = payloadById.get(replacement.id);
+    // replacements 携带内容覆盖，targetPayloadIds 只列 id（已拆分入库的 payload）；
+    // 导航挂接两者都要消费，否则 targetPayloadIds 形态的拆分产物永远成孤儿。
+    const replacementIds = [
+      ...asList(split.replacements).map(replacement => String(replacement?.id || '').trim()),
+      ...asList(split.targetPayloadIds).map(id => String(id || '').trim()),
+    ].filter(Boolean);
+    replacementIds.forEach((replacementId, index) => {
+      const payload = payloadById.get(replacementId);
       if (!payload || existingPayloadIds.has(payload.id)) return;
       const branchId = navigationLabelKeys(payload.category)
         .map(key => branchByCategory.get(key))
@@ -1085,6 +1108,115 @@ const appendCollectionSplitNavigation = (navigation, splits, payloadById) => {
     });
   }
   return next;
+};
+
+// 全量归类批（2026-09）：清理指向已不存在资源的死叶子（payloadId / toolId 均校验）。
+const pruneDanglingNavigation = (nodes, validPayloadIds, validToolIds) => asList(nodes).flatMap(node => {
+  if (node.payloadId && !validPayloadIds.has(node.payloadId)) return [];
+  if (node.toolId && !validToolIds.has(node.toolId)) return [];
+  const next = clone(node);
+  if (Array.isArray(next.children)) next.children = pruneDanglingNavigation(next.children, validPayloadIds, validToolIds);
+  return [next];
+});
+
+// 全量归类批（2026-09）：按分类规则统一 payload 的导航位置。
+// 分支解析优先级：个体例外 > 显式规则 > 分类映射；无规则分类保持原位，由 verify 报告。
+// 已挂载但分支不符的 payload 就近搬迁；无引用的孤儿直接挂载。
+const appendOrphanPayloadNavigation = (navigation, payloads) => {
+  let next = asList(navigation).map(clone);
+  const currentBranchByPayload = new Map();
+  const collect = (node, branchId) => {
+    if (node.payloadId && !currentBranchByPayload.has(node.payloadId)) {
+      currentBranchByPayload.set(node.payloadId, branchId);
+    }
+    for (const child of asList(node.children)) collect(child, branchId);
+  };
+  for (const root of asList(next)) {
+    if (root.payloadId) currentBranchByPayload.set(root.payloadId, root.id);
+    for (const branch of asList(root.children)) collect(branch, branch.id);
+  }
+  const collectBranchIds = nodes => {
+    const ids = new Set();
+    const walk = list => {
+      for (const node of asList(list)) {
+        if (node?.id) ids.add(node.id);
+        walk(node?.children);
+      }
+    };
+    walk(nodes);
+    return ids;
+  };
+  const branchIds = collectBranchIds(next);
+  const expectedBranchId = payload => categoryBranchExceptions.get(payload.id)
+    || PAYLOAD_BRANCH_RULES.find(rule => rule.payloadId === payload.id)?.branchId
+    || categoryBranches.get(displayText(payload.category).trim())
+    || '';
+  const relocate = payloadIds => {
+    if (!payloadIds.size) return;
+    next = removePayloadReferences(next, payloadIds);
+    for (const id of payloadIds) currentBranchByPayload.delete(id);
+  };
+  for (const payload of asList(payloads)) {
+    if (!payload?.id) continue;
+    const branchId = expectedBranchId(payload);
+    if (!branchId || !branchIds.has(branchId)) continue;
+    const currentBranch = currentBranchByPayload.get(payload.id);
+    if (currentBranch === branchId) continue;
+    if (currentBranch !== undefined) relocate(new Set([payload.id]));
+    next = appendPayloadNavigation(next, branchId, {
+      id: `nav-${payload.id}`,
+      name: clone(payload.name),
+      payloadId: payload.id,
+    });
+    currentBranchByPayload.set(payload.id, branchId);
+  }
+  return next;
+};
+
+// command patch 的映射（expectedCommand → patch），供 override 校验前把 chain payload 对齐到 patch 后命令。
+export const patchedCommandKeysFromOverrides = document => {
+  const keys = new Map();
+  const byPayload = new Map();
+  for (const entry of asList(document?.entries)) {
+    const id = String(entry?.id || '').trim();
+    if (!id) continue;
+    const set = keys.get(id) || new Set();
+    const list = byPayload.get(id) || [];
+    for (const patch of asList(entry?.patches)) {
+      const expected = String(patch?.expectedCommand ?? '');
+      const key = commandKey(patch?.command);
+      if (key) set.add(key);
+      if (expected) list.push({ expectedCommand: expected, command: patch?.command });
+    }
+    if (set.size) keys.set(id, set);
+    if (list.length) byPayload.set(id, list);
+  }
+  return { keys, byPayload };
+};
+
+export const alignOverrideChainToPatches = (document, patchedCommands) => {
+  if (!patchedCommands?.size) return document;
+  const entries = asList(document?.entries).map(entry => {
+    const patches = patchedCommands.get(String(entry?.id || '').trim());
+    if (!patches?.length) return entry;
+    return {
+      ...entry,
+      attackChain: asList(entry.attackChain).map(step => {
+        if (typeof step?.payload !== 'string') return step;
+        const patch = patches.find(item => item.expectedCommand === step.payload);
+        // title/description-only patch（无新 command）不得触碰 chain payload。
+        return patch && String(patch.command || '').trim()
+          ? { ...step, payload: String(patch.command) }
+          : step;
+      }),
+    };
+  });
+  return { ...document, entries };
+};
+
+const patchedCommandOptions = document => {
+  const { keys, byPayload } = patchedCommandKeysFromOverrides(document);
+  return { patchedCommandKeys: keys, patchedCommands: byPayload };
 };
 
 const newToolFromMigration = (source, target) => ({
@@ -1181,7 +1313,11 @@ export const curatePayloadLibrary = (input, options = {}) => {
   const migrations = new Map(asList(options.toolMigrations).map(item => [item.sourceId, item]));
   const splits = new Map(asList(options.payloadSplits).map(item => [item.sourceId, item]));
   const collectionSplits = new Map(asList(options.collectionSplits).map(item => [item.sourceId, item]));
-  snapshot.payloads = applyPayloadOverrides(snapshot.payloads, options.overrideDocuments || []);
+  snapshot.payloads = applyPayloadOverrides(
+    snapshot.payloads,
+    options.overrideDocuments || [],
+    patchedCommandOptions(options.payloadCommandOverrides),
+  );
   snapshot.payloads = applyPayloadCommandOverrides(snapshot.payloads, options.payloadCommandOverrides);
   snapshot.tools = applyToolOverrides(snapshot.tools, options.toolOverrides || []);
   const toolsById = new Map(snapshot.tools.map((item, index) => [item.id, { item, index }]));
@@ -1319,11 +1455,16 @@ export const curatePayloadLibrary = (input, options = {}) => {
 
   snapshot.payloads = keptPayloads;
   snapshot.navigation = removePayloadReferences(snapshot.navigation, migratedIds);
+  const validPayloadIds = new Set(snapshot.payloads.map(payload => payload.id));
+  const validToolIds = new Set(snapshot.tools.map(tool => tool.id));
+  snapshot.navigation = pruneDanglingNavigation(snapshot.navigation, validPayloadIds, validToolIds);
+  snapshot.toolNavigation = pruneDanglingNavigation(snapshot.toolNavigation, validPayloadIds, validToolIds);
   snapshot.navigation = appendCollectionSplitNavigation(
     snapshot.navigation,
     asList(options.collectionSplits),
     new Map(snapshot.payloads.map(payload => [payload.id, payload])),
   );
+  snapshot.navigation = appendOrphanPayloadNavigation(snapshot.navigation, snapshot.payloads);
   snapshot.navigation = synchronizePayloadNavigation(snapshot.navigation, snapshot.payloads);
   applyToolMerges(snapshot, options.toolMerges);
   snapshot.toolNavigation = updateToolNavigationNames(
