@@ -495,14 +495,17 @@ const xorAutoSolveDecode = (input: string, params: Record<ParamKey, string>): st
   const hint = params.knownPlaintext?.trim() || undefined;
   const result = xorAutoSolve(bytes, { knownHint: hint, frequentPlainByte: params.variant === 'hex' ? 0 : 0x20 });
   const keyText = Array.from(result.key).map(b => (b >= 0x20 && b <= 0x7e) ? String.fromCharCode(b) : '.').join('');
+  // key 长度搜索上限 min(32, 密文/2)：超长 key 场景统计破译失效，明示边界引导走已知明文路径（审计 P2）。
+  const keyLenLimit = Math.min(32, Math.floor(bytes.length / 2));
   return [
     'XOR 自动破译（xortool 式统计）',
     '',
-    'keyLen: ' + result.keyLen + '（重合指数择优）',
+    'keyLen: ' + result.keyLen + '（重合指数择优；搜索上限 ' + keyLenLimit + '）',
     'key(hex): ' + Array.from(result.key).map(b => b.toString(16).padStart(2, '0')).join(' '),
     'key(text): ' + keyText,
     'confidence: ' + result.confidence.toFixed(2),
     hint ? '提示锚点: ' + hint : '',
+    result.confidence < 0.4 ? '注意：confidence 偏低——key 可能超过搜索上限或密文过短，建议用「XOR 已知明文求密」以 flag{/文件头求 key。' : '',
     '',
     '—— 明文（latin1）——',
     result.plaintext.slice(0, 2000),
@@ -513,11 +516,13 @@ const vigenereAutoSolveReport = (input: string): string => {
   const letters = input.replace(/[^a-zA-Z]/g, '');
   if (letters.length < 30) throw new Error('Vigenère 自动破译至少需要 30 个字母（建议 80+）');
   const result = vigenereAutoSolve(input);
+  // key 长度搜索上限 min(20, 字母数/2)：真实 key 超上限时短文本统计必然失效，明示边界（审计 P2）。
+  const keyLenLimit = Math.min(20, Math.floor(letters.length / 2));
   const lines = [
     'Vigenère 自动破译（IC 择长 + 卡方拟合）',
     '',
     'key: ' + result.key,
-    'keyLen: ' + result.keyLen,
+    'keyLen: ' + result.keyLen + '（搜索上限 ' + keyLenLimit + '，key 超上限需已知明文 crib）',
     '',
     '—— 明文 ——',
     result.plaintext.slice(0, 2000),

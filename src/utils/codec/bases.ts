@@ -1,5 +1,5 @@
 // CODEC-IMPORTS
-import { base32Alphabet, base32HexAlphabet, base45Alphabet, base58Alphabet, base62Alphabet, base91Alphabet, crockfordBase32Alphabet, utf8Decoder, utf8Encoder } from './alphabets';
+import { base32Alphabet, base32HexAlphabet, base45Alphabet, base58Alphabet, base62Alphabet, base91Alphabet, crockfordBase32Alphabet, latin1Decoder, utf8Decoder, utf8Encoder } from './alphabets';
 // CODEC-IMPORTS-END
 export const label = (value: { zh: string; en: string }, language: 'zh' | 'en') => value[language] || value.zh;
 export const bytesToHex = (bytes: Uint8Array) => Array.from(bytes).map(byte => byte.toString(16).padStart(2, '0')).join('');
@@ -282,6 +282,9 @@ export const encodeBech32 = (value: string, hrpValue: string, variant: string) =
   return `${hrp}1${payload}`;
 };
 
+// BIP-173/BIP-350 segwit 地址 hrp：这些前缀下数据部分首词是 witness version（0-16），不属于程序数据。
+const SEGWIT_HRPS = ['bc', 'tb', 'bcrt', 'tbs'];
+
 export const decodeBech32 = (value: string) => {
   const clean = value.trim();
   if (!clean) throw new Error('Bech32 输入为空');
@@ -297,11 +300,23 @@ export const decodeBech32 = (value: string) => {
   });
   const variant = bech32VerifyVariant(hrp, data);
   const words = data.slice(0, -6);
-  const bytes = new Uint8Array(convertBits(words, 5, 8, false));
+  // segwit 地址剥离 witness version 首词再 5→8 转换（BIP-173 segwit_addr.decode 语义）——
+  // 否则 P2WPKH/P2WSH 因 padding 非零抛错、Taproot 32 字节程序静默错位丢位。
+  // 长度门（剩余词数 32/52 = 程序 20/32 字节，覆盖 P2WPKH/P2WSH/P2TR）：本仓编码器不写版本词，
+  // hrp 为 bc/tb 的普通数据首词也可能 ≤16，无长度门会误剥。
+  const witnessVersion = SEGWIT_HRPS.includes(hrp)
+    && words.length > 0 && words[0] <= 16
+    && (words.length === 33 || words.length === 53)
+    ? words[0]
+    : null;
+  const programWords = witnessVersion === null ? words : words.slice(1);
+  const bytes = new Uint8Array(convertBits(programWords, 5, 8, false));
   return JSON.stringify({
     hrp,
     variant: variant || 'checksum-invalid',
     checksumValid: Boolean(variant),
+    witnessVersion,
+    programBytes: bytes.length,
     dataWords: words,
     dataHex: bytesToHex(bytes),
     dataText: utf8Decoder.decode(bytes).replace(/\p{Cc}/gu, '.'),
@@ -553,7 +568,8 @@ export const decodeUuencode = (value: string) => {
     }
     bytes.push(...decoded.slice(0, length));
   }
-  return utf8Decoder.decode(new Uint8Array(bytes));
+  // 二进制载荷无损：UU/XX 可携带任意字节，latin1 输出保证 ≥0x80 字节不被 utf8 解码损坏。
+  return latin1Decoder.decode(new Uint8Array(bytes));
 };
 
 export const xxencodeAlphabet = '+-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
@@ -607,7 +623,8 @@ export const decodeXxencode = (value: string) => {
     }
     bytes.push(...decoded.slice(0, length));
   }
-  return utf8Decoder.decode(new Uint8Array(bytes));
+  // 二进制载荷无损：UU/XX 可携带任意字节，latin1 输出保证 ≥0x80 字节不被 utf8 解码损坏。
+  return latin1Decoder.decode(new Uint8Array(bytes));
 };
 
 export const zBase32Alphabet = 'ybndrfg8ejkmcpqxot1uwisza345h769';

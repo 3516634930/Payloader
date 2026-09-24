@@ -198,7 +198,7 @@ function OperationParamsPanel({ operation, language, showOptions, setShowOptions
                     {operation.id !== 'hmac' && <option value="whirlpool">Whirlpool</option>}
                     {operation.id !== 'hmac' && <option value="xxhash32">xxHash32</option>}
                     {operation.id !== 'hmac' && <option value="xxhash64">xxHash64</option>}
-                    {operation.id !== 'hmac' && <option value="crc16">CRC16</option>}
+                    {operation.id !== 'hmac' && <option value="crc16">CRC16/MODBUS</option>}
                     {operation.id !== 'hmac' && <option value="crc32">CRC32</option>}
                     {operation.id !== 'hmac' && <option value="adler32">Adler32</option>}
                   </>

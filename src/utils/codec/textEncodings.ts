@@ -1,5 +1,5 @@
 // CODEC-IMPORTS
-import { alphabet, baudotFigures, baudotFiguresShift, baudotLetters, baudotLettersShift, bubbleBabbleConsonants, bubbleBabbleVowels, crc16Table, crc32Table, dnaMaps, gsm7DefaultAlphabet, gsm7ExtensionAlphabet, gsm7ReverseAlphabet, keyboardRows, morseMap, natoWords, reverseBaudotFigures, reverseBaudotLetters, reverseDnaMaps, reverseGsm7ExtensionAlphabet, reverseMorseMap, reverseNatoWords, utf7DirectChars, utf8Decoder, utf8Encoder, zeroWidthOne, zeroWidthZero } from './alphabets';
+import { alphabet, baudotFigures, baudotFiguresShift, baudotLetters, baudotLettersShift, bubbleBabbleConsonants, bubbleBabbleVowels, crc16Table, crc32Table, dnaMaps, gsm7DefaultAlphabet, gsm7ExtensionAlphabet, gsm7ReverseAlphabet, keyboardRows, latin1Decoder, morseMap, natoWords, reverseBaudotFigures, reverseBaudotLetters, reverseDnaMaps, reverseGsm7ExtensionAlphabet, reverseMorseMap, reverseNatoWords, utf7DirectChars, utf8Decoder, utf8Encoder, zeroWidthOne, zeroWidthZero } from './alphabets';
 import { base64ToBytes, bytesToBase64, bytesToHex, hexToBytes } from './bases';
 // CODEC-IMPORTS-END
 export const htmlEncode = (value: string, variant: string) => {
@@ -623,7 +623,8 @@ export const yEncDecode = (value: string) => {
     }
     bytes.push((encoded - 42) & 0xff);
   }
-  return utf8Decoder.decode(new Uint8Array(bytes));
+  // 二进制载荷无损：yEnc 传输二进制（Usenet 附件），latin1 输出保证 ≥0x80 字节不被 utf8 解码损坏。
+  return latin1Decoder.decode(new Uint8Array(bytes));
 };
 
 export const bubbleIndex = (alphabet: string, char: string, label: string) => {

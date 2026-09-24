@@ -6,7 +6,7 @@ import { extractBracketedAssignment, getObjectAliasValue, parseNumberishUnknown 
 import type { Asn1Node } from './binaryFormats';
 import { parseAsn1Input, parseAsn1TopLevel, readSshString } from './binaryFormats';
 import { bigIntSqrt } from './math';
-import { bigintInvMod, fermatFactor, pollardPMinus1, pollardRho, smallPrimeFactor } from './numberTheory';
+import { bigintInvMod, bigintIsPrime, fermatFactor, pollardPMinus1, pollardRho, smallPrimeFactor } from './numberTheory';
 import type { Direction } from './types';
 // CODEC-IMPORTS-END
 
@@ -297,7 +297,9 @@ export const parseKeyValueNumbers = (value: string) => {
     // Fall through to regex-based parsing for prose or non-JSON challenge text.
   }
 
-  for (const match of value.matchAll(/\b([a-zA-Z][\w-]*)\s*[:=]\s*(['"]?)(0x[0-9a-f_]+|\d[\d_]*[nNlL]?|[A-Za-z0-9+/_-]+={0,2})\2/gi)) {
+  // 值分支含方括号数字列表（c=[123, 456] 行内多块密文形态）——否则列表在逗号处截断只留半截，
+  // parseRsaMessageValues 本身支持列表，坍缩发生在这一层（审计 P2）。
+  for (const match of value.matchAll(/\b([a-zA-Z][\w-]*)\s*[:=]\s*(['"]?)(\[[0-9a-fA-FxX\s,;_]+\]|0x[0-9a-f_]+|\d[\d_]*[nNlL]?|[A-Za-z0-9+/_-]+={0,2})\2/gi)) {
     if (isArithmeticFieldMatch(value, match.index || 0)) continue;
     const assignmentEnd = (match.index || 0) + match[0].length;
     if (/^\s*\(/.test(value.slice(assignmentEnd))) continue;
@@ -1662,9 +1664,20 @@ export const rsaRawTransform = (direction: Direction, value: string) => {
     inference.notes.push('Factored small n locally by bounded trial division, Fermat search, or Pollard Rho.');
   }
   const n = explicitN || (typeof p === 'bigint' && typeof q === 'bigint' ? p * q : null);
-  const factorList = direction === 'decode' && typeof n === 'bigint'
+  const rawFactorList = direction === 'decode' && typeof n === 'bigint'
     ? (typeof p === 'bigint' && typeof q === 'bigint' ? [p, q] : factorSmallCompositeModulus(n))
     : (typeof p === 'bigint' && typeof q === 'bigint' ? [p, q] : null);
+  // 审计 P1-1 防线：factorSmallCompositeModulus 分解失败时会把整个 n 当"素数"压栈——
+  // φ=n−1 在 n 为合数时是错误假设，据此派生 d 会静默输出乱码明文。
+  // 只有"乘积=n 且每个因子都通过素性检验"的分解才允许用于 φ 派生（对拍 RsaCtfTool：绝不输出未验证分解下的解密）。
+  const factorList = rawFactorList !== null
+    && rawFactorList.reduce((product, factor) => product * factor, 1n) === n
+    && rawFactorList.every(factor => bigintIsPrime(factor))
+    ? rawFactorList
+    : null;
+  if (rawFactorList !== null && factorList === null) {
+    inference.notes.push('本地小因子分解未成功：已拒绝以未验证的 φ=n−1 派生私钥指数（会产生乱码明文）。可改用 RSA 助手的数论攻击包（Fermat/Pollard p−1/Wiener/共因子等）。');
+  }
   const phi = params.phi
     ? rsaParamNumber(params, 'phi')
     : (factorList ? rsaPhiFromPrimeFactors(factorList) : null);

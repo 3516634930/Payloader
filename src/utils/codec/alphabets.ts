@@ -29,6 +29,9 @@ export const morseMap: Record<string, string> = {
 export const reverseMorseMap = Object.fromEntries(Object.entries(morseMap).map(([key, value]) => [value, key]));
 export const utf8Encoder = new TextEncoder();
 export const utf8Decoder = new TextDecoder();
+// latin1（ISO-8859-1）：字节 1:1 映射 U+0000-U+00FF，二进制载荷无损落字符串——
+// yEnc/UU/XX 这类可携带任意字节的解码器必须用它（utf8 会把 ≥0x80 字节静默变 U+FFFD）。
+export const latin1Decoder = new TextDecoder('latin1');
 export const base32Alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 export const base32HexAlphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUV';
 export const crockfordBase32Alphabet = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
