@@ -284,10 +284,10 @@ const solveBytes = async (bytes, fileName, depth, label) => {
       }
       // 帧级 QR：单帧识别 + 全帧横拼/网格拼（glance/give_you_flag 型"帧拼二维码"）
       if (engines.qrDecode && result.frames.length > 0 && result.frames.length <= 240) {
-        const decoded = engines.gifInspect.decodeGifFrames(bytes, result, { maxFrames: 240 });
+        engines.gifInspect.decodeGifFrames(bytes, result, { maxFrames: 240 });
         const frames = result.frames.filter(frame => frame.imageData).slice(0, 240);
         for (const frame of frames.slice(0, 30)) {
-          const qr = engines.qrDecode.decodeQrCodes(frame.imageData!, frame.width, frame.height);
+          const qr = engines.qrDecode.decodeQrCodes(frame.imageData, frame.width, frame.height);
           if (qr.length) for (const item of qr) { addText(item.text, `${prefix}GIF 帧 ${frame.index + 1} QR`); }
         }
         if (frames.length >= 2) {
@@ -295,7 +295,7 @@ const solveBytes = async (bytes, fileName, depth, label) => {
           if (frames.every(f => f.width === w && f.height === h)) {
             // 横条拼合（glance 型）
             const strip = new Uint8ClampedArray(frames.length * w * h * 4);
-            frames.forEach((f, i) => strip.set(f.imageData!, i * w * h * 4));
+            frames.forEach((f, i) => strip.set(f.imageData, i * w * h * 4));
             const qrStrip = engines.qrDecode.decodeQrCodes(strip, frames.length * w, h);
             for (const item of qrStrip) addText(item.text, `${prefix}GIF 帧横拼 QR（${frames.length} 帧）`);
             // 网格拼合（每行 ceil(sqrt(n)) 帧）
@@ -307,8 +307,8 @@ const solveBytes = async (bytes, fileName, depth, label) => {
               for (let y = 0; y < h; y += 1) {
                 for (let x = 0; x < w; x += 1) {
                   const src = (y * w + x) * 4, dst = ((gy + y) * cols * w + gx + x) * 4;
-                  grid[dst] = f.imageData![src]; grid[dst + 1] = f.imageData![src + 1];
-                  grid[dst + 2] = f.imageData![src + 2]; grid[dst + 3] = 255;
+                  grid[dst] = f.imageData[src]; grid[dst + 1] = f.imageData[src + 1];
+                  grid[dst + 2] = f.imageData[src + 2]; grid[dst + 3] = 255;
                 }
               }
             });
