@@ -201,7 +201,7 @@ export async function transform(operationId: OperationId, direction: Direction, 
     case 'atbash':
       return atbashTransform(input);
     case 'bacon':
-      return direction === 'encode' ? baconEncode(input, params.separator) : baconDecode(input);
+      return direction === 'encode' ? baconEncode(input, params.separator, params.variant) : baconDecode(input, params.variant);
     case 'polybius':
       return direction === 'encode' ? polybiusEncode(input, params.separator) : polybiusDecode(input);
     case 'tap-code':

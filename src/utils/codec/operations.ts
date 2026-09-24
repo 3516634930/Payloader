@@ -689,8 +689,8 @@ export const operations: Operation[] = [
     id: 'bacon',
     category: 'crypto',
     name: { zh: 'Bacon 培根密码', en: 'Bacon Cipher' },
-    summary: { zh: '五位 A / B 分组古典密码，也支持 a/b 或 0/1 风格输入。', en: 'Five-symbol A/B classical cipher with a/b or 0/1 style input.' },
-    params: ['separator'],
+    summary: { zh: '五位 A / B 分组古典密码，也支持 a/b 或 0/1 风格输入；变体可选 24 字母（I/J、U/V 合并，默认）或 26 字母全表。', en: 'Five-symbol A/B classical cipher with a/b or 0/1 input; 24-letter (I/J, U/V merged, default) or full 26-letter variant.' },
+    params: ['variant', 'separator'],
   },
   {
     id: 'polybius',

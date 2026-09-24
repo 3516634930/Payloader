@@ -396,3 +396,23 @@ export const analyzeCapture = (views: PacketView[]): CaptureAnalysis => {
 
   return { stats, streams, streamTotal, transactions, httpTotal, flags };
 };
+
+// ICMP 数据外带拼合（真题套路：flag 分片藏在一串 echo data 里，整包扫描被 pcap 头打断拼不上）。
+// 按包序拼合全部 ICMP 载荷（请求+响应都算），供可疑扫描与拼合预览消费。
+export const assembleIcmpData = (views: PacketView[]): { text: string; packetCount: number } | null => {
+  const parts: Uint8Array[] = [];
+  for (const view of views) {
+    if ((view.proto !== 'ICMP' && view.proto !== 'ICMPv6') || !view.payload || view.payload.length === 0) continue;
+    parts.push(view.payload);
+  }
+  if (!parts.length) return null;
+  let total = 0;
+  for (const part of parts) total += part.length;
+  const joined = new Uint8Array(total);
+  let offset = 0;
+  for (const part of parts) {
+    joined.set(part, offset);
+    offset += part.length;
+  }
+  return { text: new TextDecoder('latin1').decode(joined), packetCount: parts.length };
+};

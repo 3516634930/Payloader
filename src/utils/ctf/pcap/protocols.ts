@@ -202,7 +202,11 @@ const parseFrame = (data: Uint8Array): BuildOutcome => {
       };
     }
     if (protocol === IP_PROTO_ICMP && l4 + 4 <= data.length) {
-      return { ...none, ...base, proto: 'ICMP', info: icmpSummary(data[l4], data[l4 + 1]) };
+      // echo request/reply（type 0/8）载荷在 8 字节 ICMP 头之后——数据外带题常把 flag 分片藏在 echo data 里。
+      const icmpType = data[l4];
+      const icmpHeader = icmpType === 0 || icmpType === 8 ? 8 : 4;
+      const icmpPayload = data.length > l4 + icmpHeader ? data.subarray(l4 + icmpHeader) : null;
+      return { ...none, ...base, proto: 'ICMP', info: icmpSummary(icmpType, data[l4 + 1]), payload: icmpPayload };
     }
     return { ...none, ...base, proto: 'other', info: `IPv4 协议号 ${protocol}` };
   }

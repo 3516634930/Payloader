@@ -2516,6 +2516,47 @@ export const rsaHelper = (value: string) => {
       // Keep helper output focused on parseable fields and commands.
     }
   }
+  if (!directRecovery && typeof n === 'bigint' && typeof e === 'bigint' && params.c) {
+    // 私钥本地恢复：p&q / phi / d / 单侧 p(q=n/p) 任一就绪即直接解密，不再让选手手抄 python。
+    try {
+      const numericP = numeric.p;
+      const numericQ = numeric.q;
+      let privateKey: bigint | null = null;
+      let via = '';
+      if (typeof numeric.d === 'bigint') {
+        privateKey = numeric.d;
+        via = 'd 已给出';
+      } else if (typeof numeric.phi === 'bigint') {
+        privateKey = bigintModInverse(e, numeric.phi);
+        via = 'd = e⁻¹ mod phi';
+      } else if (typeof numericP === 'bigint' && typeof numericQ === 'bigint' && numericP > 1n && numericQ > 1n && numericP * numericQ === n) {
+        privateKey = bigintModInverse(e, (numericP - 1n) * (numericQ - 1n));
+        via = 'phi = (p-1)(q-1)';
+      } else if (typeof numericP === 'bigint' && numericP > 1n && n % numericP === 0n) {
+        const other = n / numericP;
+        privateKey = bigintModInverse(e, (numericP - 1n) * (other - 1n));
+        via = 'q = n / p';
+      } else if (typeof numericQ === 'bigint' && numericQ > 1n && n % numericQ === 0n) {
+        const other = n / numericQ;
+        privateKey = bigintModInverse(e, (other - 1n) * (numericQ - 1n));
+        via = 'p = n / q';
+      }
+      if (privateKey !== null) {
+        const blocks = parseRsaMessageValues(params.c, 'ciphertext');
+        const plains = blocks.map(block => bigintModPow(block.value, privateKey!, n));
+        const readable = rsaValuesResult(plains);
+        if (plains.length) {
+          directRecovery = {
+            attack: `private-key decrypt（${via}，本地直接解出）`,
+            output: readable,
+          };
+          notes.push(`已用 ${via} 恢复私钥并本地解密，明文见 directRecovery.output。`);
+        }
+      }
+    } catch {
+      // 私钥推导失败（如 e 与 phi 不互质）时保持原有报告路径。
+    }
+  }
   if (!directRecovery && automated.attacks.length) {
     directRecovery = automated.attacks[0];
     notes.push(`检测到 ${automated.attacks[0].title} 可直接恢复明文。`);

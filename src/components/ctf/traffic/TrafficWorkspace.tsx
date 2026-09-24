@@ -7,7 +7,7 @@ import { WorkbenchMenuBar } from '../../codec/WorkbenchMenuBar';
 import { formatBytes, formatDuration, formatTimestamp } from '../../../utils/ctf/pcap/format';
 import { parseCapture } from '../../../utils/ctf/pcap/parser';
 import { buildPacketViews, type PacketView } from '../../../utils/ctf/pcap/protocols';
-import { analyzeCapture, type CaptureAnalysis } from '../../../utils/ctf/pcap/analyze';
+import { analyzeCapture, assembleIcmpData, type CaptureAnalysis } from '../../../utils/ctf/pcap/analyze';
 import { copyToClipboard } from '../../../utils/clipboard';
 import PacketTable from './PacketTable';
 import StreamView from './StreamView';
@@ -21,6 +21,7 @@ interface TrafficReport {
   views: PacketView[];
   analysis: CaptureAnalysis;
   suspicious: SuspiciousScan;
+  icmpAssembled: ReturnType<typeof assembleIcmpData>;
   baseSeconds: number | null;
 }
 
@@ -30,6 +31,18 @@ export interface TrafficWorkspaceProps {
   // 通知框架文件已被取走，框架清空 pendingFile 防止残留重放。
   onFileConsumed?: () => void;
 }
+
+// 合并两份可疑扫描（整包 + ICMP 拼合）：三组数组去重合并，flags 按 prefix+sample 去重。
+const mergeSuspiciousScans = (base: SuspiciousScan, extra: SuspiciousScan): SuspiciousScan => {
+  const seenFlags = new Set(base.flags.map(hit => `${hit.prefix}|${hit.sample}`));
+  const seenB64 = new Set(base.base64Candidates);
+  const seenKeywords = new Set(base.keywordHits);
+  return {
+    flags: [...base.flags, ...extra.flags.filter(hit => !seenFlags.has(`${hit.prefix}|${hit.sample}`))],
+    base64Candidates: [...base.base64Candidates, ...extra.base64Candidates.filter(item => !seenB64.has(item))],
+    keywordHits: [...base.keywordHits, ...extra.keywordHits.filter(item => !seenKeywords.has(item))],
+  };
+};
 
 const STAT_LABELS: Record<string, { zh: string; en: string }> = {
   TCP: { zh: 'TCP', en: 'TCP' },
@@ -99,7 +112,12 @@ function TrafficWorkspace({ pendingFile, onFileConsumed }: TrafficWorkspaceProps
       const capture = parseCapture(bytes);
       const views = buildPacketViews(capture);
       const analysis = analyzeCapture(views);
-      const suspicious = scanSuspiciousContent(new TextDecoder('latin1').decode(bytes));
+      // ICMP 数据外带：拼合全部 ICMP 载荷再扫一遍（整包扫描会被 pcap 记录头打断，分片 flag 拼不上）。
+      const icmpAssembled = assembleIcmpData(views);
+      const wholeFileScan = scanSuspiciousContent(new TextDecoder('latin1').decode(bytes));
+      const suspicious = icmpAssembled
+        ? mergeSuspiciousScans(wholeFileScan, scanSuspiciousContent(icmpAssembled.text))
+        : wholeFileScan;
       const timestamps = capture.packets.map(packet => packet.tsSeconds).filter(value => Number.isFinite(value) && value > 0);
       setReport({
         name: file.name,
@@ -108,6 +126,7 @@ function TrafficWorkspace({ pendingFile, onFileConsumed }: TrafficWorkspaceProps
         views,
         analysis,
         suspicious,
+        icmpAssembled,
         baseSeconds: timestamps.length ? Math.min(...timestamps) : null,
       });
       setView('packets');
@@ -303,6 +322,16 @@ function TrafficWorkspace({ pendingFile, onFileConsumed }: TrafficWorkspaceProps
           {view === 'suspicious' && (
             <section className="pw-card" aria-label={zh ? '可疑内容' : 'Suspicious content'}>
               <div className="pw-card-head"><strong>{zh ? '可疑内容（全文件扫描）' : 'Suspicious content (whole-file scan)'}</strong></div>
+              {report.icmpAssembled && (
+                <div className="pw-tool">
+                  <span className="pw-label">
+                    {zh
+                      ? `ICMP 数据外带拼合（${report.icmpAssembled.packetCount} 个带载荷的 ICMP 包，按包序连接后扫描）`
+                      : `ICMP data assembled (${report.icmpAssembled.packetCount} packets with payload, scanned in order)`}
+                  </span>
+                  <code className="pw-code">{report.icmpAssembled.text.length > 400 ? `${report.icmpAssembled.text.slice(0, 400)}…` : report.icmpAssembled.text}</code>
+                </div>
+              )}
               {report.suspicious.flags.length > 0 ? (
                 <div className="pw-row">
                   <span className="pw-label">{zh ? 'flag 格式' : 'Flag formats'}</span>

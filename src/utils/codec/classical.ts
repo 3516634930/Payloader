@@ -152,22 +152,31 @@ export const substitutionTransform = (value: string, secret: string, decode = fa
   }).join('');
 };
 
-export const baconEncode = (value: string, separator: string) => Array.from(value.toUpperCase())
-  .map(char => {
-    const normalized = char === 'J' ? 'I' : char === 'V' ? 'U' : char;
-    const index = 'ABCDEFGHIKLMNOPQRSTUWXYZ'.indexOf(normalized);
-    if (index < 0) return char.trim() ? char : '/';
-    return index.toString(2).padStart(5, '0').replace(/0/g, 'A').replace(/1/g, 'B');
-  })
-  .join(separatorValue(separator));
+const BACON_ALPHABET_24 = 'ABCDEFGHIKLMNOPQRSTUWXYZ';
+const BACON_ALPHABET_26 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
-export const baconDecode = (value: string) => {
+const baconAlphabet = (variant?: string) => (variant === 'decimal' ? BACON_ALPHABET_26 : BACON_ALPHABET_24);
+
+export const baconEncode = (value: string, separator: string, variant?: string) => {
+  const alphabet = baconAlphabet(variant);
+  return Array.from(value.toUpperCase())
+    .map(char => {
+      const normalized = variant === 'decimal' ? char : char === 'J' ? 'I' : char === 'V' ? 'U' : char;
+      const index = alphabet.indexOf(normalized);
+      if (index < 0) return char.trim() ? char : '/';
+      return index.toString(2).padStart(5, '0').replace(/0/g, 'A').replace(/1/g, 'B');
+    })
+    .join(separatorValue(separator));
+};
+
+export const baconDecode = (value: string, variant?: string) => {
+  const alphabet = baconAlphabet(variant);
   const source = value.toUpperCase().replace(/0/g, 'A').replace(/1/g, 'B').replace(/[^AB]/g, '');
   if (source.length < 5) throw new Error('Bacon 解码需要 A/B 或 0/1 五位分组');
   const chunks = source.match(/.{5}/g) || [];
   return chunks.map(chunk => {
     const index = Number.parseInt(chunk.replace(/A/g, '0').replace(/B/g, '1'), 2);
-    return 'ABCDEFGHIKLMNOPQRSTUWXYZ'[index] || '?';
+    return alphabet[index] || '?';
   }).join('');
 };
 

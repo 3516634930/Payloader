@@ -74,6 +74,12 @@ function OperationParamsPanel({ operation, language, showOptions, setShowOptions
                     <option value="hex">Bech32m</option>
                   </>
                 )}
+                {operation.id === 'bacon' && (
+                  <>
+                    <option value="special">{language === 'zh' ? '24 字母（I/J、U/V 合并）' : '24-letter (I/J, U/V merged)'}</option>
+                    <option value="decimal">{language === 'zh' ? '26 字母全表' : 'Full 26-letter'}</option>
+                  </>
+                )}
                 {operation.id === 'hexagram' && (
                   <>
                     <option value="names">{language === 'zh' ? '卦名（坤剥比观…）' : 'Names (坤剥比观…)'}</option>

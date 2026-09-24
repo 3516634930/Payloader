@@ -1379,6 +1379,65 @@ export const aesRawBlockTransform = async (operationId: OperationId, direction: 
   const inputBytes = direction === 'encode'
     ? (disablePadding ? parseHexBase64OrUtf8Bytes(value, 'plaintext').bytes : utf8Encoder.encode(value))
     : parseHexOrBase64Bytes(payload?.ciphertextHex || payload?.ciphertext || value, '密文');
+  // CTF 坑位回退：hex 形态的 UTF-8 key/IV（如 "0123456789abcdef"）会被自动猜测当 hex 解析，
+  // 且非法长度会被 normalizeFixedBytes 静默零填——解密结果可能是"碰巧合法 padding 的乱码"。
+  // 解码路径改为：枚举能给出精确合法长度的 hex/utf8 解释组合，逐组解密并按明文可读性选优。
+  const decodeWith = (keyBytes: Uint8Array, ivBytes: Uint8Array | null) => {
+    const cipher = operationId === 'aes-ecb'
+      ? ecb(keyBytes, { disablePadding })
+      : operationId === 'aes-cbc-raw'
+        ? cbc(keyBytes, ivBytes || new Uint8Array(16), { disablePadding })
+        : operationId === 'aes-ctr-raw'
+          ? ctr(keyBytes, ivBytes || new Uint8Array(16))
+          : cfb(keyBytes, ivBytes || new Uint8Array(16));
+    return cipher.decrypt(inputBytes);
+  };
+  if (direction === 'decode') {
+    const exactCandidates = (source: string, allowed: number[]) => {
+      const text = String(source || '').trim();
+      if (!text) return [] as Array<{ bytes: Uint8Array; format: string }>;
+      const compactHex = text.replace(/^0x/i, '').replace(/[\s:_-]/g, '');
+      const out: Array<{ bytes: Uint8Array; format: string }> = [];
+      if (compactHex.length % 2 === 0 && /^[0-9a-f]+$/i.test(compactHex) && allowed.includes(compactHex.length / 2)) {
+        out.push({ bytes: hexToBytes(compactHex), format: 'hex' });
+      }
+      if (allowed.includes(text.length)) out.push({ bytes: utf8Encoder.encode(text), format: 'utf8' });
+      // 长度不精确（如 8 字节 CTR nonce）时保留 normalize 的零填解释作末位候选——
+      // PyCryptodome 语义（nonce+计数器）正依赖这层零填，不能只剩精确长度候选。
+      const auto = normalizeFixedBytes(source, 'candidate', allowed);
+      if (!out.some(item => item.format === auto.format && item.bytes.length === auto.bytes.length && auto.bytes.every((byte, index) => byte === item.bytes[index]))) {
+        out.push({ bytes: auto.bytes, format: auto.format });
+      }
+      return out;
+    };
+    const keyCands = exactCandidates(params.secret, [16, 24, 32]);
+    const ivCands = operationId === 'aes-ecb' ? [{ bytes: null as Uint8Array | null, format: 'none' }] : exactCandidates(ivSource || '', [16]).map(item => ({ ...item, bytes: item.bytes }));
+    if (!ivCands.length) ivCands.push({ bytes: null, format: 'none' });
+    if (keyCands.length) {
+      const printableScore = (bytes: Uint8Array) => {
+        let good = 0;
+        for (const byte of bytes) {
+          if ((byte >= 0x20 && byte <= 0x7e) || byte === 0x0a || byte === 0x0d || byte === 0x09 || byte >= 0x80) good += 1;
+        }
+        return bytes.length ? good / bytes.length : 0;
+      };
+      let best: { text: string; score: number } | null = null;
+      for (const keyCand of keyCands) {
+        for (const ivCand of ivCands) {
+          try {
+            const plain = decodeWith(keyCand.bytes, ivCand.bytes);
+            const score = printableScore(plain);
+            if (!best || score > best.score) best = { text: bytesToUtf8OrHexJson(plain), score };
+            if (score >= 0.97) break;
+          } catch {
+            // 该组合 padding 失败，继续枚举。
+          }
+        }
+        if (best && best.score >= 0.97) break;
+      }
+      if (best && best.score >= 0.6) return best.text;
+    }
+  }
   const output = direction === 'encode' ? makeCipher().encrypt(inputBytes) : makeCipher().decrypt(inputBytes);
   if (direction === 'decode') return bytesToUtf8OrHexJson(output);
   return JSON.stringify({
