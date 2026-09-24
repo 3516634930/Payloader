@@ -11,6 +11,7 @@ import { cbcDemoTransform, coppersmithStereotypedSolve, parsePgpMessage, rsaOaep
 import { discreteLogHelper, signatureNonceReuseHelper } from './prng';
 import { mt19937Helper } from './smartDecode';
 import { setSmartDecodeExecutor } from './smartBase';
+import { substitutionAutoSolve, vigenereAutoSolve, xorAutoSolve } from './autoSolve';
 import { brainfuckToOokText, cryptoAttackHelper, encodeBrainfuckText, frequencyAnalysis, hashLengthExtensionHelper, jsfuckInspector, lcgHelper, lfsrHelper, ookToBrainfuckText, runBrainfuck } from './attacks';
 import { cloudShadowDecode, cloudShadowEncode, baijiaxingDecode, baijiaxingEncode, bearDecode, bearEncode, buddhaDecode, buddhaEncode, buddhaV2Decode, hexagramDecode, hexagramEncode, sexagesimalDecode, sexagesimalEncode } from './chineseCiphers';
 import { albamTransform, carbonaroTransform, ciscoType7Decode, ciscoType7Encode, cetaceanDecode, cetaceanEncode, decabitDecode, decabitEncode, pizziniDecode, pizziniEncode } from './mapCiphers';
@@ -240,6 +241,12 @@ export async function transform(operationId: OperationId, direction: Direction, 
       return direction === 'encode'
         ? bytesToHex(xorTransform(utf8Encoder.encode(input), params.secret))
         : utf8Decoder.decode(xorTransform(hexToBytes(input), params.secret));
+    case 'xor-auto-solve':
+      return xorAutoSolveDecode(input, params);
+    case 'vigenere-auto':
+      return vigenereAutoSolveReport(input);
+    case 'substitution-auto':
+      return substitutionAutoSolveReport(input, params);
     case 'xor-bruteforce':
       return singleByteXorBruteforce(input);
     case 'xor-known-plaintext':
@@ -448,4 +455,84 @@ export async function transform(operationId: OperationId, direction: Direction, 
     default:
       return input;
   }
-}
+}
+// —— 自动破译（autoSolve 包装）：Hex/Base64 密文 → xortool 式统计破译报告 ——
+const parseLooseBytes = (input: string): Uint8Array | null => {
+  const text = input.trim();
+  if (!text) return null;
+  const hexCandidate = text.replace(/\s/g, '');
+  if (/^[0-9a-f]+$/i.test(hexCandidate) && hexCandidate.length % 2 === 0 && hexCandidate.length >= 16) {
+    const out = new Uint8Array(hexCandidate.length / 2);
+    for (let i = 0; i < out.length; i++) out[i] = Number.parseInt(hexCandidate.slice(i * 2, i * 2 + 2), 16);
+    return out;
+  }
+  try {
+    const b64 = hexCandidate;
+    if (/^[A-Za-z0-9+/=]+$/.test(b64)) {
+      const bin = atob(b64);
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out;
+    }
+  } catch { /* fallthrough */ }
+  return null;
+};
+
+const xorAutoSolveDecode = (input: string, params: Record<ParamKey, string>): string => {
+  const bytes = parseLooseBytes(input);
+  if (!bytes || bytes.length < 8) throw new Error('XOR 自动破译需要 Hex 或 Base64 密文（至少 8 字节）');
+  const hint = params.knownPlaintext?.trim() || undefined;
+  const result = xorAutoSolve(bytes, { knownHint: hint, frequentPlainByte: params.variant === 'hex' ? 0 : 0x20 });
+  const keyText = Array.from(result.key).map(b => (b >= 0x20 && b <= 0x7e) ? String.fromCharCode(b) : '.').join('');
+  return [
+    'XOR 自动破译（xortool 式统计）',
+    '',
+    'keyLen: ' + result.keyLen + '（重合指数择优）',
+    'key(hex): ' + Array.from(result.key).map(b => b.toString(16).padStart(2, '0')).join(' '),
+    'key(text): ' + keyText,
+    'confidence: ' + result.confidence.toFixed(2),
+    hint ? '提示锚点: ' + hint : '',
+    '',
+    '—— 明文（latin1）——',
+    result.plaintext.slice(0, 2000),
+  ].filter(Boolean).join('\n');
+};
+
+const vigenereAutoSolveReport = (input: string): string => {
+  const letters = input.replace(/[^a-zA-Z]/g, '');
+  if (letters.length < 30) throw new Error('Vigenère 自动破译至少需要 30 个字母（建议 80+）');
+  const result = vigenereAutoSolve(input);
+  const lines = [
+    'Vigenère 自动破译（IC 择长 + 卡方拟合）',
+    '',
+    'key: ' + result.key,
+    'keyLen: ' + result.keyLen,
+    '',
+    '—— 明文 ——',
+    result.plaintext.slice(0, 2000),
+  ];
+  if (result.alternate) {
+    lines.push(
+      '',
+      '—— 因子族候选（keyLen ' + result.keyLen + ' 是 ' + result.alternate.keyLen + ' 的整数倍；短文本下长密钥可过拟合出伪英文，正确解常是较短者）——',
+      'key: ' + result.alternate.key + '（keyLen ' + result.alternate.keyLen + '）',
+      result.alternate.plaintext.slice(0, 2000),
+    );
+  }
+  return lines.join('\n');
+};
+
+const substitutionAutoSolveReport = (input: string, params: Record<ParamKey, string>): string => {
+  const letters = input.replace(/[^a-zA-Z]/g, '');
+  if (letters.length < 25) throw new Error('替换密码自动破译至少需要 25 个字母（频率分析下限）');
+  const cribs = (params.knownPlaintext || '').split(/[\s,]+/).map(s => s.trim()).filter(Boolean);
+  const result = substitutionAutoSolve(input, { cribs: cribs.length ? cribs : undefined });
+  return [
+    '单表替换自动破译（爬山 + 频率/bigram 评分' + (cribs.length ? '，锚点: ' + cribs.join(', ') : '') + '）',
+    '',
+    'confidence: ' + result.confidence.toFixed(2),
+    '',
+    '—— 明文 ——',
+    result.plaintext.slice(0, 2000),
+  ].join('\n');
+};

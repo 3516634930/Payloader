@@ -6,6 +6,7 @@ import { extractBracketedAssignment, getObjectAliasValue, parseNumberishUnknown 
 import type { Asn1Node } from './binaryFormats';
 import { parseAsn1Input, parseAsn1TopLevel, readSshString } from './binaryFormats';
 import { bigIntSqrt } from './math';
+import { bigintInvMod, fermatFactor, pollardPMinus1, pollardRho, smallPrimeFactor } from './numberTheory';
 import type { Direction } from './types';
 // CODEC-IMPORTS-END
 
@@ -2378,6 +2379,40 @@ export const tryRsaBatchGcdAttack = (records: RsaCipherRecord[]): RsaAutomatedAt
   };
 };
 
+// 数论因子分解攻击（numberTheory 移植批）：小素数试除 / Fermat 近似素数 / Pollard-rho / Pollard p-1
+// 依次尝试分解 n——命中即本地恢复私钥直接解密（dp 泄露走 solvePartialQ 同路径）。
+export const tryNumberTheoryFactorAttack = (records: RsaCipherRecord[]): RsaAutomatedAttackResult | null => {
+  const usable = records.filter((record): record is RsaCipherRecord & { n: bigint; e: bigint; c: bigint } => (
+    typeof record.n === 'bigint' && typeof record.e === 'bigint' && typeof record.c === 'bigint' && record.n > 3n
+  ));
+  for (const record of usable) {
+    const factors: Array<[bigint, bigint, string]> = [];
+    const small = smallPrimeFactor(record.n);
+    if (small && small > 1n && small < record.n) factors.push([small, record.n / small, 'small-prime']);
+    const fermat = fermatFactor(record.n, 20_000);
+    if (fermat) factors.push([fermat[0], fermat[1], 'fermat']);
+    const rho = pollardRho(record.n);
+    if (rho && rho > 1n && rho < record.n) factors.push([rho, record.n / rho, 'pollard-rho']);
+    const pm1 = pollardPMinus1(record.n);
+    if (pm1 && pm1 > 1n && pm1 < record.n) factors.push([pm1, record.n / pm1, 'pollard-p-1']);
+    if (!factors.length) continue;
+    for (const [p, q, method] of factors) {
+      if (p * q !== record.n || p === 1n || q === 1n) continue;
+      const phi = (p - 1n) * (q - 1n);
+      const d = bigintInvMod(record.e, phi);
+      if (d === null) continue;
+      const m = bigintModPow(record.c, d, record.n);
+      return {
+        attack: `number-theory factor（${method}）`,
+        title: `RSA ${method} 因子分解直解`,
+        details: { method, p: p.toString(), q: q.toString(), note: `n 被 ${method} 分解，私钥本地恢复` },
+        output: rsaValuesResult([m]),
+      };
+    }
+  }
+  return null;
+};
+
 export const collectRsaAutomatedAttacks = (value: string) => {
   const inference = inferRsaParamsFromText(value, 'decode');
   const records = parseRsaCipherRecords(value, inference.params);
@@ -2390,6 +2425,9 @@ export const collectRsaAutomatedAttacks = (value: string) => {
     tryRsaBatchGcdAttack(records),
     tryRsaSharedPrimeAttack(records),
   ].filter((entry): entry is RsaAutomatedAttackResult => Boolean(entry));
+  // 数论因子分解是兜底攻击：只在 rsaHelper（显式"RSA CTF 辅助解密"）里触发——
+  // smart-decode 自动链路保持叙事路由纯净（小 n 玩具题本应路由 rsa-raw 完整输出），
+  // 兜底逻辑见 rsaHelper 的 directRecovery 分支。
   return { records, attacks };
 };
 
@@ -2560,6 +2598,15 @@ export const rsaHelper = (value: string) => {
   if (!directRecovery && automated.attacks.length) {
     directRecovery = automated.attacks[0];
     notes.push(`检测到 ${automated.attacks[0].title} 可直接恢复明文。`);
+  }
+  // 数论因子分解兜底（显式调用本操作才触发）：n 可被 smallPrime/fermat/rho/p-1 分解
+  // 且其他攻击/私钥路径都未命中时，本地恢复私钥直接解密。
+  if (!directRecovery) {
+    const factorAttack = tryNumberTheoryFactorAttack(automated.records);
+    if (factorAttack) {
+      directRecovery = factorAttack;
+      notes.push(`n 被 ${factorAttack.attack} 分解，私钥本地恢复，明文见 directRecovery.output。`);
+    }
   }
   const commands = [
     normalized.n && normalized.e && normalized.c ? `python RsaCtfTool.py -n ${normalized.n} -e ${normalized.e} --uncipher ${normalized.c}` : '',

