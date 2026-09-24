@@ -38,10 +38,18 @@ const loadEngines = async () => {
 };
 
 const FLAG_RE = /[A-Za-z0-9_]{2,}\{[ -~]{3,}\}|flag\{[ -~]{3,}\}/;
+// 非 supposed-to-be 无花括号形态：flag{: value / FLAG:hex385b（easycap 型）/ "The flag is: xxx"（掀桌子型）。
+const FLAG_LABEL_RE = /(?:flag|FLAG)\s*(?:is)?\s*[：:]\s*([0-9A-Za-z_!@#$%^&*()+\-.?]{6,64})/g;
 const latin1Of = bytes => Array.from(bytes, b => String.fromCharCode(b)).join('');
 const findFlags = text => {
   const hits = new Set();
-  for (const m of String(text).matchAll(new RegExp(FLAG_RE.source, 'gi'))) hits.add(m[0]);
+  const source = String(text);
+  for (const m of source.matchAll(new RegExp(FLAG_RE.source, 'gi'))) hits.add(m[0]);
+  for (const m of source.matchAll(FLAG_LABEL_RE)) {
+    // 剥掉尾随句读与句尾英文单词粘连（"flag is: xxx." 场景取纯值）
+    const value = m[1].replace(/[.,;:!?]+$/, '');
+    if (value.length >= 6 && !/^(?:is|not|here|the)$/i.test(value)) hits.add(value);
+  }
   return [...hits];
 };
 
@@ -124,13 +132,10 @@ const decodeBmpRgba = bytes => {
   return { rgba, width, height };
 };
 
-// —— ZIP 递归解包：stored 直取 / deflate raw inflate，返回 [{name, bytes}]（不做加密条目）。——
+// —— ZIP 递归解包：stored 直取 / deflate raw inflate，返回 [{name, bytes}]（不做加密拦截——
+// 调用方传进来的应是已修复/未加密的 working 版；deflate 坏流自然被 catch 过滤，真加密版解出全坏即空）。——
 const unpackZipEntries = (bytes, maxEntries = 30) => {
   const out = [];
-  try {
-    const entries = engines.zipBrute.detectEncryptedEntries(bytes);
-    if (entries.length) return out; // 加密条目走爆破路径
-  } catch { return out; }
   let offset = 0;
   while (offset + 30 < bytes.length && out.length < maxEntries) {
     if (!(bytes[offset] === 0x50 && bytes[offset + 1] === 0x4b && bytes[offset + 2] === 0x03 && bytes[offset + 3] === 0x04)) break;
@@ -204,7 +209,29 @@ const innerKindOf = bytes => {
   if (bytes[0] === 0x89 && bytes[1] === 0x50) return 'png';
   if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return 'gif';
   if (bytes[0] === 0x1f && bytes[1] === 0x8b) return 'gzip';
+  if (bytes.length > 262 && bytes[257] === 0x75 && bytes[258] === 0x73 && bytes[259] === 0x74 && bytes[260] === 0x61 && bytes[261] === 0x72) return 'tar';
+  if (bytes[0] === 0x42 && bytes[1] === 0x4d) return 'bmp';
   return null;
+};
+
+// gzip/tar 解包（What-is-this 型：gzip→tar→jpg 链）。tar 返回成员文件切片。
+const unpackGzip = bytes => {
+  try { return new Uint8Array(zlib.gunzipSync(Buffer.from(bytes))); } catch { return null; }
+};
+const unpackTar = bytes => {
+  const out = [];
+  let offset = 0;
+  while (offset + 512 <= bytes.length && out.length < 30) {
+    const header = bytes.subarray(offset, offset + 512);
+    if (header.every(b => b === 0)) break;
+    const name = latin1Of(header.subarray(0, 100)).replace(/\0[\s\S]*$/, '');
+    const sizeText = latin1Of(header.subarray(124, 136)).replace(/[\0 ]/g, '');
+    const size = parseInt(sizeText, 8) || 0;
+    if (!Number.isFinite(size) || size < 0 || offset + 512 + size > bytes.length + 511) break;
+    out.push({ name, bytes: bytes.subarray(offset + 512, offset + 512 + size) });
+    offset += 512 + Math.ceil(size / 512) * 512;
+  }
+  return out;
 };
 
 // —— 单文件分析（递归）：depth 限 3 层、内层文件数限 30 ——
@@ -492,6 +519,25 @@ const solveBytes = async (bytes, fileName, depth, label) => {
     } catch (error) { paths.push(`${prefix}RAR 解析失败：${error.message}`); }
   }
 
+  // gzip/tar 链（What-is-this 型）：gunzip → tar 成员递归 → 或直接是内层文件
+  if (bytes[0] === 0x1f && bytes[1] === 0x8b && depth < 3) {
+    const gunzipped = unpackGzip(bytes);
+    if (gunzipped) {
+      paths.push(`${prefix}gzip 解包`);
+      if (innerKindOf(gunzipped) === 'tar') {
+        for (const member of unpackTar(gunzipped)) {
+          const inner = await solveBytes(member.bytes, member.name || 'tar-member', depth + 1, `${prefix}tar:${member.name}`);
+          paths.push(...inner.paths.slice(0, 8));
+          for (const flag of inner.found) found.add(flag);
+        }
+      } else {
+        const inner = await solveBytes(gunzipped, 'gunzipped', depth + 1, `${prefix}gzip 内层`);
+        paths.push(...inner.paths.slice(0, 8));
+        for (const flag of inner.found) found.add(flag);
+      }
+    }
+  }
+
   // pcap/pcapng：USB HID + TCP 流/HTTP 对象（body 递归）
   if (['pcap', 'pcapng', 'cap'].includes(ext)) {
     try {
@@ -505,13 +551,13 @@ const solveBytes = async (bytes, fileName, depth, label) => {
           paths.push(`${prefix}流量 flag 命中`);
           for (const f of findFlags(flag)) found.add(f);
         }
-        // HTTP 请求/响应体 + TCP 流双向缓冲：文本扫 + base64 段试探
+        // HTTP 请求/响应体 + TCP 流双向缓冲：文本扫 + base64 段试探（菜刀流量 2000+ 包，扫描量放宽）
         const bodies = [];
-        for (const tx of analysis.transactions.slice(0, 60)) {
+        for (const tx of analysis.transactions.slice(0, 200)) {
           if (tx.request?.body?.length) bodies.push(tx.request.body);
           if (tx.response?.body?.length) bodies.push(tx.response.body);
         }
-        for (const stream of analysis.streams.slice(0, 30)) {
+        for (const stream of analysis.streams.slice(0, 100)) {
           bodies.push(stream.bufferAtoB, stream.bufferBtoA);
         }
         for (const body of bodies) {
@@ -555,6 +601,10 @@ if (existsSync(rootDir)) {
     if (existsSync(readmePath)) {
       const text = readFileSync(readmePath, 'utf8');
       expected = [...text.matchAll(/[A-Za-z0-9_]{2,}\{[^}\s]{3,}\}/g)].map(match => match[0]);
+      // 预期也覆盖 label 形态（FLAG:385b… / 答案：xxx），与 findFlags 的第二正则同口径。
+      for (const m of text.matchAll(/(?:flag|FLAG|答案|预期)\s*(?:is)?\s*[：:]\s*([0-9A-Za-z_!@#$%^&*()+\-.?]{6,64})/g)) {
+        expected.push(m[1].replace(/[.,;:!?]+$/, ''));
+      }
     }
     try {
       const solved = await solveOne(absPath, fileName);
