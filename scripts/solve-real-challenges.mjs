@@ -29,6 +29,7 @@ const loadEngines = async () => {
     qrDecode: ['utils', 'ctf', 'qrDecode.ts'],
     pdfText: ['utils', 'ctf', 'pdfText.ts'],
     pdfCmap: ['utils', 'ctf', 'pdfCmap.ts'],
+    base64Stego: ['utils', 'codec', 'base64Stego.ts'],
     rarInspect: ['utils', 'ctf', 'rarInspect.ts'],
     rarExtract: ['utils', 'ctf', 'rarExtract.ts'],
   };
@@ -259,6 +260,21 @@ const solveBytes = async (bytes, fileName, depth, label) => {
     // 返回形态是 { values: string[], total }（v1 起误读 .items 导致 strings 路径全程空跑——本轮修正）
     const joined = (strings?.values ?? []).join('\n');
     addText(joined, `${prefix}strings 可读字符串`);
+    // Base64 padding 隐写（多行 Base64 且含 = 行——base64stego 型）：引擎级自动提取
+    if (engines.base64Stego) {
+      const lines = joined.split('\n').filter(l => /^[A-Za-z0-9+/]+=*$/.test(l.trim()) && l.trim());
+      const padLines = lines.filter(l => l.trim().endsWith('='));
+      if (padLines.length >= 8) {
+        const stego = engines.base64Stego.base64StegoDecode(lines.join('\n'));
+        if (stego.bits.length >= 16) {
+          addText(stego.text, `${prefix}Base64 padding 隐写（${stego.stegoLines} 行）`);
+          // 隐写输出本身即高置信数据：可打印裸串（含末尾 NUL 填充）直接收进候选。
+          const nul = String.fromCharCode(0);
+          const visible = stego.text.split(nul)[0].replace(/[^\x20-\x7e]/g, '');
+          if (visible.length >= 6) found.add(visible);
+        }
+      }
+    }
     // 纯文本附件的专项试探：摩尔斯 / 零宽（UTF-8 多字节）/ 纯 hex &0x7f（逐行判纯 hex）/ base64 段（内层容器递归）
     const morse = decodeMorseText(joined);
     if (/[A-Z]{4}/.test(morse)) addText(morse, `${prefix}摩尔斯文本解码`);

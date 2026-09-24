@@ -24,9 +24,9 @@ const ENTRY_EXPORTS = [
   'parityNumVectors', 'parityProbes',
 ];
 
-// 受众记账口径（批次 W 纠偏定稿 + autoSolve 三操作 + 本批 padding-oracle-attack/magic-chain/crc32-attack）：
-// 全部操作 248 个 = ctf 161 + both 85 + pentest 2，钉住具体数字防止清单无声漂移。
-const AUDIENCE_SNAPSHOT = { total: 248, ctf: 161, both: 85, pentest: 2 };
+// 受众记账口径（批次 W 纠偏定稿 + autoSolve 三操作 + padding-oracle-attack/magic-chain/crc32-attack/base64-stego）：
+// 全部操作 249 个 = ctf 162 + both 85 + pentest 2，钉住具体数字防止清单无声漂移。
+const AUDIENCE_SNAPSHOT = { total: 249, ctf: 162, both: 85, pentest: 2 };
 
 // 批次 O 形状探针中仍验证智能解码可达性的样本集（telecode/quwei 等 4 位数字组形态与日期/编号
 // 不可区分，已退出直解路径只出芯片，故不在自动解码样本内）。

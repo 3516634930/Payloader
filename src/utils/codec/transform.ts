@@ -15,6 +15,7 @@ import { substitutionAutoSolve, vigenereAutoSolve, xorAutoSolve } from './autoSo
 import { paddingOracleReport } from './paddingOracle';
 import { magicChainReport } from './magicChain';
 import { crc32AttackReport } from './crc32Attack';
+import { base64StegoReport } from './base64Stego';
 import { brainfuckToOokText, cryptoAttackHelper, encodeBrainfuckText, frequencyAnalysis, hashLengthExtensionHelper, jsfuckInspector, lcgHelper, lfsrHelper, ookToBrainfuckText, runBrainfuck } from './attacks';
 import { cloudShadowDecode, cloudShadowEncode, baijiaxingDecode, baijiaxingEncode, bearDecode, bearEncode, buddhaDecode, buddhaEncode, buddhaV2Decode, hexagramDecode, hexagramEncode, sexagesimalDecode, sexagesimalEncode } from './chineseCiphers';
 import { albamTransform, carbonaroTransform, ciscoType7Decode, ciscoType7Encode, cetaceanDecode, cetaceanEncode, decabitDecode, decabitEncode, pizziniDecode, pizziniEncode } from './mapCiphers';
@@ -285,6 +286,8 @@ export async function transform(operationId: OperationId, direction: Direction, 
     }
     case 'crc32-attack':
       return crc32AttackReport(input);
+    case 'base64-stego':
+      return base64StegoReport(input);
     case 'rsa-helper':
       return rsaHelper(input);
     case 'signature-nonce-helper':

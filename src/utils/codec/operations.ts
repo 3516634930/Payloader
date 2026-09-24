@@ -979,6 +979,14 @@ export const operations: Operation[] = [
     decodeLabel: { zh: '执行爆破/修复', en: 'Run attack/fix' },
   },
   {
+    id: 'base64-stego',
+    category: 'crypto',
+    name: { zh: 'Base64 padding 隐写', en: 'Base64 Padding Stego' },
+    summary: { zh: '逐行 Base64 的 padding 冗余位隐写还原（= 前字符索引低 2i 位），攻防世界 base64stego 型；粘贴整个多行 Base64 文本。', en: 'Recovers bits hidden in Base64 padding redundancy (2i low bits of the char before =); paste the whole multi-line Base64 text.' },
+    supportsEncode: false,
+    decodeLabel: { zh: '提取隐写', en: 'Extract stego' },
+  },
+  {
     id: 'signature-nonce-helper',
     category: 'crypto',
     name: { zh: '签名重复 nonce', en: 'Signature Nonce Reuse' },

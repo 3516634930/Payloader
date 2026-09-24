@@ -117,6 +117,7 @@ export type OperationId =
   | 'padding-oracle-attack'
   | 'magic-chain'
   | 'crc32-attack'
+  | 'base64-stego'
   | 'xor-known-plaintext'
   | 'magic-xor-helper'
   | 'rot'
