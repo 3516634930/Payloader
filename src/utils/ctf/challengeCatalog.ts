@@ -159,6 +159,29 @@ export const challengeCatalog: ChallengeCategory[] = [
     ],
   },
   {
+    id: 'document',
+    icon: '📄',
+    label: { zh: '文档取证（PDF）', en: 'Document forensics' },
+    hint: { zh: 'PDF 风险指标、注释、可疑文本与压缩流是 PDF 题三板斧。', en: 'PDF indicators, comments, suspicious text, and streams.' },
+    tools: [
+      {
+        id: 'pdf-inspect',
+        label: { zh: 'PDF 取证分析', en: 'PDF forensics' },
+        description: { zh: '风险指标（JS/动作/嵌入文件）/注释/可疑文本/FlateDecode 流解压。', en: 'Risk indicators, comments, suspicious text, and stream inflation.' },
+        kind: 'file',
+        cardId: 'ff-card-pdf',
+      },
+      {
+        id: 'pdf-password',
+        label: { zh: 'PDF 解密（弱口令）', en: 'PDF decryption' },
+        description: { zh: '加密 PDF 的口令爆破（RC4/AES）规划中，当前可先 strings 找线索。', en: 'Encrypted-PDF password brute force is planned; strings may help meanwhile.' },
+        kind: 'file',
+        cardId: 'ff-card-strings',
+        soon: true,
+      },
+    ],
+  },
+  {
     id: 'text',
     icon: '🔤',
     label: { zh: '文本隐写', en: 'Text steganography' },

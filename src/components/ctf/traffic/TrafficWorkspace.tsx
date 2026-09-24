@@ -10,6 +10,7 @@ import { buildPacketViews, type PacketView } from '../../../utils/ctf/pcap/proto
 import { analyzeCapture, assembleIcmpData, type CaptureAnalysis } from '../../../utils/ctf/pcap/analyze';
 import { copyToClipboard } from '../../../utils/clipboard';
 import PacketTable from './PacketTable';
+import UsbHidCard from './UsbHidCard';
 import StreamView from './StreamView';
 import HttpObjects from './HttpObjects';
 import '../../../styles/traffic-workspace.css';
@@ -242,7 +243,7 @@ function TrafficWorkspace({ pendingFile, onFileConsumed }: TrafficWorkspaceProps
               <span className="pw-note">{formatBytes(report.size)}</span>
               <span className="pw-badge">{report.capture.format === 'pcapng' ? 'pcapng' : `pcap (${report.capture.byteOrder === 'le' ? 'LE' : 'BE'}${report.capture.nanosecond ? ', ns' : ''})`}</span>
               <span className="pw-badge">{zh ? `已解析 ${totalPackets} 包` : `${totalPackets} packets`}</span>
-              {report.capture.linkType === 1 ? <span className="pw-badge">Ethernet</span> : <span className="pw-badge pw-badge-warn">{zh ? `链路层类型 ${report.capture.linkType}（仅支持 Ethernet）` : `Link type ${report.capture.linkType} (Ethernet only)`}</span>}
+              {report.capture.linkType === 1 ? <span className="pw-badge">Ethernet</span> : report.capture.linkType === 220 ? <span className="pw-badge">USB (usbmon)</span> : <span className="pw-badge pw-badge-warn">{zh ? `链路层类型 ${report.capture.linkType}（Ethernet/USB 外未支持）` : `Link type ${report.capture.linkType} (beyond Ethernet/USB)`}</span>}
             </div>
             {report.baseSeconds !== null && (
               <div className="pw-row">
@@ -270,6 +271,14 @@ function TrafficWorkspace({ pendingFile, onFileConsumed }: TrafficWorkspaceProps
               <p className="pw-warn">{zh ? '没有解析出任何数据包。' : 'No packets were parsed.'}</p>
             )}
           </section>
+
+          {report.capture.linkType === 220 && (
+            <UsbHidCard
+              key={`usbhid-${report.name}:${report.size}`}
+              capture={report.capture}
+              language={language}
+            />
+          )}
 
           {report.analysis.flags.length > 0 && (
             <section className="pw-card pw-card-flag" aria-label={zh ? 'flag 命中' : 'Flag hits'}>
