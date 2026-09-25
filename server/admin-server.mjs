@@ -49,6 +49,7 @@ import { createPublicRoutes } from './routes-public.mjs';
 import { createAuthRoutes } from './routes-auth.mjs';
 import { createAdminRoutes } from './routes-admin.mjs';
 import { createLogoUploader } from './routes-logo.mjs';
+import { createCtfProxyRoutes } from './routes-ctf-proxy.mjs';
 import { createStaticHandlers } from './static.mjs';
 
 const rootDir = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -200,6 +201,7 @@ createAdminRoutes({
   saveAdminCredentials,
 }).registerAdminRoutes(router);
 createLogoUploader({ logoUploadDir, safeResolve }).registerLogoRoutes(router);
+createCtfProxyRoutes().registerCtfProxyRoutes(router);
 staticHandlers.registerStaticRoutes(router);
 
 export const ensureApplicationReady = async () => {
