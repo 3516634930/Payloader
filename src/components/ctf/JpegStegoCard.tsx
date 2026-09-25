@@ -4,9 +4,10 @@ import { FlagAutoText } from '../codec/FlagAutoText';
 import { jstegReveal } from '../../utils/ctf/jsteg';
 import { jphsExtract } from '../../utils/ctf/jphs';
 import { f5Extract } from '../../utils/ctf/f5Extract';
+import { outguessReveal } from '../../utils/ctf/outguessExtract';
 
-// JPEG DCT 域隐写卡（批次 SI·A 线）：jsteg 提取（跳过集 {0,±1}，含 -1 开关兼容原版 C jsteg）
-// 与 jphide（JPHS，口令驱动）。F5/outguess 在后续批次接入同一系数层。
+// JPEG DCT 域隐写卡（批次 SI·A 线 + SI-3 收官）：jsteg（跳过集 {0,±1}，含 -1 开关兼容原版 C jsteg）、
+// jphide（JPHS，口令驱动）、F5（矩阵编码）与 outguess 0.2（ARC4 + 伪随机游走，口令驱动，默认无 ECC）。
 interface JpegStegoCardProps {
   bytes: Uint8Array;
   language: 'zh' | 'en';
@@ -49,7 +50,7 @@ function JpegStegoCard({ bytes, language }: JpegStegoCardProps) {
   return (
     <section id="ff-card-jpegstego" className="ff-card" aria-label={zh ? 'JPEG DCT 隐写' : 'JPEG DCT stego'}>
       <div className="ff-card-head">
-        <strong>{zh ? 'JPEG DCT 隐写（jsteg / jphide / F5）' : 'JPEG DCT stego (jsteg / jphide / F5)'}</strong>
+        <strong>{zh ? 'JPEG DCT 隐写（jsteg / jphide / F5 / outguess）' : 'JPEG DCT stego (jsteg / jphide / F5 / outguess)'}</strong>
         <span className="ff-badge">{bytes.length.toLocaleString()} B</span>
       </div>
       <div className="ff-tool">
@@ -63,7 +64,7 @@ function JpegStegoCard({ bytes, language }: JpegStegoCardProps) {
           </label>
         </div>
         <div className="ff-row">
-          <input className="ff-input" style={{ width: 130 }} value={password} aria-label={zh ? '口令（jphide）' : 'Password (jphide)'} placeholder={zh ? '口令(jphide)' : 'password'} onChange={event => setPassword(event.target.value)} />
+          <input className="ff-input" style={{ width: 130 }} value={password} aria-label={zh ? '口令（jphide/F5/outguess）' : 'Password (jphide/F5/outguess)'} placeholder={zh ? '口令(jphide/F5/og)' : 'password'} onChange={event => setPassword(event.target.value)} />
           <button type="button" className="ff-button" onClick={() => {
             try {
               const extracted = jphsExtract(bytes, password);
@@ -80,6 +81,14 @@ function JpegStegoCard({ bytes, language }: JpegStegoCardProps) {
               notifications.show({ message: (error as Error).message, color: 'red' });
             }
           }}>F5</button>
+          <button type="button" className="ff-button" onClick={() => {
+            try {
+              const data = outguessReveal(bytes, password);
+              setResult({ findings: `${zh ? 'outguess 提取' : 'outguess extract'} (${data.length} B):\n${new TextDecoder().decode(data.subarray(0, 400))}`, rawPreview: '', coefficientCount: 0 });
+            } catch (error) {
+              notifications.show({ message: (error as Error).message, color: 'red' });
+            }
+          }}>outguess</button>
         </div>
         {result !== null && (
           <>

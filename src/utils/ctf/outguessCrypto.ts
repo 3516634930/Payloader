@@ -44,6 +44,15 @@ export class Arc4Stream {
       this.s[this.j] = si;
     }
   }
+
+  // C 侧 `tas = as` 结构体赋值 = 盒与 i/j 全量快照：头部长度流与数据流同初态独立消费
+  clone(): Arc4Stream {
+    const copy = new Arc4Stream();
+    copy.s = this.s.slice();
+    copy.i = this.i;
+    copy.j = this.j;
+    return copy;
+  }
 }
 
 export const arc4InitKey = (type: string, key: Uint8Array): Arc4Stream => {

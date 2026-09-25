@@ -161,8 +161,8 @@ export const challengeCatalog: ChallengeCategory[] = [
       },
       {
         id: 'jpeg-dct',
-        label: { zh: 'JPEG DCT 隐写（jsteg/jphide/F5）', en: 'JPEG DCT stego (jsteg/jphide/F5)' },
-        description: { zh: 'jsteg 系数 LSB、jphide 与 F5 口令提取（矩阵编码），一卡三引擎；outguess 后续批次接入。', en: 'jsteg LSB plus password-driven jphide and F5 (matrix coding); outguess arrives in a later batch.' },
+        label: { zh: 'JPEG DCT 隐写（jsteg/jphide/F5/outguess）', en: 'JPEG DCT stego (jsteg/jphide/F5/outguess)' },
+        description: { zh: 'jsteg 系数 LSB、jphide 与 F5 口令提取（矩阵编码）、outguess 0.2（ARC4 游走），一卡四引擎。', en: 'jsteg LSB, password-driven jphide and F5 (matrix coding), and outguess 0.2 (ARC4 walk) in one card.' },
         kind: 'file',
         cardId: 'ff-card-jpegstego',
       },
