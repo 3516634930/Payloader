@@ -6,6 +6,7 @@ import HexdumpCard from './HexdumpCard';
 import EntropyMapCard from './EntropyMapCard';
 import CheatsheetSection from './CheatsheetSection';
 import BinaryStructurePanel from './BinaryStructurePanel';
+import UpxCard from './UpxCard';
 import {
   MAX_FILE_BYTES,
   blockEntropy,
@@ -44,6 +45,7 @@ interface ReverseReport {
   stringsTotal: number;
   elf: import('../../utils/ctf/elfParse').ElfInfo | null;
   pe: PeInfo | null;
+  isUpx: boolean;
 }
 
 const formatBytes = (value: number): string => {
@@ -110,6 +112,12 @@ function ReverseWorkspace({ pendingFile, onFileConsumed, onSwitchModule }: CtfWo
         stringsTotal: extractStrings(bytes, { limit: 1 }).total,
         elf,
         pe,
+        isUpx: (() => {
+          for (let i = 0; i + 4 <= bytes.length; i++) {
+            if (bytes[i] === 0x55 && bytes[i + 1] === 0x50 && bytes[i + 2] === 0x58 && bytes[i + 3] === 0x21) return true;
+          }
+          return false;
+        })(),
       });
     } catch {
       notifications.show({
@@ -273,6 +281,15 @@ function ReverseWorkspace({ pendingFile, onFileConsumed, onSwitchModule }: CtfWo
               elf={report.elf}
               pe={report.pe}
               bytes={analysis.bytes}
+              language={language}
+            />
+          )}
+
+          {report && report.isUpx && (
+            <UpxCard
+              key={`upx-${analysis.name}:${analysis.size}`}
+              bytes={analysis.bytes}
+              fileName={analysis.name}
               language={language}
             />
           )}

@@ -20,6 +20,7 @@ import PdfInspectCard from './PdfInspectCard';
 import RarInspectCard from './RarInspectCard';
 import PycInspectCard from './PycInspectCard';
 import ApkInspectCard from './ApkInspectCard';
+import RouterConfigCard from './RouterConfigCard';
 import StringsCard from './StringsCard';
 import HexdumpCard from './HexdumpCard';
 import { downloadBytes } from './ffDownload';
@@ -881,6 +882,15 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
           {report && analysis.name.toLowerCase().endsWith('.apk') && (
             <ApkInspectCard
               key={`apk-${analysis.name}:${analysis.size}`}
+              bytes={analysis.bytes}
+              fileName={analysis.name}
+              language={language}
+            />
+          )}
+
+          {report && /\.(cfg|conf|bin|rom-0|rom0)$/i.test(analysis.name) && !analysis.name.toLowerCase().endsWith('.apk') && (
+            <RouterConfigCard
+              key={`router-${analysis.name}:${analysis.size}`}
               bytes={analysis.bytes}
               fileName={analysis.name}
               language={language}
