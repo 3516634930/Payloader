@@ -1244,7 +1244,15 @@ const pruneEmptyBranches = (navigation, keepBranchIds = new Set()) => asList(nav
     if (keepBranchIds.has(branch.id)) return true;
     const hasLeaf = node => Boolean(node.payloadId) || asList(node.children).some(hasLeaf);
     return hasLeaf(branch);
-  }),
+  }).map(branch => ({
+    ...branch,
+    // 二级主题分支同样清空壳：大组拆分后旧主题叶子全部迁出，未在声明豁免名单里的空壳必须移除
+    children: asList(branch.children).filter(sub => {
+      if (keepBranchIds.has(sub.id)) return true;
+      const hasLeaf = node => Boolean(node.payloadId) || asList(node.children).some(hasLeaf);
+      return hasLeaf(sub);
+    }),
+  })),
 }));
 
 // AI 等大分支的二级主题分支：声明式创建（存在则仅刷新名称）。
@@ -1264,7 +1272,16 @@ const ensurePayloadSubBranches = (navigation, branchesInput) => {
     const parent = String(branch?.parentBranchId || '').trim();
     const id = String(branch?.id || '').trim();
     if (!parent || !id) throw new Error('Payload sub-branch configuration requires parentBranchId and id.');
-    if (allIds.has(id)) continue;
+    if (allIds.has(id)) {
+      // 已存在的声明分支：声明改名时同步刷新节点名称（如 xxe-office 消歧）
+      const renameNode = nodes => asList(nodes).map(node => {
+        if (node?.id === id) return JSON.stringify(node.name) === JSON.stringify(branch.name) ? node : { ...node, name: clone(branch.name) };
+        if (asList(node?.children).length) return { ...node, children: renameNode(node.children) };
+        return node;
+      });
+      next = renameNode(next);
+      continue;
+    }
     // 嵌套插入：父分支是任意深度的节点，用 appendPayloadNavigation 按 id 定位
     const before = JSON.stringify(next);
     next = appendPayloadNavigation(next, parent, { id, name: clone(branch.name), children: [] });
@@ -1537,9 +1554,12 @@ export const curatePayloadLibrary = (input, options = {}) => {
     if (!source) continue;
     if (!target) throw new Error(`Payload merge target not found: ${sourceId} -> ${merge?.targetPayloadId}`);
     const prefix = String(merge?.titlePrefix || '').trim();
+    // carried 按 command 去重：source 的 execution[0]"标准测试"与 wafBypass[0] 变体常为同命令，
+    // wafBypass（变体命名）在前优先保留；与 target 既有条目同命令的也不再重复搬运。
+    const existingCommands = new Set(asList(target.wafBypass).map(entry => String(entry?.command || '')));
     const carried = [
-      ...asList(source.execution),
       ...asList(source.wafBypass),
+      ...asList(source.execution),
     ].filter(entry => String(entry?.command || '').trim()).map(entry => {
       const next = clone(entry);
       if (prefix && next.title) {
@@ -1547,6 +1567,11 @@ export const curatePayloadLibrary = (input, options = {}) => {
         if (!zh.startsWith(prefix)) next.title = { ...next.title, zh: `${prefix}${zh}`, en: next.title.en };
       }
       return next;
+    }).filter(entry => {
+      const command = String(entry?.command || '');
+      if (existingCommands.has(command)) return false;
+      existingCommands.add(command);
+      return true;
     });
     if (!carried.length) throw new Error(`Payload merge source has no commands to carry: ${sourceId}`);
     target.wafBypass = [...asList(target.wafBypass), ...carried];
