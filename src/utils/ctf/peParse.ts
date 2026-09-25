@@ -87,7 +87,7 @@ const readAscii = (bytes: Uint8Array, offset: number, maxLen = 256): string => {
   return out;
 };
 
-export const parsePe = (bytes: Uint8Array): PeParseResult => {
+const parsePeInner = (bytes: Uint8Array): PeParseResult => {
   if (bytes.length < 64) return { ok: false, error: '文件过短，不是有效 PE。' };
   if (!(bytes[0] === 0x4d && bytes[1] === 0x5a)) return { ok: false, error: '魔数不是 MZ——非 PE 文件。' };
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -109,8 +109,8 @@ export const parsePe = (bytes: Uint8Array): PeParseResult => {
   const is64Bit = magic === 0x20b;
   const entryRva = dv.getUint32(optOffset + 16, true);
   const imageBase = is64Bit ? Number(dv.getBigUint64(optOffset + 24, true)) : dv.getUint32(optOffset + 28, true);
-  const subsystemId = dv.getUint16(optOffset + (is64Bit ? 68 : 68), true);
-  const dllCharacteristics = dv.getUint16(optOffset + (is64Bit ? 70 : 70), true);
+  const subsystemId = dv.getUint16(optOffset + 68, true);
+  const dllCharacteristics = dv.getUint16(optOffset + 70, true);
 
   // DataDirectory：32 位在 opt+96，64 位在 opt+112。
   const dataDirOffset = optOffset + (is64Bit ? 112 : 96);
@@ -181,28 +181,30 @@ export const parsePe = (bytes: Uint8Array): PeParseResult => {
     }
   }
 
-  // 导出表
+  // 导出表（PE 规范：AddressOfFunctions@+28 u32 数组 / AddressOfNames@+32 u32 数组 /
+  // AddressOfNameOrdinals@+36 u16 数组；边界全程守卫，畸形文件优雅降级为空导出）。
   const exports: PeExport[] = [];
   if (exportDir.rva > 0) {
     const exportOffset = rvaToOffset(exportDir.rva, rawSections);
     if (exportOffset > 0 && exportOffset + 40 <= bytes.length) {
-      const numberOfFunctions = dv.getUint32(exportOffset + 20, true);
       const numberOfNames = dv.getUint32(exportOffset + 24, true);
-      const namesRva = dv.getUint32(exportOffset + 32, true);
-      const namesOffset = rvaToOffset(namesRva, rawSections);
-      const functionsRva = dv.getUint32(exportOffset + 28, true);
+      const functionsTableOffset = rvaToOffset(dv.getUint32(exportOffset + 28, true), rawSections);
+      const namesOffset = rvaToOffset(dv.getUint32(exportOffset + 32, true), rawSections);
+      const ordinalsOffset = rvaToOffset(dv.getUint32(exportOffset + 36, true), rawSections);
       for (let i = 0; i < Math.min(numberOfNames, 2000); i++) {
-        const namePtrOffset = namesOffset + i * 4;
-        if (namePtrOffset + 4 > bytes.length) break;
-        const fnRva = dv.getUint32(namePtrOffset, true);
+        if (namesOffset < 0 || namesOffset + i * 4 + 4 > bytes.length) break;
+        const fnRva = dv.getUint32(namesOffset + i * 4, true);
         const fnOffset = rvaToOffset(fnRva, rawSections);
-        if (fnOffset < 0) continue;
-        const ordinal = dv.getUint16(rvaToOffset(functionsRva, rawSections) + i * 2, true);
-        exports.push({ name: readAscii(bytes, fnOffset, 200), ordinal, rva: dv.getUint32(rvaToOffset(functionsRva, rawSections) + i * 2 + 0, true) });
-        void ordinal;
+        if (fnOffset < 0 || fnOffset + 2 > bytes.length) continue;
+        const ordinal = ordinalsOffset >= 0 && ordinalsOffset + i * 2 + 2 <= bytes.length
+          ? dv.getUint16(ordinalsOffset + i * 2, true)
+          : i;
+        const rva = functionsTableOffset >= 0 && functionsTableOffset + ordinal * 4 + 4 <= bytes.length
+          ? dv.getUint32(functionsTableOffset + ordinal * 4, true)
+          : 0;
+        exports.push({ name: readAscii(bytes, fnOffset, 200), ordinal, rva });
         if (exports.length >= 500) break;
       }
-      void numberOfFunctions;
     }
   }
 
@@ -250,4 +252,13 @@ export const parsePe = (bytes: Uint8Array): PeParseResult => {
     exports,
     security,
   };
+};
+
+// 兜底：任何未预见的结构越界都降级为 error 而非抛异常（调用方整个报告不能被单解析器击穿）。
+export const parsePe = (bytes: Uint8Array): PeParseResult => {
+  try {
+    return parsePeInner(bytes);
+  } catch {
+    return { ok: false, error: 'PE 结构解析越界（文件损坏或非标准布局）。' };
+  }
 };

@@ -145,6 +145,7 @@ export const scanGadgets = async (
   const anchorSingles = new Set([0xc3, 0xc9]);
   const hits: GadgetHit[] = [];
   const seen = new Set<number>();
+  let scannedAnchors = 0;
   const cs = await getCapstone();
   const handle = new cs.Capstone(arch.arch, arch.mode);
   try {
@@ -171,6 +172,8 @@ export const scanGadgets = async (
       return { text, size: consumed };
     };
     for (let i = 0; i < segment.length; i++) {
+      // 每 2048 个锚点让出主线程一次：2MB 级 libc 的全段扫描不在同步循环里冻结 UI。
+      if ((i & 0x7ff) === 0 && i > 0) await new Promise(resolve => setTimeout(resolve, 0));
       const b = segment[i];
       let anchorEnd = -1;
       if (anchorSingles.has(b)) anchorEnd = i + 1;
@@ -189,7 +192,9 @@ export const scanGadgets = async (
         hits.push({ address, offset: globalOffset + start, gadgets: result.text, size: result.size });
         break;
       }
-      if (seen.size >= limit * 4) break; // 粗截断：去重后统一裁剪。
+      if (seen.size >= limit * 4) break; // 粗截断：去重后统一裁剪（带过滤词时按锚点计数防失控）。
+      scannedAnchors += 1;
+      if (scannedAnchors >= limit * 8) break;
     }
   } finally {
     handle.close();

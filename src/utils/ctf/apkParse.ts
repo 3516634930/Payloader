@@ -214,11 +214,11 @@ const formatAttributeValue = (value: number, type: number, strings: string[]): s
     return strings[index] ?? `@string/${index}`;
   }
   if (type === 0x10) return String(value & 0xffffff); // INT_DEC
-  if (type === 0x12) return String(value & 0xffffff); // INT_HEX → 保留十进制可读性
+  if (type === 0x11) return `0x${(value & 0xffffff).toString(16)}`; // INT_HEX
+  if (type === 0x12) return (value >>> 0) !== 0 ? 'true' : 'false'; // INT_BOOLEAN（AOSP：非 0 即真）
   if (type === 0x01) return `@ref/0x${(value & 0xffffff).toString(16)}`; // REFERENCE
   if (type === 0x02) return `?attr/0x${(value & 0xffffff).toString(16)}`; // ATTRIBUTE
   if (type === 0x04) return String(value); // FLOAT bits
-  if (type === 0x12) return String(value);
   return `0x${(value >>> 0).toString(16)}`;
 };
 
@@ -268,19 +268,20 @@ export const parseAxmlManifest = (bytes: Uint8Array): AndroidManifestInfo | { er
     const attrCount = dv.getUint16(p + 28, true);
     const elementName = readString(nameIdx);
     const attributes: AxmlAttribute[] = [];
-    // 实测属性布局（与 aapt ResXMLTree_attribute 对照本包样本锚定，20 字节一条）：
-    // name(4) + ns(4) + typedValue{size(2) res0(1) dataType(1) data(4)} + pad(4)。
-    // 字符串值直接取 typedValue.data 的池索引；rawValue 不存在于此布局。
+    // AOSP ResourceTypes.h 权威布局（ResXMLTree_attribute，20 字节一条；attrStart 相对 attrExt=p+16）：
+    // ns(4) + name(4) + rawValue(4) + typedValue{size(2) res0(1) dataType(1)@+15 data(4)@+16}。
+    // dataType 0x03(STRING) 时优先取 rawValue 池索引，否则走 typed.data。
     for (let i = 0; i < Math.min(attrCount, 128); i++) {
-      const base = p + attrStart + i * attrSize;
-      if (base + attrSize > bytes.length) break;
-      const nameIdxA = dv.getInt32(base, true);
-      const nsIdx = dv.getInt32(base + 4, true);
-      const dataType = bytes[base + 11];
-      const dataValue = dv.getUint32(base + 12, true);
+      const base = p + 16 + attrStart + i * attrSize;
+      if (base < 0 || base + attrSize > bytes.length) break;
+      const nsIdx = dv.getInt32(base, true);
+      const nameIdxA = dv.getInt32(base + 4, true);
+      const rawValueIdx = dv.getInt32(base + 8, true);
+      const dataType = bytes[base + 15];
+      const dataValue = dv.getUint32(base + 16, true);
       const attrName = readString(nameIdxA);
-      const value = dataType === 0x03
-        ? readString(dataValue & 0xffffff)
+      const value = dataType === 0x03 && rawValueIdx !== -1
+        ? readString(rawValueIdx)
         : formatAttributeValue(dataValue, dataType, strings);
       attributes.push({ namespace: readString(nsIdx), name: attrName, value });
     }

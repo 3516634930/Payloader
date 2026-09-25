@@ -19,6 +19,22 @@ test('非 PE 拒绝（不抛异常）', () => {
   assert.match(r.error, /MZ|PE/);
 });
 
+test('畸形导出表不抛 RangeError（回归：AddressOfFunctions 贴文件尾曾越界击穿整个报告）', () => {
+  // 以 notepad 为底，把导出目录 RVA 指到贴近文件尾的合法节区位置 → 解析必须优雅返回而非抛异常
+  const mutated = new Uint8Array(notepadBytes);
+  const dv = new DataView(mutated.buffer);
+  const peOffset = dv.getUint32(0x3c, true);
+  const optOffset = peOffset + 24;
+  const is64 = dv.getUint16(optOffset, true) === 0x20b;
+  const dataDirOffset = optOffset + (is64 ? 112 : 96);
+  // exportDir = 目录项 0：rva 指向文件尾部（越界布局）
+  dv.setUint32(dataDirOffset, mutated.length - 16, true);
+  dv.setUint32(dataDirOffset + 4, 0x1000, true);
+  let result;
+  assert.doesNotThrow(() => { result = parsePe(mutated); });
+  assert.equal(result.ok !== undefined, true);
+});
+
 test('notepad.exe：header 关键字段', () => {
   const pe = parsePe(notepadBytes);
   assert.equal(pe.ok, true);

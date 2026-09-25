@@ -181,11 +181,13 @@ const shFlagsText = (value: number): string => {
 };
 
 export const parseElf = (bytes: Uint8Array): ElfParseResult => {
-  if (bytes.length < 22) return { ok: false, error: '文件过短，不是有效 ELF。' };
+  // 最小 ELF 头：ELF64 为 64 字节、ELF32 为 52 字节——魔数合法但头截断的直接显式报错。
+  if (bytes.length < 52) return { ok: false, error: '文件过短，不是有效 ELF。' };
   if (!(bytes[0] === 0x7f && bytes[1] === 0x45 && bytes[2] === 0x4c && bytes[3] === 0x46)) {
     return { ok: false, error: '魔数不是 \\x7fELF——非 ELF 文件。' };
   }
   const eiClass: ElfClass = bytes[4] === 2 ? 64 : 32;
+  if (bytes.length < (eiClass === 64 ? 64 : 52)) return { ok: false, error: `ELF${eiClass} 头被截断（需 ${eiClass === 64 ? 64 : 52} 字节）。` };
   const endian: ElfEndian = bytes[5] === 2 ? 'big' : 'little';
   const osabi = OSABI_NAMES[bytes[7]] ?? `ABI ${bytes[7]}`;
   const cur = new Cursor(bytes, endian === 'little');

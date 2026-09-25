@@ -46,22 +46,22 @@ test('parseApk：真 APK 全链路（manifest + dex + 签名盘点）', async ()
 });
 
 test('parseAxmlManifest：权限与组件抽取（对照 aapt dump 语义）', async () => {
-  const entries = listZipEntries(apkBytes);
-  const manifestEntry = entries.find(e => e.name === 'AndroidManifest.xml');
-  assert.ok(manifestEntry);
-  const axml = await apkParse.readZipEntryForTest
-    ? apkParse.readZipEntryForTest(apkBytes, manifestEntry)
-    : null;
-  // readZipEntry 未导出时走 parseApk 通道验证（上面已覆盖）；这里补 AXML 独立解析路径。
-  if (axml) {
-    const info = parseAxmlManifest(axml);
-    assert.equal('error' in info, false);
-  }
   const result = await parseApk('x.apk', apkBytes);
   const m = result.manifest;
-  assert.ok(m.packageName);
-  assert.ok(m.activities.length + m.services.length + m.receivers.length + m.providers.length > 0, '至少一个组件');
+  assert.ok(m, 'manifest 必须解析成功');
+  // AOSP 布局回归锚定（曾因 attr 基址偏 16 字节丢失 targetSdk 与后置权限）：
+  assert.equal(m.packageName, 'com.missai.android');
+  assert.equal(m.versionName, '1.5.6');
+  assert.equal(m.versionCode, '45');
+  assert.equal(m.minSdk, '24');
+  assert.equal(m.targetSdk, '36');
+  assert.ok(m.permissions.length >= 9, `权限应 ≥9（aapt 对拍），实际 ${m.permissions.length}`);
+  assert.ok(m.activities.length + m.services.length + m.receivers.length + m.providers.length > 0);
   for (const a of m.activities) assert.ok(typeof a.name === 'string' && a.name.length > 0);
+  // INT_BOOLEAN 回归：exported=0xffffffff 应判 true（曾因 0x12 当 INT_HEX 误判）
+  const main = m.activities.find(a => a.name.endsWith('MainActivity'));
+  assert.equal(main.exported, true);
+  assert.equal(m.usesCleartextTraffic, true);
 });
 
 test('parseDex：非 DEX 拒绝', () => {

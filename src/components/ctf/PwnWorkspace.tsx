@@ -30,8 +30,9 @@ import '../../styles/pwn-workspace.css';
 
 const PAYLOAD_RENDER_LIMIT = 4096;
 
-// capstone WASM 走应用本地静态资源（public/wasm/，随包分发，零联网）。
-setCapstoneWasmUrl(() => new URL('../../wasm/capstone.wasm', document.baseURI).href);
+// capstone WASM 走应用本地静态资源（public/wasm/，随包分发，零联网）；
+// import.meta.env.BASE_URL 与 vite base './' 一致，子路径部署/离线壳下同样正确。
+setCapstoneWasmUrl(() => `${import.meta.env.BASE_URL}wasm/capstone.wasm`);
 
 const toHexByte = (value: number): string => `\\x${value.toString(16).padStart(2, '0')}`;
 const toHexAddr = (value: number): string => `0x${value.toString(16)}`;
@@ -232,7 +233,9 @@ function LibcCard({ binary, zh }: { binary: LoadedBinary; zh: boolean }) {
             {!isPageAligned(baseResult.base) && (
               <span className="ff-badge ff-badge-warn">{zh ? '基址未页对齐（低 12 位非 0）——核对泄漏的到底是哪个符号' : 'Base not page-aligned — verify which symbol leaked'}</span>
             )}
-            <span className="ff-badge">{zh ? 'system →' : 'system →'} {computeLibcAddress(baseResult.base, keys.symbols.find(s => s.name === 'system')?.offset ?? 0)}</span>
+            {keys.symbols.some(s => s.name === 'system') && (
+              <span className="ff-badge">{zh ? 'system →' : 'system →'} {computeLibcAddress(baseResult.base, keys.symbols.find(s => s.name === 'system')!.offset)}</span>
+            )}
           </>
         )}
         {baseResult && 'error' in baseResult && <span className="ff-badge ff-badge-warn">{baseResult.error}</span>}
@@ -329,8 +332,9 @@ function GadgetCard({ binary, zh }: { binary: LoadedBinary; zh: boolean }) {
 
 // ---- ROP 链组装卡 ----
 
-function RopCard({ zh, bits }: { zh: boolean; bits: 32 | 64 }) {
+function RopCard({ zh }: { zh: boolean }) {
   const [lines, setLines] = useState('');
+  const [bits, setBits] = useState<32 | 64>(64);
   const chain = useMemo(
     () => buildRopChain(
       lines.split('\n').map(text => ({ value: text.split('#')[0].trim(), note: '' })),
@@ -343,7 +347,10 @@ function RopCard({ zh, bits }: { zh: boolean; bits: 32 | 64 }) {
     <section id="pwn-card-rop" className="ff-card" aria-label={zh ? 'ROP 链组装' : 'ROP chain builder'}>
       <div className="ff-card-head">
         <strong>{zh ? 'ROP 链组装（一行一地址）' : 'ROP chain builder (one address per line)'}</strong>
-        <span className="ff-badge">{bits}-bit · {zh ? '小端' : 'little-endian'}</span>
+        <select className="ff-select" aria-label={zh ? '位数' : 'Bits'} value={bits} onChange={event => setBits(Number(event.target.value) as 32 | 64)}>
+          <option value={32}>32-bit</option>
+          <option value={64}>64-bit</option>
+        </select>
       </div>
       <textarea
         className="ff-textarea"
@@ -444,9 +451,10 @@ function ExpTemplateCard({ zh }: { zh: boolean }) {
   const [scenario, setScenario] = useState<'stack-overflow' | 'ret2libc' | 'rop' | 'fmtstr'>('ret2libc');
   const [host, setHost] = useState('');
   const [port, setPort] = useState('');
+  const [arch, setArch] = useState<32 | 64>(64);
   const template = useMemo(
-    () => buildExpTemplate({ arch: 64, scenario, host, port, leakSymbol: 'puts' }),
-    [scenario, host, port],
+    () => buildExpTemplate({ arch, scenario, host, port, leakSymbol: 'puts' }),
+    [arch, scenario, host, port],
   );
 
   const SCENARIOS: Array<{ id: typeof scenario; label: string }> = [
@@ -477,6 +485,10 @@ function ExpTemplateCard({ zh }: { zh: boolean }) {
           aria-label={zh ? '远程主机' : 'Remote host'} onChange={event => setHost(event.target.value)} />
         <input className="ff-input" style={{ maxWidth: 70 }} type="text" value={port} placeholder="port"
           aria-label={zh ? '远程端口' : 'Remote port'} onChange={event => setPort(event.target.value)} />
+        <select className="ff-select" aria-label={zh ? '位数' : 'Bits'} value={arch} onChange={event => setArch(Number(event.target.value) as 32 | 64)}>
+          <option value={32}>32-bit</option>
+          <option value={64}>64-bit</option>
+        </select>
       </div>
       <div className="ff-code pwn-exp">{template}</div>
     </section>
@@ -497,7 +509,7 @@ function ShellcodeCard({ zh }: { zh: boolean }) {
             <span className="ff-badge">{entry.arch}</span>
             <strong className="pwn-shellcode-title">{entry.title}</strong>
             <span className="ff-size">{entry.bytes.length} B</span>
-            <span className="ff-label">{zh ? '坏字符' : 'avoid'} {entry.badChars.map(toHexByte).join(' ')}</span>
+            <span className="ff-label">{zh ? '含坏字节' : 'contains'} {entry.badChars.length > 0 ? entry.badChars.map(toHexByte).join(' ') : (zh ? '无' : 'none')}</span>
             <button type="button" className="ff-button" onClick={() => copyText(bytesToHexEscape(entry.bytes), zh, 'shellcode ')}>{zh ? '复制 \x5cx' : 'Copy \x5cx'}</button>
           </div>
           <p className="ff-note">{entry.summary}</p>
@@ -935,7 +947,7 @@ function PwnWorkspace({ pendingFile, onFileConsumed }: {
       <BadCharCard />
       <FormatStringCard />
       <FmtstrGenCard zh={zh} />
-      <RopCard zh={zh} bits={64} />
+      <RopCard zh={zh} />
       <ShellcodeCard zh={zh} />
       <ExpTemplateCard zh={zh} />
       <CheatsheetSection moduleId="pwn" variant="footer" />

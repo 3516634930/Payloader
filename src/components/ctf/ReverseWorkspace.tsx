@@ -99,7 +99,8 @@ function ReverseWorkspace({ pendingFile, onFileConsumed, onSwitchModule }: CtfWo
       const elfParseResult = parseElf(bytes);
       const elf = elfParseResult.ok ? elfParseResult : null;
       const peParseResult = parsePe(bytes);
-      const pe = peParseResult.ok ? peParseResult : null;      setReport({
+      const pe = peParseResult.ok ? peParseResult : null;
+      setReport({
         types,
         entropy,
         level: entropyLevel(entropy, bytes.length),

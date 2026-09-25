@@ -45,9 +45,13 @@ function BinaryStructurePanel({ elf, pe, bytes, language }: {
       return;
     }
     const window = bytes.subarray(fileOffset, Math.min(bytes.length, fileOffset + 256));
-    const lines = await disassembleBytes(window, vaddr, arch, 48);
-    disasmCache.current.set(text.toLowerCase(), lines);
-    setDisasmLines(lines);
+    try {
+      const lines = await disassembleBytes(window, vaddr, arch, 48);
+      disasmCache.current.set(text.toLowerCase(), lines);
+      setDisasmLines(lines);
+    } catch {
+      setDisasmError(zh ? '反汇编引擎加载/解码失败，请重试。' : 'Disassembler failed to load/decode; retry.');
+    }
   }, [disasmAddr, elf, bytes, zh]);
 
   if (!elf && !pe) return null;

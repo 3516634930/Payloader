@@ -145,6 +145,28 @@ test('parseAddress：0x/十进制/边界', () => {
   assert.equal(parseAddress(''), null);
 });
 
+test('buildFmtstrWrite：64 位半值不溢出（回归：1<<32 曾致 mask=0）', () => {
+  const result = buildFmtstrWrite({ target: 0x404018, value: 0xdeadbeefcafe, argIndex: 6, bits: 64, endian: 'little' });
+  assert.equal(result.ok, true);
+  // 0xdeadbeefcafe → low32=0xbeefcafe（大）、high32=0x0000dead（小）：先写小的 high
+  assert.equal(result.writes[0].half, 'high');
+  assert.equal(result.writes[0].value, 0xdead);
+  assert.equal(result.writes[1].half, 'low');
+  assert.equal(result.writes[1].value, 0xbeefcafe);
+  // 64 位地址后置（NUL 截断防护）：payload 以格式串开头
+  assert.ok(result.payload.startsWith("b'"));
+  assert.ok(result.payload.endsWith(')'));
+});
+
+test('buildFmtstrWrite：两半相等不产生 %0c（回归：%0c 输出 1 字符使计数偏 1）', () => {
+  // 0x12341234 → low=0x1234 high=0x1234：第二段 count=0 应跳过 %c
+  const result = buildFmtstrWrite({ target: 0x804c010, value: 0x12341234, argIndex: 7, bits: 32, endian: 'little' });
+  assert.equal(result.ok, true);
+  assert.ok(!result.payload.includes('%0c'), result.payload);
+  // 第一段 count = 0x1234 - 8 = 4652（串首 8 地址字节）
+  assert.ok(result.payload.includes('%4652c'), result.payload);
+});
+
 test('buildRopChain：三地址链打包与 python literal', () => {
   const result = buildRopChain([
     { value: '0x40123a', note: 'pop rdi' },

@@ -99,7 +99,7 @@ function ApkInspectCard({ bytes, fileName, language }: { bytes: Uint8Array; file
           {m.permissions.length > 0 && (
             <div className="ff-row">
               <span className="ff-label">{zh ? '权限' : 'Permissions'}</span>
-              {m.permissions.map(p => <span key={p} className="ff-badge" title={p}>{p.replace('android.permission.', 'android.')}</span>)}
+              {[...new Set(m.permissions)].map(p => <span key={p} className="ff-badge" title={p}>{p.replace('android.permission.', 'android.')}</span>)}
             </div>
           )}
           <div className="ff-row">
