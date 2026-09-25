@@ -3,6 +3,7 @@ import type { CtfWorkspaceProps, ModuleContract } from '../../utils/ctf/moduleCo
 import { ctfModuleContracts } from '../../utils/ctf/moduleContracts';
 import CipherWorkspace from './CipherWorkspace';
 import CheatsheetWorkspace from './CheatsheetWorkspace';
+import WebWorkspace from './WebWorkspace';
 import FileForensicsWorkspace from './FileForensicsWorkspace';
 import PwnWorkspace from './PwnWorkspace';
 import ReverseWorkspace from './ReverseWorkspace';
@@ -18,7 +19,7 @@ const WORKSPACES: Record<string, ComponentType<CtfWorkspaceProps>> = {
   cipher: CipherWorkspace,
   misc: FileForensicsWorkspace,
   traffic: TrafficWorkspace,
-  web: CheatsheetWorkspace,
+  web: WebWorkspace,
   reverse: ReverseWorkspace,
   pwn: PwnWorkspace,
   ai: CheatsheetWorkspace,

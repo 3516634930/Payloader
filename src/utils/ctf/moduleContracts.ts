@@ -66,12 +66,9 @@ export const ctfModuleContracts: ModuleContract[] = [
     id: 'web',
     name: { zh: 'Web', en: 'Web' },
     icon: '🌐',
-    entryKinds: ['cheatsheet'],
+    entryKinds: ['text', 'cheatsheet'],
     heroMode: 'collapsed',
-    note: {
-      zh: '规划能力：Web 题交互式工具台（请求重放、编码链分析）。',
-      en: 'Planned: an interactive Web workbench (request replay, encoding chain analysis).',
-    },
+
   },
   {
     id: 'reverse',
