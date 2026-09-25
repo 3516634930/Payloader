@@ -23,7 +23,7 @@ export const reverseCheatEntries: CheatEntry[] = [
       en: 'First choice for larger binaries: import, auto-analyze, then jump to main and string cross-references.',
     },
     snippet: './ghidraRun\n# 无界面模式（脚本批量）\n./analyzeHeadless ./proj demo -import ./challenge -postScript decompile.java',
-    tip: { zh: 'Search → For Strings 再 Ctrl+Shift+F 搜 "flag" 通常能直接定位校验函数。', en: 'Search → For Strings, then Ctrl+Shift+F for "flag" to land on the check function.' },
+    tip: { zh: '拖入本域即可先做结构分析：节区/导入导出/安全标志 + 任意地址反汇编（内置 capstone，离线）；APK 安卓题走杂项域 APK 卡出 manifest/DEX。', en: 'Drop a binary here first: sections, imports/exports, security flags, and disassembly at any address (offline capstone); Android APKs go to the APK card in Misc for manifest/DEX.' },
     jump: { kind: 'tool', id: 'ghidra' },
   },
   {

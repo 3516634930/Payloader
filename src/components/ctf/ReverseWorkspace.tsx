@@ -5,6 +5,7 @@ import StringsCard from './StringsCard';
 import HexdumpCard from './HexdumpCard';
 import EntropyMapCard from './EntropyMapCard';
 import CheatsheetSection from './CheatsheetSection';
+import BinaryStructurePanel from './BinaryStructurePanel';
 import {
   MAX_FILE_BYTES,
   blockEntropy,
@@ -20,6 +21,9 @@ import { FINGERPRINT_SCAN_LIMIT, scanConstFingerprints } from '../../utils/ctf/c
 import type { FingerprintCategory, FingerprintHit } from '../../utils/ctf/constFingerprints';
 import { recommendTools } from '../../utils/ctf/recommendTools';
 import type { ToolAnchor } from '../../utils/ctf/recommendTools';
+import { parseElf } from '../../utils/ctf/elfParse';
+import { parsePe } from '../../utils/ctf/peParse';
+import type { PeInfo } from '../../utils/ctf/peParse';
 import type { CtfWorkspaceProps } from '../../utils/ctf/moduleContracts';
 import '../../styles/ctf-forensics.css';
 import '../../styles/reverse-workspace.css';
@@ -38,6 +42,8 @@ interface ReverseReport {
   entropyBlocks: EntropyBlock[];
   highRanges: HighEntropyRange[];
   stringsTotal: number;
+  elf: import('../../utils/ctf/elfParse').ElfInfo | null;
+  pe: PeInfo | null;
 }
 
 const formatBytes = (value: number): string => {
@@ -89,7 +95,11 @@ function ReverseWorkspace({ pendingFile, onFileConsumed, onSwitchModule }: CtfWo
       const types = detectFileTypes(bytes);
       const entropy = shannonEntropy(bytes);
       const entropyBlocks = blockEntropy(bytes);
-      setReport({
+      // ELF/PE 结构解析（逆向域批次 RV）：解析失败（非 ELF/PE）时为 null，不阻断其他分析。
+      const elfParseResult = parseElf(bytes);
+      const elf = elfParseResult.ok ? elfParseResult : null;
+      const peParseResult = parsePe(bytes);
+      const pe = peParseResult.ok ? peParseResult : null;      setReport({
         types,
         entropy,
         level: entropyLevel(entropy, bytes.length),
@@ -97,6 +107,8 @@ function ReverseWorkspace({ pendingFile, onFileConsumed, onSwitchModule }: CtfWo
         entropyBlocks,
         highRanges: highEntropyRanges(entropyBlocks),
         stringsTotal: extractStrings(bytes, { limit: 1 }).total,
+        elf,
+        pe,
       });
     } catch {
       notifications.show({
@@ -253,6 +265,16 @@ function ReverseWorkspace({ pendingFile, onFileConsumed, onSwitchModule }: CtfWo
               </p>
             )}
           </section>
+
+          {report && (
+            <BinaryStructurePanel
+              key={`structure-${analysis.name}:${analysis.size}`}
+              elf={report.elf}
+              pe={report.pe}
+              bytes={analysis.bytes}
+              language={language}
+            />
+          )}
 
           {report && (
             <EntropyMapCard

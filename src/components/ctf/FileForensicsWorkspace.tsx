@@ -19,6 +19,7 @@ import ChallengePickerCard from './ChallengePickerCard';
 import PdfInspectCard from './PdfInspectCard';
 import RarInspectCard from './RarInspectCard';
 import PycInspectCard from './PycInspectCard';
+import ApkInspectCard from './ApkInspectCard';
 import StringsCard from './StringsCard';
 import HexdumpCard from './HexdumpCard';
 import { downloadBytes } from './ffDownload';
@@ -873,6 +874,15 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
               key={`rar-${analysis.name}:${analysis.size}`}
               fileName={analysis.name}
               bytes={analysis.bytes}
+              language={language}
+            />
+          )}
+
+          {report && analysis.name.toLowerCase().endsWith('.apk') && (
+            <ApkInspectCard
+              key={`apk-${analysis.name}:${analysis.size}`}
+              bytes={analysis.bytes}
+              fileName={analysis.name}
               language={language}
             />
           )}

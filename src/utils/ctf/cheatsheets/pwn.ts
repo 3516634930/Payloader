@@ -12,7 +12,7 @@ export const pwnCheatEntries: CheatEntry[] = [
       en: 'Always start with checksec: NX off → shellcode; PIE on → leak the base; canary on → leak the canary.',
     },
     snippet: 'checksec --file=./pwn\n# NX: 栈不可执行 → ROP；PIE: 地址随机 → 泄露基址；Canary: 栈保护 → 泄露/绕过；RELRO: GOT 保护',
-    tip: { zh: '保护组合直接决定利用路线，先看它再动手能省一半时间。', en: 'The protection combo dictates the whole exploit path — read it before writing anything.' },
+    tip: { zh: '本域已内置 checksec：把 ELF 拖到上方工作台即出保护矩阵与逐项攻击路径建议；libc 偏移、gadget 扫描、ROP 组装同页可用。', en: 'Built into this workspace: drop an ELF above for the protection matrix with per-item attack advice; libc offsets, gadget scanning, and ROP assembly are on the same page.' },
     jump: { kind: 'tool', id: 'exploit-dev-tools' },
   },
   {
