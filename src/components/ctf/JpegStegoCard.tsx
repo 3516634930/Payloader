@@ -3,6 +3,7 @@ import { notifications } from '@mantine/notifications';
 import { FlagAutoText } from '../codec/FlagAutoText';
 import { jstegReveal } from '../../utils/ctf/jsteg';
 import { jphsExtract } from '../../utils/ctf/jphs';
+import { f5Extract } from '../../utils/ctf/f5Extract';
 
 // JPEG DCT 域隐写卡（批次 SI·A 线）：jsteg 提取（跳过集 {0,±1}，含 -1 开关兼容原版 C jsteg）
 // 与 jphide（JPHS，口令驱动）。F5/outguess 在后续批次接入同一系数层。
@@ -48,7 +49,7 @@ function JpegStegoCard({ bytes, language }: JpegStegoCardProps) {
   return (
     <section id="ff-card-jpegstego" className="ff-card" aria-label={zh ? 'JPEG DCT 隐写' : 'JPEG DCT stego'}>
       <div className="ff-card-head">
-        <strong>{zh ? 'JPEG DCT 隐写（jsteg / jphide）' : 'JPEG DCT stego (jsteg / jphide)'}</strong>
+        <strong>{zh ? 'JPEG DCT 隐写（jsteg / jphide / F5）' : 'JPEG DCT stego (jsteg / jphide / F5)'}</strong>
         <span className="ff-badge">{bytes.length.toLocaleString()} B</span>
       </div>
       <div className="ff-tool">
@@ -71,6 +72,14 @@ function JpegStegoCard({ bytes, language }: JpegStegoCardProps) {
               notifications.show({ message: (error as Error).message, color: 'red' });
             }
           }}>{zh ? 'jphide 提取' : 'jphide seek'}</button>
+          <button type="button" className="ff-button" onClick={() => {
+            try {
+              const outcome = f5Extract(bytes, password);
+              setResult({ findings: `${zh ? 'F5 提取' : 'F5 extract'} (k=${outcome.k}, ${outcome.data.length} B):\n${new TextDecoder().decode(outcome.data.subarray(0, 400))}`, rawPreview: '', coefficientCount: 0 });
+            } catch (error) {
+              notifications.show({ message: (error as Error).message, color: 'red' });
+            }
+          }}>F5</button>
         </div>
         {result !== null && (
           <>
