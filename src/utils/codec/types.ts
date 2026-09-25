@@ -129,6 +129,8 @@ export type OperationId =
   | 'defang-refang'
   | 'entropy-op'
   | 'text-line-tool'
+  | 'lzstring'
+  | 'zip-list'
   | 'base64-stego'
   | 'snow-stego'
   | 'cloakify'

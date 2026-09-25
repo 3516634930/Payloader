@@ -74,6 +74,11 @@ export const parityVariantOptions: Record<string, Array<{ value: string; zh: str
     { value: 'reverse-lines', zh: '行反转', en: 'Reverse lines' },
     { value: 'shuffle-order', zh: '拼音排序', en: 'Pinyin sort' },
   ],
+  'lzstring': [
+    { value: 'base64', zh: 'Base64 形态（最常见）', en: 'Base64 (most common)' },
+    { value: 'utf16', zh: 'UTF-16 形态', en: 'UTF-16' },
+    { value: 'uri', zh: 'URI-safe 形态', en: 'Encoded URI component' },
+  ],
   'rc2': [
     { value: 'pkcs7', zh: 'PKCS#7 自动填充', en: 'PKCS#7 padding' },
     { value: 'raw', zh: 'raw（8 字节整块，不填充）', en: 'raw (aligned 8-byte blocks, no padding)' },

@@ -11,6 +11,7 @@ import { cbcDemoTransform, coppersmithStereotypedSolve, parsePgpMessage, rsaOaep
 import { discreteLogHelper, signatureNonceReuseHelper } from './prng';
 import { mt19937Helper } from './smartDecode';
 import { setSmartDecodeExecutor } from './smartBase';
+import { formatZipListing, listZip, lzStringDecompress } from './opsCc2';
 import { checksumMatrix, defang, entropyReport, extractData, extractPrintableStrings, filetimeToUnix, inputToBytes, refang, reverseBitsPerByte, rotateBits, shiftBits, swapEndianness, textLineTool, unixToFiletime, bitwiseWithKey } from './opsCyberchef';
 import { substitutionAutoSolve, vigenereAutoSolve, xorAutoSolve } from './autoSolve';
 import { paddingOracleReport } from './paddingOracle';
@@ -344,6 +345,17 @@ export async function transform(operationId: OperationId, direction: Direction, 
     case 'text-line-tool': {
       const variant = (['head', 'tail', 'sort', 'unique', 'dedupe', 'strip-blank', 'reverse-lines', 'shuffle-order'].includes(params.variant) ? params.variant : 'unique') as 'head' | 'tail' | 'sort' | 'unique' | 'dedupe' | 'strip-blank' | 'reverse-lines' | 'shuffle-order';
       return textLineTool(input, variant, Number(params.shift || 10));
+    }
+    case 'lzstring': {
+      const result = lzStringDecompress(input, (['base64', 'utf16', 'uri'].includes(params.variant) ? params.variant : 'base64') as 'base64' | 'utf16' | 'uri');
+      return result.text ?? result.error ?? '（空）';
+    }
+    case 'zip-list': {
+      const compact = input.replace(/\s+/g, '');
+      if (!/^[0-9a-fA-F]*$/.test(compact) || compact.length < 4) return '输入需为 zip 文件的 HEX。';
+      const zipBytes = new Uint8Array((compact.match(/../g) ?? []).map(pair => Number.parseInt(pair, 16)));
+      const listing = listZip(zipBytes);
+      return 'error' in listing ? listing.error : formatZipListing(listing.entries);
     }
     case 'base64-stego':
       return base64StegoReport(input);

@@ -26,8 +26,8 @@ const ENTRY_EXPORTS = [
 
 // 受众记账口径（批次 W 纠偏定稿 + autoSolve 三操作 + padding-oracle-attack/magic-chain/crc32-attack/base64-stego）：
 // 批次 SB 新增 snow-stego/cloakify/ttl-stego 三个 CTF 操作：
-// 全部操作 264 个 = ctf 177 + both 85 + pentest 2，钉住具体数字防止清单无声漂移（CC1 批次 +12 ctf 操作）。
-const AUDIENCE_SNAPSHOT = { total: 264, ctf: 177, both: 85, pentest: 2 };
+// 全部操作 266 个 = ctf 179 + both 85 + pentest 2，钉住具体数字防止清单无声漂移（CC1 +12 / CC2 +2 ctf 操作）。
+const AUDIENCE_SNAPSHOT = { total: 266, ctf: 179, both: 85, pentest: 2 };
 
 // 批次 O 形状探针中仍验证智能解码可达性的样本集（telecode/quwei 等 4 位数字组形态与日期/编号
 // 不可区分，已退出直解路径只出芯片，故不在自动解码样本内）。

@@ -98,6 +98,8 @@ export const operationAudience: Record<OperationId, Audience> = {
   'defang-refang': 'ctf',
   'entropy-op': 'ctf',
   'text-line-tool': 'ctf',
+  'lzstring': 'ctf',
+  'zip-list': 'ctf',
   'base64-stego': 'ctf',
   // ---- 批次 SB：随波逐流隐写对齐（snow/Cloakify/TTL，全部 CTF 域）----
   'snow-stego': 'ctf',
@@ -429,7 +431,7 @@ const ctfMenuSpec: CodecMenuSpec[] = [
       { label: { zh: 'PRNG 与格', en: 'PRNG & Lattice' }, ids: ['mt19937-helper', 'lcg-helper', 'lfsr-helper', 'discrete-log-helper'] },
       { label: { zh: '自动破译', en: 'Auto Solve' }, ids: ['xor-auto-solve', 'vigenere-auto', 'substitution-auto'] },
       { label: { zh: '位运算与校验', en: 'Bitwise & Checksums' }, ids: ['bitwise-op', 'bit-shift', 'bit-rotate', 'bit-reverse', 'swap-endianness', 'checksum-matrix'] },
-      { label: { zh: '取证与文本工具', en: 'Forensics & Text Tools' }, ids: ['extract-data', 'strings-op', 'filetime', 'defang-refang', 'entropy-op', 'text-line-tool', 'crc32-attack', 'base64-stego'] },
+      { label: { zh: '取证与文本工具', en: 'Forensics & Text Tools' }, ids: ['extract-data', 'strings-op', 'filetime', 'defang-refang', 'entropy-op', 'text-line-tool', 'lzstring', 'zip-list', 'crc32-attack', 'base64-stego'] },
       { label: { zh: '变体与助手', en: 'Variants & Helpers' }, ids: ['xor', 'xor-bruteforce', 'xor-known-plaintext', 'magic-xor-helper', 'aes-ofb', 'aes-kw', 'aes-kwp', 'aes-gcm-siv', 'aes-siv', 'crypto-attack-helper', 'bip39-seed', 'cbc-padding-demo', 'padding-oracle-attack'] },
       { label: { zh: '文本隐写（批次 SB）', en: 'Text Stego (Batch SB)' }, ids: ['snow-stego', 'cloakify', 'ttl-stego'] },
     ],
@@ -520,7 +522,7 @@ const ctfSections: CtfSectionSpec[] = [
       { name: { zh: '文本与隐写杂项', en: 'Text & Stego Misc' }, ids: ['reverse-text', 'keyboard-shift', 'zero-width', 'brainfuck', 'ook', 'deadfish', 'spoon', 'whitespace-code', 'emoji-encoder', 'unicode-escape', 'js-string', 'c-string', 'json-string', 'quoted-printable', 'utf16-bytes', 'unix-time', 'jsfuck', 'jsfuck-helper', 'aaencode', 'jjencode'] },
       { name: { zh: 'Web 与封装', en: 'Web & Wrappers' }, ids: ['url-component', 'url-form', 'html-entity', 'xml-entity', 'utf7', 'gzip', 'deflate', 'data-url', 'querystring', 'punycode', 'cbor', 'messagepack', 'protobuf-raw', 'bson'] },
       { name: { zh: '进制工具与数学（批次 O）', en: 'Radix Tools & Math (Batch O)' }, ids: ['ieee754', 'twos-complement', 'ones-complement', 'radix-xor', 'bit-split', 'hamming', 'qwe-keyboard', 'gcd', 'prime-factor', 'fibonacci-code', 'pickle-parse', 'ascii-control', 'quwei'] },
-      { name: { zh: 'CyberChef 对标（批次 CC）', en: 'CyberChef Parity (Batch CC)' }, ids: ['bitwise-op', 'bit-shift', 'bit-rotate', 'bit-reverse', 'swap-endianness', 'checksum-matrix', 'extract-data', 'strings-op', 'filetime', 'defang-refang', 'entropy-op', 'text-line-tool'] },
+      { name: { zh: 'CyberChef 对标（批次 CC）', en: 'CyberChef Parity (Batch CC)' }, ids: ['bitwise-op', 'bit-shift', 'bit-rotate', 'bit-reverse', 'swap-endianness', 'checksum-matrix', 'extract-data', 'strings-op', 'filetime', 'defang-refang', 'entropy-op', 'text-line-tool', 'lzstring', 'zip-list'] },
     ],
   },
 ];
