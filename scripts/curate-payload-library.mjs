@@ -773,7 +773,7 @@ export const applyPayloadCommandOverrides = (payloadsInput, document, options = 
       if (patch.platform !== undefined) current.platform = patch.platform;
       if (patch.requiresAdmin !== undefined) current.requiresAdmin = patch.requiresAdmin;
       next.attackChain = asList(next.attackChain).map(step => (
-        step?.payload && commandKey(step.payload) === commandKey(previousCommand)
+        step?.payload && patch.command !== undefined && commandKey(step.payload) === commandKey(previousCommand)
           ? { ...step, payload: nextCommand }
           : step
       ));

