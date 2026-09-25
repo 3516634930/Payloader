@@ -35,19 +35,19 @@ const patchFor = (documents, id, index) => documents.commandOverrides.entries
 
 test('intranet technique reviews patch only malformed commands and preserve valid capabilities', () => {
   const sources = intranetTechniqueReviewSpecs.map(sourcePayload);
-  sources.find(source => source.id === 'rdp-relay').execution[0].command = '使用Impacket:\npython ntlmrelayx.py -tf targets.txt -smb2support';
+  sources.find(source => source.id === 'ntlm-relay').execution[0].command = '使用Impacket:\npython ntlmrelayx.py -tf targets.txt -smb2support';
   sources.find(source => source.id === 'dll-hijack').execution[0].command = '使用Procmon监控DLL加载';
   sources.find(source => source.id === 'persistence-backdoor-user').execution[0].command = 'Get-LocalUser | Select-Object -First 20 Name\n使用批准账号清单复核';
 
   const documents = buildIntranetTechniqueReviewDocuments(sources);
   const expectedIds = intranetTechniqueReviewSpecs.map(spec => spec.id);
 
-  assert.equal(expectedIds.length, 72);
+  assert.equal(expectedIds.length, 64);
   assert.deepEqual(documents.overrides.sourceIds, expectedIds);
   assert.deepEqual(documents.overrides.entries.map(entry => entry.id), expectedIds);
   assert.deepEqual(
     documents.commandOverrides.entries.map(entry => entry.id),
-    ['rdp-relay', 'dll-hijack', 'persistence-backdoor-user'],
+    ['ntlm-relay', 'dll-hijack', 'persistence-backdoor-user'],
   );
   assert.deepEqual(validatePayloadOverrideDocument(documents.overrides, sources), []);
   assert.deepEqual(validatePayloadCommandOverrideDocument(documents.commandOverrides, sources), []);
@@ -56,7 +56,7 @@ test('intranet technique reviews patch only malformed commands and preserve vali
   assert.equal(patches.length, 3);
   assert.equal(patches.every(patch => patch.command !== patch.expectedCommand), true);
   assert.equal(patches.every(patch => !/\p{Script=Han}/u.test(patch.command)), true);
-  assert.match(patchFor(documents, 'rdp-relay', 0).command, /ntlmrelayx\.py/);
+  assert.match(patchFor(documents, 'ntlm-relay', 0).command, /ntlmrelayx\.py/);
   assert.match(patchFor(documents, 'persistence-backdoor-user', 0).command, /Get-LocalUser/);
   assert.doesNotMatch(patches.map(patch => patch.command).join('\n'), /PAYLOADER_[A-Z0-9_]*BACKDOOR/i);
 

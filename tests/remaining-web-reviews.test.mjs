@@ -54,7 +54,7 @@ test('remaining web reviews preserve valid attack variants and patch only confir
     entry.patches.map(patch => `${entry.id}:${patch.area}:${patch.index}`)
   ));
 
-  assert.equal(expectedIds.length, 54);
+  assert.equal(expectedIds.length, 52);
   assert.deepEqual(documents.overrides.sourceIds, expectedIds);
   assert.deepEqual(documents.overrides.entries.map(entry => entry.id), expectedIds);
   assert.deepEqual(actualCorrectionKeys, expectedCorrectionKeys);
