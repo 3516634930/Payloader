@@ -51,6 +51,7 @@ export const blindWatermarkEncode = (
   options: BlindWatermarkOptions = {},
 ): RgbaImage => {
   const { width, height } = image;
+  assertPixelBudget(width, height, '嵌入');
   const halfHeight = Math.floor(height / 2);
   // 原版断言语义：水印不超过半高画布（<= 允许，超界才报）
   if (watermark.height > halfHeight || watermark.width > width) {
@@ -99,6 +100,16 @@ export const blindWatermarkEncode = (
   return { data: pixels, width, height };
 };
 
+export const BW_MAX_PIXELS = 1_000_000; // FFT 主线程同步运算的像素红线（reviewer P1：4M 像素实测 76-158s 冻结）
+
+const assertPixelBudget = (width: number, height: number, action: string): void => {
+  if (width * height > BW_MAX_PIXELS) {
+    throw new Error(
+      `图像 ${width}×${height}（${width * height} 像素）超过盲水印 ${BW_MAX_PIXELS} 像素上限：FFT 同步运算约需 ${Math.round((width * height / 1_000_000) * 20)} 秒以上会冻结页面，请先缩小图片再${action}`,
+    );
+  }
+};
+
 export const blindWatermarkDecode = (
   original: RgbaImage,
   watermarked: RgbaImage,
@@ -110,13 +121,13 @@ export const blindWatermarkDecode = (
     );
   }
   const { width, height } = original;
+  assertPixelBudget(width, height, '提取');
   const halfHeight = Math.floor(height / 2);
   const seed = options.seed ?? BW_DEFAULT_SEED;
   const alpha = options.alpha ?? BW_DEFAULT_ALPHA;
   const { rows, cols } = replayShuffles(height, width, seed);
-  // 三通道差的均值（等价灰度差频谱；原版逐通道独立提取，均值对灰度水印显影更干净且完全兼容）
+  // 三通道差实部的均值（decode 只取实部还原，虚部无需累积——reviewer P2 死计算已删）
   const diffRe = new Float64Array(width * height);
-  const diffIm = new Float64Array(width * height);
   for (let channel = 0; channel < 3; channel += 1) {
     const re1 = extractChannel(original, channel);
     const im1 = new Float64Array(width * height);
@@ -126,7 +137,6 @@ export const blindWatermarkDecode = (
     const f2 = fft2d(re2, im2, width, height);
     for (let index = 0; index < width * height; index += 1) {
       diffRe[index] += (f2.re[index] - f1.re[index]) / 3;
-      diffIm[index] += (f2.im[index] - f1.im[index]) / 3;
     }
   }
   for (let index = 0; index < width * height; index += 1) diffRe[index] /= alpha;

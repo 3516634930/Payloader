@@ -181,6 +181,9 @@ export const bitsToImage = (text: string, forcedWidth?: number): BitsImageResult
     widthGuess = `指定宽 ${forcedWidth}（覆盖自动推断）`;
   }
   const height = Math.ceil(bits.length / width);
+  if (width * height > 4_000_000) {
+    throw new Error(`0/1 串画布 ${width}×${height} 超过 400 万像素上限：内容过长或宽度设置异常`);
+  }
   const out = new Uint8ClampedArray(width * height * 4).fill(255);
   for (let index = 0; index < bits.length; index += 1) {
     if (bits[index] !== '1') continue;
@@ -196,11 +199,14 @@ export const bitsToImage = (text: string, forcedWidth?: number): BitsImageResult
 // XY 坐标串转散点图（黑底白点，QR 模块形态）：支持 "x,y"、"x y"、"(x,y)"、制表符分隔，行内逗号或空白均可
 export const coordsToImage = (text: string): { image: RgbaImage; pointCount: number } => {
   const points: Array<{ x: number; y: number }> = [];
+  const seen = new Set<number>(); // 复合键去重（reviewer P1：O(n²) 线性扫在 10 万点时分钟级冻结）
   const pattern = /\(?(-?\d+)[,;\s]+(-?\d+)\)?/g;
   for (const match of text.matchAll(pattern)) {
     const x = Number(match[1]);
     const y = Number(match[2]);
-    if (points.some(point => point.x === x && point.y === y)) continue;
+    const key = (x + 1_000_000) * 4_000_007 + (y + 1_000_000);
+    if (seen.has(key)) continue;
+    seen.add(key);
     points.push({ x, y });
   }
   if (points.length === 0) throw new Error('未解析出任何 (x,y) 坐标对：每行应为 "x,y" 或 "x y" 形式');
@@ -273,6 +279,9 @@ export const rgbTextToImage = (text: string, forcedWidth?: number): RgbTextResul
     throw new Error(`像素数 ${count} 无法推断宽度（非完全平方、也非 100/250/500 整倍）：请在参数里指定宽度`);
   }
   const height = Math.ceil(count / width);
+  if (width * height > 4_000_000) {
+    throw new Error(`RGB 像素画布 ${width}×${height} 超过 400 万像素上限：内容过长或宽度设置异常`);
+  }
   const out = new Uint8ClampedArray(width * height * 4).fill(255);
   pixels.forEach((pixel, index) => {
     const base = index * 4;
@@ -420,21 +429,22 @@ export const floodFillMask = (image: RgbaImage, seedX: number, seedY: number, to
 
 // ---- QR 定位角补全 ----
 
-// 画一个 7×7 模块定位角（外圈黑环 + 白环 + 3×3 黑心），origin 为模块坐标（含 quiet zone 偏移由调用方给）
+// 画一个 7×7 模块定位角：外 1 模块黑环 + 1 模块白环 + 3×3 黑心（白环显式绘制——
+// 残缺角若遗留黑像素，跳过白环会产出损坏定位角，reviewer P2）
 const drawFinder = (out: Uint8ClampedArray, width: number, moduleX: number, moduleY: number, moduleSize: number): void => {
   for (let my = 0; my < 7; my += 1) {
     for (let mx = 0; mx < 7; mx += 1) {
       const ring = mx === 0 || mx === 6 || my === 0 || my === 6;
       const core = mx >= 2 && mx <= 4 && my >= 2 && my <= 4;
-      if (!ring && !core) continue;
+      const value = ring || core ? 0 : 255;
       const pixelX = (moduleX + mx) * moduleSize;
       const pixelY = (moduleY + my) * moduleSize;
       for (let dy = 0; dy < moduleSize; dy += 1) {
         for (let dx = 0; dx < moduleSize; dx += 1) {
           const base = ((pixelY + dy) * width + pixelX + dx) * 4;
-          out[base] = 0;
-          out[base + 1] = 0;
-          out[base + 2] = 0;
+          out[base] = value;
+          out[base + 1] = value;
+          out[base + 2] = value;
           out[base + 3] = 255;
         }
       }

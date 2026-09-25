@@ -161,7 +161,8 @@ test('FFT：radix-2/Bluestein/naive 三路径与朴素 DFT 全尺寸一致，素
     }
   }
   assert.ok(worst < 1e-9, `全尺寸最大偏差 ${worst.toExponential(3)} 应 < 1e-9`);
-  // numpy 锚点（output/fft-vec.json 同向量：np.fft.fft X[1] = 0.299+1.466i）
+  // numpy 锚点（output/fft-vec.json 由 scripts/regen-si-vectors.py 确定性再生——
+  // 整数域序列 (i*37)%257，双语言无浮点/整数语义分叉；X[1] 期望值由 py numpy 算得 = -1.353-0.589i）
   const vectorPath = path.join(projectRoot, 'output', 'fft-vec.json');
   if (existsSync(vectorPath)) {
     const vals = JSON.parse(readFileSync(vectorPath, 'utf8')).map(Number);
@@ -169,7 +170,7 @@ test('FFT：radix-2/Bluestein/naive 三路径与朴素 DFT 全尺寸一致，素
     const input = { re: new Float64Array(n), im: new Float64Array(n), length: n };
     for (let i = 0; i < n; i += 1) { input.re[i] = vals[2 * i]; input.im[i] = vals[2 * i + 1]; }
     const out = fft.fft1d(input);
-    assert.ok(Math.abs(out.re[1] - 0.299) < 0.001 && Math.abs(out.im[1] - 1.466) < 0.001, 'X[1] 应与 numpy 一致');
+    assert.ok(Math.abs(out.re[1] - -1.353) < 0.001 && Math.abs(out.im[1] - -0.589) < 0.001, 'X[1] 应与 numpy 一致');
   }
 });
 
@@ -197,11 +198,15 @@ test('盲水印：encode→decode 闭环显影、水印超半高画布报错、�
   assert.throws(() => bw.blindWatermarkDecode(carrier, solid(32, 32, 0)), /尺寸必须一致/);
 });
 
-test('盲水印跨实现对拍：JS decode 逐像素复现 numpy 原版语义参照（output/bw-*.npy）', () => {
+test('盲水印跨实现对拍：JS decode 逐像素复现 numpy 原版语义参照（output/bw-*.npy）', t => {
   const carrierPath = path.join(projectRoot, 'output', 'bw-carrier.npy');
   const markedPath = path.join(projectRoot, 'output', 'bw-marked.npy');
   const refPath = path.join(projectRoot, 'output', 'bw-decode-ref.npy');
-  if (!existsSync(carrierPath) || !existsSync(markedPath) || !existsSync(refPath)) return; // 参照缺省跳过（向量由 py 侧确定性再生）
+  // 参照缺失时显式 skip 计数（reviewer P2：裸 return 会被记成 pass，掩盖对拍未执行）
+  if (!existsSync(carrierPath) || !existsSync(markedPath) || !existsSync(refPath)) {
+    t.skip('npy 参照缺失：py -3.10 scripts/regen-si-vectors.py 再生后执行');
+    return;
+  }
   const loadNpy = file => {
     const buf = readFileSync(file);
     const headerLen = buf.readInt16LE(8);

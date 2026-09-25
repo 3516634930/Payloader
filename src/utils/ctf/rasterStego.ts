@@ -15,23 +15,27 @@ export interface RasterCandidate {
   image: RgbaImage;
 }
 
-// 全参数扫描：period 取 2..maxPeriod 且整除对应维度；每个 (周期, 相位) 出一张候选。
-export const rasterRevealAll = (image: RgbaImage, maxPeriod = 10): RasterCandidate[] => {
-  const { width, height } = image;
-  const candidates: RasterCandidate[] = [];
+// 只枚举 (axis, period, phase) 组合不物化图像（reviewer P1：全相位扫描逐候选物化整图在 4M 像素
+// 图上瞬时分配 >1GB；UI 应先枚举元数据、渲染缩略时再逐个 rasterCompact 懒算）
+export const rasterPhasePlan = (width: number, height: number, maxPeriod = 10): Array<{ axis: 'x' | 'y'; period: number; phase: number }> => {
+  const plan: Array<{ axis: 'x' | 'y'; period: number; phase: number }> = [];
   for (let period = 2; period <= maxPeriod; period += 1) {
     if (width % period === 0) {
-      for (let phase = 0; phase < period; phase += 1) {
-        candidates.push({ axis: 'x', period, phase, image: extractPhase(image, 'x', period, phase) });
-      }
+      for (let phase = 0; phase < period; phase += 1) plan.push({ axis: 'x', period, phase });
     }
     if (height % period === 0) {
-      for (let phase = 0; phase < period; phase += 1) {
-        candidates.push({ axis: 'y', period, phase, image: extractPhase(image, 'y', period, phase) });
-      }
+      for (let phase = 0; phase < period; phase += 1) plan.push({ axis: 'y', period, phase });
     }
   }
-  return candidates;
+  return plan;
+};
+
+// 全参数扫描（保留引擎兼容）：需要全部候选图像时使用；UI 场景优先 rasterPhasePlan + 懒算
+export const rasterRevealAll = (image: RgbaImage, maxPeriod = 10): RasterCandidate[] => {
+  return rasterPhasePlan(image.width, image.height, maxPeriod).map(plan => ({
+    ...plan,
+    image: extractPhase(image, plan.axis, plan.period, plan.phase),
+  }));
 };
 
 // 单相位抽取：x 轴=只保留 列%period===phase 的列（其余白），画布不变，便于目检叠加帧

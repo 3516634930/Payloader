@@ -92,6 +92,7 @@ const readSecondImage = async (file: File): Promise<AnyImage> => {
   if (ctx === null) throw new Error('canvas 2d 上下文不可用');
   ctx.drawImage(bitmap, 0, 0);
   bitmap.close();
+  if (width * height > 4_000_000) throw new Error(`第二张图 ${width}×${height} 超过 400 万像素上限，请先缩小`);
   const data = ctx.getImageData(0, 0, width, height);
   return { data: data.data, width, height };
 };

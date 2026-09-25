@@ -17,7 +17,8 @@ export class F5Random {
 
   private nextBlock(): void {
     const output = sha1Bytes(this.state);
-    this.remainder = output;
+    // 显式拷贝为独立缓冲：sha1Bytes 返回的视图类型携带 ArrayBufferLike，避免严格模式赋值摩擦
+    this.remainder = new Uint8Array(output);
     this.remainderIndex = 0;
     // state += output + 1 (mod 2^160)：从最低位（大端末字节）带进位
     let carry = 1;

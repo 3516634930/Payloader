@@ -3,7 +3,7 @@ import { notifications } from '@mantine/notifications';
 import { FlagAutoText } from '../codec/FlagAutoText';
 import type { PlaneImage } from './ImagePlanesCard';
 import { arnoldInverse, arnoldPeriod, arnoldTransform } from '../../utils/ctf/arnold';
-import { rasterCompact, rasterRevealAll, stereogramDiff, stereogramEstimateOffset } from '../../utils/ctf/rasterStego';
+import { rasterCompact, rasterPhasePlan, stereogramDiff, stereogramEstimateOffset } from '../../utils/ctf/rasterStego';
 import { blindWatermarkDecode } from '../../utils/ctf/blindWatermark';
 import { pixelJihadDecode } from '../../utils/ctf/pixelJihad';
 import { runImageProgram } from '../../utils/ctf/esolangs';
@@ -77,6 +77,7 @@ const readSecondImage = async (file: File): Promise<AnyImage> => {
   if (ctx === null) throw new Error('canvas 2d 上下文不可用');
   ctx.drawImage(bitmap, 0, 0);
   bitmap.close();
+  if (width * height > 4_000_000) throw new Error(`第二张图 ${width}×${height} 超过 400 万像素上限，请先缩小`);
   return { data: ctx.getImageData(0, 0, width, height).data, width, height };
 };
 
@@ -134,8 +135,9 @@ function ImageStegoCard({ image, language }: ImageStegoCardProps) {
         <span className="ff-label">{zh ? '光栅栅栏图（周期 2-10 相位抽取）' : 'Raster interleaving (period 2-10)'}</span>
         <div className="ff-row">
           <button type="button" className="ff-button" onClick={() => {
-            const candidates = rasterRevealAll(source, 10).slice(0, 60);
-            setRasterCandidates(candidates.map(item => ({ axis: item.axis, period: item.period, phase: item.phase, image: rasterCompact(source, item.axis, item.period, item.phase) })));
+            // 元数据先行 + 懒算（reviewer P1：逐候选物化整图在 4M 像素图上瞬时分配 >1GB）
+            const plan = rasterPhasePlan(image.width, image.height, 10).slice(0, 60);
+            setRasterCandidates(plan.map(item => ({ axis: item.axis, period: item.period, phase: item.phase, image: rasterCompact(source, item.axis, item.period, item.phase) })));
           }}>{zh ? '全相位扫描' : 'Scan all phases'}</button>
           {rasterCandidates !== null && <span className="ff-badge">{rasterCandidates.length} {zh ? '候选' : 'candidates'}</span>}
         </div>

@@ -42,8 +42,10 @@ const permuteImage = (image: RgbaImage, forward: boolean, a: number, b: number):
   return { data: out, width, height };
 };
 
+export const ARNOLD_MAX_ITERATIONS = 10_000; // 迭代上限（reviewer P2：无界迭代在大图上小时级冻结）
+
 export const arnoldTransform = (image: RgbaImage, options: ArnoldOptions = {}): RgbaImage => {
-  const iterations = Math.max(1, options.iterations ?? 1);
+  const iterations = Math.min(ARNOLD_MAX_ITERATIONS, Math.max(1, options.iterations ?? 1));
   const a = options.a ?? 1;
   const b = options.b ?? 1;
   let current: RgbaImage = image;
@@ -54,7 +56,7 @@ export const arnoldTransform = (image: RgbaImage, options: ArnoldOptions = {}): 
 };
 
 export const arnoldInverse = (image: RgbaImage, options: ArnoldOptions = {}): RgbaImage => {
-  const iterations = Math.max(1, options.iterations ?? 1);
+  const iterations = Math.min(ARNOLD_MAX_ITERATIONS, Math.max(1, options.iterations ?? 1));
   const a = options.a ?? 1;
   const b = options.b ?? 1;
   let current: RgbaImage = image;

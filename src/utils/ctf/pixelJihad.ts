@@ -4,12 +4,12 @@
 // 载荷 = JSON（无口令 {text}）或 sjcl AES-128-CCM 加密 JSON（口令，PBKDF2×1000），
 // 按 UTF-16 码元 16 bit LSB-first 写入（先 16 bit 长度再逐字符）。
 // 加密链直接 vendor 原版同款 sjcl 构建（src/vendor/sjcl.ts，BSD/GPL）——格式 100% 兼容原工具。
-// vendor 文件的 UMD 尾巴 module.exports=sjcl 会覆盖命名导出载体，故以 namespace 形式引用
-// （require 的返回值即 sjcl 对象本身，hash/encrypt/decrypt 全部直达；esbuild 的 CJS 互操作同语义）。
-import * as sjclStar from '../../vendor/sjcl';
+// 消费方式：default import——CJS 互操作下 default = module.exports（UMD 设为 sjcl 对象），
+// dev ESM 下命中文件尾部的显式 export default（reviewer P0：namespace import 在 dev 下为空）。
+import sjclDefault from '../../vendor/sjcl';
 import type { RgbaImage } from './imageOps';
 
-const sjcl = sjclStar as unknown as {
+const sjcl = sjclDefault as unknown as {
   hash: { sha256: { hash: (password: string) => number[] } };
   encrypt: (password: string, plaintext: string) => string;
   decrypt: (password: string, payload: string) => string;
