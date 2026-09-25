@@ -11,6 +11,7 @@ import { cbcDemoTransform, coppersmithStereotypedSolve, parsePgpMessage, rsaOaep
 import { discreteLogHelper, signatureNonceReuseHelper } from './prng';
 import { mt19937Helper } from './smartDecode';
 import { setSmartDecodeExecutor } from './smartBase';
+import { checksumMatrix, defang, entropyReport, extractData, extractPrintableStrings, filetimeToUnix, inputToBytes, refang, reverseBitsPerByte, rotateBits, shiftBits, swapEndianness, textLineTool, unixToFiletime, bitwiseWithKey } from './opsCyberchef';
 import { substitutionAutoSolve, vigenereAutoSolve, xorAutoSolve } from './autoSolve';
 import { paddingOracleReport } from './paddingOracle';
 import { magicChainReport } from './magicChain';
@@ -289,6 +290,61 @@ export async function transform(operationId: OperationId, direction: Direction, 
     }
     case 'crc32-attack':
       return crc32AttackReport(input);
+    case 'bitwise-op': {
+      const keyBytes = params.secret ? inputToBytes(params.secret) : new Uint8Array(0);
+      const variant = (['and', 'or', 'add', 'sub'].includes(params.variant) ? params.variant : 'xor') as 'and' | 'or' | 'xor' | 'add' | 'sub';
+      const bytes = direction === 'encode' ? inputToBytes(input) : hexToBytes(input);
+      return bytesToHex(bitwiseWithKey(bytes, keyBytes, variant));
+    }
+    case 'bit-shift': {
+      const bytes = inputToBytes(input);
+      return bytesToHex(shiftBits(bytes, Number(params.shift || 1), params.variant === 'right' ? 'right' : 'left'));
+    }
+    case 'bit-rotate': {
+      const width = ([8, 16, 32].includes(Number(params.variant)) ? Number(params.variant) : 8) as 8 | 16 | 32;
+      return bytesToHex(rotateBits(inputToBytes(input), Number(params.shift || 1), width, direction === 'encode' ? 'left' : 'right'));
+    }
+    case 'bit-reverse':
+      return bytesToHex(reverseBitsPerByte(inputToBytes(input)));
+    case 'swap-endianness': {
+      const size = ([2, 4, 8].includes(Number(params.variant)) ? Number(params.variant) : 4) as 2 | 4 | 8;
+      return bytesToHex(swapEndianness(hexToBytes(input), size));
+    }
+    case 'checksum-matrix':
+      return checksumMatrix(inputToBytes(input))
+        .map(row => `${row.name}: ${row.value}`)
+        .join('\n');
+    case 'extract-data':
+      return extractData(input, (['ips', 'urls', 'emails', 'domains', 'ipv4-hex'].includes(params.variant) ? params.variant : 'ips') as 'ips' | 'urls' | 'emails' | 'domains' | 'ipv4-hex');
+    case 'strings-op': {
+      const minLen = [3, 4, 6, 8].includes(Number(params.variant)) ? Number(params.variant) : 4;
+      const found = extractPrintableStrings(inputToBytes(input), minLen);
+      return found.join('\n') || '（无可打印字符串）';
+    }
+    case 'filetime':
+      if (direction === 'encode') {
+        // 输入 Unix 秒或 ISO 日期 → FILETIME
+        const asNumber = Number(input.trim());
+        const unix = Number.isFinite(asNumber) && input.trim() !== '' ? asNumber : Date.parse(input.trim()) / 1000;
+        return Number.isFinite(unix) ? unixToFiletime(unix).toString() : '无效时间';
+      }
+      try {
+        const ft = BigInt(input.trim());
+        return new Date(filetimeToUnix(ft) * 1000).toISOString();
+      } catch {
+        return '无效 FILETIME（应为十进制大整数）';
+      }
+    case 'defang-refang':
+      return direction === 'encode' ? defang(input) : refang(input);
+    case 'entropy-op': {
+      const report = entropyReport(input);
+      const top = report.top5.map(t => `"${t.char}" ×${t.count} (${(t.freq * 100).toFixed(1)}%)`).join('，');
+      return `长度: ${report.length}\n唯一字符: ${report.uniqueChars}\n香农熵: ${report.entropy.toFixed(3)} bits/char（8 = 完全随机，加密/压缩判据；文本通常 3.5-5）\n重合指数 IoC: ${report.ioc.toFixed(5)}（英文 ~0.0667，随机 ~0.0385；低→单表替换，高→随机）\n高频字符: ${top || '—'}`;
+    }
+    case 'text-line-tool': {
+      const variant = (['head', 'tail', 'sort', 'unique', 'dedupe', 'strip-blank', 'reverse-lines', 'shuffle-order'].includes(params.variant) ? params.variant : 'unique') as 'head' | 'tail' | 'sort' | 'unique' | 'dedupe' | 'strip-blank' | 'reverse-lines' | 'shuffle-order';
+      return textLineTool(input, variant, Number(params.shift || 10));
+    }
     case 'base64-stego':
       return base64StegoReport(input);
     case 'snow-stego':

@@ -7,6 +7,9 @@
 import type { ParsedCapture } from './pcap/parser';
 
 export const USBMON_LINKTYPE = 220;
+// USBPcap（Windows）原生链路层类型（desowin/usbpcap USBPcap.h：USBPCAP_BUFFER_PACKET_HEADER
+// 27 字节变长头，数据起于 headerLen 而非固定 64）。
+export const USBPCAP_LINKTYPE = 239;
 const USBMON_HEADER_BYTES = 64;
 const TRACK_CANVAS = 999; // 轨迹归一化画布坐标上界（0..999）
 
@@ -77,6 +80,8 @@ const KEYMAP: Array<[string, string] | undefined> = (() => {
 
 const u32le = (bytes: Uint8Array, offset: number): number =>
   bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24);
+
+const u16le = (bytes: Uint8Array, offset: number): number => bytes[offset] | (bytes[offset + 1] << 8);
 
 const int8 = (value: number): number => (value >= 128 ? value - 256 : value);
 
@@ -158,14 +163,41 @@ export const extractUsbHid = (parseResult: ParsedCapture): UsbHidResult => {
     notes.push('未解析到任何数据包');
     return emptyResult();
   }
-  const usbPackets = parseResult.packets.filter(packet => packet.linkType === USBMON_LINKTYPE);
+  const isUsbPcap = parseResult.linkType === USBPCAP_LINKTYPE;
+  const usbPackets = parseResult.packets.filter(packet => packet.linkType === USBMON_LINKTYPE || packet.linkType === USBPCAP_LINKTYPE);
   if (usbPackets.length === 0) {
-    notes.push(`抓包链路层非 USB usbmon（linkType=${parseResult.linkType}，需 LINKTYPE_USB_LINUX_MMAPPED=220），无法恢复 HID`);
+    notes.push(`抓包链路层非 USB（linkType=${parseResult.linkType}，需 usbmon 220 或 USBPcap 239），无法恢复 HID`);
     return emptyResult();
   }
   if (usbPackets.length < parseResult.packets.length) {
-    notes.push(`${parseResult.packets.length - usbPackets.length} 包链路层非 220，已跳过`);
+    notes.push(`${parseResult.packets.length - usbPackets.length} 包链路层非 USB，已跳过`);
   }
+
+  // USBPcap 头（27 字节中断/批量，变长）：headerLen u16@0 | irpId u64@2 | status u32@10 |
+  // function u16@14 | info u8@16（bit0=completion）| bus u16@17 | device u16@19 |
+  // endpoint u8@21（bit7=IN）| transfer u8@22 | dataLength u32@23。数据起于 headerLen。
+  const readUsbPcapReport = (data: Uint8Array): { report: Uint8Array; deviceKey: string; isHidIn: boolean } | null => {
+    if (data.length < 27) return null;
+    const headerLen = u16le(data, 0);
+    const status = u32le(data, 10);
+    const info = data[16];
+    const bus = u16le(data, 17);
+    const device = u16le(data, 19);
+    const endpoint = data[21];
+    const transfer = data[22];
+    const dataLength = u32le(data, 23);
+    if (headerLen < 27 || headerLen > data.length) return null;
+    const start = headerLen;
+    const end = Math.min(start + dataLength, data.length);
+    if (end <= start) return null;
+    // HID 中断 IN：中断传输 + URB_FUNCTION_BULK_OR_INTERRUPT_TRANSFER + completion + IN 端点 + 成功
+    const isHidIn = transfer === 1
+      && (u16le(data, 14)) === 0x0009
+      && (info & 1) === 1
+      && (endpoint & 0x80) !== 0
+      && status === 0;
+    return { report: data.subarray(start, end), deviceKey: `${bus}:${device}:${endpoint & 0x7f}`, isHidIn };
+  };
 
   const readReport = (data: Uint8Array): Uint8Array | null => {
     if (data.length < USBMON_HEADER_BYTES) return null;
@@ -175,6 +207,25 @@ export const extractUsbHid = (parseResult: ParsedCapture): UsbHidResult => {
   };
 
   const candidates: HidCandidate[] = [];
+  if (isUsbPcap) {
+    for (const packet of usbPackets) {
+      const parsed = readUsbPcapReport(packet.data);
+      if (!parsed || parsed.report.length < 3 || parsed.report.length > 8) continue;
+      if (!parsed.isHidIn) continue;
+      candidates.push({ report: parsed.report, packetIndex: packet.index, deviceKey: parsed.deviceKey });
+    }
+    if (candidates.length === 0) {
+      // 兜底：USBPcap 头字段被改写时退化为数据段形态校验。
+      for (const packet of usbPackets) {
+        const parsed = readUsbPcapReport(packet.data);
+        if (!parsed) continue;
+        if (looksLikeKeyboardReport(parsed.report) || looksLikeMouseReport(parsed.report)) {
+          candidates.push({ report: parsed.report, packetIndex: packet.index, deviceKey: '*' });
+        }
+      }
+      if (candidates.length > 0) notes.push('USBPcap 头字段未命中 HID 判据，已按数据段形态启发式兜底提取');
+    }
+  } else {
   for (const packet of usbPackets) {
     const report = readReport(packet.data);
     if (!report || report.length < 3 || report.length > 8) continue;
@@ -199,6 +250,7 @@ export const extractUsbHid = (parseResult: ParsedCapture): UsbHidResult => {
       }
     }
     if (candidates.length > 0) notes.push('未识别到 IN 方向完成事件（usbmon 头字段缺失或被改写），已按数据段形态启发式兜底提取');
+  }
   }
 
   // 设备级键/鼠仲裁：8 字节报文在键盘与鼠标间存在逐包歧义（鼠标 [1] 为位移、键盘 [1] 恒 0），

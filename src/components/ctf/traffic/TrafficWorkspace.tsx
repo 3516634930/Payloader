@@ -272,7 +272,7 @@ function TrafficWorkspace({ pendingFile, onFileConsumed }: TrafficWorkspaceProps
             )}
           </section>
 
-          {report.capture.linkType === 220 && (
+          {(report.capture.linkType === 220 || report.capture.linkType === 239) && (
             <UsbHidCard
               key={`usbhid-${report.name}:${report.size}`}
               capture={report.capture}
