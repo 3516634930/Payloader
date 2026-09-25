@@ -215,6 +215,8 @@ export const defaultGlobalVariables: GlobalVariable[] = [
   { key: 'PHP', value: 'php', group: 'infra', description: { zh: 'php 解释器调用名', en: 'php 解释器调用名' } },
   { key: 'PID', value: '4242', group: 'infra', description: { zh: '目标进程 PID', en: '目标进程 PID' } },
   { key: 'TARGET_COMPUTER', value: 'ws-lab-01', group: 'target', description: { zh: '目标计算机名', en: '目标计算机名' } },
+  { key: 'TARGET_TABLE', value: 'users', group: 'target', description: { zh: '目标数据表名', en: 'Target database table name' } },
+  { key: 'DATABASE_NAME', value: 'webapp', group: 'target', description: { zh: '目标数据库名', en: 'Target database name' } },
   { key: 'TARGET_HOST', value: '192.0.2.10', group: 'target', description: { zh: '目标主机名或 IP', en: '目标主机名或 IP' } },
   { key: 'TARGET_ID', value: '10001', group: 'target', description: { zh: '目标对象标识符', en: '目标对象标识符' } },
   { key: 'UNIQUE_TOKEN', value: 'tok-lab-9f3a', group: 'auth', description: { zh: '唯一请求令牌', en: '唯一请求令牌' } },
