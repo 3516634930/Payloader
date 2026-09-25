@@ -8,6 +8,8 @@ import EmbeddedCard from './EmbeddedCard';
 import type { EmbeddedReport } from './EmbeddedCard';
 import ImagePlanesCard from './ImagePlanesCard';
 import type { PlaneImage } from './ImagePlanesCard';
+import ImageOpsCard from './ImageOpsCard';
+import ImageStegoCard from './ImageStegoCard';
 import AudioStegoCard from './AudioStegoCard';
 import GifInspectCard from './GifInspectCard';
 import ZipBruteCard from './ZipBruteCard';
@@ -273,6 +275,8 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
         { key: 'summary', label: language === 'zh' ? '【文件概要】' : '[Summary]', onSelect: () => scrollToCard('ff-card-summary', { zh: '请先选择文件。', en: 'Choose a file first.' }) },
         { key: 'suspicious', label: language === 'zh' ? '【可疑内容】' : '[Suspicious]', onSelect: () => scrollToCard('ff-card-suspicious', { zh: '当前文件未发现可疑内容，没有可展示的部分。', en: 'No suspicious content was found in this file.' }) },
         { key: 'bitplanes', label: language === 'zh' ? '【位平面】' : '[Bit planes]', onSelect: () => scrollToCard('ff-card-bitplanes', { zh: '位平面分析仅支持图片文件，请先选择一张图片。', en: 'Bit-plane analysis applies to image files; choose an image first.' }) },
+        { key: 'imageops', label: language === 'zh' ? '【图像运算与转换】' : '[Image operations]', onSelect: () => scrollToCard('ff-card-imageops', { zh: '图像运算需要先加载一张图片。', en: 'Load an image first.' }) },
+        { key: 'imagestego', label: language === 'zh' ? '【置乱与频域隐写】' : '[Scramble & freq stego]', onSelect: () => scrollToCard('ff-card-imagestego', { zh: '置乱/频域工具需要先加载一张图片。', en: 'Load an image first.' }) },
         { key: 'embedded', label: language === 'zh' ? '【嵌入数据】' : '[Embedded data]', onSelect: () => scrollToCard('ff-card-embedded', { zh: '当前文件没有检出嵌入文件或尾附数据。', en: 'No embedded files or trailing data were detected in this file.' }) },
         { key: 'chunks', label: language === 'zh' ? '【PNG chunk】' : '[PNG chunks]', onSelect: () => scrollToCard('ff-card-chunks', { zh: 'chunk 枚举仅支持 PNG 文件。', en: 'Chunk enumeration applies to PNG files only.' }) },
         { key: 'ntfs', label: language === 'zh' ? '【NTFS 数据流】' : '[NTFS streams]', onSelect: () => scrollToCard('ff-card-ntfs', { zh: '未发现 NTFS 数据流，或当前文件不是 ZIP 载体。', en: 'No NTFS data streams found, or the file is not a ZIP carrier.' }) },
@@ -790,6 +794,22 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
               fileName={analysis.name}
               image={planeImage}
               status={planeStatus}
+              language={language}
+            />
+          )}
+
+          {planeStatus === 'ready' && planeImage !== null && (
+            <ImageOpsCard
+              key={`ops-${analysis.name}:${analysis.size}`}
+              image={planeImage}
+              language={language}
+            />
+          )}
+
+          {planeStatus === 'ready' && planeImage !== null && (
+            <ImageStegoCard
+              key={`stego-${analysis.name}:${analysis.size}`}
+              image={planeImage}
               language={language}
             />
           )}

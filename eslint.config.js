@@ -14,6 +14,7 @@ export default defineConfig([
     'test-results/**',
     '.playwright-mcp/**',
     '.playwright-cli/**',
+    'src/vendor/**',
     '**/*.bak',
     '**/*.bak-*',
     '**/*.before-*',
