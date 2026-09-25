@@ -11,6 +11,7 @@ import type { PlaneImage } from './ImagePlanesCard';
 import ImageOpsCard from './ImageOpsCard';
 import ImageStegoCard from './ImageStegoCard';
 import JpegStegoCard from './JpegStegoCard';
+import SteghideCard from './SteghideCard';
 import AudioStegoCard from './AudioStegoCard';
 import GifInspectCard from './GifInspectCard';
 import ZipBruteCard from './ZipBruteCard';
@@ -819,6 +820,24 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
             <JpegStegoCard
               key={`jpegstego-${analysis.name}:${analysis.size}`}
               bytes={analysis.bytes}
+              language={language}
+            />
+          )}
+
+          {analysis.bytes[0] === 0x42 && analysis.bytes[1] === 0x4d && (
+            <SteghideCard
+              key={`steghide-bmp-${analysis.name}:${analysis.size}`}
+              bytes={analysis.bytes}
+              kind="bmp"
+              language={language}
+            />
+          )}
+
+          {analysis.bytes[0] === 0x52 && analysis.bytes[1] === 0x49 && analysis.bytes[2] === 0x46 && analysis.bytes[3] === 0x46 && (
+            <SteghideCard
+              key={`steghide-wav-${analysis.name}:${analysis.size}`}
+              bytes={analysis.bytes}
+              kind="wav"
               language={language}
             />
           )}

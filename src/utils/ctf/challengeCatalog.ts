@@ -161,10 +161,17 @@ export const challengeCatalog: ChallengeCategory[] = [
       },
       {
         id: 'jpeg-dct',
-        label: { zh: 'JPEG DCT 隐写（jsteg）', en: 'JPEG DCT stego (jsteg)' },
-        description: { zh: 'DCT 系数 LSB 提取（跳过 0/±1），CLI 载荷/flag 自动识别；F5/outguess/JPHS 后续批次接入。', en: 'DCT coefficient LSB extraction with magic auto-scan; F5/outguess/JPHS arrive in later batches.' },
+        label: { zh: 'JPEG DCT 隐写（jsteg/jphide）', en: 'JPEG DCT stego (jsteg/jphide)' },
+        description: { zh: 'jsteg 系数 LSB（跳过 0/±1）与 jphide 口令提取（Blowfish+扫描表）；F5/outguess 后续批次接入。', en: 'jsteg coefficient LSB plus password-driven jphide; F5/outguess arrive in later batches.' },
         kind: 'file',
         cardId: 'ff-card-jpegstego',
+      },
+      {
+        id: 'steghide',
+        label: { zh: 'steghide 提取', en: 'steghide extract' },
+        description: { zh: 'BMP/WAV 载体口令提取（Selector 置换 + AES-256 + zlib + CRC 终验）。', en: 'Password extraction from BMP/WAV carriers with CRC verification.' },
+        kind: 'file',
+        cardId: 'ff-card-steghide',
       },
       {
         id: 'blind-watermark',

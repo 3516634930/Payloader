@@ -2,9 +2,10 @@ import { useMemo, useState } from 'react';
 import { notifications } from '@mantine/notifications';
 import { FlagAutoText } from '../codec/FlagAutoText';
 import { jstegReveal } from '../../utils/ctf/jsteg';
+import { jphsExtract } from '../../utils/ctf/jphs';
 
-// JPEG DCT 域隐写卡（批次 SI·A 线）：jsteg 提取（跳过集 {0,±1}，含 -1 开关兼容原版 C jsteg）。
-// F5/outguess/JPHS 提取器在后续批次接入同一系数层。
+// JPEG DCT 域隐写卡（批次 SI·A 线）：jsteg 提取（跳过集 {0,±1}，含 -1 开关兼容原版 C jsteg）
+// 与 jphide（JPHS，口令驱动）。F5/outguess 在后续批次接入同一系数层。
 interface JpegStegoCardProps {
   bytes: Uint8Array;
   language: 'zh' | 'en';
@@ -13,6 +14,7 @@ interface JpegStegoCardProps {
 function JpegStegoCard({ bytes, language }: JpegStegoCardProps) {
   const zh = language === 'zh';
   const [includeMinusOne, setIncludeMinusOne] = useState(false);
+  const [password, setPassword] = useState('');
   const [result, setResult] = useState<{ findings: string; rawPreview: string; coefficientCount: number } | null>(null);
 
   const run = useMemo(() => {
@@ -46,7 +48,7 @@ function JpegStegoCard({ bytes, language }: JpegStegoCardProps) {
   return (
     <section id="ff-card-jpegstego" className="ff-card" aria-label={zh ? 'JPEG DCT 隐写' : 'JPEG DCT stego'}>
       <div className="ff-card-head">
-        <strong>{zh ? 'JPEG DCT 隐写（jsteg）' : 'JPEG DCT stego (jsteg)'}</strong>
+        <strong>{zh ? 'JPEG DCT 隐写（jsteg / jphide）' : 'JPEG DCT stego (jsteg / jphide)'}</strong>
         <span className="ff-badge">{bytes.length.toLocaleString()} B</span>
       </div>
       <div className="ff-tool">
@@ -59,9 +61,20 @@ function JpegStegoCard({ bytes, language }: JpegStegoCardProps) {
             {zh ? '含 -1 系数（原版 C jsteg 语义）' : 'Include -1 (original C jsteg)'}
           </label>
         </div>
+        <div className="ff-row">
+          <input className="ff-input" style={{ width: 130 }} value={password} aria-label={zh ? '口令（jphide）' : 'Password (jphide)'} placeholder={zh ? '口令(jphide)' : 'password'} onChange={event => setPassword(event.target.value)} />
+          <button type="button" className="ff-button" onClick={() => {
+            try {
+              const extracted = jphsExtract(bytes, password);
+              setResult({ findings: `${zh ? 'jphide 提取' : 'jphide extract'} (${extracted.length} B):\n${new TextDecoder().decode(extracted.subarray(0, 400))}`, rawPreview: '', coefficientCount: 0 });
+            } catch (error) {
+              notifications.show({ message: (error as Error).message, color: 'red' });
+            }
+          }}>{zh ? 'jphide 提取' : 'jphide seek'}</button>
+        </div>
         {result !== null && (
           <>
-            <p className="ff-note">{zh ? `合格系数 ${result.coefficientCount} 个` : `${result.coefficientCount} usable coefficients`}</p>
+            {result.coefficientCount > 0 && <p className="ff-note">{zh ? `合格系数 ${result.coefficientCount} 个` : `${result.coefficientCount} usable coefficients`}</p>}
             <code className="ff-code"><FlagAutoText text={result.findings} /></code>
             {result.rawPreview !== '' && <code className="ff-code">{result.rawPreview}</code>}
           </>
