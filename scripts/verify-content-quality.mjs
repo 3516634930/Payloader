@@ -36,7 +36,7 @@ const payloadRefAliases = new Map([
   ['jwt-jku-spoofing', 'jwt-jku-x5u-injection'],
 ]);
 export const categoryBranchExceptions = new Map([
-  ['rce-file-upload', 'file-vulns'],
+  // rce-file-upload 历史纠偏已由 subCategory 声明组机制接管（挂"上传解析绕过"），例外表清空
 ]);
 
 export const PAYLOAD_BRANCH_RULES = Object.freeze([
