@@ -1,17 +1,16 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { notifications } from '@mantine/notifications';
 import { FlagAutoText } from '../codec/FlagAutoText';
-import {
-  bruteZipPassword,
-  detectEncryptedEntries,
-  dictionaryCandidates,
-  maskCandidates,
-} from '../../utils/ctf/zipBrute';
-import type { BruteProgress, ZipEncryptedEntry } from '../../utils/ctf/zipBrute';
+import { detectEncryptedEntries } from '../../utils/ctf/zipBrute';
+import type { ZipEncryptedEntry } from '../../utils/ctf/zipBrute';
+import { bruteZipPasswordWorker } from '../../utils/ctf/zipBruteWorkerClient';
+import type { ZipBruteWorkerProgress } from '../../utils/ctf/zipBruteWorkerClient';
+import type { ZipBruteSpec } from '../../utils/ctf/zipBruteWorker';
 import { copyToClipboard } from '../../utils/clipboard';
 
 // ZIP 密码爆破卡：上传流里检测到加密条目时渲染。三种候选源（内置字典 / 自定义列表 / 掩码笛卡尔积），
-// 引擎自带时间预算与 onProgress 节流；换文件由父层 key remount 清状态。
+// 爆破在 Web Worker 紧循环跑满单核（UI 零阻塞，吞吐较主线程让步路径提升一个数量级），
+// AbortController 支持取消与换文件 remount 即停；换文件由父层 key remount 清状态。
 interface ZipBruteCardProps {
   bytes: Uint8Array;
   language: 'zh' | 'en';
@@ -43,7 +42,11 @@ function ZipBruteCard({ bytes, language }: ZipBruteCardProps) {
   const [maskMax, setMaskMax] = useState(6);
   const [budget, setBudget] = useState(15000);
   const [running, setRunning] = useState(false);
-  const [progress, setProgress] = useState<BruteProgress | null>(null);
+  const [progress, setProgress] = useState<ZipBruteWorkerProgress | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // 卸载即停（TD-批次MISC2-3）：换文件 remount 时终止在跑 worker，不再吃满剩余预算
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   if (entries === null) {
     return (
@@ -70,32 +73,42 @@ function ZipBruteCard({ bytes, language }: ZipBruteCardProps) {
 
   const run = async () => {
     if (running || !entry) return;
-    let candidates: Iterable<string>;
-    if (mode === 'dictionary') candidates = dictionaryCandidates();
-    else if (mode === 'custom') {
+    let spec: ZipBruteSpec;
+    if (mode === 'dictionary') {
+      spec = { kind: 'dictionary' };
+    } else if (mode === 'custom') {
       const list = customList.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
       if (!list.length) {
         notifications.show({ message: zh ? '自定义口令列表为空。' : 'The custom password list is empty.', color: 'red' });
         return;
       }
-      candidates = list;
+      spec = { kind: 'list', list };
     } else {
       const charset = Array.from(new Set(maskCharset.split('').filter(char => char.trim()))).join('');
       if (charset.length < 2) {
         notifications.show({ message: zh ? '掩码字符集至少需要 2 个不同字符。' : 'The mask charset needs at least 2 distinct characters.', color: 'red' });
         return;
       }
-      candidates = maskCandidates(charset, Math.max(1, maskMin), Math.max(Math.max(1, maskMin), maskMax));
+      spec = {
+        kind: 'mask',
+        charset,
+        minLength: Math.max(1, maskMin),
+        maxLength: Math.max(Math.max(1, maskMin), maskMax),
+      };
     }
+    const controller = new AbortController();
+    abortRef.current = controller;
     setRunning(true);
     setProgress(null);
     try {
-      const result = await bruteZipPassword(bytes, entry, candidates, {
+      const result = await bruteZipPasswordWorker(bytes, entry, spec, {
         timeBudgetMs: budget,
         onProgress: update => setProgress({ ...update }),
+        signal: controller.signal,
       });
-      setProgress(result);
-      if (result.password) {
+      // 卸载触发的 abort：组件已 remount，setState 为 no-op；用户手动取消则保留已试进度展示
+      setProgress(result.tried > 0 || result.password !== null ? result : null);
+      if (result.password && !controller.signal.aborted) {
         notifications.show({
           message: zh ? `命中口令：${result.password}` : `Password found: ${result.password}`,
           color: 'teal',
@@ -104,6 +117,7 @@ function ZipBruteCard({ bytes, language }: ZipBruteCardProps) {
     } catch (error) {
       notifications.show({ message: (error as Error).message, color: 'red' });
     } finally {
+      if (abortRef.current === controller) abortRef.current = null;
       setRunning(false);
     }
   };
@@ -129,6 +143,7 @@ function ZipBruteCard({ bytes, language }: ZipBruteCardProps) {
             <option value={5000}>{zh ? '预算 5 秒' : '5s budget'}</option>
             <option value={15000}>{zh ? '预算 15 秒' : '15s budget'}</option>
             <option value={60000}>{zh ? '预算 60 秒' : '60s budget'}</option>
+            <option value={300000}>{zh ? '预算 5 分钟' : '5min budget'}</option>
           </select>
         </div>
         <div className="ff-row">
@@ -179,6 +194,11 @@ function ZipBruteCard({ bytes, language }: ZipBruteCardProps) {
           <button type="button" className="ff-button ff-button-primary" disabled={running} onClick={() => { void run(); }}>
             {running ? (zh ? '爆破中…' : 'Running…') : zh ? '开始爆破' : 'Start brute force'}
           </button>
+          {running && (
+            <button type="button" className="ff-button" onClick={() => abortRef.current?.abort()}>
+              {zh ? '取消' : 'Cancel'}
+            </button>
+          )}
           {progress && (
             <span className="ff-badge">
               {zh ? `已试 ${progress.tried.toLocaleString()} / ${totalText}` : `Tried ${progress.tried.toLocaleString()} / ${totalText}`}
@@ -196,11 +216,15 @@ function ZipBruteCard({ bytes, language }: ZipBruteCardProps) {
             {progress.previewText && <code className="ff-code"><FlagAutoText text={progress.previewText} /></code>}
           </div>
         )}
-        {progress && !progress.password && (
+        {progress && !progress.password && !running && (
           <p className="ff-note">
-            {zh
-              ? `本轮未命中（已试 ${progress.tried.toLocaleString()} 个口令）。掩码模式可加长时间预算重跑，或换自定义列表。`
-              : `No hit this round (${progress.tried.toLocaleString()} tried). Extend the budget in mask mode or try a custom list.`}
+            {progress.aborted
+              ? zh
+                ? `已取消（已试 ${progress.tried.toLocaleString()} 个）。调整候选源或预算后可重新开始。`
+                : `Cancelled (${progress.tried.toLocaleString()} tried). Adjust the source or budget and start again.`
+              : zh
+                ? `本轮未命中（已试 ${progress.tried.toLocaleString()} 个口令）。掩码模式可加长时间预算重跑，或换自定义列表。`
+                : `No hit this round (${progress.tried.toLocaleString()} tried). Extend the budget in mask mode or try a custom list.`}
           </p>
         )}
       </div>

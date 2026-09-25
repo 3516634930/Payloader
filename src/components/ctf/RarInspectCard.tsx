@@ -34,6 +34,8 @@ function RarInspectCard({ fileName, bytes, language }: RarInspectCardProps) {
   const [maskCharset, setMaskCharset] = useState('0123456789');
   const [maskMin, setMaskMin] = useState(4);
   const [maskMax, setMaskMax] = useState(6);
+  // 纯掩码默认开（TD-批次SB-2）：掩码枚举不再先耗 5-10s 跑 165 条内置字典
+  const [maskSkipDict, setMaskSkipDict] = useState(true);
   const [budget, setBudget] = useState(60000);
   const [running, setRunning] = useState(false);
   const [progressText, setProgressText] = useState('');
@@ -83,6 +85,7 @@ function RarInspectCard({ fileName, bytes, language }: RarInspectCardProps) {
         options.charset = charset;
         options.minLength = Math.max(1, maskMin);
         options.maxLength = Math.max(Math.max(1, maskMin), maskMax);
+        options.skipDictionary = maskSkipDict;
       }
       const outcome = await bruteRarPassword(bytes, options);
       if (outcome?.password) {
@@ -160,17 +163,27 @@ function RarInspectCard({ fileName, bytes, language }: RarInspectCardProps) {
             />
           )}
           {mode === 'mask' && (
-            <div className="ff-row">
-              <input className="ff-input" value={maskCharset} aria-label={zh ? '掩码字符集' : 'Mask charset'} onChange={event => setMaskCharset(event.target.value)} />
-              <select className="ff-select" value={maskMin} aria-label={zh ? '最短长度' : 'Min length'}
-                onChange={event => setMaskMin(Number(event.target.value))}>
-                {[1, 2, 3, 4, 5, 6].map(len => <option key={len} value={len}>{len}</option>)}
-              </select>
-              <select className="ff-select" value={maskMax} aria-label={zh ? '最长长度' : 'Max length'}
-                onChange={event => setMaskMax(Number(event.target.value))}>
-                {[1, 2, 3, 4, 5, 6, 7, 8].map(len => <option key={len} value={len}>{len}</option>)}
-              </select>
-            </div>
+            <>
+              <div className="ff-row">
+                <input className="ff-input" value={maskCharset} aria-label={zh ? '掩码字符集' : 'Mask charset'} onChange={event => setMaskCharset(event.target.value)} />
+                <select className="ff-select" value={maskMin} aria-label={zh ? '最短长度' : 'Min length'}
+                  onChange={event => setMaskMin(Number(event.target.value))}>
+                  {[1, 2, 3, 4, 5, 6].map(len => <option key={len} value={len}>{len}</option>)}
+                </select>
+                <select className="ff-select" value={maskMax} aria-label={zh ? '最长长度' : 'Max length'}
+                  onChange={event => setMaskMax(Number(event.target.value))}>
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map(len => <option key={len} value={len}>{len}</option>)}
+                </select>
+              </div>
+              <label className="ff-note" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={maskSkipDict}
+                  onChange={event => setMaskSkipDict(event.target.checked)}
+                />
+                {zh ? '纯掩码（跳过内置字典，直接从枚举开始）' : 'Pure mask (skip the built-in dictionary)'}
+              </label>
+            </>
           )}
           <div className="ff-row">
             <button type="button" className="ff-button ff-button-primary" disabled={running} onClick={() => { void runBrute(); }}>

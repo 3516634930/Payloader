@@ -692,10 +692,11 @@ const solveBytes = async (bytes, fileName, depth, label) => {
       }
       if (!usedFixed) {
         try {
-          let result = await engines.zipBrute.bruteZipPassword(bytes, encryptedEntries[0], engines.zipBrute.dictionaryCandidates(), { timeBudgetMs: 8000 });
+          let result = await engines.zipBrute.bruteZipPassword(bytes, encryptedEntries[0], engines.zipBrute.dictionaryCandidates(), { timeBudgetMs: 8000, yieldEvery: 0 });
           if (!result.password) {
-            const gen = function* () { for (let len = 1; len <= 5; len += 1) yield* engines.zipBrute.maskCandidates('0123456789', len, len); };
-            result = await engines.zipBrute.bruteZipPassword(bytes, encryptedEntries[0], gen(), { timeBudgetMs: 8000 });
+            // 6 位数字 100 万候选：紧循环（免 setTimeout 让步）~3s 可覆盖，让步路径 30s+ 必超预算（TD-批次KP-1）
+            const gen = function* () { for (let len = 1; len <= 6; len += 1) yield* engines.zipBrute.maskCandidates('0123456789', len, len); };
+            result = await engines.zipBrute.bruteZipPassword(bytes, encryptedEntries[0], gen(), { timeBudgetMs: 8000, yieldEvery: 0 });
             paths.push(prefix + 'ZIP 字典+数字掩码爆破（共试 ' + result.tried + '，' + (result.password ? '命中 ' + result.password : '未命中') + '）');
           } else {
             paths.push(prefix + 'ZIP 字典爆破（命中 ' + result.password + '）');

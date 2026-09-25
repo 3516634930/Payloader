@@ -439,6 +439,26 @@ test('向量三 数字掩码段：默认两段流程（字典耗尽后）命中 
   assert.ok(progresses.some((p) => p.password === '7'), '命中时进度回报带口令');
 });
 
+test('向量三 skipDictionary：纯掩码直接从枚举起跑，stage 恒 mask、total 不含字典段（TD-批次SB-2）', async () => {
+  const salt = Uint8Array.from('77aabbccddeeff99'.match(/../g), (h) => parseInt(h, 16));
+  const bytes = buildEncryptedStoredRar({ content: 'flag{pure_mask}', password: '5', salt });
+  const progresses = [];
+  const hit = await bruteRarPassword(bytes, {
+    skipDictionary: true,
+    minLength: 1,
+    maxLength: 1,
+    onProgress: (p) => progresses.push(p),
+  });
+  assert.notEqual(hit, null);
+  assert.equal(hit.password, '5');
+  // 纯掩码：'0'..'5' 线性序第 6 个命中，不再先耗 165 条字典
+  assert.equal(hit.tried, 6);
+  assert.ok(progresses.every((p) => p.stage === 'mask'), 'skipDictionary 下不应出现 dictionary 阶段');
+  // total = Σ charset^len（1 位数字 = 10），不含字典 165；两段式对照由"数字掩码段"用例覆盖（tried>165）
+  const finalProgress = progresses[progresses.length - 1];
+  assert.equal(finalProgress.total, 10);
+});
+
 // ---- 错误路径族 ----
 
 test('detectRarEncryptedEntries/bruteRarPassword 错误路径族', async () => {

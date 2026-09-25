@@ -260,7 +260,7 @@ test('bruteZipPassword：以掩码生成器为候选源找回 4 位纯数字口�
   assert.equal(result.total, Infinity);
 });
 
-test('bruteZipPassword：deflate 条目命中口令但只返回提示文案（无 inflate，不出内容预览）', async () => {
+test('bruteZipPassword：deflate 条目命中口令并解出明文前缀预览（DecompressionStream deflate-raw）', async () => {
   const plain = 'flag{d3fl4te_h1nt_me}';
   const rawDeflate = Array.from(deflateRawSync(Buffer.from(plain, 'latin1')));
   const entry = buildZipCryptoEntry({
@@ -273,8 +273,32 @@ test('bruteZipPassword：deflate 条目命中口令但只返回提示文案（�
   const [meta] = detectEncryptedEntries(zip);
   const result = await bruteZipPassword(zip, meta, ['Deflate!1']);
   assert.equal(result.password, 'Deflate!1');
-  assert.ok(result.previewText.includes('系统解压'));
-  assert.ok(!result.previewText.includes('flag{'));
+  // 批次 KW（TD-批次MISC2-2）：命中后整段解密 + inflate 出明文前缀，不再是"系统解压"提示文案
+  assert.ok(result.previewText.includes('flag{d3fl4te_h1nt_me}'));
+  assert.ok(!result.previewText.includes('系统解压'));
+});
+
+test('快筛误报否决：2 字节碰撞口令的垃圾流被 deflate 结构验证拒绝，继续枚举命中真口令', async () => {
+  const plain = 'flag{f4lse_p0s1t1ve_gate}';
+  const rawDeflate = Array.from(deflateRawSync(Buffer.from(plain, 'latin1')));
+  const realCrc = crc32BytesOf(toLatin1(plain));
+  const entry = buildZipCryptoEntry({ plainBytes: rawDeflate, password: 'RealPw42', method: 8, storedCrc: realCrc });
+  const zip = buildZip([entry]);
+  const [meta] = detectEncryptedEntries(zip);
+  // 测试侧暴力找碰撞口令：解出的 12 字节头 [10..11] 恰好撞上 CRC 高 16 位（zipCryptoCrypt 对称可解密）
+  const cipherHead = Uint8Array.from(entry.data.slice(0, 12));
+  let collision = null;
+  for (let index = 0; index < 5000000 && collision === null; index += 1) {
+    const pw = `fp${index.toString(36)}`;
+    const head = zipCryptoCrypt(cipherHead, pw);
+    if (head[10] === ((realCrc >>> 16) & 0xff) && head[11] === ((realCrc >>> 24) & 0xff)) collision = pw;
+  }
+  assert.notEqual(collision, null, '500 万内未找到 2 字节碰撞口令（期望 ~65536 次命中）');
+  // 碰撞口令排真口令之前：快筛命中 → 垃圾流 inflate 失败 → 否决继续 → 真口令命中并出明文预览
+  const result = await bruteZipPassword(zip, meta, [collision, 'RealPw42']);
+  assert.equal(result.password, 'RealPw42');
+  assert.equal(result.tried, 2);
+  assert.ok(result.previewText.includes('flag{f4lse_p0s1t1ve_gate}'));
 });
 
 // ---- bruteZipPassword：WinZip AES 路径 ----
@@ -368,6 +392,56 @@ test('时间预算：超小 budget 中断枚举且 tried>0、password=null', asy
   assert.equal(result.total, Infinity);
 });
 
+test('紧循环（yieldEvery:0）：掩码命中路径与让步路径等价，10 万口令不慢于让步路径（TD-批次KP-1）', async () => {
+  const zip = buildZip([buildZipCryptoEntry({ plain: 'flag{t1ght_l00p}', password: '0731' })]);
+  const [meta] = detectEncryptedEntries(zip);
+  const result = await bruteZipPassword(zip, meta, maskCandidates('0123456789', 1, 4), { yieldEvery: 0 });
+  assert.equal(result.password, '0731');
+  assert.equal(result.tried, 10 + 100 + 1000 + 731 + 1);
+  assert.equal(result.total, Infinity);
+
+  // 吞吐对照：同 10 万错误口令。注意 Node 的 setTimeout(0) ~1ms 无浏览器 15ms clamp，
+  // 这里只要求紧循环不慢于让步路径（1.5 倍容忍 CI 抖动）；浏览器侧的数量级提升由实测覆盖。
+  const dict = Array.from({ length: 100000 }, (_, index) => `tight-${index}`);
+  const startedTight = Date.now();
+  await bruteZipPassword(zip, meta, dict, { yieldEvery: 0 });
+  const tightMs = Date.now() - startedTight;
+  const startedYield = Date.now();
+  await bruteZipPassword(zip, meta, dict, { yieldEvery: 512 });
+  const yieldMs = Date.now() - startedYield;
+  assert.ok(tightMs <= 5000, `紧循环 10 万口令耗时 ${tightMs}ms 超过 5 秒红线`);
+  assert.ok(tightMs <= yieldMs * 1.5 + 50, `紧循环 ${tightMs}ms 显著慢于让步路径 ${yieldMs}ms，异常`);
+});
+
+test('紧循环（yieldEvery:0）：超小预算截断仍生效（时钟每 256 口令检查）', async () => {
+  const zip = buildZip([buildZipCryptoEntry({ plain: 'flag{t1ght_cut}', password: 'Absent9x9' })]);
+  const [meta] = detectEncryptedEntries(zip);
+  const result = await bruteZipPassword(zip, meta, maskCandidates('0123456789abcdef', 8, 8), { timeBudgetMs: 60, yieldEvery: 0 });
+  assert.ok(result.tried > 0, `tried=${result.tried} 应大于 0`);
+  assert.equal(result.password, null);
+});
+
+test('AbortSignal：让步路径在 512 批次边界响应 abort 提前收口（password=null 且未扫完）', async () => {
+  const zip = buildZip([buildZipCryptoEntry({ plain: 'flag{ab0rt_me}', password: 'definitely-absent' })]);
+  const [meta] = detectEncryptedEntries(zip);
+  const dict = Array.from({ length: 100000 }, (_, index) => `abort-${index}`);
+  const controller = new AbortController();
+  const seenAtAbort = { tried: 0 };
+  const result = await bruteZipPassword(zip, meta, dict, {
+    timeBudgetMs: 600000,
+    signal: controller.signal,
+    onProgress: progress => {
+      if (progress.tried >= 1024 && !controller.signal.aborted) {
+        seenAtAbort.tried = progress.tried;
+        controller.abort();
+      }
+    },
+  });
+  assert.equal(result.password, null);
+  assert.ok(result.tried <= seenAtAbort.tried + 1, `abort 后仍多扫（${result.tried} > ${seenAtAbort.tried}+1）`);
+  assert.ok(result.tried < dict.length, '应在候选耗尽前被 abort 截断');
+});
+
 test('性能红线：10 万口令 ZipCrypto 字典全扫 ≤10 秒（node）', async () => {
   const zip = buildZip([buildZipCryptoEntry({ plain: 'flag{perf_redline}', password: 'definitely-not-in-list' })]);
   const [meta] = detectEncryptedEntries(zip);
@@ -391,6 +465,29 @@ test('onProgress：512 一批节流回报 + 结束终值', async () => {
   for (const event of events) triedList.push(event.tried);
   assert.deepEqual(triedList, [512, 1024, 1536, 2000]);
   for (let index = 0; index < 3; index += 1) assert.equal(events[index].password, null);
+});
+
+// ---- inflateRawPreview（TD-批次MISC2-2）----
+
+test('inflateRawPreview：正常流全量解出 / 损坏流返回 null / 大输出 8KB 截断', async () => {
+  const { inflateRawPreview } = loadModule(path.join(srcDir, 'utils', 'ctf', 'zipBrute.ts'));
+  // 正常流：flag 明文 deflate 后完整解回
+  const plain = 'flag{inflate_preview_ok} ' + 'A'.repeat(64);
+  const normal = new Uint8Array(deflateRawSync(Buffer.from(plain, 'latin1')));
+  const inflated = await inflateRawPreview(normal);
+  assert.notEqual(inflated, null);
+  assert.equal(Buffer.from(inflated).toString('latin1'), plain);
+
+  // 损坏流：BTYPE=0b11（保留块类型，DEFLATE 规范强制报错）→ null（错误口令误报防线，确定性向量）
+  const corrupted = new Uint8Array([0x07, 0x00, 0x00, 0x00]);
+  const corruptedResult = await inflateRawPreview(corrupted);
+  assert.equal(corruptedResult, null);
+
+  // 解压炸弹形态：64KB 全零 deflate 后很小，解压输出被 8KB 上限截断
+  const bomb = new Uint8Array(deflateRawSync(Buffer.alloc(65536, 0)));
+  const capped = await inflateRawPreview(bomb);
+  assert.notEqual(capped, null);
+  assert.equal(capped.length, 8192);
 });
 
 // ---- 内置字典 ----

@@ -8,8 +8,10 @@
 //   PBKDF2-HMAC-SHA1×1000 派生 2*keyLen+2 字节（AES key || HMAC key || 验证值），CTR 计数器为全零 128 位大端，
 //   认证码覆盖密文（encrypt-and-MAC）。
 // 口令字节约定：ZipCrypto 按 latin1（Info-ZIP/爆破器惯例，ASCII 口令无歧义）；WinZip AES 按 UTF-8（规范要求）。
-// 解压边界：仅 stored(method 0) 条目出内容预览；deflate 等压缩条目命中后返回提示文案
-// （本仓无 inflate，长期项：接 CompressionStream('deflate-raw')）。
+// 解压边界：stored 条目直接出内容预览；deflate 条目命中后经 DecompressionStream('deflate-raw') 解出
+// 前缀预览（输出上限 8KB 防解压炸弹；环境无该 API 或流损坏时降级为提示文案）。
+// 让步策略：默认每 512 口令 setTimeout(0) 让步（UI 主线程）；yieldEvery: 0 走免让步紧循环
+// （Worker/Node 脚本专用，进度回报改按 250ms 时间节流），Windows 15ms 定时器粒度不再是吞吐瓶颈。
 import { crc32Table } from '../codec/alphabets';
 import { crc32BytesOf } from '../codec/crc32Attack';
 
@@ -38,7 +40,12 @@ const AES_AUTH_CODE_SIZE = 10;
 const DEFAULT_TIME_BUDGET_MS = 15000;
 // 让步/进度节流粒度：每 512 个口令 setTimeout(0) 让出主线程并回报一次进度（任务约束 256~1024）
 const YIELD_EVERY = 512;
+// 紧循环（yieldEvery=0）模式下的进度回报节流与时钟/中止检查粒度（每 256 口令查一次，避免逐口令 Date.now）
+const TIGHT_CHECK_EVERY = 256;
+const PROGRESS_INTERVAL_MS = 250;
 const PREVIEW_LIMIT = 256;
+// deflate 前缀解压输出上限：预览只需 256 字节，8KB 上限拦截解压炸弹并提前 cancel 流
+const INFLATE_PREVIEW_CAP = 8192;
 
 // deflate 等压缩条目命中后的统一提示（previewText 语义：stored 为真实内容前 256 字节可打印预览，压缩条目为本提示）
 const COMPRESSED_HIT_HINT =
@@ -369,6 +376,70 @@ const buildPrintablePreview = (content: Uint8Array): string => {
   return preview;
 };
 
+// 惰性能力探测（reviewer P1-1）：API 存在 ≠ 'deflate-raw' 格式可用（Node 18/20、Chrome 80-102
+// 有 DecompressionStream 但缺该格式，构造抛 TypeError）。构造失败必须归并为"能力缺失"走
+// 快筛即命中旧口径——否则真口令的 inflate 永远 null，误报否决门会把真口令当误报漏掉（假阴性）。
+let deflateRawSupport: boolean | null = null;
+const supportsDeflateRaw = (): boolean => {
+  if (deflateRawSupport === null) {
+    try {
+      if (typeof DecompressionStream === 'undefined') deflateRawSupport = false;
+      else {
+        new DecompressionStream('deflate-raw');
+        deflateRawSupport = true;
+      }
+    } catch {
+      deflateRawSupport = false;
+    }
+  }
+  return deflateRawSupport;
+};
+
+// deflate 原始流前缀解压：成功读到流结束或输出达 8KB 上限即返回已解出字节（提前 cancel）；
+// 能力缺失（无 API / 无 deflate-raw 格式）或流损坏（错误口令的 2 字节快筛误报/数据截断）返回 null。
+// 裸标识符查找：node:vm 沙箱的 globalThis 为白名单对象，裸 DecompressionStream 才能命中注入的宿主实现。
+export const inflateRawPreview = async (compressed: Uint8Array): Promise<Uint8Array | null> => {
+  if (!supportsDeflateRaw()) return null;
+  try {
+    const stream = new DecompressionStream('deflate-raw');
+    const writer = stream.writable.getWriter();
+    // 一次性拷贝得 Uint8Array<ArrayBuffer>：Web Streams 的 BufferSource 不接受 ArrayBufferLike 视图
+    const input = new Uint8Array(compressed);
+    // close 的 promise 也可能因下游 cancel（输出达上限）以 AbortError reject，一并吞掉防 unhandledRejection
+    void writer.write(input).then(
+      () => writer.close().then(
+        () => {},
+        () => {},
+      ),
+      () => {},
+    );
+    const reader = stream.readable.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done === true || value === undefined) break;
+      chunks.push(value);
+      total += value.length;
+      if (total >= INFLATE_PREVIEW_CAP) {
+        void reader.cancel().catch(() => {});
+        break;
+      }
+    }
+    const merged = new Uint8Array(Math.min(total, INFLATE_PREVIEW_CAP));
+    let offset = 0;
+    for (const chunk of chunks) {
+      const take = Math.min(chunk.length, merged.length - offset);
+      merged.set(chunk.subarray(0, take), offset);
+      offset += take;
+      if (offset >= merged.length) break;
+    }
+    return merged;
+  } catch {
+    return null;
+  }
+};
+
 // node:vm 跨 realm：Symbol.iterator 逐 realm 独立，宿主数组在沙箱内查不到沙箱符号；
 // Array.isArray 是跨 realm 可靠判定——数组走下标迭代，其余（本模块生成器等）走 Symbol.iterator
 const iterateCandidates = (candidates: Iterable<string>): Iterator<string> => {
@@ -402,11 +473,21 @@ const candidateTotal = (candidates: Iterable<string>): number => {
 
 const yieldToMainThread = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
+export interface BruteOptions {
+  onProgress?: (progress: BruteProgress) => void;
+  timeBudgetMs?: number;
+  // 每 N 个口令 setTimeout(0) 让步一次（默认 512）；0 = 免让步紧循环（Worker/Node 脚本，
+  // 进度改按 250ms 时间节流，时钟与中止检查每 256 口令一次）
+  yieldEvery?: number;
+  // 中止信号：让步点/紧循环检查点响应，abort 后停止枚举并按"预算内未命中"收尾
+  signal?: AbortSignal;
+}
+
 export const bruteZipPassword = async (
   bytes: Uint8Array,
   entry: ZipEncryptedEntry,
   candidates: Iterable<string>,
-  options?: { onProgress?: (progress: BruteProgress) => void; timeBudgetMs?: number },
+  options?: BruteOptions,
 ): Promise<BruteProgress> => {
   if (entry.method === 'unknown') {
     throw new Error(`条目 ${JSON.stringify(entry.fileName)} 加密类型未知（AES extra 缺失/损坏或强加密 bit6）：无法爆破`);
@@ -415,12 +496,20 @@ export const bruteZipPassword = async (
   if (!Number.isFinite(budget) || budget < 0) {
     throw new Error(`timeBudgetMs 必须为非负有限数字，当前 ${String(options?.timeBudgetMs)}`);
   }
+  const yieldEvery = options?.yieldEvery ?? YIELD_EVERY;
+  if (!Number.isInteger(yieldEvery) || yieldEvery < 0) {
+    throw new Error(`yieldEvery 必须为非负整数（0 表示免让步紧循环），当前 ${String(options?.yieldEvery)}`);
+  }
+  const tightLoop = yieldEvery === 0;
+  const checkEvery = tightLoop ? TIGHT_CHECK_EVERY : 1;
+  const signal = options?.signal;
   const onProgress = options?.onProgress;
   const total = candidateTotal(candidates);
   const iterator = iterateCandidates(candidates);
   const context = prepareEntryContext(bytes, entry);
   const deadline = Date.now() + budget;
   let tried = 0;
+  let lastReportAt = Date.now();
   for (;;) {
     const next = iterator.next();
     if (next.done === true) break;
@@ -431,15 +520,48 @@ export const bruteZipPassword = async (
         ? tryZipCryptoCandidate(bytes, context, candidate)
         : await tryWinZipAesCandidate(context, candidate);
     if (outcome.hit) {
-      const previewText =
-        context.realMethod === 0 ? buildPrintablePreview(outcome.content ?? new Uint8Array(0)) : COMPRESSED_HIT_HINT;
-      const final: BruteProgress = { tried, total, password: candidate, previewText };
-      onProgress?.(final);
-      return final;
+      // stored 直接预览；压缩条目命中 = 整段解密 + 原始 deflate 结构验证：
+      // ZipCrypto 快筛的 2 字节碰撞（~1/65536）解出垃圾流，inflate 失败即否决并继续枚举——
+      // 误报率从 2^-16 降到"垃圾流恰为合法 deflate 前缀"的量级；真口令的压缩流必通过。
+      // AES 路径已有 HMAC-SHA1 全码终验（零误报），inflate 失败只降级预览文案不否决；
+      // 无 deflate-raw 能力（API/格式缺失，supportsDeflateRaw）时 ZipCrypto 快筛无法结构验证，退回快筛即命中旧口径。
+      let final: BruteProgress | null = null;
+      if (context.realMethod === 0) {
+        final = {
+          tried,
+          total,
+          password: candidate,
+          previewText: buildPrintablePreview(outcome.content ?? new Uint8Array(0)),
+        };
+      } else {
+        const compressed =
+          outcome.content ??
+          decryptZipCryptoEntry(bytes, entry, candidate)?.bytes ??
+          null;
+        const inflated = compressed === null ? null : await inflateRawPreview(compressed);
+        if (inflated !== null) {
+          final = { tried, total, password: candidate, previewText: buildPrintablePreview(inflated) };
+        } else if (context.kind === 'aes' || !supportsDeflateRaw()) {
+          final = { tried, total, password: candidate, previewText: COMPRESSED_HIT_HINT };
+        }
+      }
+      if (final !== null) {
+        onProgress?.(final);
+        return final;
+      }
     }
-    if (Date.now() >= deadline) break;
-    if (tried % YIELD_EVERY === 0) {
+    if (tried % checkEvery === 0) {
+      const now = Date.now();
+      if (now >= deadline) break;
+      if (signal?.aborted === true) break;
+      if (tightLoop && now - lastReportAt >= PROGRESS_INTERVAL_MS) {
+        lastReportAt = now;
+        onProgress?.({ tried, total, password: null, previewText: null });
+      }
+    }
+    if (!tightLoop && tried % yieldEvery === 0) {
       onProgress?.({ tried, total, password: null, previewText: null });
+      if (signal?.aborted === true) break;
       await yieldToMainThread();
       if (Date.now() >= deadline) break;
     }

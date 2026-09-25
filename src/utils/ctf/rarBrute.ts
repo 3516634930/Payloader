@@ -118,6 +118,7 @@ export interface RarBruteProgress {
 export interface RarBruteOptions {
   entry?: RarEncryptedEntry; // 缺省取探测到的第一个加密条目
   candidates?: Iterable<string>; // 自定义候选（用户字典等）；缺省 = 内置字典 + 数字掩码
+  skipDictionary?: boolean; // 两段式候选跳过内置字典段（纯掩码，TD-批次SB-2：掩码模式不再先耗 5-10s 跑 165 条字典）
   charset?: string; // 掩码字符集，缺省 '0123456789'
   minLength?: number; // 掩码最小长度，缺省 1
   maxLength?: number; // 掩码最大长度，缺省 6
@@ -133,14 +134,17 @@ export interface RarBruteHit {
 }
 
 // 两段式默认候选：先 zipBrute 内置 165 条 CTF 高频弱口令表，再数字掩码逐长度枚举
-// （maskCandidates 惰性生成器，95^n 空间不落内存）。
+// （maskCandidates 惰性生成器，95^n 空间不落内存）；skipDictionary=true 时纯掩码。
 function* defaultRarCandidates(
   charset: string,
   minLength: number,
   maxLength: number,
+  skipDictionary: boolean,
 ): Generator<string, void, unknown> {
-  const dictionary = dictionaryCandidates();
-  for (const password of dictionary) yield password;
+  if (!skipDictionary) {
+    const dictionary = dictionaryCandidates();
+    for (const password of dictionary) yield password;
+  }
   yield* maskCandidates(charset, minLength, maxLength);
 }
 
@@ -169,11 +173,18 @@ const iterateCandidates = (candidates: Iterable<string>): Iterator<string> => {
   return factory.call(candidates);
 };
 
-const candidateTotal = (candidates: Iterable<string>, stage: RarBruteProgress['stage'], charsetSize: number, minLength: number, maxLength: number): number => {
+const candidateTotal = (
+  candidates: Iterable<string>,
+  stage: RarBruteProgress['stage'],
+  charsetSize: number,
+  minLength: number,
+  maxLength: number,
+  skipDictionary: boolean,
+): number => {
   if (Array.isArray(candidates)) return (candidates as string[]).length;
   if (stage === 'custom') return Number.POSITIVE_INFINITY;
-  // 两段式：字典 165 + Σ charset^len（超出 2^53 视作无穷）
-  let total = dictionaryCandidates().length;
+  // 两段式：字典 165 + Σ charset^len（超出 2^53 视作无穷）；纯掩码则字典段计 0
+  let total = skipDictionary ? 0 : dictionaryCandidates().length;
   for (let length = minLength; length <= maxLength; length += 1) {
     total += charsetSize ** length;
     if (!Number.isFinite(total)) return Number.POSITIVE_INFINITY;
@@ -235,16 +246,18 @@ export const bruteRarPassword = async (
   const charset = options?.charset ?? DEFAULT_MASK_CHARSET;
   const minLength = options?.minLength ?? DEFAULT_MASK_MIN_LENGTH;
   const maxLength = options?.maxLength ?? DEFAULT_MASK_MAX_LENGTH;
-  const stage: RarBruteProgress['stage'] = options?.candidates !== undefined ? 'custom' : 'dictionary';
+  const skipDictionary = options?.skipDictionary ?? false;
+  const stage: RarBruteProgress['stage'] =
+    options?.candidates !== undefined ? 'custom' : skipDictionary ? 'mask' : 'dictionary';
   let candidates: Iterable<string>;
   if (options?.candidates !== undefined) {
     candidates = options.candidates;
   } else {
-    candidates = defaultRarCandidates(charset, minLength, maxLength);
+    candidates = defaultRarCandidates(charset, minLength, maxLength, skipDictionary);
   }
   const entry = options?.entry ?? detectRarEncryptedEntries(bytes)[0];
-  const dictionarySize = options?.candidates !== undefined ? 0 : dictionaryCandidates().length;
-  const total = candidateTotal(candidates, stage, new Set(Array.from(charset)).size, minLength, maxLength);
+  const dictionarySize = options?.candidates !== undefined || skipDictionary ? 0 : dictionaryCandidates().length;
+  const total = candidateTotal(candidates, stage, new Set(Array.from(charset)).size, minLength, maxLength, skipDictionary);
   const onProgress = options?.onProgress;
   const iterator = iterateCandidates(candidates);
   const deadline = Date.now() + budget;
