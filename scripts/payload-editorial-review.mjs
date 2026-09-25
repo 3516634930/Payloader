@@ -112,14 +112,28 @@ const likelyPayloadLine = value => {
   return /^[<>{}[\]'"`;&|$%/.-]/.test(line) && !hanPattern.test(line);
 };
 
-const proseCommandLocations = payload => ['execution', 'wafBypass'].flatMap(area => (
-  asList(payload?.[area]).flatMap((entry, index) => {
-    const proseLines = String(entry?.command || '').split(/\r?\n/)
-      .map(line => line.trim())
-      .filter(line => line && hanPattern.test(line) && !likelyPayloadLine(line));
-    return proseLines.length ? [{ area, index, proseLines }] : [];
-  })
-));
+const stripProseExemptions = line => line
+  // 豁免：行尾 # 注释与引号内的中文字面值（凭据名/输出过滤词/注释是载荷组成）
+  .replace(/#.*$/, '')
+  .replace(/"[^"]*[\u4e00-\u9fff][^"]*"/g, '""')
+  .replace(/'[^']*[\u4e00-\u9fff][^']*'/g, "''");
+
+const proseCommandLocations = payload => {
+  // AI 安全域载荷是自然语言注入本体（多语言/混排即技术），不做散文检测
+  const identity = displayText(payload.category) + displayText(payload.subCategory);
+  if (/AI安全|AI Security|Agent[^;]{0,12}(工具链|介导|链)/i.test(identity)) return [];
+  return ['execution', 'wafBypass'].flatMap(area => (
+    asList(payload?.[area]).flatMap((entry, index) => {
+      const proseLines = String(entry?.command || '').split(/\r?\n/)
+        .map(line => line.trim())
+        .map(stripProseExemptions)
+        .filter(line => line && hanPattern.test(line) && !likelyPayloadLine(line)
+        // 行内嵌 SQL 注入片段（自然语言包裹 OR/UNION 注入）也是载荷而非散文
+        && !/'\s*(OR|AND)\s*'|UNION(?:\s+ALL)?\s+SELECT|OR\s+'?[0-9]'?\s*=/i.test(line));
+      return proseLines.length ? [{ area, index, proseLines }] : [];
+    })
+  ));
+};
 
 const danglingChainLocations = payload => {
   const commands = new Set([...asList(payload.execution), ...asList(payload.wafBypass)]

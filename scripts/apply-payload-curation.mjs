@@ -326,7 +326,7 @@ export const prepareCurationOptions = (options = {}, payloadsInput = [], toolsIn
   ];
   const strictOverrideStateFields = [
     'name', 'description', 'category', 'subCategory', 'prerequisites',
-    'tutorial', 'attackChain', 'analysis', 'opsecTips', 'references',
+    'tutorial', 'attackChain', 'analysis', 'opsecTips', 'references', 'wafBypass', 'tags',
   ];
   const commandPatchesById = new Map(asList(options.payloadCommandOverrides?.entries)
     .map(item => [String(item?.id || '').trim(), asList(item?.patches)]));

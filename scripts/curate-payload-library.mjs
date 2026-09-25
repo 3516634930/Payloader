@@ -51,7 +51,7 @@ const localizedText = (value, language) => typeof value === 'string'
 const clone = value => structuredClone(value);
 const hasHan = value => /\p{Script=Han}/u.test(String(value || ''));
 const requiredOverrideContentFields = ['name', 'description', 'category', 'subCategory', 'tutorial', 'attackChain', 'references'];
-const optionalOverrideContentFields = ['prerequisites', 'analysis', 'opsecTips', 'tags'];
+const optionalOverrideContentFields = ['prerequisites', 'analysis', 'opsecTips', 'tags', 'wafBypass'];
 const overrideContentFields = [...requiredOverrideContentFields, ...optionalOverrideContentFields];
 export const normalizeReferenceUrls = references => [...new Set(asList(references)
   .map(reference => referenceUrlReplacements.get(String(reference)) || String(reference))
@@ -1237,6 +1237,16 @@ const pruneShadowedRoots = navigation => {
   return roots.filter((root, index) => !idsByRoot.some((set, other) => other !== index && set.has(root.id)));
 };
 
+// 空分支清理：无叶子、无子分支的一级分支节点移除（UI 不显示空分类）；声明的分支豁免。
+const pruneEmptyBranches = (navigation, keepBranchIds = new Set()) => asList(navigation).map(root => ({
+  ...root,
+  children: asList(root.children).filter(branch => {
+    if (keepBranchIds.has(branch.id)) return true;
+    const hasLeaf = node => Boolean(node.payloadId) || asList(node.children).some(hasLeaf);
+    return hasLeaf(branch);
+  }),
+}));
+
 // AI 等大分支的二级主题分支：声明式创建（存在则仅刷新名称）。
 const ensurePayloadSubBranches = (navigation, branchesInput) => {
   const branches = asList(branchesInput);
@@ -1554,6 +1564,10 @@ export const curatePayloadLibrary = (input, options = {}) => {
   );
   snapshot.navigation = appendOrphanPayloadNavigation(snapshot.navigation, snapshot.payloads, subBranchBySubCategory);
   snapshot.navigation = synchronizePayloadNavigation(snapshot.navigation, snapshot.payloads);
+  snapshot.navigation = pruneEmptyBranches(snapshot.navigation, new Set([
+    ...asList(options.payloadBranches).map(item => String(item?.id || '').trim()),
+    ...asList(options.payloadSubBranches).map(item => String(item?.id || '').trim()),
+  ].filter(Boolean)));
   applyToolMerges(snapshot, options.toolMerges);
   snapshot.toolNavigation = updateToolNavigationNames(
     snapshot.toolNavigation,

