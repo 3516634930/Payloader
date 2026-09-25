@@ -8,6 +8,7 @@ import { blindWatermarkDecode } from '../../utils/ctf/blindWatermark';
 import { pixelJihadDecode } from '../../utils/ctf/pixelJihad';
 import { runImageProgram } from '../../utils/ctf/esolangs';
 import { decodeQrCodes } from '../../utils/ctf/qrDecode';
+import { scaleNearest } from '../../utils/ctf/imageOps';
 import { downloadBlob } from '../../utils/download';
 
 // 置乱与频域隐写卡（批次 SI·C/B 线）：Arnold 猫脸/光栅相位/Stereogram 偏移差分/盲水印双图提取/
@@ -218,7 +219,8 @@ function ImageStegoCard({ image, language }: ImageStegoCardProps) {
         <div className="ff-tool">
           <StegoCanvas image={result} scaleTo={360} language={language} />
           <button type="button" className="ff-button" onClick={() => {
-            const hits = decodeQrCodes(result.data as ArrayLike<number>, result.width, result.height);
+            const scaled = result.width * result.height <= 128 * 128 ? scaleNearest(result, 4) : result;
+            const hits = decodeQrCodes(scaled.data as ArrayLike<number>, scaled.width, scaled.height);
             setTextOut(hits.length > 0 ? `${zh ? '二维码命中' : 'QR hit'}: ${hits.map(hit => hit.text).join(' | ')}` : (zh ? '结果图中未识别出二维码' : 'No QR in result'));
           }}>{zh ? '识别结果图二维码' : 'Detect QR in result'}</button>
         </div>

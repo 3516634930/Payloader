@@ -16,6 +16,7 @@ import {
   imageToRgbText,
   invertImage,
   rgbTextToImage,
+  scaleNearest,
 } from '../../utils/ctf/imageOps';
 import { bitsToBfSource, runBrainfuck } from '../../utils/ctf/esolangs';
 import { decodeQrCodes } from '../../utils/ctf/qrDecode';
@@ -135,7 +136,9 @@ function ImageOpsCard({ image, language }: ImageOpsCardProps) {
   };
 
   const tryQr = (target: AnyImage) => {
-    const hits = decodeQrCodes(target.data as ArrayLike<number>, target.width, target.height);
+    // 01/坐标串转图产物是 1px 模块小图，×4 最近邻放大后再识别（与通关脚本同口径）
+    const scaled = target.width * target.height <= 128 * 128 ? scaleNearest(target, 4) : target;
+    const hits = decodeQrCodes(scaled.data as ArrayLike<number>, scaled.width, scaled.height);
     if (hits.length > 0) {
       const joined = hits.map(hit => hit.text).join(' | ');
       setTextResult(`${zh ? '二维码命中' : 'QR hits'}: ${joined}`);

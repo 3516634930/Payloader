@@ -27,6 +27,7 @@ const loadEngines = async () => {
     pcapProtocols: ['utils', 'ctf', 'pcap', 'protocols.ts'],
     pcapAnalyze: ['utils', 'ctf', 'pcap', 'analyze.ts'],
     qrDecode: ['utils', 'ctf', 'qrDecode.ts'],
+    imageOps: ['utils', 'ctf', 'imageOps.ts'],
     pdfText: ['utils', 'ctf', 'pdfText.ts'],
     pdfCmap: ['utils', 'ctf', 'pdfCmap.ts'],
     chineseCiphers: ['utils', 'codec', 'chineseCiphers.ts'],
@@ -469,6 +470,36 @@ const solveBytes = async (bytes, fileName, depth, label) => {
       const inner = await solveBytes(decoded, 'b64-inner', depth + 1, `${prefix}base64 内层`);
       paths.push(...inner.paths.slice(0, 8));
       for (const flag of inner.found) found.add(flag);
+    }
+    // 01 串 / XY 坐标串 → 转图 → QR（批次 SI：随波逐流"1,0 字符串转图/坐标串转图"对标）
+    // 1px 模块直接解码不稳，统一 ×4 最近邻放大后再识别
+    if (engines.imageOps && engines.qrDecode) {
+      try {
+        const bits = joined.replace(/[^01\r\n,; ]/g, '');
+        const bitCount = (bits.match(/0|1/g) || []).length;
+        let qrTarget = null;
+        let qrLabel = '';
+        // 01 串门槛：纯度 90%+ 且总数 ≥ 169（最小 QR 13×13）且构成矩形（行宽一致或完全平方）
+        if (bitCount >= 169 && bitCount >= joined.replace(/\s/g, '').length * 0.9) {
+          const rendered = engines.imageOps.bitsToImage(joined);
+          paths.push(`${prefix}01 串转图（${rendered.widthGuess}）`);
+          qrTarget = engines.imageOps.scaleNearest(rendered.image, 4);
+          qrLabel = '01 串转图 QR';
+        } else {
+          const coordPairs = joined.match(/\(?-?\d+[,;\s]+-?\d+\)?/g) || [];
+          if (coordPairs.length >= 169 && coordPairs.length >= (joined.match(/\d/g) || []).length / 4) {
+            const rendered = engines.imageOps.coordsToImage(joined);
+            paths.push(`${prefix}坐标串转图（${rendered.pointCount} 点）`);
+            qrTarget = engines.imageOps.scaleNearest(rendered.image, 4);
+            qrLabel = '坐标串转图 QR';
+          }
+        }
+        if (qrTarget !== null) {
+          for (const item of engines.qrDecode.decodeQrCodes(qrTarget.data, qrTarget.width, qrTarget.height)) {
+            addText(item.text, `${prefix}${qrLabel}`);
+          }
+        }
+      } catch { /* 非图形形态文本静默跳过 */ }
     }
   }
 

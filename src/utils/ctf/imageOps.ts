@@ -342,6 +342,30 @@ export const asciiToImage = (text: string, charset = ASCII_RAMP): RgbaImage => {
   return { data: out, width, height };
 }
 
+// 最近邻整数放大（QR 识别链专用）：1px 模块的小图（01 串/坐标串转图产物）直接喂解码器
+// 不稳定，×4 放大后命中；alpha 保留源值，放大区不足整块按最近邻复制。
+export const scaleNearest = (image: RgbaImage, factor: number): RgbaImage => {
+  if (!Number.isInteger(factor) || factor < 1) {
+    throw new Error(`放大倍数必须为 ≥1 的整数，当前 ${factor}`);
+  }
+  if (factor === 1) return image;
+  const { data, width, height } = image;
+  const outWidth = width * factor;
+  const outHeight = height * factor;
+  const out = new Uint8ClampedArray(outWidth * outHeight * 4);
+  for (let y = 0; y < outHeight; y += 1) {
+    for (let x = 0; x < outWidth; x += 1) {
+      const source = (Math.floor(y / factor) * width + Math.floor(x / factor)) * 4;
+      const target = (y * outWidth + x) * 4;
+      out[target] = data[source];
+      out[target + 1] = data[source + 1];
+      out[target + 2] = data[source + 2];
+      out[target + 3] = data[source + 3];
+    }
+  }
+  return { data: out, width: outWidth, height: outHeight };
+};
+
 // ---- flood-fill 掩码提取 ----
 
 export interface FloodFillResult {
