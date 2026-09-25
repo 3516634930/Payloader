@@ -28,6 +28,7 @@ const loadEngines = async () => {
     pcapAnalyze: ['utils', 'ctf', 'pcap', 'analyze.ts'],
     qrDecode: ['utils', 'ctf', 'qrDecode.ts'],
     imageOps: ['utils', 'ctf', 'imageOps.ts'],
+    jsteg: ['utils', 'ctf', 'jsteg.ts'],
     pdfText: ['utils', 'ctf', 'pdfText.ts'],
     pdfCmap: ['utils', 'ctf', 'pdfCmap.ts'],
     chineseCiphers: ['utils', 'codec', 'chineseCiphers.ts'],
@@ -823,6 +824,26 @@ const solveBytes = async (bytes, fileName, depth, label) => {
         } catch (error) { paths.push(`${prefix}RAR 条目 ${entry.name} 解压失败：${String(error.message).slice(0, 60)}`); }
       }
     } catch (error) { paths.push(`${prefix}RAR 解析失败：${error.message}`); }
+  }
+
+  // JPEG：jsteg 系数 LSB 自动扫描（批次 SI·A 线——递归内层 JPEG 同样吃这条路径）
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && depth < 4 && engines.jsteg) {
+    for (const includeMinusOne of [false, true]) {
+      try {
+        const outcome = engines.jsteg.jstegReveal(bytes, { includeMinusOne });
+        if (outcome.findings.length > 0) {
+          paths.push(`${prefix}jsteg ${includeMinusOne ? '(含-1)' : ''}命中 ${outcome.findings.length} 处`);
+          for (const finding of outcome.findings) {
+            for (const flag of findFlags(finding.preview)) found.add(flag);
+            addText(finding.preview.slice(0, 512), `${prefix}jsteg ${finding.kind} 载荷`);
+          }
+        } else if (outcome.rawBits.length > 0 && !includeMinusOne) {
+          const preview = latin1Of(outcome.rawBits.subarray(0, 256));
+          paths.push(`${prefix}jsteg 位流 ${outcome.rawBits.length}B（无 magic，人工判读）`);
+          for (const flag of findFlags(preview)) found.add(flag);
+        }
+      } catch { /* 非 baseline/损坏 JPEG 静默 */ }
+    }
   }
 
   // gzip/tar 链（What-is-this 型）：gunzip → tar 成员递归 → 或直接是内层文件
