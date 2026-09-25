@@ -67,8 +67,8 @@ function CyclicCard() {
       </div>
       <p className="ff-note">
         {zh
-          ? '第一步：生成 pattern 并作为填充发送，直到程序崩溃；第二步：把崩溃时 EIP/RIP（或目标寄存器）的值粘进下面的框，自动算出覆盖点 offset。'
-          : 'Step 1: send the generated pattern as filler until the program crashes. Step 2: paste the crashed EIP/RIP value below to get the overwrite offset.'}
+          ? '生成 pattern 作为填充发送直到崩溃，再把崩溃时的 EIP/RIP 值贴回下方，自动算出覆盖 offset。'
+          : 'Send the pattern as filler until crash, then paste the crashed EIP/RIP below to get the overwrite offset.'}
       </p>
       <div className="ff-controls">
         <label className="ff-label" htmlFor="cyclic-length">{zh ? '长度' : 'Length'}</label>
@@ -92,9 +92,10 @@ function CyclicCard() {
             <option key={option.value} value={option.value}>{option.label}</option>
           ))}
         </select>
+        <span className="ff-badge">{pattern.length} {zh ? '字符' : 'chars'}</span>
         <button type="button" className="ff-button" onClick={copyPattern}>{zh ? '复制 pattern' : 'Copy pattern'}</button>
       </div>
-      <textarea className="ff-textarea" readOnly value={pattern} aria-label={zh ? '生成的 pattern' : 'Generated pattern'} />
+      <div className="pwn-pattern-output" aria-label={zh ? '生成的 pattern' : 'Generated pattern'}>{pattern}</div>
 
       <div className="ff-controls">
         <input
@@ -191,8 +192,8 @@ function BadCharCard() {
       </div>
       <p className="ff-note">
         {zh
-          ? '粘贴 shellcode / payload（支持 \\xNN 转义、裸 HEX 或原始 ASCII），勾选目标环境不容忍的字节，命中处标红。'
-          : 'Paste your shellcode/payload (\\xNN escapes, bare HEX, or raw ASCII), tick bytes the target cannot tolerate — hits are highlighted.'}
+          ? '粘贴 shellcode / payload（\\xNN 转义、裸 HEX、原始 ASCII 均可），勾选目标环境不能容忍的字节，命中处标红。'
+          : 'Paste your shellcode/payload (\\xNN, bare HEX, or raw ASCII), tick bytes the target cannot tolerate — hits are highlighted.'}
       </p>
       <textarea
         className="ff-textarea"
@@ -211,11 +212,14 @@ function BadCharCard() {
             </label>
           ))}
         </div>
+      </div>
+      <div className="ff-controls">
+        <span className="ff-label">{zh ? '自定义' : 'Custom'}</span>
         <input
           className="ff-input ff-input-narrow"
           type="text"
           value={custom}
-          placeholder={zh ? '自定义：\\x0b\\x22 或 3b 5c' : 'custom: \\x0b\\x22 or 3b 5c'}
+          placeholder={zh ? '\\x0b\\x22 或 3b 5c' : '\\x0b\\x22 or 3b 5c'}
           aria-label={zh ? '自定义坏字符' : 'Custom bad characters'}
           onChange={event => setCustom(event.target.value)}
         />
@@ -280,8 +284,8 @@ function FormatStringCard() {
       </div>
       <p className="ff-note">
         {zh
-          ? '发送 AAAA + 一串 %p（如 AAAA%p%p%p…），把程序的完整输出粘到下面；再填入你想定位的目标值（canary/返回地址等），算出它是第几个参数。值之间保持分隔。'
-          : 'Send AAAA plus a chain of %p (e.g. AAAA%p%p%p…), paste the full output below, then enter the target value (canary/return address…) to get its argument index. Keep values separated.'}
+          ? '发送 AAAA + 一串 %p（如 AAAA%p%p%p…），把完整输出粘到下面；再填目标值（canary / 返回地址），算出它是第几个参数。'
+          : 'Send AAAA plus a chain of %p, paste the full output below, then enter the target value (canary/return address…) to get its argument index.'}
       </p>
       <textarea
         className="ff-textarea"
@@ -339,8 +343,8 @@ function FormatStringCard() {
       {analysis.targetNote && <p className="ff-note">{analysis.targetNote}</p>}
       <p className="ff-note">
         {zh
-          ? '说明：编号从 1 起按可变参数计数。64 位平台上前几个可变参数来自寄存器（RSI/RDX/RCX/R8/R9），栈上参数需按调用约定换算；本题通常从第 6 个起对应栈。'
-          : 'Note: indices count varargs from 1. On 64-bit the first varargs come from registers (RSI/RDX/RCX/R8/R9); stack args typically start at %6$p.'}
+          ? '编号从 1 起数；64 位上前 5 个可变参数在寄存器（RSI/RDX/RCX/R8/R9），栈上通常从 %6$p 开始。'
+          : 'Indices count varargs from 1; on 64-bit the first 5 come from registers (RSI/RDX/RCX/R8/R9), stack args typically start at %6$p.'}
       </p>
     </section>
   );
@@ -358,8 +362,8 @@ function PwnWorkspace() {
         <strong>{zh ? 'Pwn 纯计算工具台' : 'Pwn offline calculators'}</strong>
         <p>
           {zh
-            ? '两步拿 offset、坏字符体检、格式化字符串定位——全部本地计算，无需联网。需要交互调试时用 GDB/pwndbg（见底部速查）。'
-            : 'Two-step offsets, bad-character audits, and format-string indexing — all computed locally. For interactive debugging use GDB/pwndbg (see the cheat sheet).'}
+            ? 'cyclic 反查、坏字符体检、格式化字符串定位，全部本地计算；交互调试用 GDB/pwndbg（见底部速查）。'
+            : 'Cyclic lookup, bad-character audit, and format-string indexing — all local; use GDB/pwndbg for interactive debugging (see the cheat sheet).'}
         </p>
       </div>
       <CyclicCard />

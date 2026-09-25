@@ -12,9 +12,9 @@ export type CyclicPeriod = 3 | 4 | 8;
 export const CYCLIC_SEARCH_LIMIT = 2_000_000;
 
 export const CYCLIC_PERIODS: ReadonlyArray<{ value: CyclicPeriod; label: string }> = [
-  { value: 4, label: '4（默认，pwnlib 同）' },
-  { value: 3, label: '3（metasploit 风格）' },
-  { value: 8, label: '8（64 位整窗）' },
+  { value: 4, label: '4 · pwnlib 默认' },
+  { value: 3, label: '3 · metasploit' },
+  { value: 8, label: '8 · 64 位整窗' },
 ];
 
 // de Bruijn 序列生成（Fredricksen–Maiorana / Lyndon words，Wikipedia 标准算法），
