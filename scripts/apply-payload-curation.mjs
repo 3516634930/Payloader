@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve } from 'node:path';
@@ -610,23 +610,74 @@ const writeSnapshot = (file, snapshot) => {
 
 const snapshotsEqual = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 
+// 管理员后台编辑保护：apply 前对比上一轮 apply 基线，凡 runtime 与基线不一致的条目
+// 视为管理员手工编辑，策展文档对该条的变更跳过（管理员编辑优先）；--force 强制覆盖。
+const baselineMetadataKey = 'curation_baseline_payloads';
+const stableItemHash = item => createHash('sha256').update(JSON.stringify(item), 'utf8').digest('hex');
+
+const readBaseline = file => {
+  const database = new sqlite.DatabaseSync(resolve(file), { readOnly: true });
+  try {
+    const value = database.prepare('SELECT value FROM metadata WHERE key = ?').get(baselineMetadataKey)?.value;
+    return value ? JSON.parse(value) : null;
+  } catch {
+    return null;
+  } finally {
+    database.close();
+  }
+};
+
+const writeBaseline = (file, payloads) => {
+  const database = new sqlite.DatabaseSync(resolve(file));
+  try {
+    const baseline = Object.fromEntries(payloads.map(item => [item.id, stableItemHash(item)]));
+    database.prepare(`
+      INSERT INTO metadata (key, value)
+      VALUES (?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `).run(baselineMetadataKey, JSON.stringify(baseline));
+  } finally {
+    database.close();
+  }
+};
+
 export const curateDatabase = async (file, options = {}) => {
   const absoluteFile = resolve(file);
   const before = loadCurationSnapshot(absoluteFile);
   const curationOptions = prepareCurationOptions(options, before.payloads, before.tools);
   const result = curatePayloadLibrary(before, curationOptions);
   const planned = result.snapshot;
-  const changes = summarizeChanges(before, planned);
   if (!options.apply) {
     return {
       applied: false,
       file: absoluteFile,
-      changes,
+      changes: summarizeChanges(before, planned),
       ledger: result.ledger,
       snapshot: clone(planned),
     };
   }
 
+  // 管理员编辑保护：还原被人工改过的条目为 runtime 当前值
+  const adminEdited = [];
+  if (!options.force) {
+    const baseline = readBaseline(absoluteFile);
+    if (baseline) {
+      const beforeById = new Map(before.payloads.map(item => [item.id, item]));
+      const kept = [];
+      for (const item of planned.payloads) {
+        const current = beforeById.get(item.id);
+        if (baseline[item.id] && current && baseline[item.id] !== stableItemHash(current)) {
+          adminEdited.push(item.id);
+          kept.push(clone(current));
+          continue;
+        }
+        kept.push(item);
+      }
+      if (adminEdited.length) planned.payloads = kept;
+    }
+  }
+
+  const changes = summarizeChanges(before, planned);
   const backupDir = options.backupDir || join(resolve(absoluteFile, '..'), 'backups');
   const backup = await createBackup(absoluteFile, backupDir);
   writeSnapshot(absoluteFile, planned);
@@ -635,12 +686,14 @@ export const curateDatabase = async (file, options = {}) => {
   if (!snapshotsEqual(written, planned)) {
     throw new Error(`Payload curation verification mismatch. Backup: ${backup.path}`);
   }
+  writeBaseline(absoluteFile, written.payloads);
   return {
     applied: true,
     file: absoluteFile,
     backup,
     changes,
     ledger: result.ledger,
+    adminEdited,
     snapshot: clone(written),
   };
 };
@@ -725,6 +778,7 @@ export const parseCurationCli = argv => {
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === '--apply') options.apply = true;
+    else if (argument === '--force') options.force = true;
     else if (argument === '--json') options.json = true;
     else if (argument === '--require-ready') options.requireReady = true;
     else if (argument === '--seed-only') options.seedOnly = true;
@@ -783,6 +837,7 @@ const runCli = async argv => {
       ...configuration,
       backupDir: options.backupDir,
       apply: true,
+      force: options.force === true,
     });
     seedRefresh = await refreshSeedFromRuntime(options.runtimeFile, options.seedFile, {
       backupDir: options.backupDir,
@@ -824,6 +879,7 @@ const runCli = async argv => {
       console.log(`Next unreviewed IDs: ${review.coverage.missingReviewIds.slice(0, 20).join(', ')}`);
     }
     if (applied) console.log(`Runtime backup: ${applied.backup.path}`);
+    if (applied?.adminEdited?.length) console.log(`Admin-edited payloads preserved (--force to override): ${applied.adminEdited.join(', ')}`);
     if (seedRefresh) console.log(`Seed backup: ${seedRefresh.backup?.path || 'not required'}`);
   }
   if (options.requireReady && !canApply) {
