@@ -10,6 +10,7 @@ import ImagePlanesCard from './ImagePlanesCard';
 import type { PlaneImage } from './ImagePlanesCard';
 import ImageOpsCard from './ImageOpsCard';
 import ImageStegoCard from './ImageStegoCard';
+import JpegStegoCard from './JpegStegoCard';
 import AudioStegoCard from './AudioStegoCard';
 import GifInspectCard from './GifInspectCard';
 import ZipBruteCard from './ZipBruteCard';
@@ -810,6 +811,14 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
             <ImageStegoCard
               key={`stego-${analysis.name}:${analysis.size}`}
               image={planeImage}
+              language={language}
+            />
+          )}
+
+          {analysis.bytes[0] === 0xff && analysis.bytes[1] === 0xd8 && (
+            <JpegStegoCard
+              key={`jpegstego-${analysis.name}:${analysis.size}`}
+              bytes={analysis.bytes}
               language={language}
             />
           )}

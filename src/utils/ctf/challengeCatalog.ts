@@ -160,6 +160,13 @@ export const challengeCatalog: ChallengeCategory[] = [
         cardId: 'ff-card-imagestego',
       },
       {
+        id: 'jpeg-dct',
+        label: { zh: 'JPEG DCT 隐写（jsteg）', en: 'JPEG DCT stego (jsteg)' },
+        description: { zh: 'DCT 系数 LSB 提取（跳过 0/±1），CLI 载荷/flag 自动识别；F5/outguess/JPHS 后续批次接入。', en: 'DCT coefficient LSB extraction with magic auto-scan; F5/outguess/JPHS arrive in later batches.' },
+        kind: 'file',
+        cardId: 'ff-card-jpegstego',
+      },
+      {
         id: 'blind-watermark',
         label: { zh: '盲水印提取', en: 'Blind watermark' },
         description: { zh: '频域（FFT，兼容 chishaxie/BlindWaterMark）盲水印双图提取，seed/alpha 可调。', en: 'Frequency-domain (FFT, chishaxie-compatible) blind watermark extraction.' },

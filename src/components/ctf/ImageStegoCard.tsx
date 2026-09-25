@@ -7,6 +7,9 @@ import { rasterCompact, rasterPhasePlan, stereogramDiff, stereogramEstimateOffse
 import { blindWatermarkDecode } from '../../utils/ctf/blindWatermark';
 import { pixelJihadDecode } from '../../utils/ctf/pixelJihad';
 import { runImageProgram } from '../../utils/ctf/esolangs';
+import { runPiet } from '../../utils/ctf/pietInterp';
+import { stegpyDecodeFromPixels } from '../../utils/ctf/stegpy';
+import { openstegoDecodeFromPixels } from '../../utils/ctf/openstego';
 import { decodeQrCodes } from '../../utils/ctf/qrDecode';
 import { scaleNearest } from '../../utils/ctf/imageOps';
 import { downloadBlob } from '../../utils/download';
@@ -207,6 +210,35 @@ function ImageStegoCard({ image, language }: ImageStegoCardProps) {
               setResult(null);
             } catch (error) { notifications.show({ message: (error as Error).message, color: 'red' }); }
           }}>PixelJihad</button>
+          <button type="button" className="ff-button" onClick={() => {
+            // stegpy：像素字节流上的顺序 LSB（位深标记在第 0 字节），口令可选（Fernet）
+            void stegpyDecodeFromPixels(source.data as unknown as Uint8Array, pjPassword).then(
+              outcome => {
+                const decodedText = new TextDecoder().decode(outcome.data);
+                setTextOut(`stegpy${outcome.fileName !== '' ? ` (${outcome.fileName})` : ''}: ${decodedText.slice(0, 400)}`);
+                setResult(null);
+              },
+              error => notifications.show({ message: (error as Error).message, color: 'red' }),
+            );
+          }}>stegpy</button>
+          <button type="button" className="ff-button" onClick={() => {
+            // openstego：lsb/randlsb 双试，口令参与 randlsb 位置与 PBE 解密
+            void openstegoDecodeFromPixels({ data: source.data, width: source.width, height: source.height }, pjPassword).then(
+              outcome => {
+                const decodedText = new TextDecoder().decode(outcome.data.subarray(0, 400));
+                setTextOut(`openstego${outcome.fileName !== '' ? ` (${outcome.fileName})` : ''}: ${decodedText}`);
+                setResult(null);
+                outcome.notes.forEach(note => notifications.show({ message: note, color: 'yellow', autoClose: 3000 }));
+              },
+              error => notifications.show({ message: (error as Error).message, color: 'red' }),
+            );
+          }}>OpenStego</button>
+          <button type="button" className="ff-button" onClick={() => {
+            // Piet：直接在像素上执行程序（先按最小边缩到单像素 codel？由调用方控制——这里原样执行）
+            const outcome = runPiet(source.data, source.width, source.height);
+            setTextOut(`Piet: ${outcome.output !== '' ? outcome.output.slice(0, 400) : (outcome.error ?? (zh ? '（无输出）' : '(no output)'))}`);
+            setResult(null);
+          }}>Piet</button>
           {(['brainloller', 'braincopter'] as const).map(flavor => (
             <button key={flavor} type="button" className="ff-button" onClick={() => {
               const outcome = runImageProgram(source, flavor);
