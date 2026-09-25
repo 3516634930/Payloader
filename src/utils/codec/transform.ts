@@ -16,6 +16,9 @@ import { paddingOracleReport } from './paddingOracle';
 import { magicChainReport } from './magicChain';
 import { crc32AttackReport } from './crc32Attack';
 import { base64StegoReport } from './base64Stego';
+import { snowStegoReport } from './snowStego';
+import { cloakifyAutoReport, cloakifyDecode } from './cloakify';
+import { ttlStegoReport } from '../ctf/ttlStego';
 import { brainfuckToOokText, cryptoAttackHelper, encodeBrainfuckText, frequencyAnalysis, hashLengthExtensionHelper, jsfuckInspector, lcgHelper, lfsrHelper, ookToBrainfuckText, runBrainfuck } from './attacks';
 import { cloudShadowDecode, cloudShadowEncode, baijiaxingDecode, baijiaxingEncode, bearDecode, bearEncode, buddhaDecode, buddhaEncode, buddhaV2Decode, hexagramDecode, hexagramEncode, sexagesimalDecode, sexagesimalEncode } from './chineseCiphers';
 import { albamTransform, carbonaroTransform, ciscoType7Decode, ciscoType7Encode, cetaceanDecode, cetaceanEncode, decabitDecode, decabitEncode, pizziniDecode, pizziniEncode } from './mapCiphers';
@@ -288,6 +291,22 @@ export async function transform(operationId: OperationId, direction: Direction, 
       return crc32AttackReport(input);
     case 'base64-stego':
       return base64StegoReport(input);
+    case 'snow-stego':
+      return snowStegoReport(input);
+    case 'cloakify': {
+      // 密钥栏粘贴自定义词表（每行一词）时按词表解码；留空走内置 6 套词表自动扫描。
+      // 全局密钥回退可能带入其他操作的密钥（非词表文本）——解析失败一律回退 auto，不让误配直达错误。
+      if (params.secret.trim()) {
+        try {
+          const decoded = cloakifyDecode(input, params.secret, 'auto');
+          if (decoded) return JSON.stringify(decoded, null, 2);
+        } catch { /* 密钥栏不是合法词表，走 auto */ }
+        return cloakifyAutoReport(input);
+      }
+      return cloakifyAutoReport(input);
+    }
+    case 'ttl-stego':
+      return ttlStegoReport(input);
     case 'rsa-helper':
       return rsaHelper(input);
     case 'signature-nonce-helper':

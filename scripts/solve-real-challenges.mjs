@@ -33,6 +33,15 @@ const loadEngines = async () => {
     base64Stego: ['utils', 'codec', 'base64Stego.ts'],
     rarInspect: ['utils', 'ctf', 'rarInspect.ts'],
     rarExtract: ['utils', 'ctf', 'rarExtract.ts'],
+    fileRepair: ['utils', 'ctf', 'fileRepair.ts'],
+    ntfsAds: ['utils', 'ctf', 'ntfsAds.ts'],
+    snowStego: ['utils', 'codec', 'snowStego.ts'],
+    cloakify: ['utils', 'codec', 'cloakify.ts'],
+    ttlStego: ['utils', 'ctf', 'ttlStego.ts'],
+    pycParse: ['utils', 'ctf', 'pycParse.ts'],
+    pycStego: ['utils', 'ctf', 'pycStego.ts'],
+    rarCrypt: ['utils', 'ctf', 'rarCrypt.ts'],
+    rarBrute: ['utils', 'ctf', 'rarBrute.ts'],
   };
   for (const [name, parts] of Object.entries(defs)) {
     try { engines[name] = loadModule(src(...parts)); } catch { engines[name] = null; }
@@ -387,6 +396,40 @@ const solveBytes = async (bytes, fileName, depth, label) => {
         }
       } catch { /* 非佛曰串：正常路径（Content_Types 等普通中文段） */ }
     }
+    // snow 空白隐写：tab 或行尾空格密度异常的文本全变体提取（snow 型题）。
+    if (engines.snowStego?.extractSnow) {
+      try {
+        const rawText = Buffer.from(bytes).toString('latin1');
+        const tabCount = (rawText.match(/\t/g) || []).length;
+        const trailRuns = (rawText.match(/[ \t]{3,}\r?$/gm) || []).length;
+        if (tabCount >= 8 || trailRuns >= 4) {
+          const snow = engines.snowStego.extractSnow(rawText);
+          for (const variant of snow.variants.slice(0, 4)) {
+            if (variant.printableRatio > 0.7 && variant.text) {
+              paths.push(`${prefix}snow 空白隐写（${variant.mapping}，可打印率 ${variant.printableRatio.toFixed(2)}）`);
+              for (const flag of findFlags(variant.text)) found.add(flag);
+              for (const flag of chainProbe(variant.text)) found.add(flag);
+            }
+          }
+        }
+      } catch { /* 非 snow 文本 */ }
+    }
+    // Cloakify 词表隐写：每行一个短词的"无害文本"形态（词表映射型题）。
+    if (engines.cloakify?.autoCloakifyDecode) {
+      try {
+        const plainText = Buffer.from(bytes).toString('utf8');
+        const lines = plainText.trim().split(/\r?\n/).filter(Boolean);
+        if (lines.length >= 8 && lines.length <= 2000 && lines.every(line => line.length <= 40 && /^[\x20-\x7e]+$/.test(line))) {
+          const candidates = engines.cloakify.autoCloakifyDecode(plainText) ?? [];
+          for (const candidate of candidates.slice(0, 3)) {
+            if (candidate.printable > 0.7) {
+              paths.push(`${prefix}Cloakify 词表隐写（${candidate.listName}/${candidate.mode}）`);
+              for (const flag of findFlags(candidate.text)) found.add(flag);
+            }
+          }
+        }
+      } catch { /* 非 cloakify 文本 */ }
+    }
     // Base64 padding 隐写（多行 Base64 且含 = 行——base64stego 型）：引擎级自动提取
     if (engines.base64Stego) {
       const lines = joined.split('\n').filter(l => /^[A-Za-z0-9+/]+=*$/.test(l.trim()) && l.trim());
@@ -431,7 +474,20 @@ const solveBytes = async (bytes, fileName, depth, label) => {
 
   // 图片：PNG/BMP → 位平面全组合扫描（递归内层图片同样吃这条路径）+ 本体/位平面 QR 识别
   if (exts.has('png') || ext === 'png' || ext === 'bmp') {
-    const decoded = ext === 'bmp' ? decodeBmpRgba(bytes) : decodePngRgba(bytes);
+    let decoded = ext === 'bmp' ? decodeBmpRgba(bytes) : decodePngRgba(bytes);
+    // BMP 宽高/魔数被改（宽高 1×1 型题）：repairBmp 反推后重解码。
+    if (ext === 'bmp' && engines.fileRepair?.repairBmp && (!decoded?.rgba || decoded.width <= 2 || decoded.height <= 2)) {
+      try {
+        const repaired = await engines.fileRepair.repairBmp(bytes);
+        if (repaired?.bytes && (repaired.width || 0) > 2) {
+          const retry = decodeBmpRgba(repaired.bytes);
+          if (retry?.rgba) {
+            decoded = retry;
+            paths.push(`${prefix}BMP 修复（宽高反推 ${repaired.width}×${repaired.height}）`);
+          }
+        }
+      } catch { /* 修复失败走原解码结果 */ }
+    }
     if (decoded?.rgba) {
       if (engines.qrDecode) {
         for (const item of engines.qrDecode.decodeQrCodes(decoded.rgba, decoded.width, decoded.height)) {
@@ -450,7 +506,19 @@ const solveBytes = async (bytes, fileName, depth, label) => {
 
   if (exts.has('gif') || ext === 'gif') {
     try {
-      const result = engines.gifInspect.inspectGif(bytes);
+      let gifBytes = bytes;
+      let result = engines.gifInspect.inspectGif(bytes);
+      // LSD 宽高被抹（0×0 型题）：repairGif 按帧覆盖反推画布后重检。
+      if ((result.logicalWidth === 0 || result.logicalHeight === 0) && engines.fileRepair?.repairGif) {
+        try {
+          const repaired = await engines.fileRepair.repairGif(bytes);
+          if (repaired?.bytes && (repaired.width || 0) > 0) {
+            gifBytes = repaired.bytes;
+            result = engines.gifInspect.inspectGif(gifBytes);
+            paths.push(`${prefix}GIF 修复（画布 ${repaired.width}×${repaired.height}）`);
+          }
+        } catch { /* 修复失败原样继续 */ }
+      }
       addText(result.comments.join('\n'), `${prefix}GIF 注释段`);
       addText(result.plainTexts.join('\n'), `${prefix}GIF 文本扩展`);
       if (result.delayBits) {
@@ -458,7 +526,7 @@ const solveBytes = async (bytes, fileName, depth, label) => {
       }
       // 帧级 QR：单帧识别 + 全帧横拼/网格拼（glance/give_you_flag 型"帧拼二维码"）
       if (engines.qrDecode && result.frames.length > 0 && result.frames.length <= 240) {
-        engines.gifInspect.decodeGifFrames(bytes, result, { maxFrames: 240 });
+        engines.gifInspect.decodeGifFrames(gifBytes, result, { maxFrames: 240 });
         const frames = result.frames.filter(frame => frame.imageData).slice(0, 240);
         for (const frame of frames.slice(0, 30)) {
           const qr = engines.qrDecode.decodeQrCodes(frame.imageData, frame.width, frame.height);
@@ -581,6 +649,21 @@ const solveBytes = async (bytes, fileName, depth, label) => {
   //   否则原文件字典+数字掩码爆破，命中后解密条目+inflate 递归（Janos 型）。
   // ②无加密条目 → 直接解包递归（docx/jar 常规容器）。
   if (bytes[0] === 0x50 && bytes[1] === 0x4b && depth < 3) {
+    // NTFS ADS 数据流（冒号虚拟条目 / 0x000a extra field 型）：流内容递归分析。
+    if (engines.ntfsAds?.extractNtfsAds) {
+      try {
+        const ads = engines.ntfsAds.extractNtfsAds(bytes);
+        for (const stream of ads.streams) {
+          paths.push(`${prefix}NTFS ADS ${stream.entryName}:${stream.streamName}（${stream.source}）`);
+          if (stream.preview) addText(stream.preview, `${prefix}NTFS ADS 预览`);
+          if (stream.bytes && stream.bytes.length > 3 && depth < 3) {
+            const adsInner = await solveBytes(stream.bytes, `${stream.entryName}:${stream.streamName}`, depth + 1, `${prefix}ads:${stream.streamName}`);
+            paths.push(...adsInner.paths);
+            for (const flag of adsInner.found) found.add(flag);
+          }
+        }
+      } catch { /* ADS 提取失败不阻塞 zip 主流程 */ }
+    }
     let working = bytes;
     let encryptedEntries = [];
     try {
@@ -662,14 +745,40 @@ const solveBytes = async (bytes, fileName, depth, label) => {
         paths.push(`${prefix}RAR 签名重写（${sigFix.changes.length} 处改动）`);
         working = sigFix.fixed;
       }
-      const pseudoFix = engines.rarInspect.fixRarPseudoEncryption(working);
-      if (pseudoFix.fixed) {
-        paths.push(`${prefix}RAR 伪加密清位（${pseudoFix.changes.length} 处）`);
-        working = pseudoFix.fixed;
+      // 先探测真加密（带 salt 的加密条目）：命中走爆破路径，绝不能先清位（清位会毁掉 salt 语义）。
+      let rarEncrypted = [];
+      if (engines.rarBrute?.detectRarEncryptedEntries) {
+        try { rarEncrypted = engines.rarBrute.detectRarEncryptedEntries(working); } catch { rarEncrypted = []; }
+      }
+      if (!rarEncrypted.length) {
+        // 探测抛错 = 无加密条目/RAR5/无盐伪加密——伪加密清位后才可能解压（SimpleRAR 型）。
+        try {
+          const pseudoFix = engines.rarInspect.fixRarPseudoEncryption(working);
+          if (pseudoFix.fixed) {
+            paths.push(`${prefix}RAR 伪加密清位（${pseudoFix.changes.length} 处）`);
+            working = pseudoFix.fixed;
+          }
+        } catch { /* 无可清位项 */ }
       }
       const inspected = engines.rarInspect.inspectRar(working);
+      // 加密条目：RAR3 口令爆破（SHA-1 0x40000 轮拉伸 + AES-128-CBC 快筛 + 解压 CRC 终验）。
+      if (rarEncrypted.length && engines.rarBrute?.bruteRarPassword) {
+        paths.push(`${prefix}RAR 加密条目 ${rarEncrypted.length} 个——启动口令爆破`);
+        try {
+          const hit = await engines.rarBrute.bruteRarPassword(working, { timeBudgetMs: 8000 });
+          if (hit?.password && hit.content) {
+            paths.push(`${prefix}RAR 口令命中 ${hit.password}（试 ${hit.tried}）`);
+            const inner = await solveBytes(hit.content, rarEncrypted[0].name, depth + 1, `${prefix}rar:decrypted`);
+            paths.push(...inner.paths.slice(0, 10));
+            for (const flag of inner.found) found.add(flag);
+          } else {
+            paths.push(`${prefix}RAR 爆破未命中（试 ${hit?.tried ?? 0}）`);
+          }
+        } catch (error) { paths.push(`${prefix}RAR 爆破失败：${String(error.message).slice(0, 60)}`); }
+      }
       for (const entry of inspected.entries.slice(0, 12)) {
         if (entry.isDirectory) continue;
+        if (rarEncrypted.length && entry.encrypted) continue; // 加密条目走上面的爆破路径
         try {
           const extracted = engines.rarExtract.extractRarEntry(working, entry);
           if (!extracted.bytes) {
@@ -703,15 +812,57 @@ const solveBytes = async (bytes, fileName, depth, label) => {
     }
   }
 
-  // pcap/pcapng：USB HID + TCP 流/HTTP 对象（body 递归）
-  if (['pcap', 'pcapng', 'cap'].includes(ext)) {
+  // pyc/pyo：常量提取（flag 最常见藏点）+ Stegosaurus 死槽隐写 + 结构异常。
+  if (/\.(pyc|pyo)$/i.test(fileName) || ext === 'pyc') {
     try {
+      const info = engines.pycParse?.extractPycInfo?.(bytes);
+      if (info) {
+        paths.push(`${prefix}pyc ${info.header?.version ?? '?'}（${info.codeCount} code objects，co_code ${info.totalCodeBytes}B）`);
+        for (const item of info.strings.slice(0, 60)) addText(item.value, `${prefix}pyc 常量 ${item.where}`);
+        for (const item of info.bytesConsts.slice(0, 30)) {
+          addText(item.latin1, `${prefix}pyc bytes 常量 ${item.where}`);
+          for (const flag of findFlags(item.hex)) found.add(flag);
+        }
+        for (const candidate of info.flagCandidates) {
+          found.add(candidate.value);
+          paths.push(`${prefix}pyc flag 候选（${candidate.pattern} @${candidate.where}）`);
+        }
+      }
+      const stego = engines.pycStego?.extractStegosaurus?.(bytes);
+      if (stego?.payloads?.length) {
+        for (const payload of stego.payloads) {
+          paths.push(`${prefix}Stegosaurus 死槽隐写提取（${stego.slotCount ?? '?'} 槽）`);
+          addText(payload, `${prefix}Stegosaurus payload`);
+        }
+      }
+    } catch (error) { paths.push(`${prefix}pyc 解析失败：${error.message}`); }
+  }
+
+  // pcap/pcapng：USB HID + TCP 流/HTTP 对象（body 递归）
+  if (['pcap', 'pcapng', 'cap'].includes(ext)) {    try {
       const parsed = engines.pcapParser.parseCapture(bytes);
       const usb = engines.usbHid.extractUsbHid(parsed);
       if (usb.text) addText(usb.text, `${prefix}USB HID 击键恢复`);
       if (engines.pcapProtocols?.buildPacketViews && engines.pcapAnalyze?.analyzeCapture) {
         const views = engines.pcapProtocols.buildPacketViews(parsed);
         const analysis = engines.pcapAnalyze.analyzeCapture(views);
+        // TTL 隐写：IPv4 包 TTL 值序列（以太帧 IP 头 @14，TTL @22）→ 多映射解码（63/127/191/255 四值 2bit 等）。
+        if (engines.ttlStego?.decodeTtl) {
+          const ttls = [];
+          for (const view of views) {
+            const frame = view.frame;
+            if (view.linkType === 1 && frame.length > 23 && frame[12] === 0x08 && frame[13] === 0x00) ttls.push(frame[22]);
+          }
+          if (ttls.length >= 8) {
+            for (const result of engines.ttlStego.decodeTtl(ttls)) {
+              if (result.printable > 0.7 && result.text) {
+                paths.push(`${prefix}TTL 隐写（${result.method}，${ttls.length} 包）`);
+                for (const flag of findFlags(result.text)) found.add(flag);
+                for (const flag of chainProbe(result.text)) found.add(flag);
+              }
+            }
+          }
+        }
         for (const flag of analysis.flags.map(hit => hit.sample)) {
           paths.push(`${prefix}流量 flag 命中`);
           for (const f of findFlags(flag)) found.add(f);

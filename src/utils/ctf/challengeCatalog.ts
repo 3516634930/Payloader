@@ -73,6 +73,20 @@ export const challengeCatalog: ChallengeCategory[] = [
         kind: 'file',
         cardId: 'ff-card-rar',
       },
+      {
+        id: 'rar-brute',
+        label: { zh: 'RAR 密码爆破', en: 'RAR password brute force' },
+        description: { zh: 'RAR3 真加密条目口令爆破（SHA-1 拉伸 + AES-128-CBC 快筛 + 解压 CRC 终验），字典/自定义/掩码三源。', en: 'RAR3 password brute force (SHA-1 stretching + AES-128-CBC quick check + inflate CRC verification) with dictionary, custom, and mask sources.' },
+        kind: 'file',
+        cardId: 'ff-card-rar',
+      },
+      {
+        id: 'ntfs-ads',
+        label: { zh: 'NTFS 数据流', en: 'NTFS data streams' },
+        description: { zh: 'ZIP 载体的 ADS 提取（file:stream 冒号条目与 0x000a extra field 两种形态），流内容下载。', en: 'Extracts NTFS ADS from ZIP carriers (colon entries and 0x000a extra fields) with stream download.' },
+        kind: 'file',
+        cardId: 'ff-card-ntfs',
+      },
     ],
   },
   {
@@ -106,6 +120,13 @@ export const challengeCatalog: ChallengeCategory[] = [
         id: 'png-repair',
         label: { zh: 'PNG 宽高修复', en: 'PNG dimension repair' },
         description: { zh: 'CRC 校验失败的 IHDR 宽高暴力还原并下载修复图。', en: 'Brute-forces broken IHDR dimensions and downloads the fixed PNG.' },
+        kind: 'file',
+        cardId: 'ff-card-repair',
+      },
+      {
+        id: 'image-repair',
+        label: { zh: 'BMP/GIF/JPG 头修复', en: 'BMP/GIF/JPG repair' },
+        description: { zh: 'BMP 魔数重建+宽高按文件大小反推、GIF 头重建+画布推断（可手工指定）、JPG SOI/EOI 重写与段结构诊断。', en: 'BMP magic rebuild plus size inference, GIF header/canvas repair with manual override, and JPG SOI/EOI rewrite with segment diagnosis.' },
         kind: 'file',
         cardId: 'ff-card-repair',
       },
@@ -175,8 +196,8 @@ export const challengeCatalog: ChallengeCategory[] = [
   {
     id: 'document',
     icon: '📄',
-    label: { zh: '文档取证（PDF）', en: 'Document forensics' },
-    hint: { zh: 'PDF 风险指标、注释、可疑文本与压缩流是 PDF 题三板斧。', en: 'PDF indicators, comments, suspicious text, and streams.' },
+    label: { zh: '文档与程序取证', en: 'Documents & bytecode' },
+    hint: { zh: 'PDF 风险指标/注释/流；pyc 常量挖掘与 Stegosaurus 隐写。', en: 'PDF indicators, comments, streams; pyc constants and Stegosaurus stego.' },
     tools: [
       {
         id: 'pdf-inspect',
@@ -184,6 +205,13 @@ export const challengeCatalog: ChallengeCategory[] = [
         description: { zh: '风险指标（JS/动作/嵌入文件）/注释/可疑文本/FlateDecode 流解压。', en: 'Risk indicators, comments, suspicious text, and stream inflation.' },
         kind: 'file',
         cardId: 'ff-card-pdf',
+      },
+      {
+        id: 'pyc-inspect',
+        label: { zh: 'pyc 常量挖掘 + Stegosaurus', en: 'pyc constants & Stegosaurus' },
+        description: { zh: 'Python 版本识别、co_consts 字符串/bytes 常量提取（flag 藏点）、死槽隐写提取与结构异常诊断。', en: 'Python version, co_consts extraction (flag hot spots), dead-slot stego extraction, and anomaly diagnosis.' },
+        kind: 'file',
+        cardId: 'ff-card-pyc',
       },
       {
         id: 'pdf-password',
@@ -207,6 +235,27 @@ export const challengeCatalog: ChallengeCategory[] = [
         description: { zh: 'ZWSP/ZWNJ/ZWJ 序列解码（纯输入，粘贴即解）。', en: 'Decodes ZWSP/ZWNJ/ZWJ sequences; paste and go.' },
         kind: 'cipher',
         operationId: 'zero-width',
+      },
+      {
+        id: 'snow-stego',
+        label: { zh: 'snow 空白隐写', en: 'Snow whitespace stego' },
+        description: { zh: '空格/tab 隐写 8 变体提取（官方 3bit 规范 + 朴素 0/1 映射），粘贴含可疑空白的文本。', en: 'Eight whitespace-stego variants (official 3-bit spec plus naive mappings); paste suspicious text.' },
+        kind: 'cipher',
+        operationId: 'snow-stego',
+      },
+      {
+        id: 'cloakify-stego',
+        label: { zh: 'Cloakify 词表隐写', en: 'Cloakify word-list stego' },
+        description: { zh: '词表映射还原：内置 6 套词表自动扫描，自定义词表粘到密钥栏。', en: 'Word-list recovery: auto-scans 6 built-in lists; paste custom lists into the key field.' },
+        kind: 'cipher',
+        operationId: 'cloakify',
+      },
+      {
+        id: 'ttl-stego',
+        label: { zh: 'TTL 隐写解码', en: 'TTL stego decode' },
+        description: { zh: '粘贴 Wireshark TTL 列或数字序列，2bit 四值/chr/低 4 位全映射尝试。', en: 'Paste Wireshark TTL columns or numbers; 2-bit quaternary, chr, and low-nibble mappings.' },
+        kind: 'cipher',
+        operationId: 'ttl-stego',
       },
       {
         id: 'suspicious-scan',

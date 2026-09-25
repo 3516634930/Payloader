@@ -14,6 +14,7 @@ import ZipBruteCard from './ZipBruteCard';
 import ChallengePickerCard from './ChallengePickerCard';
 import PdfInspectCard from './PdfInspectCard';
 import RarInspectCard from './RarInspectCard';
+import PycInspectCard from './PycInspectCard';
 import StringsCard from './StringsCard';
 import HexdumpCard from './HexdumpCard';
 import { downloadBytes } from './ffDownload';
@@ -39,6 +40,16 @@ import {
   scanEmbeddedSignatures,
 } from '../../utils/ctf/embedScan';
 import type { PngChunkList } from "../../utils/ctf/embedScan";
+import {
+  guessGifSize,
+  repairBmp,
+  repairGif,
+  repairGifWithSize,
+  repairJpg,
+} from '../../utils/ctf/fileRepair';
+import type { FileRepairResult, GifSizeGuess, JpgRepairResult } from '../../utils/ctf/fileRepair';
+import { extractNtfsAds } from '../../utils/ctf/ntfsAds';
+import type { NtfsAdsReport } from '../../utils/ctf/ntfsAds';
 import { MAX_ANALYSIS_PIXELS } from '../../utils/ctf/imagePlanes';
 import { recommendTools } from '../../utils/ctf/recommendTools';
 import { copyToClipboard } from '../../utils/clipboard';
@@ -65,6 +76,8 @@ interface FileReport {
   zeroWidth: ReturnType<typeof extractZeroWidthFromText>;
   embedded: EmbeddedReport;
   chunks: PngChunkList | null;
+  // ZIP 载体的 NTFS ADS 数据流报告（非 ZIP 为 null）。
+  ntfs: NtfsAdsReport | null;
 }
 
 export interface FileForensicsWorkspaceProps {
@@ -90,6 +103,13 @@ interface PngFixState {
 interface ZipFixState {
   cleared: number;
   bytes: Uint8Array;
+}
+
+// BMP/GIF/JPG 修复结果（对齐 PngFixState 的状态机；JPG 额外携带段结构）。
+interface ImageFixState {
+  status: 'idle' | 'running' | 'done' | 'failed';
+  result?: FileRepairResult;
+  jpg?: JpgRepairResult;
 }
 
 const formatBytes = (value: number): string => {
@@ -123,6 +143,13 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
   const [analyzing, setAnalyzing] = useState(false);
   const [pngFix, setPngFix] = useState<PngFixState>({ status: 'idle' });
   const [zipFix, setZipFix] = useState<ZipFixState | null>(null);
+  const [bmpFix, setBmpFix] = useState<ImageFixState>({ status: 'idle' });
+  const [gifFix, setGifFix] = useState<ImageFixState>({ status: 'idle' });
+  const [jpgFix, setJpgFix] = useState<ImageFixState>({ status: 'idle' });
+  const [gifGuess, setGifGuess] = useState<GifSizeGuess | null>(null);
+  // GIF 手工宽高（空串表示未填；修复题画布推断歧义时人工指定）。
+  const [gifManualW, setGifManualW] = useState('');
+  const [gifManualH, setGifManualH] = useState('');
   const [busy, setBusy] = useState(false);
   // 位平面卡：浏览器异步解码出的 RGBA 像素（>4MP 自动降采样）。
   const [planeImage, setPlaneImage] = useState<PlaneImage | null>(null);
@@ -148,6 +175,12 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
       setAnalysis({ name: file.name, size: file.size, bytes, file });
       setPngFix({ status: 'idle' });
       setZipFix(null);
+      setBmpFix({ status: 'idle' });
+      setGifFix({ status: 'idle' });
+      setJpgFix({ status: 'idle' });
+      setGifGuess(null);
+      setGifManualW('');
+      setGifManualH('');
       // 重置位平面卡状态：其余卡片的过滤/翻页/搜索状态随 key remount 自行重置。
       setPlaneImage(null);
       setPlaneStatus('idle');
@@ -163,6 +196,7 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
       // 嵌入扫描：首字节跳转式滑窗（前 8MB），尾附检测与 chunk 枚举是 O(n) 单遍。
       const pngTrailer = findPngTrailer(bytes);
       const jpgTrailer = pngTrailer ? null : findJpegTrailer(bytes);
+      const isZip = types.some(type => type.ext === 'zip' || type.ext === 'jar' || type.ext === 'apk') || (bytes.length > 4 && bytes[0] === 0x50 && bytes[1] === 0x4b);
       setReport({
         types,
         entropy,
@@ -171,7 +205,7 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
         suspicious: scanSuspiciousContent(latin1),
         hexdump: hexdumpPreview(bytes, { length: HEX_PAGE_BYTES }),
         png: parsePngIhdr(bytes),
-        zip: types.some(type => type.ext === 'zip' || type.ext === 'jar' || type.ext === 'apk') || (bytes.length > 4 && bytes[0] === 0x50 && bytes[1] === 0x4b) ? detectZipEncryption(bytes) : null,
+        zip: isZip ? detectZipEncryption(bytes) : null,
         zeroWidth: extractZeroWidthFromText(utf8Text),
         embedded: {
           hits: scanEmbeddedSignatures(bytes),
@@ -179,6 +213,7 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
           jpgTrailer: jpgTrailer ? { offset: jpgTrailer.offset, size: jpgTrailer.trailing.length } : null,
         },
         chunks: types.some(type => type.ext === 'png') ? enumeratePngChunks(bytes) : null,
+        ntfs: isZip ? extractNtfsAds(bytes) : null,
       });
       setAnalyzing(false);
     } catch {
@@ -240,6 +275,7 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
         { key: 'bitplanes', label: language === 'zh' ? '【位平面】' : '[Bit planes]', onSelect: () => scrollToCard('ff-card-bitplanes', { zh: '位平面分析仅支持图片文件，请先选择一张图片。', en: 'Bit-plane analysis applies to image files; choose an image first.' }) },
         { key: 'embedded', label: language === 'zh' ? '【嵌入数据】' : '[Embedded data]', onSelect: () => scrollToCard('ff-card-embedded', { zh: '当前文件没有检出嵌入文件或尾附数据。', en: 'No embedded files or trailing data were detected in this file.' }) },
         { key: 'chunks', label: language === 'zh' ? '【PNG chunk】' : '[PNG chunks]', onSelect: () => scrollToCard('ff-card-chunks', { zh: 'chunk 枚举仅支持 PNG 文件。', en: 'Chunk enumeration applies to PNG files only.' }) },
+        { key: 'ntfs', label: language === 'zh' ? '【NTFS 数据流】' : '[NTFS streams]', onSelect: () => scrollToCard('ff-card-ntfs', { zh: '未发现 NTFS 数据流，或当前文件不是 ZIP 载体。', en: 'No NTFS data streams found, or the file is not a ZIP carrier.' }) },
         { key: 'strings', label: language === 'zh' ? '【可读字符串】' : '[Strings]', onSelect: () => scrollToCard('ff-card-strings', { zh: '当前文件没有提取到可读字符串。', en: 'No readable strings were extracted from this file.' }) },
         { key: 'hexdump', label: language === 'zh' ? '【HEX 转储】' : '[Hexdump]', onSelect: () => scrollToCard('ff-card-hexdump', { zh: '当前文件没有 hexdump 预览。', en: 'No hexdump preview for this file.' }) },
       ],
@@ -349,6 +385,55 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
     if (!analysis) return;
     const result = fixZipPseudoEncryption(analysis.bytes);
     if (result) setZipFix({ cleared: result.cleared, bytes: result.bytes });
+  };
+
+  // 修复目标判定：魔数命中或扩展名匹配（魔数被改坏的题靠扩展名兜底进修复区）。
+  const repairTarget = useMemo(() => {
+    if (!analysis || !report) return null;
+    const ext = analysis.name.includes('.') ? analysis.name.split('.').pop()!.toLowerCase() : '';
+    const detected = new Set(report.types.map(type => type.ext));
+    return {
+      bmp: detected.has('bmp') || ext === 'bmp',
+      gif: detected.has('gif') || ext === 'gif',
+      jpg: detected.has('jpg') || ext === 'jpg' || ext === 'jpeg' || ext === 'jfif',
+      // pyc 魔数随版本漂移无法魔数探测，靠扩展名路由（.pyc/.pyo）。
+      pyc: ext === 'pyc' || ext === 'pyo',
+    };
+  }, [analysis, report]);
+
+  const runBmpFix = async () => {
+    if (!analysis) return;
+    setBmpFix({ status: 'running' });
+    const result = await repairBmp(analysis.bytes);
+    setBmpFix(result.bytes ? { status: 'done', result } : { status: 'failed', result });
+  };
+
+  const runGifFix = async () => {
+    if (!analysis) return;
+    setGifFix({ status: 'running' });
+    setGifGuess(guessGifSize(analysis.bytes));
+    const result = await repairGif(analysis.bytes);
+    setGifFix(result.bytes ? { status: 'done', result } : { status: 'failed', result });
+  };
+
+  const runGifManualFix = async () => {
+    if (!analysis) return;
+    const w = Number.parseInt(gifManualW, 10);
+    const h = Number.parseInt(gifManualH, 10);
+    if (!Number.isFinite(w) || !Number.isFinite(h) || w < 1 || h < 1) {
+      notifications.show({ message: language === 'zh' ? '请先填写 1-65535 范围内的宽和高。' : 'Enter width and height in 1-65535 first.', color: 'red' });
+      return;
+    }
+    setGifFix({ status: 'running' });
+    const result = await repairGifWithSize(analysis.bytes, w, h);
+    setGifFix(result.bytes ? { status: 'done', result } : { status: 'failed', result });
+  };
+
+  const runJpgFix = async () => {
+    if (!analysis) return;
+    setJpgFix({ status: 'running' });
+    const result = await repairJpg(analysis.bytes);
+    setJpgFix({ status: 'done', jpg: result });
   };
 
   return (
@@ -474,7 +559,7 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
             </section>
           )}
 
-          {report && (report.png || report.zip) && (
+          {report && (report.png || report.zip || repairTarget?.bmp || repairTarget?.gif || repairTarget?.jpg) && (
             <section id="ff-card-repair" className="ff-card" aria-label={language === 'zh' ? '文件修复工具' : 'Repair tools'}>
               <div className="ff-card-head">
                 <strong>{language === 'zh' ? '修复工具' : 'Repair tools'}</strong>
@@ -530,6 +615,117 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
                     </div>
                   )}
                 </div>
+              )}
+              {repairTarget?.bmp && (
+                <div className="ff-tool">
+                  <div className="ff-row">
+                    <span className="ff-label">BMP</span>
+                    {bmpFix.status === 'idle' && <button type="button" className="ff-button ff-button-primary" onClick={() => { void runBmpFix(); }}>{language === 'zh' ? '尝试修复（魔数重建 + 宽高反推）' : 'Repair (magic + dimensions)'}</button>}
+                    {bmpFix.status === 'running' && <span className="ff-note">{language === 'zh' ? '正在按文件大小枚举合法宽高组合…' : 'Enumerating dimensions…'}</span>}
+                    {bmpFix.status === 'done' && bmpFix.result?.bytes && (
+                      <>
+                        <span className="ff-badge ff-badge-ok">{language === 'zh' ? `还原为 ${bmpFix.result.width}×${bmpFix.result.height}` : `Recovered ${bmpFix.result.width}×${bmpFix.result.height}`}</span>
+                        <button type="button" className="ff-button" onClick={() => downloadBytes(bmpFix.result!.bytes!, `${analysis.name.replace(/\.bmp$/i, '')}-fixed.bmp`)}>
+                          {language === 'zh' ? '下载修复后文件' : 'Download fixed file'}
+                        </button>
+                      </>
+                    )}
+                    {bmpFix.status === 'failed' && <span className="ff-note">{language === 'zh' ? '未能修复：文件可能不是可识别的 BMP，或压缩 BI_RGB 之外的编码。' : 'Not repairable: unrecognized BMP or compressed encoding.'}</span>}
+                  </div>
+                  {bmpFix.result && bmpFix.result.diagnosis.length > 0 && (
+                    <div className="ff-note">{bmpFix.result.diagnosis.map((line, index) => <div key={index}>{line}</div>)}</div>
+                  )}
+                </div>
+              )}
+              {repairTarget?.gif && (
+                <div className="ff-tool">
+                  <div className="ff-row">
+                    <span className="ff-label">GIF</span>
+                    {gifFix.status === 'idle' && <button type="button" className="ff-button ff-button-primary" onClick={() => { void runGifFix(); }}>{language === 'zh' ? '自动修复（头重建 + 画布推断）' : 'Auto repair (header + canvas)'}</button>}
+                    {gifFix.status === 'running' && <span className="ff-note">{language === 'zh' ? '正在推断画布尺寸…' : 'Inferring canvas size…'}</span>}
+                    {gifFix.status === 'done' && gifFix.result?.bytes && (
+                      <>
+                        <span className="ff-badge ff-badge-ok">{language === 'zh' ? `画布 ${gifFix.result.width}×${gifFix.result.height}` : `Canvas ${gifFix.result.width}×${gifFix.result.height}`}</span>
+                        <button type="button" className="ff-button" onClick={() => downloadBytes(gifFix.result!.bytes!, `${analysis.name.replace(/\.gif$/i, '')}-fixed.gif`)}>
+                          {language === 'zh' ? '下载修复后文件' : 'Download fixed file'}
+                        </button>
+                      </>
+                    )}
+                    {gifFix.status === 'failed' && <span className="ff-note">{language === 'zh' ? '未能修复：文件可能不是可识别的 GIF。' : 'Not repairable: unrecognized GIF.'}</span>}
+                  </div>
+                  <div className="ff-row">
+                    <span className="ff-label">{language === 'zh' ? '手工宽高' : 'Manual size'}</span>
+                    <input className="ff-input ff-input-narrow" inputMode="numeric" placeholder="W" value={gifManualW} onChange={event => setGifManualW(event.target.value)} aria-label={language === 'zh' ? '宽度' : 'width'} />
+                    <span className="ff-mono">×</span>
+                    <input className="ff-input ff-input-narrow" inputMode="numeric" placeholder="H" value={gifManualH} onChange={event => setGifManualH(event.target.value)} aria-label={language === 'zh' ? '高度' : 'height'} />
+                    <button type="button" className="ff-button" onClick={() => { void runGifManualFix(); }}>{language === 'zh' ? '按指定宽高重写' : 'Rewrite size'}</button>
+                    {gifGuess && <span className="ff-note">{language === 'zh' ? `帧覆盖推断 ${gifGuess.width}×${gifGuess.height}（${gifGuess.frameCount} 帧，${gifGuess.exact ? '精确' : '推断'}）` : `Frame-coverage ${gifGuess.width}×${gifGuess.height} (${gifGuess.frameCount} frames, ${gifGuess.exact ? 'exact' : 'inferred'})`}</span>}
+                  </div>
+                  {gifFix.result && gifFix.result.diagnosis.length > 0 && (
+                    <div className="ff-note">{gifFix.result.diagnosis.map((line, index) => <div key={index}>{line}</div>)}</div>
+                  )}
+                </div>
+              )}
+              {repairTarget?.jpg && (
+                <div className="ff-tool">
+                  <div className="ff-row">
+                    <span className="ff-label">JPG</span>
+                    {jpgFix.status === 'idle' && <button type="button" className="ff-button ff-button-primary" onClick={() => { void runJpgFix(); }}>{language === 'zh' ? '诊断结构并修复（SOI/EOI）' : 'Diagnose & repair (SOI/EOI)'}</button>}
+                    {jpgFix.status === 'running' && <span className="ff-note">{language === 'zh' ? '正在枚举段结构…' : 'Walking segments…'}</span>}
+                    {jpgFix.status === 'done' && jpgFix.jpg && (
+                      <>
+                        {!jpgFix.jpg.bytes && <span className="ff-badge ff-badge-warn">{language === 'zh' ? '未能识别为 JPG（无有效段结构）' : 'Not recognized as JPG'}</span>}
+                        {jpgFix.jpg.bytes && jpgFix.jpg.repairedSoi && <span className="ff-badge ff-badge-warn">{language === 'zh' ? 'SOI 已重写' : 'SOI rewritten'}</span>}
+                        {jpgFix.jpg.bytes && jpgFix.jpg.repairedEoi && <span className="ff-badge ff-badge-warn">{language === 'zh' ? 'EOI 已补写' : 'EOI appended'}</span>}
+                        {jpgFix.jpg.bytes && !jpgFix.jpg.repairedSoi && !jpgFix.jpg.repairedEoi && <span className="ff-badge ff-badge-ok">{language === 'zh' ? 'SOI/EOI 完好' : 'SOI/EOI intact'}</span>}
+                        {jpgFix.jpg.sofFrames.length > 0 && <span className="ff-mono">{language === 'zh' ? 'SOF 尺寸' : 'SOF size'}: {jpgFix.jpg.sofFrames.map(frame => `${frame.width}×${frame.height}`).join(', ')}</span>}
+                        {jpgFix.jpg.bytes && <button type="button" className="ff-button" onClick={() => downloadBytes(jpgFix.jpg!.bytes!, `${analysis.name.replace(/\.jpe?g$/i, '')}-fixed.jpg`)}>
+                          {language === 'zh' ? '下载修复后文件' : 'Download fixed file'}
+                        </button>}
+                      </>
+                    )}
+                    {jpgFix.status === 'failed' && <span className="ff-note">{language === 'zh' ? '未能识别为 JPG。' : 'Not recognized as JPG.'}</span>}
+                  </div>
+                  {jpgFix.status === 'done' && jpgFix.jpg && (
+                    <div className="ff-note">
+                      <div>{language === 'zh'
+                        ? `共 ${jpgFix.jpg.segments.length} 个段（熵编码数据 ${(jpgFix.jpg.segments.reduce((sum, seg) => sum + (seg.entropyBytes ?? 0), 0)).toLocaleString()} 字节）`
+                        : `${jpgFix.jpg.segments.length} segments (${(jpgFix.jpg.segments.reduce((sum, seg) => sum + (seg.entropyBytes ?? 0), 0)).toLocaleString()} entropy bytes)`}</div>
+                      {jpgFix.jpg.diagnosis.map((line, index) => <div key={index}>{line}</div>)}
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+
+          {report?.ntfs && report.ntfs.streams.length > 0 && (
+            <section id="ff-card-ntfs" className="ff-card" aria-label={language === 'zh' ? 'NTFS 数据流' : 'NTFS data streams'}>
+              <div className="ff-card-head">
+                <strong>{language === 'zh' ? `NTFS 数据流（${report.ntfs.streams.length}）` : `NTFS data streams (${report.ntfs.streams.length})`}</strong>
+              </div>
+              {report.ntfs.streams.map((stream, index) => (
+                <div className="ff-tool" key={`${stream.entryName}:${stream.streamName}:${index}`}>
+                  <div className="ff-row">
+                    <span className="ff-label ff-mono" title={`${stream.entryName}:${stream.streamName}`}>{stream.entryName}:{stream.streamName}</span>
+                    <span className="ff-badge">{stream.source === 'entry-name' ? (language === 'zh' ? '冒号虚拟条目' : 'colon entry') : (language === 'zh' ? 'extra field 流' : 'extra-field stream')}</span>
+                    {stream.bytes && (
+                      <button
+                        type="button"
+                        className="ff-button"
+                        onClick={() => downloadBytes(stream.bytes!, `${analysis.name}-${stream.streamName.replace(/[\\/:*?"<>|$]/g, '_')}`)}
+                      >
+                        {language === 'zh' ? '下载流内容' : 'Download stream'}
+                      </button>
+                    )}
+                  </div>
+                  {stream.preview && <code className="ff-code">{stream.preview}</code>}
+                  {stream.flags.map(flag => <span key={flag.prefix} className="ff-badge ff-badge-flag" title={flag.sample}>{flag.sample}</span>)}
+                  {stream.hint && <span className="ff-note">{stream.hint}</span>}
+                </div>
+              ))}
+              {report.ntfs.diagnosis.length > 0 && (
+                <div className="ff-note">{report.ntfs.diagnosis.map((line, index) => <div key={index}>{line}</div>)}</div>
               )}
             </section>
           )}
@@ -628,6 +824,14 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
             <RarInspectCard
               key={`rar-${analysis.name}:${analysis.size}`}
               fileName={analysis.name}
+              bytes={analysis.bytes}
+              language={language}
+            />
+          )}
+
+          {report && repairTarget?.pyc && (
+            <PycInspectCard
+              key={`pyc-${analysis.name}:${analysis.size}`}
               bytes={analysis.bytes}
               language={language}
             />

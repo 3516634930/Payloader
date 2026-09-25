@@ -87,6 +87,10 @@ export const operationAudience: Record<OperationId, Audience> = {
   'magic-chain': 'ctf',
   'crc32-attack': 'ctf',
   'base64-stego': 'ctf',
+  // ---- 批次 SB：随波逐流隐写对齐（snow/Cloakify/TTL，全部 CTF 域）----
+  'snow-stego': 'ctf',
+  'cloakify': 'ctf',
+  'ttl-stego': 'ctf',
   'xor-known-plaintext': 'ctf',
   'magic-xor-helper': 'ctf',
   'brainfuck': 'ctf',
@@ -413,6 +417,7 @@ const ctfMenuSpec: CodecMenuSpec[] = [
       { label: { zh: 'PRNG 与格', en: 'PRNG & Lattice' }, ids: ['mt19937-helper', 'lcg-helper', 'lfsr-helper', 'discrete-log-helper'] },
       { label: { zh: '自动破译', en: 'Auto Solve' }, ids: ['xor-auto-solve', 'vigenere-auto', 'substitution-auto'] },
       { label: { zh: '变体与助手', en: 'Variants & Helpers' }, ids: ['xor', 'xor-bruteforce', 'xor-known-plaintext', 'magic-xor-helper', 'aes-ofb', 'aes-kw', 'aes-kwp', 'aes-gcm-siv', 'aes-siv', 'crypto-attack-helper', 'bip39-seed', 'cbc-padding-demo', 'padding-oracle-attack', 'crc32-attack', 'base64-stego'] },
+      { label: { zh: '文本隐写（批次 SB）', en: 'Text Stego (Batch SB)' }, ids: ['snow-stego', 'cloakify', 'ttl-stego'] },
     ],
   },
   {
@@ -487,6 +492,7 @@ const ctfSections: CtfSectionSpec[] = [
       { name: { zh: '自动破译', en: 'Auto Solve' }, ids: ['vigenere-auto', 'substitution-auto'] },
       { name: { zh: '随机数与序列', en: 'PRNG & Sequences' }, ids: ['mt19937-helper', 'lcg-helper', 'lfsr-helper', 'discrete-log-helper'] },
       { name: { zh: '协议与取证助手', en: 'Protocol & Forensics Helpers' }, ids: ['hash-length-extension-helper', 'crypto-attack-helper', 'bip39-seed', 'pgp-parse', 'cbc-padding-demo', 'padding-oracle-attack', 'crc32-attack', 'base64-stego', 'pem-block', 'asn1-der', 'ssh-public-key', 'jwk-jwe'] },
+      { name: { zh: '文本隐写（批次 SB）', en: 'Text Stego (Batch SB)' }, ids: ['snow-stego', 'cloakify', 'ttl-stego'] },
       { name: { zh: '带key与多key（批次 O）', en: 'Keyed & Multi-key (Batch O)' }, ids: ['otp', 'multiplicative', 'fractionated-morse', 'fenham', 'running-key', 'bazeries', 'kamasutra', 'm209', 'rc2', 'rc6'] },
     ],
   },
