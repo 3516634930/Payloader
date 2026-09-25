@@ -256,6 +256,8 @@ export const loadReviewConfiguration = async directoryInput => {
     toolMigrations: [...asList(decisions.toolMigrations), ...collectionEntries('toolMigrations')],
     payloadSplits: [...asList(decisions.payloadSplits), ...collectionEntries('payloadSplits')],
     collectionSplits: [...asList(decisions.collectionSplits), ...collectionEntries('collectionSplits')],
+    payloadMerges: [...asList(decisions.payloadMerges), ...collectionEntries('payloadMerges')],
+    payloadSubBranches: [...asList(decisions.payloadSubBranches), ...collectionEntries('payloadSubBranches')],
     payloadBranches: [...asList(decisions.payloadBranches), ...collectionEntries('payloadBranches')],
     toolMerges: [...asList(decisions.toolMerges), ...collectionEntries('toolMerges')],
     toolOverrides: toolOverrideDocuments.flatMap(document => asList(document.entries)),
@@ -312,6 +314,7 @@ export const prepareCurationOptions = (options = {}, payloadsInput = [], toolsIn
     ...asList(options.toolMigrations),
     ...asList(options.payloadSplits),
     ...asList(options.collectionSplits),
+    ...asList(options.payloadMerges),
   ].map(item => String(item?.sourceId || '').trim()).filter(Boolean));
   const isRetiredManagedSource = id => {
     const normalized = String(id || '').trim();

@@ -243,8 +243,8 @@ test('repairDatabase refuses malformed JSON before creating a backup or changing
 
 test('planContentRepairs attaches the three confirmed orphans and conservatively relocates obvious categories', () => {
   const payloads = [
-    basePayload('ai2-mixed-case-bypass', { category: i18n('AI security', 'AI Security') }),
-    basePayload('ai2-virtual-scenario-bypass', { category: i18n('AI security', 'AI Security') }),
+    basePayload('ai2-mixed-case-bypass', { category: i18n('AI安全', 'AI Security') }),
+    basePayload('ai2-virtual-scenario-bypass', { category: i18n('AI安全', 'AI Security') }),
     basePayload('nosql2-ognl-struts2'),
     basePayload('inject2-clickjacking-163-lines'),
     basePayload('inject2-http-request-smuggling-request'),

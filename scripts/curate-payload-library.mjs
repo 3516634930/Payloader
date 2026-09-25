@@ -1122,7 +1122,7 @@ const pruneDanglingNavigation = (nodes, validPayloadIds, validToolIds) => asList
 // 全量归类批（2026-09）：按分类规则统一 payload 的导航位置。
 // 分支解析优先级：个体例外 > 显式规则 > 分类映射；无规则分类保持原位，由 verify 报告。
 // 已挂载但分支不符的 payload 就近搬迁；无引用的孤儿直接挂载。
-const appendOrphanPayloadNavigation = (navigation, payloads) => {
+const appendOrphanPayloadNavigation = (navigation, payloads, subBranchBySubCategory = new Map()) => {
   let next = asList(navigation).map(clone);
   const currentBranchByPayload = new Map();
   const collect = (node, branchId) => {
@@ -1148,6 +1148,7 @@ const appendOrphanPayloadNavigation = (navigation, payloads) => {
   };
   const branchIds = collectBranchIds(next);
   const expectedBranchId = payload => categoryBranchExceptions.get(payload.id)
+    || navigationLabelKeys(payload.subCategory).map(key => subBranchBySubCategory.get(key)).find(Boolean)
     || PAYLOAD_BRANCH_RULES.find(rule => rule.payloadId === payload.id)?.branchId
     || categoryBranches.get(displayText(payload.category).trim())
     || '';
@@ -1217,6 +1218,50 @@ export const alignOverrideChainToPatches = (document, patchedCommands) => {
 const patchedCommandOptions = document => {
   const { keys, byPayload } = patchedCommandKeysFromOverrides(document);
   return { patchedCommandKeys: keys, patchedCommands: byPayload };
+};
+
+// 影子根清理：根 id 若已是其他根子树内的分支 id，则为碎片时代残留（与主树重复），移除。
+const pruneShadowedRoots = navigation => {
+  const roots = asList(navigation);
+  const collectBranchIds = (node, acc) => {
+    for (const child of asList(node.children)) {
+      acc.add(child.id);
+      collectBranchIds(child, acc);
+    }
+  };
+  const idsByRoot = roots.map(root => {
+    const set = new Set();
+    collectBranchIds(root, set);
+    return set;
+  });
+  return roots.filter((root, index) => !idsByRoot.some((set, other) => other !== index && set.has(root.id)));
+};
+
+// AI 等大分支的二级主题分支：声明式创建（存在则仅刷新名称）。
+const ensurePayloadSubBranches = (navigation, branchesInput) => {
+  const branches = asList(branchesInput);
+  if (!branches.length) return navigation;
+  let next = asList(navigation).map(clone);
+  const allIds = new Set();
+  const collectIds = nodes => {
+    for (const node of asList(nodes)) {
+      if (node?.id) allIds.add(node.id);
+      collectIds(node?.children);
+    }
+  };
+  collectIds(next);
+  for (const branch of branches) {
+    const parent = String(branch?.parentBranchId || '').trim();
+    const id = String(branch?.id || '').trim();
+    if (!parent || !id) throw new Error('Payload sub-branch configuration requires parentBranchId and id.');
+    if (allIds.has(id)) continue;
+    // 嵌套插入：父分支是任意深度的节点，用 appendPayloadNavigation 按 id 定位
+    const before = JSON.stringify(next);
+    next = appendPayloadNavigation(next, parent, { id, name: clone(branch.name), children: [] });
+    if (JSON.stringify(next) === before) throw new Error(`Payload sub-branch parent not found: ${parent} (for ${id})`);
+    allIds.add(id);
+  }
+  return next;
 };
 
 const newToolFromMigration = (source, target) => ({
@@ -1310,9 +1355,17 @@ export const curatePayloadLibrary = (input, options = {}) => {
   };
   const originalById = new Map(snapshot.payloads.map(item => [item.id, clone(item)]));
   snapshot.navigation = ensurePayloadBranches(snapshot.navigation, options.payloadBranches);
+  snapshot.navigation = pruneShadowedRoots(snapshot.navigation);
+  const subBranches = asList(options.payloadSubBranches);
+  snapshot.navigation = ensurePayloadSubBranches(snapshot.navigation, subBranches);
+  const subBranchBySubCategory = new Map();
+  for (const branch of subBranches) {
+    for (const key of navigationLabelKeys(branch.name)) subBranchBySubCategory.set(key, branch.id);
+  }
   const migrations = new Map(asList(options.toolMigrations).map(item => [item.sourceId, item]));
   const splits = new Map(asList(options.payloadSplits).map(item => [item.sourceId, item]));
   const collectionSplits = new Map(asList(options.collectionSplits).map(item => [item.sourceId, item]));
+  const payloadMerges = new Map(asList(options.payloadMerges).map(item => [item.sourceId, item]));
   snapshot.payloads = applyPayloadOverrides(
     snapshot.payloads,
     options.overrideDocuments || [],
@@ -1329,7 +1382,7 @@ export const curatePayloadLibrary = (input, options = {}) => {
     const migration = migrations.get(source.id);
     const split = splits.get(source.id);
     const collectionSplit = collectionSplits.get(source.id);
-    const decisions = [migration, split, collectionSplit].filter(Boolean);
+    const decisions = [migration, split, collectionSplit, payloadMerges.get(source.id)].filter(Boolean);
     if (decisions.length > 1) throw new Error(`Payload cannot have multiple curation decisions: ${source.id}`);
     if (collectionSplit) {
       const replacements = asList(collectionSplit.replacements);
@@ -1376,6 +1429,17 @@ export const curatePayloadLibrary = (input, options = {}) => {
       });
       continue;
     }
+    if (payloadMerges.has(source.id)) {
+      // payloadMerge：源的命令组并入目标 payload 的 wafBypass，源退役（后置 pass 统一搬运）
+      ledger.push({
+        id: source.id,
+        decision: 'merged',
+        targetPayloadId: String(payloadMerges.get(source.id)?.targetPayloadId || ''),
+        contentHash: payloadContentHash(originalById.get(source.id) || source),
+      });
+      continue;
+    }
+
     if (!migration && !split) {
       const curated = curatePayloadContent(source);
       keptPayloads.push(curated);
@@ -1454,7 +1518,31 @@ export const curatePayloadLibrary = (input, options = {}) => {
   }
 
   snapshot.payloads = keptPayloads;
-  snapshot.navigation = removePayloadReferences(snapshot.navigation, migratedIds);
+  // payloadMerge 后置搬运：源的 execution/wafBypass 并入目标 wafBypass（目标先于源出现也能解析）
+  const keptById = new Map(snapshot.payloads.map(payload => [payload.id, payload]));
+  for (const [sourceId, merge] of payloadMerges) {
+    const source = originalById.get(sourceId);
+    const target = keptById.get(String(merge?.targetPayloadId || ''));
+    // 已应用的合并（源已退役）跳过，保证幂等
+    if (!source) continue;
+    if (!target) throw new Error(`Payload merge target not found: ${sourceId} -> ${merge?.targetPayloadId}`);
+    const prefix = String(merge?.titlePrefix || '').trim();
+    const carried = [
+      ...asList(source.execution),
+      ...asList(source.wafBypass),
+    ].filter(entry => String(entry?.command || '').trim()).map(entry => {
+      const next = clone(entry);
+      if (prefix && next.title) {
+        const zh = localizedText(next.title, 'zh');
+        if (!zh.startsWith(prefix)) next.title = { ...next.title, zh: `${prefix}${zh}`, en: next.title.en };
+      }
+      return next;
+    });
+    if (!carried.length) throw new Error(`Payload merge source has no commands to carry: ${sourceId}`);
+    target.wafBypass = [...asList(target.wafBypass), ...carried];
+  }
+  const mergedSourceIds = new Set([...payloadMerges.keys()]);
+  snapshot.navigation = removePayloadReferences(snapshot.navigation, new Set([...migratedIds, ...mergedSourceIds]));
   const validPayloadIds = new Set(snapshot.payloads.map(payload => payload.id));
   const validToolIds = new Set(snapshot.tools.map(tool => tool.id));
   snapshot.navigation = pruneDanglingNavigation(snapshot.navigation, validPayloadIds, validToolIds);
@@ -1464,7 +1552,7 @@ export const curatePayloadLibrary = (input, options = {}) => {
     asList(options.collectionSplits),
     new Map(snapshot.payloads.map(payload => [payload.id, payload])),
   );
-  snapshot.navigation = appendOrphanPayloadNavigation(snapshot.navigation, snapshot.payloads);
+  snapshot.navigation = appendOrphanPayloadNavigation(snapshot.navigation, snapshot.payloads, subBranchBySubCategory);
   snapshot.navigation = synchronizePayloadNavigation(snapshot.navigation, snapshot.payloads);
   applyToolMerges(snapshot, options.toolMerges);
   snapshot.toolNavigation = updateToolNavigationNames(

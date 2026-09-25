@@ -157,7 +157,9 @@ const standaloneXmlRoot = value => {
 };
 
 const hasMixedCollection = payload => {
-  const lines = commandLines(payload);
+  // 混合集判定只看标准模式命令：wafBypass 是同技术的绕过变体（WAF 模式切换查看），吸收合并是设计意图。
+  const lines = asList(payload?.execution)
+    .flatMap(entry => String(entry?.command || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean));
   if (lines.length < 2) return false;
   const serialized = lines.join('\n');
   const identity = `${displayText(payload.name)} ${displayText(payload.description)} ${displayText(payload.subCategory)}`;
