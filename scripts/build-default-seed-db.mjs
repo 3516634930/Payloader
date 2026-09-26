@@ -17,18 +17,11 @@ const source = (() => {
       cleanup: async () => {},
     };
   }
+  // --from-legacy-src-data 已退役：legacy 源文件（webPayloads/intranetPayloads/toolCommands）
+  // 与 DB 内容长期脱钩（源 305 卡 vs DB 632 卡），运行内容唯一权威是 DB（管理员后台可编辑），
+  // 用旧硬编码源重建 seed 会静默回退全部治理成果。
   if (args.has('--from-legacy-src-data')) {
-    return {
-      label: 'legacy src/data TypeScript seed source',
-      load: async () => {
-        const { loadDefaultDataFromSource } = await import('./default-seed-source.mjs');
-        return loadDefaultDataFromSource();
-      },
-      cleanup: async () => {
-        const { cleanupSeedCache } = await import('./default-seed-source.mjs');
-        await cleanupSeedCache();
-      },
-    };
+    throw new Error('--from-legacy-src-data is retired: content authority lives in the databases (admin-editable). Use --from-runtime-db or the default seed-DB mode.');
   }
   return {
     label: `existing seed DB (${seedPath})`,
