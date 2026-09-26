@@ -176,7 +176,8 @@ test('代理端点：非法协议拒绝 + 超时返回 TIMEOUT', async () => {
   try {
     web.configureProxy(fetch, `http://127.0.0.1:${proxy.port}`);
     const bad = await web.sendViaProxy({ url: 'file:///etc/passwd', method: 'GET', headers: {}, body: null });
-    assert.equal(bad.status, 0);
+    // 端点 4xx 透传（WB3 起带端点 HTTP 状态码）：非法协议 → 代理端点 400
+    assert.equal(bad.status, 400);
     assert.match(bad.error, /http/);
     const timeout = await web.sendViaProxy({ url: 'http://10.255.255.1:81/', method: 'GET', headers: {}, body: null, timeoutMs: 2000 });
     assert.equal(timeout.statusText, 'TIMEOUT');

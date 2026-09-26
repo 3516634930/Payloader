@@ -5,11 +5,15 @@ import { copyToClipboard } from '../../utils/clipboard';
 import CheatsheetSection from './CheatsheetSection';
 import {
   SSTI_PAYLOADS, SSTI_PROBES, buildCommandBypasses, buildSqliMatrix,
-  decodeFlaskSession, detectSstiEngine, judgePhpLoose, jwtWeakSecretCrack,
-  parseCurl, parseHttpMessage, PHP_LOOSE_TABLE, MAGIC_HASHES,
+  decodeFlaskSession, detectSstiEngine, detectSqliParams, fetchPageView, fetchRobots,
+  judgePhpLoose, jwtWeakSecretCrack, parseCurl, parseHttpMessage, parsePortInput,
+  PORT_PRESETS, PHP_LOOSE_TABLE, MAGIC_HASHES, scanPorts,
   sendViaProxy, blindBooleanExtract, unionDump, probeDirectories,
 } from '../../utils/ctf/webTools';
-import type { ProxyResponse, BlindResult, UnionDumpResult, DirProbeHit } from '../../utils/ctf/webTools';
+import type {
+  ProxyResponse, BlindResult, UnionDumpResult, DirProbeHit,
+  PageViewResult, PortScanLine, PortScanResponse, RobotsReport, SqliDetectResult,
+} from '../../utils/ctf/webTools';
 import '../../styles/ctf-forensics.css';
 
 const copyBlock = (text: string, zh: boolean): void => {
@@ -613,32 +617,523 @@ function DirProbeCard({ zh }: { zh: boolean }) {
   );
 }
 
-// Web 域工作台：实战工具台（请求器/盲注/脱库/探测经本地代理发请求到题目环境）+ 生成器卡 + 底部速查。
+function PageViewCard({ zh }: { zh: boolean }) {
+  const [url, setUrl] = useState('');
+  const [xff, setXff] = useState('');
+  const [xRealIp, setXRealIp] = useState('');
+  const [showSpoof, setShowSpoof] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<PageViewResult | null>(null);
+
+  const run = useCallback(async (override?: string) => {
+    const target = (override ?? url).trim();
+    if (!target) return;
+    setUrl(target);
+    setBusy(true);
+    setResult(null);
+    try {
+      setResult(await fetchPageView({
+        url: target,
+        xff: xff.trim() || undefined,
+        xRealIp: xRealIp.trim() || undefined,
+      }));
+    } finally {
+      setBusy(false);
+    }
+  }, [url, xff, xRealIp]);
+
+  return (
+    <section className="ff-card" aria-label={zh ? 'GET 查看网页' : 'GET view page'}>
+      <div className="ff-card-head">
+        <strong>{zh ? 'GET 查看网页（可伪造 XFF 头）' : 'GET view page (XFF spoofing)'}</strong>
+      </div>
+      <div className="ff-controls">
+        <input
+          className="ff-input"
+          type="text"
+          value={url}
+          placeholder="http://ctf.example:8080/index.php?id=1"
+          aria-label={zh ? '目标 URL' : 'Target URL'}
+          onChange={event => setUrl(event.target.value)}
+        />
+        <button type="button" className="ff-button ff-button-primary" onClick={() => { void run(); }} disabled={busy || !url.trim()}>
+          {busy ? (zh ? '获取中…' : 'Fetching…') : zh ? '获取' : 'Fetch'}
+        </button>
+        <button type="button" className="ff-button" onClick={() => setShowSpoof(value => !value)} aria-expanded={showSpoof}>
+          {zh ? '伪造头' : 'Spoof'}
+        </button>
+      </div>
+      {showSpoof && (
+        <div className="ff-controls">
+          <input
+            className="ff-input"
+            type="text"
+            value={xff}
+            placeholder={zh ? 'X-Forwarded-For（如 127.0.0.1）' : 'X-Forwarded-For (e.g. 127.0.0.1)'}
+            aria-label="X-Forwarded-For"
+            onChange={event => setXff(event.target.value)}
+          />
+          <input
+            className="ff-input"
+            type="text"
+            value={xRealIp}
+            placeholder={zh ? 'X-Real-IP（如 127.0.0.1）' : 'X-Real-IP (e.g. 127.0.0.1)'}
+            aria-label="X-Real-IP"
+            onChange={event => setXRealIp(event.target.value)}
+          />
+          <button type="button" className="ff-button" onClick={() => { setXff('127.0.0.1'); setXRealIp('127.0.0.1'); }}>
+            127.0.0.1
+          </button>
+        </div>
+      )}
+      <p className="ff-note">
+        {zh
+          ? '获取页面源码与响应头，自动提取链接/表单并高亮 flag 样式串。伪造 X-Forwarded-For 常用于绕过 IP 黑名单或伪装"本地访问"。'
+          : 'Fetch source + headers, extract links/forms, highlight flag-like strings. Spoofed XFF bypasses IP filters / fakes "local" access.'}
+      </p>
+      {result && (
+        <>
+          <div className="ff-row">
+            <span className={`ff-badge ${result.ok ? 'ff-badge-ok' : 'ff-badge-warn'}`}>{result.status} {result.statusText}</span>
+            <span className="ff-badge">{result.elapsedMs}ms</span>
+            {result.flags.map(flag => (
+              <span key={flag} className="ff-badge ff-badge-flag">{flag}</span>
+            ))}
+          </div>
+          {result.error && <p className="ff-note">{result.error}</p>}
+          {result.forms.length > 0 && (
+            <div className="ff-strings" role="list">
+              {result.forms.map((form, index) => (
+                <span key={`${form.action}-${index}`} role="listitem" className="ff-code">
+                  {`${form.method} ${form.action}（${zh ? '字段' : 'fields'}: ${form.fields.join(', ') || '-'}）`}
+                </span>
+              ))}
+            </div>
+          )}
+          {result.links.length > 0 && (
+            <details className="ff-details">
+              <summary>{zh ? `链接（${result.links.length}，点击直达）` : `Links (${result.links.length})`}</summary>
+              <div className="ff-strings">
+                {result.links.map(link => (
+                  <button key={link} type="button" className="ff-code ff-code-click" onClick={() => { void run(link); }}>
+                    {link}
+                  </button>
+                ))}
+              </div>
+            </details>
+          )}
+          <details className="ff-details">
+            <summary>{zh ? '响应头' : 'Headers'}</summary>
+            <pre className="ff-code">{Object.entries(result.headers).map(([name, value]) => `${name}: ${value}`).join('\n')}</pre>
+          </details>
+          <details className="ff-details" open>
+            <summary>{zh ? `源码（${result.bodyText.length}B）` : `Source (${result.bodyText.length}B)`}</summary>
+            <pre className="ff-code ff-pre-scroll">{result.bodyText.slice(0, 200_000)}</pre>
+            <div className="ff-controls">
+              <button type="button" className="ff-button" onClick={() => copyBlock(result.bodyText, zh)}>
+                {zh ? '复制源码' : 'Copy source'}
+              </button>
+            </div>
+          </details>
+        </>
+      )}
+    </section>
+  );
+}
+
+function RobotsCard({ zh }: { zh: boolean }) {
+  const [origin, setOrigin] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [state, setState] = useState<{ status: number; report: RobotsReport | null; error?: string } | null>(null);
+
+  const run = useCallback(async () => {
+    setBusy(true);
+    setState(null);
+    try {
+      setState(await fetchRobots(origin));
+    } finally {
+      setBusy(false);
+    }
+  }, [origin]);
+
+  const report = state?.report ?? null;
+
+  return (
+    <section className="ff-card" aria-label={zh ? '查看 Robots' : 'Robots viewer'}>
+      <div className="ff-card-head">
+        <strong>{zh ? '查看 Robots（robots.txt）' : 'Robots.txt viewer'}</strong>
+      </div>
+      <div className="ff-controls">
+        <input
+          className="ff-input"
+          type="text"
+          value={origin}
+          placeholder="http://ctf.example:8080"
+          aria-label={zh ? '站点根地址' : 'Site origin'}
+          onChange={event => setOrigin(event.target.value)}
+        />
+        <button type="button" className="ff-button ff-button-primary" onClick={() => { void run(); }} disabled={busy || !origin.trim()}>
+          {busy ? (zh ? '获取中…' : 'Fetching…') : zh ? '获取' : 'Fetch'}
+        </button>
+      </div>
+      <p className="ff-note">
+        {zh
+          ? 'Disallow 路径是敏感目录探测的第一手字典；疑似敏感路径自动高亮（admin/备份/.git/.env/flag 等）。'
+          : 'Disallow paths feed directory probing; suspicious ones (admin/backup/.git/.env/flag) are highlighted.'}
+      </p>
+      {state?.error && <p className="ff-note">{state.error}</p>}
+      {report && (
+        <>
+          {report.suspiciousPaths.length > 0 && (
+            <div className="ff-row">
+              {report.suspiciousPaths.map(path => (
+                <span key={path} className="ff-badge ff-badge-flag">{path}</span>
+              ))}
+            </div>
+          )}
+          {report.sitemaps.length > 0 && (
+            <div className="ff-strings">
+              {report.sitemaps.map(sitemap => (
+                <span key={sitemap} className="ff-code ff-code-click">Sitemap: {sitemap}</span>
+              ))}
+            </div>
+          )}
+          {report.groups.map(group => (
+            <div key={group.userAgent} className="ff-robots-group">
+              <div className="ff-card-head"><strong>User-agent: {group.userAgent}</strong></div>
+              <div className="ff-strings">
+                {group.entries.map((entry, index) => (
+                  <span key={`${entry.path}-${index}`} className={`ff-badge ${entry.rule === 'disallow' ? 'ff-badge-warn' : 'ff-badge-ok'}`}>
+                    {`${entry.rule}: ${entry.path}`}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+          {report.groups.length === 0 && <p className="ff-note">{zh ? 'robots.txt 为空或无规则。' : 'Empty robots.txt.'}</p>}
+          <div className="ff-controls">
+            <button
+              type="button"
+              className="ff-button"
+              onClick={() => {
+                const disallow = report.groups.flatMap(group => group.entries.filter(entry => entry.rule === 'disallow').map(entry => entry.path));
+                copyBlock(disallow.join('\n'), zh);
+              }}
+            >
+              {zh ? '复制全部 Disallow 路径' : 'Copy Disallow paths'}
+            </button>
+          </div>
+          <details className="ff-details">
+            <summary>{zh ? '原始内容' : 'Raw'}</summary>
+            <pre className="ff-code ff-pre-scroll">{report.raw}</pre>
+          </details>
+        </>
+      )}
+    </section>
+  );
+}
+
+function SqliDetectCard({ zh }: { zh: boolean }) {
+  const [url, setUrl] = useState('');
+  const [includeTiming, setIncludeTiming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState('');
+  const [result, setResult] = useState<SqliDetectResult | null>(null);
+
+  const run = useCallback(async () => {
+    setBusy(true);
+    setResult(null);
+    setProgress('');
+    try {
+      setResult(await detectSqliParams(url.trim(), {
+        includeTiming,
+        onProgress: (done, total) => setProgress(`${done}/${total}`),
+      }));
+    } finally {
+      setBusy(false);
+    }
+  }, [url, includeTiming]);
+
+  return (
+    <section className="ff-card" aria-label={zh ? 'SQL 注入检测' : 'SQLi detection'}>
+      <div className="ff-card-head">
+        <strong>{zh ? 'GET SQL 注入检测（参数级自动探测）' : 'GET SQLi detection (per-param)'}</strong>
+      </div>
+      <div className="ff-controls">
+        <input
+          className="ff-input"
+          type="text"
+          value={url}
+          placeholder="http://ctf.example:8080/news.php?id=1&cat=2"
+          aria-label={zh ? '带参数的目标 URL' : 'URL with params'}
+          onChange={event => setUrl(event.target.value)}
+        />
+        <button type="button" className="ff-button ff-button-primary" onClick={() => { void run(); }} disabled={busy || !url.trim()}>
+          {busy ? (zh ? `检测中 ${progress}` : `Testing ${progress}`) : zh ? '开始检测' : 'Detect'}
+        </button>
+      </div>
+      <label className="ff-check">
+        <input
+          type="checkbox"
+          checked={includeTiming}
+          onChange={event => setIncludeTiming(event.target.checked)}
+        />
+        {zh ? '时间盲检测（更慢，每个参数多发一次请求）' : 'Time-based test (slower, +1 request per param)'}
+      </label>
+      <p className="ff-note">
+        {zh
+          ? '三路判定：数据库报错签名（MySQL/PG/SQLite/MSSQL/Oracle）→ 布尔差异（AND 1=1/1=2 响应可区分）→ 可选时间盲（SLEEP 延迟）。'
+          : 'Three-way verdict: DB error signatures → boolean diff (AND 1=1 vs 1=2) → optional time-based SLEEP.'}
+      </p>
+      {result?.error && <p className="ff-note">{result.error}</p>}
+      {result?.ok && (
+        <>
+          <div className="ff-row">
+            <span className="ff-badge">{zh ? `参数 ${result.params.length}` : `Params ${result.params.length}`}</span>
+            <span className="ff-badge">{zh ? `请求 ${result.requests}` : `Requests ${result.requests}`}</span>
+            <span className="ff-badge">{result.elapsedMs}ms</span>
+          </div>
+          {result.params.map(finding => (
+            <div key={finding.param} className="ff-robots-group">
+              <div className="ff-card-head">
+                <strong>{finding.param}</strong>
+                <span className={`ff-badge ${finding.verdict === 'likely' ? 'ff-badge-flag' : 'ff-badge-ok'}`}>
+                  {finding.verdict === 'likely' ? (zh ? '疑似注入' : 'Likely injectable') : zh ? '未检出' : 'Clean'}
+                </span>
+              </div>
+              {finding.evidence.map((line, index) => (
+                <p key={index} className="ff-note">· {line}</p>
+              ))}
+              {finding.payloadSamples.length > 0 && (
+                <div className="ff-controls">
+                  <button type="button" className="ff-button" onClick={() => copyBlock(finding.payloadSamples.join('\n'), zh)}>
+                    {zh ? '复制触发 payload' : 'Copy payloads'}
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </>
+      )}
+    </section>
+  );
+}
+
+function PortScanCard({ zh }: { zh: boolean }) {
+  const [host, setHost] = useState('127.0.0.1');
+  const [presetId, setPresetId] = useState('ctf');
+  const [customText, setCustomText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<PortScanResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = useCallback(async () => {
+    setError(null);
+    setResult(null);
+    const parsed = customText.trim()
+      ? parsePortInput(customText)
+      : { ports: Array.from(PORT_PRESETS.find(preset => preset.id === presetId)?.ports ?? []) };
+    if ('error' in parsed) {
+      setError(parsed.error);
+      return;
+    }
+    if (parsed.ports.length === 0) {
+      setError(zh ? '预设为空，请选择预设或输入自定义端口。' : 'Empty preset; pick one or enter ports.');
+      return;
+    }
+    setBusy(true);
+    try {
+      setResult(await scanPorts(host, parsed.ports));
+    } finally {
+      setBusy(false);
+    }
+  }, [host, presetId, customText, zh]);
+
+  const openPorts = result?.results.filter(line => line.state === 'open') ?? [];
+  const otherPorts = result?.results.filter(line => line.state !== 'open') ?? [];
+  const stateBadgeClass: Record<PortScanLine['state'], string> = {
+    open: 'ff-badge-ok',
+    closed: '',
+    filtered: 'ff-badge-warn',
+    error: 'ff-badge-warn',
+  };
+  const stateLabel = (state: PortScanLine['state']): string => ({
+    open: zh ? '开放' : 'open',
+    closed: zh ? '关闭' : 'closed',
+    filtered: zh ? '无响应' : 'filtered',
+    error: zh ? '错误' : 'error',
+  })[state];
+
+  return (
+    <section className="ff-card" aria-label={zh ? '端口扫描' : 'Port scan'}>
+      <div className="ff-card-head">
+        <strong>{zh ? '常用端口扫描（TCP 连接扫描，本地服务执行）' : 'Port scan (TCP connect, local server)'}</strong>
+      </div>
+      <div className="ff-controls">
+        <input
+          className="ff-input"
+          type="text"
+          value={host}
+          placeholder={zh ? '127.0.0.1 或 ctf.example' : '127.0.0.1 or ctf.example'}
+          aria-label={zh ? '目标主机' : 'Target host'}
+          onChange={event => setHost(event.target.value)}
+        />
+        <button type="button" className="ff-button ff-button-primary" onClick={() => { void run(); }} disabled={busy || !host.trim()}>
+          {busy ? (zh ? '扫描中…' : 'Scanning…') : zh ? '开始扫描' : 'Scan'}
+        </button>
+      </div>
+      <div className="ff-controls">
+        {PORT_PRESETS.map(preset => (
+          <button
+            key={preset.id}
+            type="button"
+            className={`ff-button ff-chip ${!customText.trim() && presetId === preset.id ? 'ff-chip-active' : ''}`}
+            onClick={() => {
+              setPresetId(preset.id);
+              setCustomText('');
+            }}
+          >
+            {zh ? preset.zh : preset.en}
+          </button>
+        ))}
+        <input
+          className="ff-input"
+          type="text"
+          value={customText}
+          placeholder={zh ? '自定义：80,443 或 8000-8010（优先于预设）' : 'Custom: 80,443 or 8000-8010 (overrides preset)'}
+          aria-label={zh ? '自定义端口' : 'Custom ports'}
+          onChange={event => setCustomText(event.target.value)}
+        />
+      </div>
+      <p className="ff-note">
+        {zh
+          ? '浏览器无法发 TCP——扫描由随应用启动的本地服务执行（单次最多 600 端口）。开放端口按 CTF 常见服务排序在前。'
+          : 'Browsers cannot speak TCP; the local server does the connect scan (max 600 ports/request). Open ports first.'}
+      </p>
+      {error && <p className="ff-note">{error}</p>}
+      {result?.error && <p className="ff-note">{result.error}</p>}
+      {result?.ok && (
+        <>
+          <div className="ff-row">
+            <span className="ff-badge">{result.host}</span>
+            <span className="ff-badge">{zh ? `扫描 ${result.scanned} 端口` : `${result.scanned} ports`}</span>
+            <span className={`ff-badge ${openPorts.length > 0 ? 'ff-badge-ok' : ''}`}>
+              {zh ? `开放 ${openPorts.length}` : `Open ${openPorts.length}`}
+            </span>
+            <span className="ff-badge">{result.durationMs}ms</span>
+          </div>
+          <div className="ff-strings" role="list">
+            {[...openPorts, ...otherPorts].map(line => (
+              <span key={line.port} role="listitem" className={`ff-badge ${stateBadgeClass[line.state]}`}>
+                {`${line.port}/tcp ${stateLabel(line.state)}${line.ms !== undefined ? ` (${line.ms}ms)` : ''}${line.detail ? ` ${line.detail}` : ''}`}
+              </span>
+            ))}
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+// 二级菜单（批次 WB3）：先选工具再看工具——左侧分组工具列表 + 单工具视图（hidden 保挂载，切换不丢输入状态）
+const WEB_TOOL_GROUPS: ReadonlyArray<{
+  id: string;
+  zh: string;
+  en: string;
+  tools: ReadonlyArray<{ id: string; zh: string; en: string }>;
+}> = [
+  {
+    id: 'request',
+    zh: '实战请求',
+    en: 'Requests',
+    tools: [
+      { id: 'pageview', zh: 'GET 查看网页', en: 'View page' },
+      { id: 'robots', zh: '查看 Robots', en: 'Robots' },
+      { id: 'repeater', zh: '请求重放', en: 'Repeater' },
+      { id: 'portscan', zh: '端口扫描', en: 'Port scan' },
+      { id: 'dirprobe', zh: '目录探测', en: 'Dir probe' },
+    ],
+  },
+  {
+    id: 'inject',
+    zh: '注入自动化',
+    en: 'Injection',
+    tools: [
+      { id: 'sqlidetect', zh: 'SQL 注入检测', en: 'SQLi detect' },
+      { id: 'blind', zh: '布尔盲注', en: 'Boolean blind' },
+      { id: 'union', zh: '联合脱库', en: 'UNION dump' },
+    ],
+  },
+  {
+    id: 'gen',
+    zh: '生成与速查',
+    en: 'Generators',
+    tools: [
+      { id: 'ssti', zh: 'SSTI', en: 'SSTI' },
+      { id: 'cmd', zh: '命令绕过', en: 'Cmd bypass' },
+      { id: 'sqli', zh: 'SQLi 矩阵', en: 'SQLi matrix' },
+      { id: 'token', zh: '令牌解码', en: 'Tokens' },
+      { id: 'php', zh: 'PHP 弱类型', en: 'PHP loose' },
+      { id: 'http', zh: 'HTTP/cURL', en: 'HTTP/cURL' },
+      { id: 'cheatsheet', zh: '速查', en: 'Cheatsheet' },
+    ],
+  },
+];
+
+// Web 域工作台：二级菜单工具台——左侧分组选工具，右侧单工具视图；实战卡经本地代理直连题目环境。
 function WebWorkspace() {
   const { language } = useLanguage();
   const zh = language === 'zh';
+  const [activeTool, setActiveTool] = useState('pageview');
 
   return (
     <div className="file-forensics">
       <div className="pwn-intro" role="note">
-        <strong>{zh ? 'Web 轻量解题工具台' : 'Web light toolkit'}</strong>
+        <strong>{zh ? 'Web 解题工具台' : 'Web toolkit'}</strong>
         <p>
           {zh
-            ? '请求器/盲注自动化/联合脱库/目录探测直连题目环境（本地代理转发，仅访问你指定的目标）；SSTI 判定、命令注入绕过、SQLi 矩阵、JWT 爆破、PHP 弱类型、报文解析本地完成。'
-            : 'Repeater/blind-SQLi automation/UNION dump/dir probe hit your challenge box via a local proxy (only the targets you specify); SSTI/bypasses/JWT/PHP/HTTP run locally.'}
+            ? '左侧选工具、右侧使用：网页查看/Robots/重放/端口扫描/目录探测经本地代理直连题目环境（仅访问你指定的目标）；注入检测、盲注自动化与脱库一键跑通；生成器与速查本地完成。'
+            : 'Pick a tool on the left, use it on the right: page view/Robots/repeater/port scan/dir probe hit your challenge box via a local proxy (only targets you specify); injection detection, blind automation and UNION dump run end-to-end; generators stay local.'}
         </p>
       </div>
-      <RepeaterCard zh={zh} />
-      <BlindCard zh={zh} />
-      <UnionDumpCard zh={zh} />
-      <DirProbeCard zh={zh} />
-      <SstiCard zh={zh} />
-      <CmdBypassCard zh={zh} />
-      <SqliCard zh={zh} />
-      <TokenCard zh={zh} />
-      <PhpLooseCard zh={zh} />
-      <HttpCard zh={zh} />
-      <CheatsheetSection moduleId="web" variant="footer" />
+      <div className="ctf-toolnav">
+        <nav className="ctf-toolnav-menu" aria-label={zh ? 'Web 工具选择' : 'Web tools'}>
+          {WEB_TOOL_GROUPS.map(group => (
+            <div className="ctf-toolnav-group" key={group.id}>
+              <div className="ctf-toolnav-group-title">{zh ? group.zh : group.en}</div>
+              {group.tools.map(tool => (
+                <button
+                  key={tool.id}
+                  type="button"
+                  className={`ctf-toolnav-item ${activeTool === tool.id ? 'active' : ''}`}
+                  aria-current={activeTool === tool.id ? 'true' : undefined}
+                  onClick={() => setActiveTool(tool.id)}
+                >
+                  {zh ? tool.zh : tool.en}
+                </button>
+              ))}
+            </div>
+          ))}
+        </nav>
+        <div className="ctf-toolnav-body">
+          {/* hidden 保挂载（CtfToolkit keepMounted 同款手法）：切换工具不丢各卡输入与结果状态 */}
+          <div className="ctf-toolpanel" hidden={activeTool !== 'pageview'}><PageViewCard zh={zh} /></div>
+          <div className="ctf-toolpanel" hidden={activeTool !== 'robots'}><RobotsCard zh={zh} /></div>
+          <div className="ctf-toolpanel" hidden={activeTool !== 'repeater'}><RepeaterCard zh={zh} /></div>
+          <div className="ctf-toolpanel" hidden={activeTool !== 'portscan'}><PortScanCard zh={zh} /></div>
+          <div className="ctf-toolpanel" hidden={activeTool !== 'dirprobe'}><DirProbeCard zh={zh} /></div>
+          <div className="ctf-toolpanel" hidden={activeTool !== 'sqlidetect'}><SqliDetectCard zh={zh} /></div>
+          <div className="ctf-toolpanel" hidden={activeTool !== 'blind'}><BlindCard zh={zh} /></div>
+          <div className="ctf-toolpanel" hidden={activeTool !== 'union'}><UnionDumpCard zh={zh} /></div>
+          <div className="ctf-toolpanel" hidden={activeTool !== 'ssti'}><SstiCard zh={zh} /></div>
+          <div className="ctf-toolpanel" hidden={activeTool !== 'cmd'}><CmdBypassCard zh={zh} /></div>
+          <div className="ctf-toolpanel" hidden={activeTool !== 'sqli'}><SqliCard zh={zh} /></div>
+          <div className="ctf-toolpanel" hidden={activeTool !== 'token'}><TokenCard zh={zh} /></div>
+          <div className="ctf-toolpanel" hidden={activeTool !== 'php'}><PhpLooseCard zh={zh} /></div>
+          <div className="ctf-toolpanel" hidden={activeTool !== 'http'}><HttpCard zh={zh} /></div>
+          <div className="ctf-toolpanel" hidden={activeTool !== 'cheatsheet'}><CheatsheetSection moduleId="web" variant="footer" /></div>
+        </div>
+      </div>
     </div>
   );
 }

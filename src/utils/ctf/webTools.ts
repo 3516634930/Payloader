@@ -471,6 +471,7 @@ export interface ProxyResponse {
   headers: Record<string, string>;
   bodyText: string;
   elapsedMs: number;
+  finalUrl?: string;
   error?: string;
 }
 
@@ -501,13 +502,15 @@ export const sendViaProxy = async (spec: ProxyRequestSpec): Promise<ProxyRespons
       const parsed = await response.json().catch(() => null) as Partial<ProxyResponse> | null;
       if (parsed && (typeof parsed.status === 'number' || typeof parsed.error === 'string')) {
         return {
-          ok: false,
-          status: parsed.status ?? 0,
+          ok: parsed.ok === true,
+          // 端点自身 4xx（门禁 403/非法 URL 400）时 parsed 无 status——透传端点 HTTP 状态码
+          status: parsed.status ?? (typeof parsed.error === 'string' ? response.status : 0),
           statusText: parsed.statusText ?? 'PROXY_ERROR',
           headers: parsed.headers ?? {},
           bodyText: parsed.bodyText ?? '',
           elapsedMs: parsed.elapsedMs ?? 0,
-          error: parsed.error ?? '代理端点拒绝请求',
+          finalUrl: typeof parsed.finalUrl === 'string' ? parsed.finalUrl : undefined,
+          error: parsed.error,
         };
       }
       throw new Error(`代理端点 ${response.status}`);
@@ -526,10 +529,9 @@ export interface BlindBooleanOptions {
   method?: string;
   headers?: Record<string, string>;
   bodyTemplate?: string | null;
-  // 成功判定（三选一，优先级从上到下）
+  // 成功判定（二选一，优先级从上到下；缺省 = HTTP ok（2xx））
   successContains?: string;
   successStatus?: number;
-  useOk?: boolean;
   maxLen?: number;
   charset?: string;
   stopChars?: string;
@@ -549,14 +551,13 @@ const DEFAULT_FLAG_CHARSET = '!#$&()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTU
 export const blindBooleanExtract = async (options: BlindBooleanOptions): Promise<BlindResult> => {
   const {
     urlTemplate, method = 'GET', headers = {}, bodyTemplate = null,
-    successContains, successStatus, useOk,
+    successContains, successStatus,
     maxLen = 64, charset = DEFAULT_FLAG_CHARSET, stopChars = '}', delayMs = 0,
     onProgress,
   } = options;
   const isSuccessful = (response: ProxyResponse): boolean => {
     if (successContains !== undefined) return response.bodyText.includes(successContains);
     if (successStatus !== undefined) return response.status === successStatus;
-    if (useOk) return response.ok;
     return response.ok;
   };
   const runPayload = async (payload: string): Promise<ProxyResponse> => {
@@ -795,4 +796,434 @@ export const probeDirectories = async (
   };
   await Promise.all(Array.from({ length: concurrency }, worker));
   return hits.sort((a, b) => a.status - b.status);
+};
+
+// ---- ⑫ 网页查看（GET 查看网页 / 伪造 XFF 头变体，随波逐流 WEB 分区对标）----
+
+export interface PageFormInfo {
+  action: string;
+  method: string;
+  fields: string[];
+}
+
+export interface PageViewResult extends ProxyResponse {
+  finalUrl: string;
+  links: string[];
+  forms: PageFormInfo[];
+  flags: string[];
+}
+
+const FLAG_LIKE_PATTERN = /(?:flag|ctf|key|hint)\{[^}\r\n]{1,160}\}/gi;
+
+const extractFlagLike = (bodyText: string): string[] => Array.from(new Set(bodyText.match(FLAG_LIKE_PATTERN) ?? []));
+
+const extractLinks = (bodyText: string, baseUrl: string): string[] => {
+  const found = new Set<string>();
+  const pattern = /(?:href|src)\s*=\s*["']([^"'\s>]+)["']/gi;
+  let match = pattern.exec(bodyText);
+  while (match !== null) {
+    const raw = match[1];
+    if (!/^(?:javascript|data|mailto|tel):/i.test(raw)) {
+      try {
+        found.add(new URL(raw, baseUrl).toString());
+      } catch {
+        // 相对路径无法解析时跳过
+      }
+    }
+    match = pattern.exec(bodyText);
+  }
+  return Array.from(found).slice(0, 200);
+};
+
+const attrOf = (tag: string, name: string): string => {
+  // 属性名前必须是非名字字符（空格/引号/标签开头），防止 data-name=/uid= 误命中 name=/id=（reviewer P2）
+  const match = tag.match(new RegExp(`(?:^|[\\s"'])${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i'));
+  return (match?.[2] ?? match?.[3] ?? match?.[4] ?? '').trim();
+};
+
+const extractForms = (bodyText: string, baseUrl: string): PageFormInfo[] => {
+  const forms: PageFormInfo[] = [];
+  const blockPattern = /<form\b[^>]*>([\s\S]*?)<\/form>/gi;
+  let block = blockPattern.exec(bodyText);
+  while (block !== null) {
+    const openTag = block[0].slice(0, block[0].indexOf('>') + 1);
+    let action = attrOf(openTag, 'action');
+    if (action) {
+      try {
+        action = new URL(action, baseUrl).toString();
+      } catch {
+        // 保留原样
+      }
+    } else {
+      action = baseUrl;
+    }
+    const fields = new Set<string>();
+    const fieldPattern = /<(?:input|select|textarea)\b[^>]*>/gi;
+    let field = fieldPattern.exec(block[1]);
+    while (field !== null) {
+      const name = attrOf(field[0], 'name') || attrOf(field[0], 'id');
+      if (name) fields.add(name);
+      field = fieldPattern.exec(block[1]);
+    }
+    forms.push({ action, method: (attrOf(openTag, 'method') || 'GET').toUpperCase(), fields: Array.from(fields) });
+    block = blockPattern.exec(bodyText);
+  }
+  return forms.slice(0, 50);
+};
+
+export const fetchPageView = async (options: {
+  url: string;
+  headers?: Record<string, string>;
+  xff?: string;
+  xRealIp?: string;
+}): Promise<PageViewResult> => {
+  const { url, headers = {}, xff, xRealIp } = options;
+  const merged: Record<string, string> = { ...headers };
+  if (xff) merged['x-forwarded-for'] = xff;
+  if (xRealIp) merged['x-real-ip'] = xRealIp;
+  const response = await sendViaProxy({ url, method: 'GET', headers: merged, body: null });
+  return {
+    ...response,
+    finalUrl: response.finalUrl ?? url,
+    links: extractLinks(response.bodyText, url),
+    forms: extractForms(response.bodyText, url),
+    flags: extractFlagLike(response.bodyText),
+  };
+};
+
+// ---- ⑬ Robots 查看与解析 ----
+
+export interface RobotsGroup {
+  userAgent: string;
+  entries: { path: string; rule: 'allow' | 'disallow' }[];
+}
+
+export interface RobotsReport {
+  groups: RobotsGroup[];
+  sitemaps: string[];
+  crawlDelays: string[];
+  suspiciousPaths: string[];
+  raw: string;
+}
+
+const SUSPICIOUS_PATH_PATTERN = /(admin|manage|backup|\.git|\.svn|\.env|upload|secret|flag|config|test|sql|dump|bak|zip|tar|internal|private|debug)/i;
+
+export const parseRobots = (text: string): RobotsReport => {
+  const sitemaps: string[] = [];
+  const crawlDelays: string[] = [];
+  const suspiciousPaths: string[] = [];
+  // robots 规范：规则对同块（连续 User-agent 行后）所有 agent 生效；同一 UA 多块出现时规则合并（reviewer P2）
+  const groupsByAgent = new Map<string, RobotsGroup>();
+  let blockAgents: string[] = [];
+  let sawRulesSinceLastAgent = false;
+  const pushEntry = (rule: 'allow' | 'disallow', value: string) => {
+    sawRulesSinceLastAgent = true;
+    const agents = blockAgents.length > 0 ? blockAgents : ['*'];
+    for (const agent of agents) {
+      let group = groupsByAgent.get(agent);
+      if (!group) {
+        group = { userAgent: agent, entries: [] };
+        groupsByAgent.set(agent, group);
+      }
+      group.entries.push({ path: value, rule });
+      if (rule === 'disallow' && SUSPICIOUS_PATH_PATTERN.test(value)) suspiciousPaths.push(value);
+    }
+  };
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.split('#')[0].trim();
+    if (!line) continue;
+    const separator = line.indexOf(':');
+    if (separator < 0) continue;
+    const field = line.slice(0, separator).trim().toLowerCase();
+    const value = line.slice(separator + 1).trim();
+    if (!value && field !== 'user-agent') continue;
+    if (field === 'user-agent') {
+      // 规则行之后出现的 User-agent 开启新块（规范块边界），否则并入当前块的多 agent 声明
+      if (sawRulesSinceLastAgent) {
+        blockAgents = [];
+        sawRulesSinceLastAgent = false;
+      }
+      blockAgents.push(value);
+      continue;
+    }
+    if (field === 'sitemap') {
+      sitemaps.push(value);
+      continue;
+    }
+    if (field === 'crawl-delay') {
+      crawlDelays.push(value);
+      continue;
+    }
+    if (field === 'allow' || field === 'disallow') {
+      pushEntry(field === 'allow' ? 'allow' : 'disallow', value);
+    }
+  }
+  return { groups: Array.from(groupsByAgent.values()), sitemaps, crawlDelays, suspiciousPaths, raw: text };
+};
+
+export const fetchRobots = async (origin: string): Promise<{ status: number; report: RobotsReport | null; error?: string }> => {
+  const normalized = origin.trim().replace(/\/+$/, '');
+  if (!/^https?:\/\/.+/i.test(normalized)) return { status: 0, report: null, error: '请输入 http(s):// 开头的站点地址。' };
+  const response = await sendViaProxy({ url: `${normalized}/robots.txt`, method: 'GET', headers: {}, body: null });
+  if (response.status === 0) return { status: 0, report: null, error: response.error ?? '请求失败。' };
+  // 端点门禁短路：模块被管理员关闭时明确报错，不当成"robots.txt 不存在"（reviewer P2）
+  if (response.status === 403 && (response.error ?? '').includes('管理员关闭')) {
+    return { status: 403, report: null, error: response.error };
+  }
+  if (response.status !== 200) return { status: response.status, report: null, error: `robots.txt 返回 ${response.status}（可能不存在）。` };
+  return { status: 200, report: parseRobots(response.bodyText) };
+};
+
+// ---- ⑭ GET SQL 注入自动检测（参数级：错误签名 / 布尔差异 / 可选时间盲）----
+
+export interface SqliParamFinding {
+  param: string;
+  verdict: 'likely' | 'clean' | 'unknown';
+  evidence: string[];
+  payloadSamples: string[];
+}
+
+export interface SqliDetectResult {
+  ok: boolean;
+  error?: string;
+  url: string;
+  params: SqliParamFinding[];
+  requests: number;
+  elapsedMs: number;
+}
+
+const SQL_ERROR_SIGNATURES: ReadonlyArray<{ engine: string; pattern: RegExp }> = [
+  { engine: 'MySQL', pattern: /you have an error in your sql syntax|warning.*?mysql_|MySQLSyntaxErrorException|MariaDB[\s\S]{0,40}error/i },
+  { engine: 'PostgreSQL', pattern: /PostgreSQL[\s\S]{0,40}ERROR|PG::\w+Error|Npgsql|PostgreSqlException/i },
+  { engine: 'SQLite', pattern: /SQLite3?::\w+|SQLITE_ERROR|SQLite error|System\.Data\.SQLite/i },
+  { engine: 'MSSQL', pattern: /Microsoft SQL|SqlClient|Unclosed quotation mark|SQL Server[\s\S]{0,40}(?:error|exception)/i },
+  { engine: 'Oracle', pattern: /ORA-\d{5}/ },
+  { engine: '通用 SQL 报错', pattern: /sql syntax|sqlstate|database error/i },
+];
+
+const bodySimilarity = (a: string, b: string): number => {
+  if (a === b) return 1;
+  const maxLength = Math.max(a.length, b.length, 1);
+  const lengthSimilarity = 1 - Math.abs(a.length - b.length) / maxLength;
+  // 抽样对比首尾 256 字符，捕捉"长度接近但内容翻转"的布尔差异
+  const headEqual = a.slice(0, 256) === b.slice(0, 256);
+  const tailEqual = a.slice(-256) === b.slice(-256);
+  if (headEqual && tailEqual) return Math.max(lengthSimilarity, 0.99);
+  return lengthSimilarity * (headEqual || tailEqual ? 0.95 : 0.85);
+};
+
+const rebuildUrlWithParam = (url: string, name: string, value: string): string => {
+  const parsed = new URL(url);
+  parsed.searchParams.set(name, value);
+  return parsed.toString();
+};
+
+export const detectSqliParams = async (
+  url: string,
+  options: { includeTiming?: boolean; onProgress?: (done: number, total: number) => void } = {},
+): Promise<SqliDetectResult> => {
+  const { includeTiming = false, onProgress } = options;
+  const startedAt = Date.now();
+  let requests = 0;
+  const parsedUrl = (() => {
+    try {
+      return new URL(url);
+    } catch {
+      return null;
+    }
+  })();
+  if (!parsedUrl || !/^https?:$/.test(parsedUrl.protocol)) {
+    return { ok: false, error: '请输入合法的 http(s) URL（含查询参数，如 ?id=1）。', url, params: [], requests: 0, elapsedMs: 0 };
+  }
+  const names = Array.from(parsedUrl.searchParams.keys());
+  if (names.length === 0) {
+    return { ok: false, error: 'URL 中没有查询参数——GET 注入检测需要至少一个参数。', url, params: [], requests: 0, elapsedMs: 0 };
+  }
+
+  const get = async (target: string): Promise<ProxyResponse> => {
+    requests += 1;
+    return sendViaProxy({ url: target, method: 'GET', headers: {}, body: null });
+  };
+  const baseline = await get(url);
+  if (baseline.status === 0) {
+    return { ok: false, error: baseline.error ?? '目标不可达。', url, params: [], requests, elapsedMs: Date.now() - startedAt };
+  }
+  // 端点门禁短路：模块被管理员关闭时不做探测，避免把 403 误判成业务结果（reviewer P2）
+  if (baseline.status === 403 && (baseline.error ?? '').includes('管理员关闭')) {
+    return { ok: false, error: baseline.error, url, params: [], requests, elapsedMs: Date.now() - startedAt };
+  }
+
+  const findings: SqliParamFinding[] = [];
+  let done = 0;
+  for (const name of names) {
+    const rawValue = parsedUrl.searchParams.get(name) ?? '';
+    const isNumeric = /^\d+$/.test(rawValue);
+    const evidence: string[] = [];
+    const payloadSamples: string[] = [];
+    let likely = false;
+
+    // ① 错误签名：追加引号类 payload，看响应里出现哪家数据库报错
+    for (const probe of ["'", "' --"]) {
+      const target = rebuildUrlWithParam(url, name, rawValue + probe);
+      const response = await get(target);
+      if (response.status !== 0) {
+        for (const signature of SQL_ERROR_SIGNATURES) {
+          if (signature.pattern.test(response.bodyText)) {
+            likely = true;
+            evidence.push(`错误签名命中 ${signature.engine}（payload ${JSON.stringify(rawValue + probe)}）`);
+            payloadSamples.push(rawValue + probe);
+            break;
+          }
+        }
+      }
+      if (likely) break;
+    }
+
+    // ② 布尔差异：AND 1=1 与 AND 1=2 的可区分性。数字值先试裸拼接（WHERE id=1），
+    // 再试引号闭合变体（WHERE id='1'——应用侧按字符串引用时裸拼接不可能触发差异）；字符串值只用引号闭合。
+    if (!likely) {
+      const variants = isNumeric
+        ? [
+            [`${rawValue} AND 1=1`, `${rawValue} AND 1=2`],
+            [`${rawValue}' AND '1'='1`, `${rawValue}' AND '1'='2`],
+          ]
+        : [[`${rawValue}' AND '1'='1`, `${rawValue}' AND '1'='2`]];
+      for (const [truePayload, falsePayload] of variants) {
+        if (likely) break;
+        const trueResponse = await get(rebuildUrlWithParam(url, name, truePayload));
+        const falseResponse = await get(rebuildUrlWithParam(url, name, falsePayload));
+        const simTrue = bodySimilarity(baseline.bodyText, trueResponse.bodyText);
+        const simFalse = bodySimilarity(baseline.bodyText, falseResponse.bodyText);
+        const simPair = bodySimilarity(trueResponse.bodyText, falseResponse.bodyText);
+        if (simTrue >= 0.9 && simFalse < 0.9 && simPair < 0.9) {
+          likely = true;
+          evidence.push(`布尔差异：AND 1=1 与基线相似度 ${simTrue.toFixed(2)}，AND 1=2 相似度 ${simFalse.toFixed(2)}（可区分）`);
+          payloadSamples.push(truePayload, falsePayload);
+        }
+      }
+    }
+
+    // ③ 时间盲（可选，默认关）：SLEEP 前后延迟差
+    if (!likely && includeTiming) {
+      const timingPayload = isNumeric ? `${rawValue} AND SLEEP(2)` : `${rawValue}' AND SLEEP(2) AND '1'='1`;
+      const before = await get(rebuildUrlWithParam(url, name, timingPayload));
+      const delayDelta = before.elapsedMs - baseline.elapsedMs;
+      if (before.status !== 0 && delayDelta >= 1500) {
+        likely = true;
+        evidence.push(`时间盲：注入 SLEEP(2) 后响应延迟 +${delayDelta}ms`);
+        payloadSamples.push(timingPayload);
+      }
+    }
+
+    findings.push({
+      param: name,
+      verdict: likely ? 'likely' : 'clean',
+      evidence,
+      payloadSamples,
+    });
+    done += 1;
+    onProgress?.(done, names.length);
+  }
+
+  return { ok: true, url, params: findings, requests, elapsedMs: Date.now() - startedAt };
+};
+
+// ---- ⑮ 常用端口扫描（调本地 server 端点，浏览器无 TCP 能力）----
+
+export interface PortScanLine {
+  port: number;
+  state: 'open' | 'closed' | 'filtered' | 'error';
+  ms?: number;
+  detail?: string;
+}
+
+export interface PortScanResponse {
+  ok: boolean;
+  error?: string;
+  host: string;
+  scanned: number;
+  durationMs: number;
+  results: PortScanLine[];
+}
+
+export interface PortPreset {
+  id: string;
+  zh: string;
+  en: string;
+  ports: ReadonlyArray<number>;
+}
+
+export const PORT_PRESETS: ReadonlyArray<PortPreset> = [
+  { id: 'ctf', zh: 'CTF 高频', en: 'CTF common', ports: [21, 22, 80, 443, 8000, 8080, 8081, 8888, 9000, 9999, 10000, 11111, 12345, 22222, 28017, 30000, 32768, 50000] },
+  { id: 'web', zh: 'Web 服务', en: 'Web services', ports: [80, 443, 7001, 8000, 8080, 8081, 8443, 8888, 9000, 9090, 10000] },
+  { id: 'db', zh: '数据库', en: 'Databases', ports: [1433, 1521, 3306, 5432, 5000, 5984, 6379, 9200, 11211, 27017] },
+  { id: 'top', zh: '常用 TOP50', en: 'Top services', ports: [21, 22, 23, 25, 53, 80, 110, 111, 135, 139, 143, 443, 445, 873, 993, 995, 1080, 1433, 1521, 2049, 2181, 2375, 2376, 3306, 3389, 4444, 4848, 5000, 5432, 5601, 5900, 5984, 6379, 6443, 7001, 8000, 8069, 8080, 8081, 8443, 8888, 9000, 9001, 9090, 9200, 9300, 9999, 10000, 11211, 27017] },
+];
+
+export const parsePortInput = (text: string): { ports: number[] } | { error: string } => {
+  const tokens = text.split(/[,，\s]+/).filter(Boolean);
+  const ports = new Set<number>();
+  for (const token of tokens) {
+    const single = token.match(/^(\d+)$/);
+    if (single) {
+      const port = Number(token);
+      if (port < 1 || port > 65535) return { error: `端口 ${token} 超出 1-65535。` };
+      ports.add(port);
+      continue;
+    }
+    const range = token.match(/^(\d+)-(\d+)$/);
+    if (range) {
+      const from = Number(range[1]);
+      const to = Number(range[2]);
+      if (from < 1 || to > 65535 || from > to) return { error: `端口段 ${token} 非法。` };
+      if (to - from + 1 > 600) return { error: `端口段 ${token} 超过单次 600 个上限。` };
+      for (let port = from; port <= to; port += 1) ports.add(port);
+      continue;
+    }
+    return { error: `无法识别「${token}」——支持 80,443 或 8000-8010 格式。` };
+  }
+  if (ports.size === 0) return { error: '请输入端口。' };
+  return { ports: Array.from(ports).sort((a, b) => a - b) };
+};
+
+export const scanPorts = async (host: string, ports: number[], timeoutMs?: number): Promise<PortScanResponse> => {
+  const trimmedHost = host.trim();
+  if (!/^[a-zA-Z0-9._-]+$/.test(trimmedHost)) {
+    return { ok: false, error: '目标必须是主机名或 IP（不带协议与路径）。', host: trimmedHost, scanned: 0, durationMs: 0, results: [] };
+  }
+  if (ports.length === 0 || ports.length > 600) {
+    return { ok: false, error: '端口数量须在 1-600 之间。', host: trimmedHost, scanned: 0, durationMs: 0, results: [] };
+  }
+  const fetchNow = injectedFetch ?? (typeof fetch !== 'undefined' ? fetch : null) as FetchLike | null;
+  if (!fetchNow) {
+    return { ok: false, error: '当前环境无 fetch。', host: trimmedHost, scanned: 0, durationMs: 0, results: [] };
+  }
+  const origin = injectedOrigin ?? (typeof window !== 'undefined' ? window.location.origin : 'http://127.0.0.1:8081');
+  const endpoints = [`${origin}/api/ctf/portscan`, 'http://127.0.0.1:8081/api/ctf/portscan'];
+  const payload = JSON.stringify({ host: trimmedHost, ports, ...(timeoutMs ? { timeoutMs } : {}) });
+  let lastError = '';
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetchNow(endpoint, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: payload,
+      });
+      const parsed = await response.json().catch(() => null) as Partial<PortScanResponse> | null;
+      if (parsed && (parsed.ok === true || typeof parsed.error === 'string')) {
+        return {
+          ok: parsed.ok === true,
+          error: parsed.error,
+          host: parsed.host ?? trimmedHost,
+          scanned: parsed.scanned ?? 0,
+          durationMs: parsed.durationMs ?? 0,
+          results: parsed.results ?? [],
+        };
+      }
+      throw new Error(`端点响应 ${response.status}`);
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+  }
+  return { ok: false, error: `本地端口扫描端点不可达（${lastError}）——请通过 npm run serve 或客户端壳启动应用。`, host: trimmedHost, scanned: 0, durationMs: 0, results: [] };
 };
