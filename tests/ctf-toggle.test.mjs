@@ -35,12 +35,12 @@ const post = async (port, pathname, payload) => fetch(`http://127.0.0.1:${port}$
   body: JSON.stringify(payload),
 });
 
-test('sanitizeSettings：ctfEnabled 默认开、false 保留、脏值回落开', () => {
-  assert.equal(sanitizeSettings({}).ctfEnabled, true);
+test('sanitizeSettings：ctfEnabled 默认关、true 保留、脏值回落关（需管理员显式开启）', () => {
+  assert.equal(sanitizeSettings({}).ctfEnabled, false);
   assert.equal(sanitizeSettings({ ctfEnabled: false }).ctfEnabled, false);
   assert.equal(sanitizeSettings({ ctfEnabled: true }).ctfEnabled, true);
-  assert.equal(sanitizeSettings({ ctfEnabled: 'nope' }).ctfEnabled, true);
-  assert.equal(sanitizeSettings(null).ctfEnabled, true);
+  assert.equal(sanitizeSettings({ ctfEnabled: 'nope' }).ctfEnabled, false);
+  assert.equal(sanitizeSettings(null).ctfEnabled, false);
 });
 
 test('proxy 门禁：开关关闭 → 403 中文错误；开启 → 正常转发目标响应', async () => {

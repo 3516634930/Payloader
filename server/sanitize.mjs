@@ -25,7 +25,8 @@ const defaultSettings = {
   logoIcon: '⚡',
   logoUrl: '',
   projectUrl,
-  ctfEnabled: true,
+  // CTF 解题模块默认关闭：公开发布场景下含 proxy/portscan 端点，需管理员在后台显式开启。
+  ctfEnabled: false,
 };
 const json = value => JSON.stringify(value ?? null);
 const parseJson = value => {
@@ -63,7 +64,7 @@ export const sanitizeSettings = value => {
     logoIcon: String(merged.logoIcon ?? defaultSettings.logoIcon).trim() || defaultSettings.logoIcon,
     logoUrl: sanitizeLogoUrl(merged.logoUrl),
     projectUrl,
-    ctfEnabled: merged.ctfEnabled !== false,
+    ctfEnabled: merged.ctfEnabled === true,
   };
 };
 
