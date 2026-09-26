@@ -202,6 +202,9 @@ function ReverseWorkspace({ pendingFile, onFileConsumed, onSwitchModule }: CtfWo
       ) : (
         <div className="ctf-toolnav">
           <nav className="ctf-toolnav-menu" aria-label={zh ? '逆向工具选择' : 'Reverse tools'}>
+            <button type="button" className="ctf-toolnav-file-btn" onClick={() => inputRef.current?.click()}>
+              {zh ? `📁 换文件（${analysis.name.slice(0, 18)}）` : `📁 Replace (${analysis.name.slice(0, 18)})`}
+            </button>
             <div className="ctf-toolnav-group">
               <div className="ctf-toolnav-group-title">{zh ? '目标分析' : 'Target'}</div>
               <button type="button" className={`ctf-toolnav-item ${activeTool === 'overview' ? 'active' : ''}`} aria-current={activeTool === 'overview' ? 'true' : undefined} onClick={() => setActiveTool('overview')}>

@@ -1002,11 +1002,23 @@ function PwnWorkspace({ pendingFile, onFileConsumed }: {
             {binary ? (
               <BinaryWorkbench binary={binary} zh={zh} onClear={clear} />
             ) : (
-              <p className="ff-note">
-                {zh
-                  ? '还没有加载文件：cyclic / 坏字符 / 格式化字符串 / ROP / shellcode / exp 模板在「Payload 构造」分组可直接使用；拖入 ELF 后这里出 checksec、libc、gadget 三卡。'
-                  : 'No file loaded yet: cyclic / bad-char / format-string / ROP / shellcode / exp tools under "Payloads" work standalone; dropping an ELF unlocks checksec, libc, and gadget cards here.'}
-              </p>
+              <div className="ff-dropzone">
+                <div className="ff-dropzone-icon" aria-hidden="true">⚔️</div>
+                <strong>{zh ? '拖入 ELF（题目二进制或 libc），或点击选择' : 'Drop an ELF (challenge binary or libc), or click to browse'}</strong>
+                <small>
+                  {zh
+                    ? '载入后这里出二进制概要、checksec 攻击路径建议、libc 符号偏移与 gadget 扫描四张卡。'
+                    : 'Unlocks binary summary, checksec verdicts, libc offsets, and gadget scanning.'}
+                </small>
+                <button type="button" className="ff-button ff-button-primary" onClick={() => inputRef.current?.click()}>
+                  {zh ? '选择 ELF 文件' : 'Choose ELF file'}
+                </button>
+                <p className="ff-note">
+                  {zh
+                    ? 'cyclic / 坏字符 / 格式化字符串 / ROP / shellcode / exp 模板在「Payload 构造」分组可直接使用，无需文件。'
+                    : 'Cyclic / bad-char / format-string / ROP / shellcode / exp tools under "Payloads" work without a file.'}
+                </p>
+              </div>
             )}
           </div>
           <div className="ctf-toolpanel" hidden={activeTool !== 'cyclic'}><CyclicCard /></div>

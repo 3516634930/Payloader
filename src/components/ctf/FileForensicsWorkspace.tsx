@@ -424,6 +424,9 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
     return `data:${mime};base64,${btoa(toBinaryString(analysis.bytes))}`;
   }, [analysis, report]);
 
+  // 图片真实渲染尺寸（UX 走查 P1：图片题第一眼要看尺寸，IHDR 伪造/高度截断题靠它识别）
+  const [previewNaturalSize, setPreviewNaturalSize] = useState('…');
+
   // 位平面/色道卡的图片解码：createImageBitmap 统一解成 RGBA（>4MP 降采样，内存红线 16MB）。
   // 状态重置在 loadFile 换文件时完成；这里非图片文件直接不启动解码。
   // 失败（浏览器不支持该格式）时卡片给出说明，不阻塞其它卡。
@@ -595,6 +598,11 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
           切换视图不丢各卡的过滤/翻页/搜索状态。未加载文件时每个视图显示"请先选择文件"。 */}
       <div className="ctf-toolnav">
         <nav className="ctf-toolnav-menu" aria-label={language === 'zh' ? '杂项取证工具选择' : 'Forensics tools'}>
+          <button type="button" className="ctf-toolnav-file-btn" onClick={openPicker}>
+            {analysis
+              ? (language === 'zh' ? `📁 换文件（${analysis.name.slice(0, 18)}）` : `📁 Replace (${analysis.name.slice(0, 18)})`)
+              : (language === 'zh' ? '📁 选择文件' : '📁 Choose file')}
+          </button>
           {FF_TOOL_GROUPS.map(group => (
             <div className="ctf-toolnav-group" key={group.id}>
               <div className="ctf-toolnav-group-title">{language === 'zh' ? group.zh : group.en}</div>
@@ -741,7 +749,18 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
                   {language === 'zh' ? '复制 data URL' : 'Copy data URL'}
                 </button>
               </div>
-              <img className="ff-preview" src={imagePreviewUrl} alt={analysis.name} />
+              <div className="ff-row">
+                <span className="ff-name" title={analysis.name}>{analysis.name}</span>
+                {report && report.types[0] && <span className="ff-badge">{report.types[0].name}</span>}
+                <span className="ff-badge ff-badge-ok">{previewNaturalSize}</span>
+                <span className="ff-badge">{formatBytes(analysis.size)}</span>
+              </div>
+              <img
+                className="ff-preview"
+                src={imagePreviewUrl}
+                alt={analysis.name}
+                onLoad={event => setPreviewNaturalSize(`${event.currentTarget.naturalWidth} × ${event.currentTarget.naturalHeight}`)}
+              />
             </section>
             ) : (
               <p className="ff-note">
