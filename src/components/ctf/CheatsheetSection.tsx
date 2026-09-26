@@ -17,27 +17,40 @@ interface CheatsheetSectionProps {
 function CheatsheetSection({ moduleId, variant }: CheatsheetSectionProps) {
   const { language } = useLanguage();
   const { setActiveTab, setSelectedPayloadId, setSelectedToolId } = useNav();
-  const { allToolCommands } = useStaticData();
-  const { ctfCheatsheets } = useStaticData();
+  const { allPayloads, allToolCommands, ctfCheatsheets } = useStaticData();
   const sheet = ctfCheatsheets?.[moduleId];
   const zh = language === 'zh';
 
   const openEntry = useCallback((entry: CheatEntry) => {
     if (!entry.jump) return;
     if (entry.jump.kind === 'payload') {
+      // 速查种子是静态的，运行库条目可能已被策展合并/移除——未命中时明确反馈而非静默无动作
+      if (!allPayloads.some(candidate => candidate.id === entry.jump!.id)) {
+        notifications.show({
+          message: zh ? '载荷条目不存在，可能已被策展合并或移除。' : 'The payload entry no longer exists; it may have been merged or removed.',
+          color: 'orange',
+        });
+        return;
+      }
       setSelectedToolId(null);
       setSelectedPayloadId(entry.jump.id);
       setActiveTab('payloads');
       return;
     }
     const tool = allToolCommands.find(candidate => candidate.id === entry.jump?.id);
-    if (!tool) return;
+    if (!tool) {
+      notifications.show({
+        message: zh ? '工具条目不存在，可能已被策展合并或移除。' : 'The tool entry no longer exists; it may have been merged or removed.',
+        color: 'orange',
+      });
+      return;
+    }
     // 与侧边栏同规则：外链工具走保护性外链，其余进工具详情。
     if (tool.externalUrl && openProtectedExternalLink(tool.externalUrl)) return;
     setSelectedPayloadId(null);
     setSelectedToolId(tool.id);
     setActiveTab('tools');
-  }, [allToolCommands, setActiveTab, setSelectedPayloadId, setSelectedToolId]);
+  }, [allPayloads, allToolCommands, zh, setActiveTab, setSelectedPayloadId, setSelectedToolId]);
 
   if (!sheet || sheet.entries.length === 0) return null;
 

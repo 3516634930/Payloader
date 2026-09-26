@@ -187,17 +187,21 @@ function ReverseWorkspace({ pendingFile, onFileConsumed, onSwitchModule }: CtfWo
       />
 
       {!analysis ? (
-        <div className="ff-dropzone">
-          <div className="ff-dropzone-icon" aria-hidden="true">🔍</div>
-          <strong>{zh ? '把逆向题二进制拖到这里，或点击选择' : 'Drop a challenge binary here, or click to browse'}</strong>
-          <small>
-            {zh
-              ? '自动识别 ELF/PE/Mach-O，扫描加密算法常量指纹（TEA/AES/MD5/Base64/UPX 等）与块级熵图，附可读字符串与 hexdump。文件仅在本浏览器内分析（前 8MB），不会上传。上限 20MB。'
-              : 'Detects ELF/PE/Mach-O, scans crypto constant fingerprints (TEA/AES/MD5/Base64/UPX…) and a block entropy map, plus strings and hexdump. Analyzed locally (first 8MB), never uploaded. 20MB limit.'}
-          </small>
-          <button type="button" className="ff-button ff-button-primary" onClick={() => inputRef.current?.click()}>
-            {zh ? '选择文件' : 'Choose file'}
-          </button>
+        <div className="reverse-empty">
+          <div className="ff-dropzone">
+            <div className="ff-dropzone-icon" aria-hidden="true">🔍</div>
+            <strong>{zh ? '把逆向题二进制拖到这里，或点击选择' : 'Drop a challenge binary here, or click to browse'}</strong>
+            <small>
+              {zh
+                ? '自动识别 ELF/PE/Mach-O，扫描加密算法常量指纹（TEA/AES/MD5/Base64/UPX 等）与块级熵图，附可读字符串与 hexdump。文件仅在本浏览器内分析（前 8MB），不会上传。上限 20MB。'
+                : 'Detects ELF/PE/Mach-O, scans crypto constant fingerprints (TEA/AES/MD5/Base64/UPX…) and a block entropy map, plus strings and hexdump. Analyzed locally (first 8MB), never uploaded. 20MB limit.'}
+            </small>
+            <button type="button" className="ff-button ff-button-primary" onClick={() => inputRef.current?.click()}>
+              {zh ? '选择文件' : 'Choose file'}
+            </button>
+          </div>
+          {/* 空态也要能看速查：速查是纯知识内容不依赖文件，加载文件后速查表进左侧工具菜单 */}
+          <CheatsheetSection moduleId="reverse" variant="footer" />
         </div>
       ) : (
         <div className="ctf-toolnav">

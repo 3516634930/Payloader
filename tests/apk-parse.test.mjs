@@ -11,7 +11,7 @@ import { createTsModuleLoader, projectRoot } from './helpers/compileTsModule.mjs
 const srcDir = path.join(projectRoot, 'src');
 const { loadModule } = createTsModuleLoader();
 const apkParse = loadModule(path.join(srcDir, 'utils', 'ctf', 'apkParse.ts'));
-const { listZipEntries, parseAxmlManifest, parseDex, parseApk } = apkParse;
+const { listZipEntries, parseDex, parseApk } = apkParse;
 
 const apkBytes = new Uint8Array(fs.readFileSync(path.join(projectRoot, 'tests', 'fixtures', 'sample-mini.apk')));
 

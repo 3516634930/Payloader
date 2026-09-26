@@ -129,7 +129,7 @@ const staticHandlers = createStaticHandlers({
   checkRateLimit,
   adminRequestLimit,
 });
-const { safeResolve, serveStatic, serveFrontendFallback } = staticHandlers;
+const { safeResolve, serveFrontendFallback } = staticHandlers;
 
 const requireAuth = async (request, response) => {
   if (await readAdminSession(request)) return true;

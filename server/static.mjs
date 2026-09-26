@@ -2,11 +2,9 @@
 // /admin 后台页面、前端 dist 回落。目录路径经工厂注入，Xeye 集成随设置摘除。
 
 import { createReadStream } from 'node:fs';
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { extname, isAbsolute, join, normalize, relative, resolve } from 'node:path';
-import { randomUUID } from 'node:crypto';
-import { readImageInfo } from './image-inspect.mjs';
-import { baseResponseHeaders, HttpError, isJsonRequest, json, parseJsonBody, text } from './http-helpers.mjs';
+import { baseResponseHeaders, HttpError, text } from './http-helpers.mjs';
 
 const pathSeparator = process.platform === 'win32' ? '\\' : '/';
 
@@ -22,11 +20,6 @@ const mimeTypes = {
   '.webp': 'image/webp',
   '.ico': 'image/x-icon',
 };
-
-const maxLogoBytes = 1_048_576;
-const maxLogoDimension = 1024;
-const maxLogoRequestBytes = 1_500_000;
-const acceptedLogoMimeTypes = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
 export const createStaticHandlers = ({ distDir, adminDir, logoUploadDir, getSettings, checkRateLimit, adminRequestLimit }) => {
   const decodeUrlPath = pathname => {

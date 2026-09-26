@@ -70,3 +70,14 @@ test('跳转目标必须真实存在于知识库（防死链）', () => {
   }
   assert.ok(jumpCount >= 10, `可跳转条目应形成主体（≥10），实际 ${jumpCount}`);
 });
+
+// TD-006 回归钉：契约测试只护种子库，运行库条目可能被策展合并/移除——
+// openEntry 未命中时必须给用户明确反馈，不允许静默无动作。
+test('跳转未命中时必须有 notification 反馈（TD-006 回归钉）', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(path.join(srcDir, 'components', 'ctf', 'CheatsheetSection.tsx'), 'utf8');
+  assert.match(source, /allPayloads\.some/, 'payload 跳转前应校验运行库存在性');
+  assert.match(source, /已被策展合并或移除/, '未命中分支应有中文反馈文案');
+  const notificationCount = (source.match(/notifications\.show/g) || []).length;
+  assert.ok(notificationCount >= 3, `openEntry 两个未命中分支 + snippet 复制失败至少 3 处 notifications，实际 ${notificationCount}`);
+});
