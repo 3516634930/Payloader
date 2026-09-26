@@ -78,26 +78,29 @@ function ChallengePickerCard({
     onPickFile();
   };
 
+  // 紧凑折叠形态（批次 FF-UX）：默认只占标题一行，展开才显示题型下拉与工具行——
+  // 未载文件时首屏让位给 dropzone 空态与左列工具菜单，不再一屏三层选工具入口。
   return (
-    <section id="ff-card-challenge-picker" className="ff-card" aria-label={zh ? '按题型选工具' : 'Pick tools by category'}>
-      <div className="ff-card-head">
+    <details id="ff-card-challenge-picker" className="ff-card ff-challenge-picker" aria-label={zh ? '按题型选工具' : 'Pick tools by category'}>
+      <summary className="ff-card-head ff-challenge-picker-summary">
         <strong>{zh ? '按题型选工具' : 'Tools by category'}</strong>
-        <span className="ff-note">{zh ? '不确定类型就直接拖文件进来自动识别' : 'Not sure? Drop the file in and it will be detected automatically'}</span>
-      </div>
-      <div className="ff-row">
-        <select
-          className="ff-select"
-          value={categoryId}
-          aria-label={zh ? '题目类型' : 'Challenge category'}
-          onChange={event => setCategoryId(event.target.value)}
-        >
-          {challengeCatalog.map(item => (
-            <option key={item.id} value={item.id}>{item.icon} {item.label[language]}</option>
-          ))}
-        </select>
-      </div>
-      <p className="ff-note">{category.hint[language]}</p>
-      <div className="ff-catalog-list">
+        <span className="ff-note">{zh ? '不确定类型就直接拖文件进来自动识别，点此展开' : 'Not sure? Drop the file in — click to expand'}</span>
+      </summary>
+      <div className="ff-challenge-picker-body">
+        <div className="ff-row">
+          <select
+            className="ff-select"
+            value={categoryId}
+            aria-label={zh ? '题目类型' : 'Challenge category'}
+            onChange={event => setCategoryId(event.target.value)}
+          >
+            {challengeCatalog.map(item => (
+              <option key={item.id} value={item.id}>{item.icon} {item.label[language]}</option>
+            ))}
+          </select>
+        </div>
+        <p className="ff-note">{category.hint[language]}</p>
+        <div className="ff-catalog-list">
         {category.tools.map(tool => (
           <div key={tool.id} className={`ff-catalog-row${tool.soon ? ' ff-catalog-soon' : ''}`}>
             <div className="ff-catalog-info">
@@ -124,8 +127,9 @@ function ChallengePickerCard({
             </button>
           </div>
         ))}
+        </div>
       </div>
-    </section>
+    </details>
   );
 }
 

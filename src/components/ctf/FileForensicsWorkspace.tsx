@@ -2,8 +2,6 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { notifications } from '@mantine/notifications';
 import { useLanguage } from '../../appContext';
 import { FlagAutoText } from '../codec/FlagAutoText';
-import { WorkbenchMenuBar } from '../codec/WorkbenchMenuBar';
-import type { WorkbenchMenuDef } from '../codec/WorkbenchMenuBar';
 import EmbeddedCard from './EmbeddedCard';
 import type { EmbeddedReport } from './EmbeddedCard';
 import ImagePlanesCard from './ImagePlanesCard';
@@ -390,27 +388,6 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
     if (tool.cardId) openCard(tool.cardId, tool.missingMessage);
   };
 
-  const fileMenus: WorkbenchMenuDef[] = useMemo(() => [{
-    id: 'file-tools',
-    name: { zh: '文件与图片', en: 'Files & Images' },
-    groups: [{
-      label: null,
-      entries: [
-        { key: 'pick', label: language === 'zh' ? '【选择文件】' : '[Choose file]', onSelect: () => inputRef.current?.click() },
-        { key: 'summary', label: language === 'zh' ? '【文件概要】' : '[Summary]', onSelect: () => openCard('ff-card-summary', { zh: '请先选择文件。', en: 'Choose a file first.' }) },
-        { key: 'suspicious', label: language === 'zh' ? '【可疑内容】' : '[Suspicious]', onSelect: () => openCard('ff-card-suspicious', { zh: '当前文件未发现可疑内容，没有可展示的部分。', en: 'No suspicious content was found in this file.' }) },
-        { key: 'bitplanes', label: language === 'zh' ? '【位平面】' : '[Bit planes]', onSelect: () => openCard('ff-card-bitplanes', { zh: '位平面分析仅支持图片文件，请先选择一张图片。', en: 'Bit-plane analysis applies to image files; choose an image first.' }) },
-        { key: 'imageops', label: language === 'zh' ? '【图像运算与转换】' : '[Image operations]', onSelect: () => openCard('ff-card-imageops', { zh: '图像运算需要先加载一张图片。', en: 'Load an image first.' }) },
-        { key: 'imagestego', label: language === 'zh' ? '【置乱与频域隐写】' : '[Scramble & freq stego]', onSelect: () => openCard('ff-card-imagestego', { zh: '置乱/频域工具需要先加载一张图片。', en: 'Load an image first.' }) },
-        { key: 'embedded', label: language === 'zh' ? '【嵌入数据】' : '[Embedded data]', onSelect: () => openCard('ff-card-embedded', { zh: '当前文件没有检出嵌入文件或尾附数据。', en: 'No embedded files or trailing data were detected in this file.' }) },
-        { key: 'chunks', label: language === 'zh' ? '【PNG chunk】' : '[PNG chunks]', onSelect: () => openCard('ff-card-chunks', { zh: 'chunk 枚举仅支持 PNG 文件。', en: 'Chunk enumeration applies to PNG files only.' }) },
-        { key: 'ntfs', label: language === 'zh' ? '【NTFS 数据流】' : '[NTFS streams]', onSelect: () => openCard('ff-card-ntfs', { zh: '未发现 NTFS 数据流，或当前文件不是 ZIP 载体。', en: 'No NTFS data streams found, or the file is not a ZIP carrier.' }) },
-        { key: 'strings', label: language === 'zh' ? '【可读字符串】' : '[Strings]', onSelect: () => openCard('ff-card-strings', { zh: '当前文件没有提取到可读字符串。', en: 'No readable strings were extracted from this file.' }) },
-        { key: 'hexdump', label: language === 'zh' ? '【HEX 转储】' : '[Hexdump]', onSelect: () => openCard('ff-card-hexdump', { zh: '当前文件没有 hexdump 预览。', en: 'No hexdump preview for this file.' }) },
-      ],
-    }],
-  }], [language, openCard]);
-
   useEffect(() => {
     if (!pendingFile || pendingFile.token === lastTokenRef.current) return;
     lastTokenRef.current = pendingFile.token;
@@ -595,11 +572,6 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
             event.target.value = '';
           }}
         />
-
-      <WorkbenchMenuBar
-        menus={fileMenus}
-        ariaLabel={language === 'zh' ? '文件与图片菜单' : 'Files and images menu'}
-      />
 
       <ChallengePickerCard
         language={language}
