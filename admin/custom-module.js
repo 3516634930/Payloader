@@ -34,7 +34,6 @@ document.addEventListener('DOMContentLoaded', () => {
     element.innerHTML = `
       <form id="cp-form">
         <div class="cp-form-heading">
-          <span class="section-kicker">自定义内容</span>
           <h3 id="cp-title-h">新增自定义内容</h3>
         </div>
         <fieldset class="cp-field cp-destination-field">

@@ -2140,6 +2140,10 @@ const renderGroups = () => {
 
 const renderList = () => {
   const list = $('item-list');
+  // 清空按钮随筛选态同步（renderList 是搜索/分组/清空/模块切换后必经的公共路径，
+  // 放这里才能覆盖 search oninput 只走 renderList、不走完整 render 的入口）。
+  const clearFilterButton = $('clear-filter');
+  if (clearFilterButton) clearFilterButton.disabled = !state.query && !state.group;
   const items = filteredItems();
   const visibleItemLimit = state.visibleItemLimit;
   const firstPage = items.slice(0, visibleItemLimit);
