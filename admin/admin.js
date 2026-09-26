@@ -1601,43 +1601,39 @@ const renderClientBuildFormV2 = () => {
 
 const renderAccountForm = () => {
   const account = state.account || {};
+  // 直显表单（AW 批次）：不套 section() 弹窗折叠卡——改凭据是低频高危操作，
+  // 直接摆在页面上填完点顶栏「保存」才是正常后台的心智模型。
   const body = `
     <div class="account-security-shell">
-      <section class="account-security-hero">
-        <div>
-          <span>Admin Account</span>
-          <h3>后台账号安全</h3>
-          <p>修改管理员用户名或密码需要先输入当前密码。保存成功后，后台会清理所有已有登录态，并要求重新登录。</p>
-        </div>
-        <div class="account-status-card">
-          <span>当前管理员</span>
-          <strong>${escapeHtml(account.username || '')}</strong>
-          <small>上次更新：${escapeHtml(account.updatedAt ? formatBuildDate(account.updatedAt) : '尚未记录')}</small>
-        </div>
-      </section>
-      ${section('登录凭据', '修改后台登录用户名和密码。', `
+      <section class="account-security-form" aria-labelledby="aw-account-title">
+        <header class="aw-account-head">
+          <div>
+            <h3 id="aw-account-title">修改登录凭据</h3>
+            <p>调整后点击右上角「保存」提交，取消可还原为当前值。</p>
+          </div>
+          <div class="aw-account-meta">
+            <span>当前管理员</span>
+            <strong>${escapeHtml(account.username || '')}</strong>
+            <small>上次更新：${escapeHtml(account.updatedAt ? formatBuildDate(account.updatedAt) : '尚未记录')}</small>
+          </div>
+        </header>
         <div class="form-grid">
-          <label class="field">
-            <span>当前用户名</span>
-            <input id="account-current-username" value="${escapeHtml(account.username || '')}" readonly />
-            <small class="field-hint">只读显示，下面的新用户名保存后生效。</small>
-          </label>
           <label class="field">
             <span>新用户名</span>
             <input
               id="account-username"
               autocomplete="username"
               maxlength="64"
-              pattern="[A-Za-z0-9._-]{3,64}"
+              pattern="[A-Za-z0-9._\\-]{3,64}"
               spellcheck="false"
               value="${escapeHtml(account.username || '')}"
             />
-            <small class="field-hint">3-64 位，只允许字母、数字、点、下划线和短横线。</small>
+            <small class="field-hint">3-64 位，只允许字母、数字、点、下划线和短横线；保持当前值即不修改。</small>
           </label>
           <label class="field">
             <span>当前密码</span>
             <input id="account-current-password" type="password" autocomplete="current-password" maxlength="128" />
-            <small class="field-hint">必须输入当前密码才能保存修改。</small>
+            <small class="field-hint">验证身份必填。</small>
           </label>
           <label class="field">
             <span>新密码</span>
@@ -1650,11 +1646,8 @@ const renderAccountForm = () => {
             <small class="field-hint">再次输入新密码，与新密码保持一致。</small>
           </label>
         </div>
-      `)}
-      <div class="account-security-note">
-        <strong>保存后的安全动作</strong>
-        <span>系统会立即清空所有后台会话，旧 JWT 因凭据版本变化自动失效，必须使用新账号重新登录。</span>
-      </div>
+        <p class="aw-account-note">保存后系统会清空所有后台会话，旧登录态立即失效，需使用新凭据重新登录。</p>
+      </section>
     </div>
   `;
   $('editor-form').innerHTML = body;
