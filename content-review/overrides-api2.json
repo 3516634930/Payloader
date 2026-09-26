@@ -45,7 +45,7 @@
      "en": "In step 1, submit mutations modifying another user's email, elevating role and rewriting password one by one as the current identity, after baselining on your own object; acceptance of cross-object writes or privileged fields confirms the object-level gap, recording each response and database state before and after. Judge success by effective-write records. Replace placeholders via the global variables menu; roll back all changes immediately after testing."
     },
     "mitigation": {
-     "zh": "Mutation 解析器强制校验主体与目标对象归属，敏感字段走独立授权路径；GraphQL 层禁止客户端声明角色字段。修复后重放第 1 步，越权 mutation 应全部返回授权错误。",
+     "zh": "Mutation 解析器强制校验主体与目标对象归属，敏感字段（如角色）走独立管理员 mutation；Schema 层不暴露角色可写参数。\n    import graphene\n    class UpdateUser(graphene.Mutation):\n        class Arguments:\n            id = graphene.Int(required=True)\n            email = graphene.String()\n        def mutate(root, info, id, email=None):\n            obj = User.objects.get(pk=id)\n            if obj.owner_id != info.context.user.id:\n                raise Exception(\"FORBIDDEN\")\n            obj.email = email; obj.save()\n            return UpdateUser(ok=True)",
      "en": "Mutation resolvers must enforce principal-versus-object ownership with sensitive fields on separate authorization paths; the GraphQL layer should reject client-declared role fields. After the fix, replay step 1: unauthorized mutations should all return authorization errors."
     },
     "difficulty": "advanced"
@@ -321,7 +321,7 @@
      "en": "In step 1, submit inline-fragment variants one by one per the script, recording each variant's returned fields; unauthorized fields riding fragments confirm missing field-level authorization, contrasted with explicit fragment-free query results to bound the bypass, recording unauthorized field lists and value types as evidence. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "字段级授权下沉到统一中间件并覆盖片段展开路径，高权类型字段默认拒绝显式放行。修复后重放第 1 步矩阵，越权字段应返回授权错误。",
+     "zh": "字段级授权下沉到统一中间件并覆盖内联片段展开路径；高权类型字段默认拒绝、显式放行。\n    const schemaAuth = applyMiddleware(schema, shield({\n      Admin: {\n        secretToken: rule()((p, a, ctx) => !!ctx.user?.isAdmin),\n        password: deny,\n        apikey: deny,\n      },\n    }));\n    修复后重放第 1 步内联片段矩阵，越权字段应统一返回授权错误。",
      "en": "Sink field-level authorization into unified middleware covering fragment expansion, defaulting privileged-type fields to deny unless allowed. After the fix, replay the step 1 matrix: unauthorized fields should return authorization errors."
     },
     "difficulty": "advanced"
@@ -589,7 +589,7 @@
      "en": "In step 1, build documents carrying multi-alias logins or code queries and submit one by one per the script, recording each alias's independent result; all attempts within one request executing independently confirm the alias throttle bypass, with per-document attempt capacity tallied. Judge success by independent multi-alias responses. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "限流按文档内操作数与主体双层计数并限制别名数量，登录类 resolver 强制独立节流。修复后重放第 1 步，超限文档应在校验阶段被拒绝。",
+     "zh": "限流按文档内操作数与主体双层计数并限制单文档别名/字段数；登录类 resolver 独立节流。\n    const { createRateLimitRule } = require(\"graphql-rate-limit\");\n    const rateLimit = createRateLimitRule({ identifyCtx: (ctx) => ctx.ip });\n    applyMiddleware(schema, shield({\n      Mutation: { login: rateLimit({ window: \"1m\", max: 5 }) },\n    }));\n    修复后重放第 1 步 5 连 login 文档，超限应在校验阶段被拒绝。",
      "en": "Throttle per document-operation counts and principals with alias caps, enforcing independent throttles on login-type resolvers. After the fix, replay step 1: over-limit documents should be rejected at validation."
     },
     "difficulty": "advanced"
@@ -857,7 +857,7 @@
      "en": "In step 1, submit mixed-privilege query arrays and batched mutations to the GraphQL endpoint one by one per the script, recording each arrayed operation's outcome; multiple operations executing at once with unauthorized results among them confirm missing batching policy. Judge success by the arrayed-operation outcome matrix. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "禁用或严格限制 HTTP 批处理并对数组内每条操作独立走鉴权与成本核算，超限整批拒绝。修复后重放第 1 步矩阵，越权操作应逐条失败。",
+     "zh": "禁用 HTTP 批处理；如必须保留，对数组内每条操作独立鉴权与成本核算，超限整批拒绝。\n    // Apollo Server 4：批处理默认关闭，保持显式禁用\n    const server = new ApolloServer({\n      schema,\n      allowBatchedHttpRequests: false,\n    });\n    修复后重放第 1 步批处理矩阵，越权操作应逐条失败。",
      "en": "Disable or strictly limit HTTP batching, running authentication and cost accounting independently per arrayed operation and rejecting whole batches over limit. After the fix, replay the step 1 matrix: unauthorized operations should fail individually."
     },
     "difficulty": "advanced"
@@ -1142,7 +1142,7 @@
      "en": "In step 1, initiate other-user and sensitive-field subscriptions one by one as the current identity per the script, recording acceptances and subsequent deliveries; unauthorized event streams pushing continuously confirm missing subscription authorization, with first deliveries captured as evidence. Judge success by delivery content versus identity. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "订阅注册与每次投递都对照主体重校验主题与字段权限，会话失效即断流。修复后重放第 1 步矩阵，非授权订阅应被拒绝或投递为空。",
+     "zh": "订阅注册与每次投递都对照连接主体重校验主题与字段权限，会话失效即断流。\n    useServer({\n      schema,\n      onSubscribe: (ctx, msg) => {\n        if (!topicAllowed(ctx.extra.session, msg.payload))\n          return [new GraphQLError(\"forbidden\")];\n      },\n    }, wsServer);\n    修复后重放第 1 步订阅矩阵，非授权订阅被拒绝或投递为空。",
      "en": "Re-validate topic and field permissions per principal at registration and every delivery, cutting streams on session loss. After the fix, replay the step 1 matrix: unauthorized subscriptions should be rejected or deliver empty."
     },
     "difficulty": "advanced"
@@ -1398,7 +1398,7 @@
      "en": "In step 1, submit skip and include combos plus deprecated-field variants one by one per the script, recording returned fields; restricted fields returning via directive paths confirm missing directive validation, with deprecated-field values archived as legacy evidence. Judge success by the returned-field matrix. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "字段授权在指令求值后仍强制执行并清理废弃解析器，指令白名单限制可执行集。修复后重放第 1 步矩阵，全部变体应返回授权错误或空值。",
+     "zh": "字段授权在指令求值后仍强制执行（包装 resolver，不受 @skip/@include 影响），清理废弃字段解析器，指令白名单限制可执行集。\n    const withAuth = (resolver, check) => (p, a, ctx, info) =>\n      check(ctx) ? resolver(p, a, ctx, info)\n                 : Promise.reject(new GraphQLError(\"forbidden\"));\n    // Admin.secretToken 恒经 withAuth 包装\n    修复后重放第 1 步指令矩阵，全部变体应返回授权错误或空值。",
      "en": "Enforce field authorization after directive evaluation, purge deprecated resolvers, and allowlist executable directives. After the fix, replay the step 1 matrix: every variant should return authorization errors or null."
     },
     "difficulty": "advanced"
@@ -1809,7 +1809,7 @@
      "en": "In step 1, submit deep-nesting, alias and wide-pagination probes one by one per the script, recording response times and server decisions; spiking times or missing rejections confirm the cost-boundary gap, with probe sizes kept to small samples to avoid real impact. Judge success by boundary-rejection records. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "部署深度限制与成本分析器并在校验阶段拒绝超限文档，对解析耗时建立基线告警。修复后重放第 1 步矩阵，全部探针应在执行前被拒绝。",
+     "zh": "部署深度限制与成本分析器，在校验阶段拒绝超限文档；对解析耗时建立基线告警。\n    const { createComplexityLimitRule } = require(\"graphql-query-complexity\");\n    const server = new ApolloServer({\n      schema,\n      validationRules: [depthLimit(10), createComplexityLimitRule(1000)],\n    });\n    修复后重放嵌套与别名矩阵，全部探针应在执行前被拒绝。",
      "en": "Deploy depth limits and cost analyzers rejecting over-limit documents at validation, with baseline alerts on resolver timing. After the fix, replay the step 1 matrix: every probe should be refused pre-execution."
     },
     "difficulty": "advanced"
@@ -2094,7 +2094,7 @@
      "en": "In step 1, submit direct and indirect fragment-cycle documents one by one per the script, recording server decisions; accepted cycles or stack exceptions confirm missing document validation, with error responses checked for stack leakage. Judge success by rejections and error structure. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "校验阶段构建片段展开图并拒绝一切循环引用，错误响应统一脱敏不返回内部细节。修复后重放第 1 步矩阵，全部循环文档应在验证层被拒绝。",
+     "zh": "校验阶段构建片段展开图并拒绝一切循环引用（不得裁剪规范内置 NoFragmentCycles 规则），错误响应统一脱敏不返回内部细节。\n    import { specifiedRules, NoFragmentCyclesRule } from \"graphql\";\n    const server = new ApolloServer({\n      schema,\n      validationRules: [...specifiedRules, NoFragmentCyclesRule],\n      formatError: (e) => ({ message: e.message }), // 不泄露堆栈\n    });\n    修复后重放循环片段矩阵，全部文档应在验证层被拒绝。",
      "en": "Build fragment-expansion graphs at validation rejecting all cycles, sanitizing error responses of internal details. After the fix, replay the step 1 matrix: every cyclic document should be rejected at validation."
     },
     "difficulty": "intermediate"

@@ -2102,7 +2102,7 @@
      "en": "In step 1, connect directly over SSH; an auth prompt or shell confirms port 22 reachability. In step 2, connect with private-key auth; passwordless shell access confirms key authorization. In step 3, connect through the jump host with -J, then record each hop's host and account. Judge success by shell acquisition. Replace placeholders via the global variables menu; use only authorized test keypairs."
     },
     "mitigation": {
-     "zh": "私钥强制口令保护并集中托管，跳板访问收敛到堡垒机且启用双因素，审计 authorized_keys 变更。修复后重放第 2、3 步，非授权密钥与跳板应被拒绝并告警。",
+     "zh": "私钥强制口令保护并集中托管，跳板访问收敛到堡垒机且启用双因素，审计 authorized_keys 变更（sshd_config 约束）：\n    # /etc/ssh/sshd_config.d/99-hardening.conf\n    PermitRootLogin no\n    PasswordAuthentication no\n    AuthenticationMethods publickey,keyboard-interactive\n    AllowGroups ssh-jump\n    restrict,from=\"10.0.10.0/24\",command=\"/usr/bin/backup.sh\" ssh-ed25519 AAAA...  # authorized_keys 约束\n    systemctl reload sshd\n    修复后重放第 2、3 步，非授权密钥与跳板应被拒绝并告警。",
      "en": "Require passphrase-protected, centrally managed keys, funnel jump access through bastions with MFA, and audit authorized_keys changes. After the fix, replay steps 2 and 3: unauthorized keys and jumps should be denied with alerts."
     },
     "difficulty": "intermediate"
@@ -2477,7 +2477,7 @@
      "en": "In step 1, establish a remote session with Enter-PSSession using test credentials; an interactive prompt confirms port and credential availability. In step 2, run whoami via Invoke-Command; the target-host identity confirms the execution surface. In step 3, obtain an interactive shell with evil-winrm and record session traits for follow-up. Judge success by remote command output. Replace placeholders via the global variables menu; connect only to authorized hosts."
     },
     "mitigation": {
-     "zh": "限制 WinRM 监听范围与远程管理组成员，启用 HTTPS 传输与 just-enough-administration 约束。修复后重放第 1 至第 3 步，未授权凭据的会话应被拒绝且登录监控告警。",
+     "zh": "WinRM 监听限管理网段并启用 HTTPS 传输，远程管理组收敛到分层账号，部署 JEA 约束会话：\n    New-NetFirewallRule -DisplayName \"WinRM-HTTPS-Mgmt\" -Protocol TCP -LocalPort 5986 -RemoteAddress 10.0.10.0/24\n    New-PSSessionConfigurationFile -Path .\\Ops.pssc -SessionType RestrictedRemoteServer -RoleDefinitions @{'CORP\\Ops'=@{RoleCapabilities='Ops'}}\n    Register-PSSessionConfiguration -Name Ops -Path .\\Ops.pssc\n    修复后重放第 1 至第 3 步，未授权凭据的会话应被拒绝且登录监控告警。",
      "en": "Restrict WinRM listeners and Remote Management Users membership, enforce HTTPS transport, and constrain via Just Enough Administration. After the fix, replay steps 1 through 3: unauthorized-credential sessions should be denied with logon alerts."
     },
     "difficulty": "intermediate"
@@ -2874,7 +2874,7 @@
      "en": "In step 1, run whoami remotely with winrs carrying credentials; the target-account identity confirms remote execution. In step 2, spawn a remote cmd with the same credentials to verify the interactive channel, recording how output returns. Judge success by command output and channel establishment. Replace placeholders via the global variables menu; cross-check with step 1 to separate open ports from valid credentials."
     },
     "mitigation": {
-     "zh": "与 WinRM 一并收紧监听与组成员，命令行审计覆盖 winrs 调用。修复后重放第 1、2 步，未授权凭据应被 401 拒绝且事件日志出现失败记录。",
+     "zh": "与 WinRM 一并收紧监听范围与远程管理组成员，禁用明文与基本认证，命令行审计覆盖 winrs 调用：\n    winrm set winrm/config/service '@{AllowUnencrypted=\"false\"}'\n    winrm set winrm/config/service/auth '@{Basic=\"false\"; Kerberos=\"true\"}'\n    Set-NetFirewallRule -DisplayGroup \"Windows Remote Management\" -RemoteAddress 10.0.10.0/24\n    Get-WinEvent -FilterHashtable @{LogName='Security';Id=4625} | ? { $_.Message -match \"winrs\" }\n    修复后重放第 1、2 步，未授权凭据应被 401 拒绝且事件日志出现失败记录。",
      "en": "Tighten listeners and group membership together with WinRM, and audit command lines covering winrs invocations. After the fix, replay steps 1 and 2: unauthorized credentials should get 401 with failure events logged."
     },
     "difficulty": "intermediate"
@@ -3231,7 +3231,7 @@
      "en": "Use in Payload list order: step 1 checks token privileges with whoami /priv — SeImpersonate/SeAssignPrimaryToken marks a Potato-class prerequisite; step 2 runs winPEAS to summarize exploitable configurations; step 3 enumerates Everyone-writable services with accesschk — a hit confirms the service ACL gap, then swap in a malicious binary at binPath and await service start; step 4 filters unquoted spaced paths and plants a same-name binary in the writable directory. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "收紧服务对象、二进制目录与注册表 ACL，为含空格服务路径加引号，移除不必要的令牌特权并让服务以受管服务账号运行。修复后以同一低权限主体重放第 1、3 步枚举，不应再出现可写服务与未引用路径。",
+     "zh": "收紧服务对象、二进制目录与注册表 ACL，为含空格服务路径补引号，移除不必要的令牌特权并让服务以受管服务账号运行：\n    sc.exe config AppSvc binPath= \"\\\"C:\\Program Files\\Vendor\\app.exe\\\" --run\"\n    icacls \"C:\\Program Files\\Vendor\" /inheritance:r /grant:r \"Administrators:(OI)(CI)F\" \"Users:(OI)(CI)RX\"\n    sc.exe privs AppSvc \"SeChangeNotifyPrivilege/SeCreateGlobalPrivilege\"\n    修复后以同一低权限主体重放第 1、3 步枚举，不应再出现可写服务与未引用路径。",
      "en": "Tighten ACLs on service objects, binary directories, and registry keys; quote spaced service paths, remove unnecessary token privileges, and run services under managed service accounts. After the fix, replay the step 1 and step 3 enumeration as the same low-privileged user: no writable services or unquoted paths should remain."
     },
     "difficulty": "intermediate"
@@ -3691,7 +3691,7 @@
      "en": "Use in Payload list order: step 1 enumerates all SUID binaries and checks them against GTFOBins for file reads or root shells; step 2 reviews grants with sudo -l — NOPASSWD entries are candidate paths; step 3 inspects /etc/crontab and cron directories, locates low-privilege-writable script paths, and injects commands to await scheduling; step 4 runs linPEAS for a categorized sweep that cross-checks anything missed. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "移除非必要 SUID/SGID 与 file capabilities，sudo 采用精确命令与参数约束，修复 cron/systemd 脚本及父目录所有权，清理可写 PATH 与动态库搜索路径。修复后以同一 UID 重放第 1-3 步枚举，不应再出现可控的高权限执行点。",
+     "zh": "移除非必要 SUID/SGID 与 file capabilities，sudo 限定精确命令与参数，修复 cron/systemd 脚本及父目录所有权，清理可写 PATH 与动态库搜索路径：\n    chmod u-s /usr/bin/find          # 按清单逐项评估移除 SUID\n    echo 'backup ALL=(root) NOPASSWD: /usr/bin/rsync /srv/backup/*' > /etc/sudoers.d/backup && chmod 440 /etc/sudoers.d/backup\n    chown root:root /etc/cron.daily/backup.sh && chmod 700 /etc/cron.daily/backup.sh\n    修复后以同一 UID 重放第 1-3 步枚举，不应再出现可控的高权限执行点。",
      "en": "Remove unnecessary SUID/SGID bits and file capabilities, constrain sudo to exact commands and arguments, fix cron/systemd script and parent-directory ownership, and clean writable PATH and library search entries. After the fix, replay the step 1-3 enumeration as the same UID: no controllable high-privilege execution points should remain."
     },
     "difficulty": "intermediate"
@@ -4135,7 +4135,7 @@
      "en": "Use in Payload list order: step 1 collects uname -a and /proc/version output, recording the exact kernel version and build info as the matching baseline; step 2 searches searchsploit by version for usable local escalation entries; step 3 compares against the affected ranges of DirtyCow, DirtyPipe, PwnKit, and similar CVEs — a match marks a candidate escalation path to validate with the corresponding exploit in an authorized environment. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "按发行版公告与已安装包版本确认修复状态，升级至受支持内核并完成必要重启，禁用不需要的用户命名空间与高风险模块；监控异常崩溃与提权行为。修复后重新采集第 1 步基线，确认版本已进入修复覆盖范围。",
+     "zh": "按发行版公告升级至受支持内核并重启，禁用非特权用户命名空间与高风险模块，监控异常崩溃：\n    apt-get update && apt-get install --only-upgrade linux-image-generic && reboot\n    echo 'kernel.unprivileged_userns_clone = 0' > /etc/sysctl.d/99-userns.conf\n    sysctl --system",
      "en": "Confirm fix status from distribution advisories and installed package versions, upgrade to a supported kernel with the required reboot, disable unneeded user namespaces and risky modules, and monitor anomalous crashes and escalation behavior. After the fix, recollect the step 1 baseline and confirm the version is within fixed ranges."
     },
     "difficulty": "intermediate"
@@ -4513,7 +4513,7 @@
      "en": "Use in Payload list order: step 1 confirms SeImpersonate or SeAssignPrimaryToken via whoami /priv to satisfy prerequisites; step 2 executes a command with JuicyPotato on a chosen port — the proof file written or a reverse connection at the listener confirms; step 3 adapts to newer systems with PrintSpoofer; step 4 selects SweetPotato by trigger (e.g., EfsRpc); step 5 covers patched .NET environments with GodPotato; step 6 forwards port 135 with socat and applies RoguePotato for constrained scenarios; step 7 emits the marker to verify the chain. Choose the tool by OS version. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "移除不需要的 SeImpersonate/SeAssignPrimaryToken 特权，避免高权限服务向低信任主体暴露可模拟的本地接口，应用系统与 .NET 补丁；监控异常命名管道、COM/RPC 调用与 SYSTEM 子进程。修复后用第 2-6 步样例回归，各工具链应全部失败。",
+     "zh": "移除服务账户不必要的 SeImpersonate/SeAssignPrimaryToken 特权，避免高权限服务暴露可模拟本地接口，应用系统与 .NET 补丁并监控异常管道与 SYSTEM 子进程：\n    # secedit 按账户清单剥离模拟特权（示例：仅保留管理员组）\n    secedit /export /cfg C:\\Temp\\secpol.cfg\n    (Get-Content C:\\Temp\\secpol.cfg) -replace\n      'SeImpersonatePrivilege = .*', 'SeImpersonatePrivilege = *S-1-5-32-544' |\n      Set-Content C:\\Temp\\secpol.cfg\n    secedit /configure /db C:\\Windows\\security\\local.sdb /cfg C:\\Temp\\secpol.cfg",
      "en": "Remove unneeded SeImpersonate/SeAssignPrimaryToken privileges, keep privileged services from exposing impersonable local interfaces to low-trust principals, and apply OS and .NET patches; monitor anomalous named pipes, COM/RPC calls, and SYSTEM child processes. After the fix, regress with the step 2-6 samples: every tool chain must fail."
     },
     "difficulty": "intermediate"
@@ -5771,7 +5771,7 @@
      "en": "Use in Payload list order: step 1 runs the classic DLL injection chain against notepad (OpenProcess→VirtualAllocEx→WriteProcessMemory→CreateRemoteThread) — the injected DLL appearing in the target's module list confirms success; step 2 completes hollowing in the CREATE_SUSPENDED→NtUnmapViewOfSection→VirtualAllocEx→WriteProcessMemory→ResumeThread order — the suspended process image replaced and resumed confirms; step 3 queues LoadLibraryA into the target thread with QueueUserAPC — DLL load on wake confirms. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "启用进程访问审计与 EDR 跨进程注入检测，按路径和发布者收紧 AppLocker/WDAC 规则并限制 SeDebugPrivilege 分配；对跨进程写内存与远程线程创建实时告警。修复后用第 1 步样例回归，注入应被阻断或产生高置信告警。",
+     "zh": "启用进程创建审计与 EDR 跨进程注入检测，SeDebugPrivilege 仅保留 Administrators，对跨进程写内存/远程线程实时告警：\n    reg add \"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\Audit\" /v ProcessCreationIncludeCmdLine_Enabled /t REG_DWORD /d 1 /f\n    auditpol /set /subcategory:\"Process Creation\" /success\n    secedit /export /cfg C:\\pol.cfg\n    (Get-Content C:\\pol.cfg) -replace 'SeDebugPrivilege = .*', 'SeDebugPrivilege = *S-1-5-32-544' | Set-Content C:\\pol.cfg\n    secedit /configure /db C:\\Windows\\security\\local.sdb /cfg C:\\pol.cfg",
      "en": "Enable process-access auditing and EDR cross-process injection detections, tighten AppLocker/WDAC rules by path and publisher, and restrict SeDebugPrivilege assignments; alert in real time on cross-process memory writes and remote thread creation. After the fix, regress with the step 1 sample: injection must be blocked or raise a high-confidence alert."
     },
     "difficulty": "intermediate"
@@ -6147,7 +6147,7 @@
      "en": "Use in Payload list order: step 1 checks whether running allowlisted executables triggers 8003/8004 block events to identify viable entries; step 2 loads a remote SCT with regsvr32, executes an HTA with mshta, or downloads a payload with certutil — the callback host receiving the request confirms the LOLBAS chain; step 3 executes the payload inside InstallUtil /U's uninstall callback without AppLocker blocks; step 4 compiles inline tasks with MSBuild — MSBuild.exe as the host process confirms. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "按路径与发布者收紧 AppLocker/WDAC 规则，对 regsvr32/mshta/InstallUtil/MSBuild 采用哈希或版本限定，启用 8003/8004/8006/8007 事件监控并审计代理执行命令行。修复后用第 2-4 步样例回归，全部 LOLBAS 链应被策略拒绝。",
+     "zh": "收紧 AppLocker/WDAC 规则，对 regsvr32/mshta/InstallUtil/MSBuild 按发布者+版本或哈希限定，启用 8003-8007 监控并审计代理执行命令行：\n    reg add \"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\SrpV2\\Exe\" /v EnforcementMode /t REG_DWORD /d 2 /f\n    $r = Get-AppLockerFileInformation -Path C:\\Windows\\System32\\mshta.exe | New-AppLockerRule -RuleType Publisher -User Everyone -Action Deny\n    New-AppLockerPolicy -Rule $r -User Everyone -Xml | Out-File C:\\pol\\deny.xml; Set-AppLockerPolicy -XmlPolicy C:\\pol\\deny.xml -Merge",
      "en": "Tighten AppLocker/WDAC rules by path and publisher, pin regsvr32/mshta/InstallUtil/MSBuild by hash or version, monitor 8003/8004/8006/8007 events, and audit proxy-execution command lines. After the fix, regress with the step 2-4 samples: every LOLBAS chain must be denied by policy."
     },
     "difficulty": "intermediate"
@@ -6984,7 +6984,7 @@
      "en": "In step 1, create a SYSTEM logon-trigger task with schtasks and confirm via read-back. In step 2, create a 5-minute interval task verifying periodic runs. In step 3, register an equivalent task with PowerShell confirming consistent artifacts. In step 4, open crontab in the test environment for the Linux side. Judge by task read-back and execution records. Replace placeholders via the global variables menu; delete all tasks after testing."
     },
     "mitigation": {
-     "zh": "以任务清单为基线监控创建与修改事件（4698、4699），约束非管理员创建 SYSTEM 触发任务。修复后重放第 1、2 步，创建应即时告警并在基线比对中标记。",
+     "zh": "以任务清单为基线监控创建/修改事件（4698/4699），约束非管理员创建 SYSTEM 触发任务：\n    auditpol /set /subcategory:\"Other Object Access Events\" /success /failure\n    schtasks /query /fo csv /v > C:\\baseline\\tasks.csv\n    Get-WinEvent -FilterHashtable @{LogName='Security';Id=4698,4699} -MaxEvents 50",
      "en": "Baseline the task inventory and monitor creation and modification events (4698, 4699), blocking non-administrators from creating SYSTEM-triggered tasks. After the fix, replay steps 1 and 2: creation should alert instantly and stand out in baseline diffs."
     },
     "difficulty": "intermediate"
@@ -7423,7 +7423,7 @@
      "en": "Use in Payload list order: step 1 accesses /owa to confirm the endpoint (a login page returns); step 2 logs in with exchanger.py as the lab account and lists mailbox folders to confirm the readable scope; step 3 emits a marker string to verify the execution chain; step 4 exports the lab mailbox with New-MailboxExportRequest to the operator share — completed export with PST on disk confirms exfiltration capability. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "按最小权限收紧邮箱与角色委派授权，禁用遗留认证，限制 New-MailboxExportRequest 等管理 cmdlet 的使用主体并保留审计；对跨邮箱读取与导出请求告警。修复后用第 2、4 步样例回归，越界读取与导出应被拒绝并留审计。",
+     "zh": "按最小权限收紧邮箱与角色委派，禁用遗留认证，限制 New-MailboxExportRequest 使用主体并保留导出审计：\n    # 仅受信管理员组可导出邮箱（RBAC 收敛）\n    New-ManagementRoleAssignment -Role \"Mailbox Import Export\" -SecurityGroup \"Trusted-MailAdmins\"\n    Set-CASMailbox -Identity svc-report -EwsEnabled $false -PopEnabled $false -ImapEnabled $false\n    Get-MailboxExportRequest | Select-Object Requester,FilePath |\n      Export-Csv C:\\Audit\\mailbox-exports.csv -NoTypeInformation",
      "en": "Tighten mailbox and role delegation grants per least privilege, disable legacy authentication, restrict principals for cmdlets such as New-MailboxExportRequest with auditing retained, and alert on cross-mailbox reads and exports. After the fix, regress with the step 2 and step 4 samples: out-of-bound reads and exports must be denied with audit records."
     },
     "difficulty": "intermediate"
@@ -7912,7 +7912,7 @@
      "en": "Use in Payload list order: step 1 searches Panther/Sysprep default paths — a hit on Unattend.xml confirms residual credentials are reachable; step 2 searches the whole disk for unattend/sysprep XML to widen scope; step 3 parses the XML for plaintext AutoLogon passwords; step 4 decodes residuals via Base64/Unicode and certutil; step 5 checks SYSVOL cpassword, web.config connection strings, VNC and WLAN passwords; step 6 batches enumeration with Metasploit modules. Any plaintext hit confirms credential exposure. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "从镜像、部署共享与历史 GPO 移除秘密并轮换已暴露账号，采用 LAPS/gMSA 或密钥保管服务，收紧 Panther 与部署目录 ACL 并审计敏感字段读取。修复后用第 1、3 步样例回归，默认路径不再返回可读凭据。",
+     "zh": "移除镜像与 SYSVOL 的 cpassword 并轮换账号，改用 LAPS/gMSA 管理本地凭据，收紧部署目录 ACL：\n    # LAPS：限定密码读取主体\n    Set-AdmPwdReadPasswordPermission -OrgUnit \"OU=Servers,DC=corp,DC=local\" -AllowedPrincipals \"Domain Admins\"\n    Set-AdmPwdComputerSelfPermission -OrgUnit \"OU=Servers,DC=corp,DC=local\"\n    # 清理 SYSVOL 含 cpassword 的 GPP\n    Get-ChildItem C:\\Windows\\SYSVOL -Recurse -Include Groups.xml,Services.xml |\n      Where-Object {Select-String -Path $_.FullName -Pattern cpassword -Quiet} | Remove-Item -Force",
      "en": "Purge secrets from images, deployment shares, and historical GPOs, rotate exposed accounts, adopt LAPS/gMSA or a secrets vault, tighten Panther and deployment directory ACLs, and audit sensitive-field reads. After the fix, regress with the step 1 and step 3 samples: default paths must yield no readable credentials."
     },
     "difficulty": "intermediate"

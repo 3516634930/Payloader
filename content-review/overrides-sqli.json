@@ -35,7 +35,7 @@
      "en": "Use in Payload list order: first probe the injection point with step 1 quote and always-true/false boolean payloads; a stable response difference or database error confirms controllability. Then use step 2 increasing ORDER BY and UNION SELECT NULL sequences to determine the column count. Once fixed, use step 3 to locate echo positions, then follow steps 4-8 to read database()/user() metadata, enumerate databases, tables, and columns, and extract data. Replace placeholders via the global variables menu. When blocked by a WAF, switch to the case-mixing, inline-comment, and encoding variants in the WAF bypass section."
     },
     "mitigation": {
-     "zh": "所有动态值改用参数化查询，排序字段等服务端白名单固定；数据库账户仅授予业务 schema 的最小 SELECT 权限并统一错误响应。修复后在同一入口重放布尔对照与 UNION 载荷，确认响应不再随注入条件变化、information_schema 不可读。",
+     "zh": "动态值一律参数化绑定，排序字段白名单固定；应用账户仅授业务 schema 最小 SELECT 权限，统一错误响应。\n    // PHP\n    $st = $pdo->prepare('SELECT id,name FROM users WHERE email = ?');\n    $st->execute([$email]);\n    $sort = in_array($sort, ['id','created_at'], true) ? $sort : 'id';\n    // Java JDBC\n    try (PreparedStatement ps = conn.prepareStatement(\n        \"SELECT id,name FROM users WHERE email = ?\")) { ps.setString(1, email); }\n    修复后重放验证：重放布尔对照与 UNION 载荷，响应不再随注入条件变化、information_schema 不可读。",
      "en": "Switch all dynamic values to parameterized queries and pin server-side allowlists for ordering fields; grant the database account only minimal SELECT on the business schema and normalize error responses. After the fix, replay boolean and UNION payloads at the same entry point: responses must no longer vary with injected conditions and information_schema must be unreadable."
     },
     "difficulty": "intermediate"
@@ -766,7 +766,7 @@
      "en": "Use in Payload list order: step 1 always-true/false conditions showing a stable response difference confirms controllability; steps 2-3 read @@version and the current login, with is_srvrolemember('sysadmin') returning 1 confirming a high-privilege context; steps 4-6 enumerate databases, tables, and columns via db_name(n) and catalog views; step 7 extracts credentials using + concatenation. Replace placeholders via the global variables menu; when blocked by a WAF, switch to the hex-encoding and comment variants."
     },
     "mitigation": {
-     "zh": "使用 sp_executesql 参数绑定替代字符串拼接，动态标识符走固定映射；应用登录仅授予业务 schema 最小权限并统一错误页。修复后重放布尔与 UNION 载荷，响应应无差异且目录视图不可读。",
+     "zh": "动态 SQL 一律用 sp_executesql 参数绑定，动态标识符走固定映射；应用登录最小权限、统一错误页。\n    -- T-SQL 参数绑定\n    EXEC sp_executesql N'SELECT id,name FROM users WHERE email = @e',\n         N'@e nvarchar(256)', @e = @email;\n    // C# ADO.NET\n    using var cmd = new SqlCommand(\n        \"SELECT id,name FROM users WHERE email = @e\", conn);\n    cmd.Parameters.Add(\"@e\", SqlDbType.NVarChar, 256).Value = email;\n    修复后重放验证：布尔与 UNION 载荷响应无差异，目录视图不可读。",
      "en": "Use sp_executesql parameter binding instead of string concatenation, map dynamic identifiers to fixed values, grant the application login only minimal business-schema rights, and normalize error pages. After the fix, replaying boolean and UNION payloads must produce no response differences and catalog views must be unreadable."
     },
     "difficulty": "intermediate"
@@ -1932,7 +1932,7 @@
      "en": "Use in Payload list order: step 1 submits plain credentials versus $ne/$gt variants to compare responses; operator versions logging in confirms controllability. Steps 2-3 bypass authentication with always-true conditions and $or; steps 4 and 6 use $regex prefix matching to enumerate usernames character by character via response differences; step 5 verifies server-side JS with $where. When blocked by a WAF, switch to the Unicode-escape variant (\\u0024ne) in the operator section."
     },
     "mitigation": {
-     "zh": "用 JSON Schema/DTO 强制凭据字段为标量类型，服务端构造固定 filter 并拒绝所有未允许的 $ 操作符，认证采用常量时间比较；修复后重放操作符载荷应被拒绝或登录失败。",
+     "zh": "DTO/Schema 强制凭据字段为标量类型，服务端构造固定 filter，认证用常量时间比较。\n    // Node.js：类型校验 + 固定 filter\n    const { username, password } = req.body;\n    if (typeof username !== 'string' || typeof password !== 'string')\n      return res.status(400).end('invalid credential type');\n    const user = await db.collection('users').findOne({ username });\n    const ok = user && await bcrypt.compare(password, user.hashedPassword);\n    修复后重放验证：重放 $ne/$gt/$regex 操作符载荷应被拒绝或登录失败。",
      "en": "Enforce scalar credential fields with JSON Schema/DTOs, build fixed filters server-side, reject all non-allowlisted $ operators, and use constant-time comparison for authentication. After the fix, replaying operator payloads must be rejected or fail login."
     },
     "difficulty": "intermediate"
@@ -2872,7 +2872,7 @@
      "en": "Use in Payload list order: step 1 triggers errors with extractvalue/updatexml concatenating version(); a version string in the error confirms the channel. Steps 2-4 read basic info, table names, and data the same way, using SUBSTRING segmentation past the 32-character truncation; step 5 retests with FLOOR/RAND, EXP, and similar functions for rotation. When blocked by a WAF, switch to alternate error functions and encoding variants."
     },
     "mitigation": {
-     "zh": "参数化查询消除注入点，生产环境关闭详细数据库错误并统一异常映射，应用账户限制敏感表访问；修复后重放报错载荷应返回统一错误页且无数据泄露。",
+     "zh": "参数化消除注入点，生产关闭详细数据库错误并统一异常映射，应用账户限制敏感表访问。\n    ; php.ini 生产\n    display_errors = Off\n    log_errors = On\n    // PHP：异常仅记日志，对外统一响应\n    try {\n        $st = $pdo->prepare('SELECT id,name FROM users WHERE email = ?');\n        $st->execute([$email]);\n    } catch (PDOException $e) { error_log($e->getMessage()); http_response_code(500); exit('error'); }\n    修复后重放验证：重放报错载荷应返回统一错误页且无数据泄露。",
      "en": "Eliminate the injection point with parameterized queries, disable verbose database errors in production with unified exception mapping, and restrict application-account access to sensitive tables. After the fix, replaying error payloads must return a uniform error page with no data leakage."
     },
     "difficulty": "intermediate"
@@ -3471,7 +3471,7 @@
      "en": "Use in Payload list order: first store admin'-- or admin' OR '1'='1 in an account field via registration or profile pages, then trigger the later path such as login; step 1 verifies closure and logic control of the stored value, step 2 brings back second-query data via FLOOR/RAND errors, step 3 verifies the always-true login bypass, and step 4 extracts credentials via UNION. When blocked by a WAF, switch to CHAR-concatenation or fullwidth-quote variants."
     },
     "mitigation": {
-     "zh": "后续查询同样使用绑定参数，存储值一律作为数据而非 SQL 片段，动态标识符映射固定值。修复后以存储型载荷回归注册到登录全链路，确认查询结构不再被改变。",
+     "zh": "读取存储值的后续查询同样绑定参数，存储值一律作为数据而非 SQL 片段，动态标识符固定映射。\n    // PHP PDO：存储值仅作绑定数据\n    $st = $pdo->prepare('SELECT id,pass_hash FROM users WHERE username = ?');\n    $st->execute([$storedName]);\n    // Java JDBC\n    try (PreparedStatement ps = conn.prepareStatement(\n        \"SELECT id FROM users WHERE username = ?\")) { ps.setString(1, storedName); }\n    修复后重放验证：以存储型载荷回归注册到登录全链路，查询结构不再被改变。",
      "en": "Use bound parameters in later queries too, always treat stored values as data rather than SQL fragments, and map dynamic identifiers to fixed values. After the fix, regression-test the full registration-to-login chain with stored payloads to confirm query structure stays unchanged."
     },
     "difficulty": "intermediate"

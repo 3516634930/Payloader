@@ -200,7 +200,7 @@
      "en": "In step 1, deploy a comparison page with the four rel-combination links and open each, checking window.opener availability in every new tab; combos retaining the reference carry reverse-hijack risk, and compare against the current browser's implicit-noopener baseline for version differences. Judge success by the opener-availability matrix. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "全部外链显式添加 rel=\"noopener noreferrer\"，出站跳转服务统一注入；对旧浏览器保留降级提示。修复后重放第 1 步，所有组合的 opener 均应为空。",
+     "zh": "全部外链与出站跳转服务统一注入 rel=\"noopener noreferrer\"，旧浏览器由全局 COOP 响应头兜底隔离 opener。\n    <!-- 模板：外链显式声明 -->\n    <a href=\"https://ext.example\" target=\"_blank\" rel=\"noopener noreferrer\">外链</a>\n    # Nginx：全局 Cross-Origin-Opener-Policy\n    add_header Cross-Origin-Opener-Policy same-origin;",
      "en": "Explicitly add rel noopener noreferrer to all external links, injecting uniformly via the outbound-redirect service, with downgrade notices for legacy browsers. After the fix, replay step 1: opener should be null across all combos."
     },
     "difficulty": "intermediate"
@@ -594,7 +594,7 @@
      "en": "In step 1, embed display-none and zero-size iframes pointing at an external test page on the comparison page, then inspect the network panel; requests appearing with the page silently loaded confirm the covert-embedding path, and record response X-Frame-Options to distinguish the missing protection layer. Judge success by network-panel request records. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "全站返回 X-Frame-Options 或 frame-ancestors 策略限定嵌入来源，对必须嵌入的场景用 CSP 限定具体父页面。修复后重放第 1 步，外部页面的 iframe 加载应被浏览器拦截。",
+     "zh": "全站返回 frame-ancestors 策略限定可嵌入来源，必须嵌入的场景用 CSP 精确到具体父页面。\n    # Nginx：限定嵌入来源\n    add_header Content-Security-Policy \"frame-ancestors 'self' https://portal.example\";\n    add_header X-Frame-Options \"SAMEORIGIN\";",
      "en": "Serve site-wide X-Frame-Options or frame-ancestors policies limiting embedding origins, restricting specific parents via CSP where embedding is required. After the fix, replay step 1: the browser should block the external page's iframe load."
     },
     "difficulty": "intermediate"
@@ -1189,7 +1189,7 @@
      "en": "Per step 1, send {\"type\":\"message\",\"content\":\"|id\"} and similar envelope samples over the WebSocket connection one by one, covering |, ;, ||, and && separators with id/whoami-style commands; a hit is command output in the WebSocket response or downstream page content. Record envelope format, response frames, and session state per sample, distinguishing message echo from command output; after confirming control, gather evidence with harmless marker-file reads."
     },
     "mitigation": {
-     "zh": "使用固定程序与 argv，不将消息送入 Shell；对 schema、类型和枚举动作严格允许列表，并限制 worker 子进程权限。修复后重放相同对照，合法 WebSocket 功能应保留，越权能力或解析差异应消失。",
+     "zh": "消息内容绝不拼入 Shell 字符串：固定程序与 argv 数组调用，动作走 schema 枚举允许列表，并限制 worker 子进程权限。\n    const { execFile } = require(\"child_process\");\n    const ACTIONS = { uptime: [\"uptime\"], disk: [\"df\", \"-h\"] };\n    const a = ACTIONS[msg.type];\n    if (!a) return; // 枚举外动作直接拒绝\n    execFile(a[0], a.slice(1)); // 数组参数，不经 shell\n    修复后重放相同对照，合法 WebSocket 功能保留而 |id、|whoami 等分隔符失效。",
      "en": "Use fixed programs with argv and never feed messages into shells; strictly allowlist schemas, types, and enumerated actions, and restrict worker child-process permissions. After the fix, replay the same contrasts—legitimate WebSocket features persist while privilege escalation or parsing differences disappear."
     },
     "difficulty": "expert"
@@ -1468,7 +1468,7 @@
      "en": "Use the step 1 command to send always-true, UNION, and SLEEP injections through both WebSocket message formats; abnormally enlarged result sets or roughly 3-5 second response delays confirm WS messages reach the SQL concatenation layer. Compare fixed records with plain text and true/false conditions first, then pick one UNION or short timing probe per the identified DBMS, never mixing dialects."
     },
     "mitigation": {
-     "zh": "对消息 schema 做类型验证并使用预编译参数，动态标识符映射允许列表，限制数据库账户并统一错误；修复后重放对照应保留合法功能且注入无效。",
+     "zh": "消息 schema 先做类型验证，SQL 一律预编译参数绑定，动态标识符映射允许列表，数据库账户最小权限并统一错误。\n    // Java\n    try (PreparedStatement ps = conn.prepareStatement(\n        \"SELECT id, content FROM msg WHERE room_id = ?\")) {\n        ps.setString(1, msg.getRoomId());\n        ps.executeQuery();\n    }\n    // PHP\n    $st = $pdo->prepare(\"SELECT id, content FROM msg WHERE room_id = ?\");\n    $st->execute([$msg->roomId]);\n    修复后重放 ' OR '1'='1 及注释变体，合法功能保留且注入无效。",
      "en": "Type-validate message schemas with prepared-statement parameters, map dynamic identifiers via allowlists, restrict database accounts, and unify errors; after the fix, replaying controls must preserve legitimate functionality with injections inert."
     },
     "difficulty": "advanced"
@@ -1792,7 +1792,7 @@
      "en": "In step 1, place Origin bypass variants into handshake requests one by one per the script, recording outcomes; any cross-site origin completing a handshake and receiving messages confirms missing validation, verified for message readability with synthetic markers. Judge success by handshake success and message reception. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "握手端点按预注册 Origin 白名单精确匹配并拒绝空值，敏感频道在消息层再校验会话权限。修复后重放第 1 步矩阵，全部绕过变体应握手失败。",
+     "zh": "握手端点对 Origin 做预注册白名单精确匹配，拒绝空值与 null；敏感频道在消息层再校验会话权限。\n    const ALLOWED = new Set([\"https://app.example.com\"]);\n    wss.on(\"connection\", (ws, req) => {\n      if (!ALLOWED.has(req.headers.origin)) {\n        req.socket.destroy(); // Set 查不到 null/undefined 即拒绝\n        return;\n      }\n    });\n    修复后重放第 1 步 Origin 矩阵，全部绕过变体应握手失败。",
      "en": "Handshake endpoints must exact-match pre-registered Origin allowlists rejecting null, with sensitive channels re-checking session permissions at the message layer. After the fix, replay the step 1 matrix: every bypass variant should fail its handshake."
     },
     "difficulty": "advanced"
@@ -2065,7 +2065,7 @@
      "en": "In step 1, place Host and source-header variants into handshake requests one by one per the script, recording routing choices and handshake outcomes; any variant landing on unintended vhosts or completing handshakes despite source policy confirms the validation defect. Judge success by the handshake-success matrix. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "握手端点固定虚拟主机选择并校验 Host 白名单，来源策略统一基于标准 Origin 头。修复后重放第 1 步矩阵，全部变体应被路由拒绝或握手 403。",
+     "zh": "固定虚拟主机选择，Host 走白名单精确匹配，来源策略统一基于标准 Origin 头，不信任旧式来源头。\n    # Nginx：默认虚拟主机拒绝一切，仅命名主机提供服务\n    server { listen 443 ssl default_server; return 403; }\n    server {\n        listen 443 ssl;\n        server_name chat.example.com; # 唯一接受的主机名\n    }\n    修复后重放 Host/Origin 变体矩阵，全部应被路由拒绝或握手 403。",
      "en": "Pin vhost selection with Host allowlist checks at handshake endpoints, unifying source policy on the standard Origin header. After the fix, replay the step 1 matrix: every variant should be route-refused or handshake-403."
     },
     "difficulty": "advanced"
@@ -2338,7 +2338,7 @@
      "en": "Use the step 1 command to inject rich-text contexts and exfiltration payloads via WebSocket; execution after formatted rendering or {ATTACKER_HOST} receiving cookies confirms rich-text context XSS, with {ATTACKER_HOST} rendered as an isolated collector. Locate the context with plain text first, choose a single network-free marker variant contrasted against sanitization/encoding, and observe sender and receiver sides separately."
     },
     "mitigation": {
-     "zh": "对每个字段执行 context-aware 编码，富文本采用严格允许列表消毒，拒绝 javascript/data 协议并部署无 unsafe-inline 的 CSP；修复后重放对照应保留合法功能且执行消失。",
+     "zh": "按最终输出上下文编码：纯文本用 textContent，富文本走严格允许列表消毒并拒绝 javascript:/data: 协议，配合无 unsafe-inline 的 CSP。\n    el.textContent = msg.content; // 替代 innerHTML\n    Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-{RANDOM}'\n    修复后重放 iframe 与 a 链接对照，合法消息保留而脚本执行消失。",
      "en": "Apply context-aware encoding per field, sanitize rich text with strict allowlists, reject javascript/data schemes, and deploy CSP without unsafe-inline; after the fix, replaying controls must preserve legitimate functionality with execution gone."
     },
     "difficulty": "expert"
@@ -2966,7 +2966,7 @@
      "en": "Use in Payload list order: step 1 first confirms the backend fetches per message via an external marker; then test a loopback marker URL field by field (type:request, fetch, proxy, etc.) — a positive requires the backend client/egress proxy and target service recording the same token; messages carrying file or gopher confirm protocol forwarding. Never touch metadata, real files, or Redis. WebSocket ACKs, browser requests, connection timeouts, or stored command strings are insufficient. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "对动作与字段做 schema 允许列表，仅允许 HTTPS 目标；解析后阻断内网、回环与链路本地，禁用 file/gopher 并在重定向后重检。修复后重放相同对照，合法 WebSocket 功能保留而越权取回能力消失。",
+     "zh": "动作与字段做 schema 允许列表，仅允许 HTTPS 目标；DNS 解析后校验地址，阻断内网/回环/链路本地，禁 file/gopher 并在重定向后重检。\n    const u = new URL(msg.url);\n    const { address } = await dns.promises.lookup(u.hostname);\n    if (u.protocol !== \"https:\" ||\n        /^(10\\.|127\\.|169\\.254\\.|192\\.168\\.|172\\.(1[6-9]|2\\d|3[01])\\.|::1|f[cd])/i.test(address))\n      throw new Error(\"blocked target\");\n    修复后重放 127.0.0.1 对照，合法 WebSocket 取回保留而内网访问被拒。",
      "en": "Apply schema allowlists over actions and fields, allowing only HTTPS targets; block intranets, loopback, and link-local after resolution, disable file/gopher, and recheck after redirects. After the fix, replay the same controls: legitimate WebSocket features remain while unauthorized fetching disappears."
     },
     "difficulty": "expert"
@@ -3228,7 +3228,7 @@
      "en": "In step 1, send empty, null, stringified-boolean and role-elevation messages one by one over the existing connection per the script, recording server responses and session-state changes; any forged message accepted or restricted data returned confirms missing message-level authorization. Judge success by responses and state changes. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "每条消息都对照连接主体执行授权并拒绝类型异常载荷，auth 类消息绑定一次性挑战。修复后重放第 1 步矩阵，全部伪造消息应被拒绝并断开计数。",
+     "zh": "每条消息对照连接主体执行类型级授权，拒绝类型异常载荷；auth 类消息绑定一次性挑战，绝不信任载荷内的会话声明。\n    ws.on(\"message\", (raw) => {\n      const m = JSON.parse(raw);\n      if (typeof m !== \"object\" || !ALLOWED[conn.role]?.has(m.type))\n        return ws.close(4003, \"forbidden\");\n      handlers[m.type](conn, m);\n    });\n    修复后重放第 1 步伪造 auth 矩阵，全部被拒绝并计入断开统计。",
      "en": "Authorize every message against the connection principal and refuse type-anomalous payloads, binding auth messages to one-time challenges. After the fix, replay the step 1 matrix: every forged message should be rejected with disconnect tallies."
     },
     "difficulty": "advanced"
@@ -3530,7 +3530,7 @@
      "en": "In step 1, send consecutive JSON and embedded HTTP fragments over boundary connections one by one per the script, watching gateway-versus-backend parse divergence; embedded requests executing independently or extra requests in logs confirm feasible boundary smuggling. Judge success by extra requests in backend logs. Replace placeholders via the global variables menu; targets restricted to authorized lab paths."
     },
     "mitigation": {
-     "zh": "网关对升级连接禁用帧内容到 HTTP 的二次解析并统一消息边界实现，监控单帧多文档异常。修复后重放第 1 步，嵌入请求应保持为纯文本消息且无额外执行。",
+     "zh": "网关对升级连接只做逐帧透传，禁用帧内容到 HTTP 的二次解析并统一消息边界实现，监控单帧多文档异常并告警。\n    # Nginx：WebSocket 仅按升级头做 TCP 级透传，不重组 HTTP\n    location /ws {\n        proxy_http_version 1.1;\n        proxy_set_header Upgrade $http_upgrade;\n        proxy_set_header Connection \"upgrade\";\n        proxy_pass http://ws_backend;\n    }\n    修复后重放嵌入请求探针，内容应保持纯文本消息且无额外 HTTP 执行。",
      "en": "Gateways must disable re-parsing frame content into HTTP on upgraded connections, unify message-boundary implementations, and alert on multi-document frames. After the fix, replay step 1: embedded requests should stay plain-text messages with no extra execution."
     },
     "difficulty": "expert"
@@ -3787,7 +3787,7 @@
      "en": "In step 1, open comparison pages under each navigation style per the script, itemizing opener availability and navigation effects; writable openers steering the original window to forged pages confirm unisolated navigation, with same-origin read rejections recorded alongside. Judge success by the navigation-success versus read-rejection matrix. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "全部出站链接与 window.open 调用强制 noopener noreferrer，钓鱼页面防护依赖浏览器孤立上下文。修复后重放第 1 步，所有写法的 opener 应为空且导航无从发起。",
+     "zh": "全部出站链接与 window.open 强制 noopener noreferrer，关键站点再加 COOP 响应头获得浏览器级跨源隔离。\n    <a href=\"https://example.com\" target=\"_blank\" rel=\"noopener noreferrer\">外链</a>\n    window.open(url, \"_blank\", \"noopener,noreferrer\");\n    Cross-Origin-Opener-Policy: same-origin\n    修复后重放第 1 步各写法，opener 应为 null 且导航无从发起。",
      "en": "Force noopener noreferrer on all outbound links and window.open calls, relying on browser context isolation against phishing pages. After the fix, replay step 1: opener should be null across every style, making navigation impossible."
     },
     "difficulty": "advanced"
@@ -4051,7 +4051,7 @@
      "en": "In step 1, deploy open-comparison pages per combination per the script, checking opener in the new window and attempting reverse navigation of the original; any combination retaining control confirms hijack feasibility, tallying behavior differences across browser versions. Judge success by the control-retention matrix. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "链接与脚本打开统一显式 noopener 并审计冲突 rel 用法，关键页面加离开确认缓解静默替换。修复后重放第 1 步矩阵，全部组合的 opener 应为空。",
+     "zh": "链接与脚本打开统一显式 noopener，审计并清理冲突 rel（如 opener noopener）用法，关键页面加离开确认缓解静默替换。\n    <a target=\"_blank\" rel=\"noopener noreferrer\">link</a>\n    window.open(url, \"_blank\", \"noopener,noreferrer\");\n    Cross-Origin-Opener-Policy: same-origin\n    修复后重放第 1 步 rel 组合矩阵，全部写法的 opener 应为空。",
      "en": "Unify explicit noopener across links and scripted opens with audits of conflicting rel usage, adding leave confirmations on critical pages against silent swaps. After the fix, replay the step 1 matrix: opener should be null for every combination."
     },
     "difficulty": "advanced"

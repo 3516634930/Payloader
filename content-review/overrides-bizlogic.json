@@ -59,7 +59,7 @@
      "en": "Use in Payload list order: step 1 first sends a harmless inclusion to a unique controlled HTTPS callback, recording DNS, connection source, and timing; then compile the \\input and \\lstinputlisting variants one by one (callback domain, 127.0.0.1, 169.254.169.254, and RFC1918 addresses) — an out-of-band fetch or a compile log showing successful inclusion confirms; finally correlate callback, compile log, and output document while excluding browser prefetch and ops-proxy false positives. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "禁止渲染器访问网络并在隔离容器中执行编译，对 TeX 语法采用允许列表移除远程包含能力；确需网络时对出站流量实施域名与地址双重限制，同时阻断回环、私网与链路本地地址。修复后用第 1 步样例回归，回连不应再发生。",
+     "zh": "编译默认无网络，TeX 侧以允许列表移除远程包含能力；确需远程资源时由应用预下载并做域名白名单后传入本地文件，容器阻断回环、私网与链路本地。\n    # 无网络容器中编译，禁 shell escape\n    docker run --rm --network none --read-only --cap-drop ALL \\\n      -v \"$PWD:/data\" -w /data texlive/texlive \\\n      pdflatex -no-shell-escape -halt-on-error main.tex",
      "en": "Deny network access for the renderer and compile in isolated containers, and apply TeX syntax allowlists removing remote inclusion; where networking is required, dual-restrict egress by domain and address while blocking loopback, private, and link-local ranges. After the fix, regress with the step 1 sample: no callback should occur."
     },
     "difficulty": "advanced"
@@ -270,7 +270,7 @@
      "en": "Submit documents containing \\immediate\\write18 directives to the compile entry one by one per step 1, with commands cycling through id, whoami, marker reads, and directory listings; a hit is command output in the compile log or PDF, or /tmp/output.txt being created. First submit a harmless echo to confirm shell escape is on, then read marker files for evidence; record the compile engine (pdflatex, etc.), launch flags, and container boundaries."
     },
     "mitigation": {
-     "zh": "永久关闭 shell escape 与同类外部执行选项；在无特权、只读文件系统和无网络的容器中运行编译器；对宏包和控制序列建立允许列表，并限制 CPU、内存、进程数与执行时间。修复后重放第 1 步文档，确认 write18 指令被忽略且正常编译可用。",
+     "zh": "永久关闭 shell escape 与外部执行选项，宏包与控制序列走允许列表；编译器运行在无特权、只读文件系统、无网络容器并限制 CPU/内存/进程配额。\n    # texmf.cnf 设 shell_escape = f，命令行显式覆盖\n    docker run --rm --network none --read-only --cap-drop ALL \\\n      --pids-limit 64 --memory 512m --tmpfs /tmp:size=64m \\\n      -v \"$PWD:/data\" -w /data texlive/texlive pdflatex -no-shell-escape main.tex",
      "en": "Permanently disable shell escape and similar external-execution options; run compilers in unprivileged containers with read-only filesystems and no network; build allowlists for packages and control sequences, and cap CPU, memory, process count, and runtime. After the fix, replay the step-1 documents and confirm write18 directives are ignored while normal compilation works."
     },
     "difficulty": "advanced"
@@ -642,7 +642,7 @@
      "en": "In step 1, submit inputs of increasing length made of repeated characters plus a terminator to the regex-using endpoint one by one, recording response times; time should explode nonlinearly with length, and delays beyond a second confirm ReDoS, with the length-versus-time curve as quantitative evidence. Judge success by the growth curve. Replace placeholders via the global variables menu; hold concurrency at 1 to avoid compounded impact."
     },
     "mitigation": {
-     "zh": "重构高危正则消除嵌套量词或改用 RE2 类线性引擎，对用户输入限长并异步化校验。修复后重放第 1 步，耗时应随长度线性且无超时出现。",
+     "zh": "重构嵌套量词正则或改用 RE2 线性引擎，用户输入限长并异步校验，避免单请求耗尽事件循环。\n    const RE2 = require(\"re2\");          // 线性时间引擎\n    const safe = new RE2(/^(a+)+$/);     // 等价语义、无回溯爆炸\n    if (req.query.q.length > 200) return res.status(400).end();\n    safe.test(req.query.q);",
      "en": "Refactor risky regexes to remove nested quantifiers or adopt linear engines like RE2, cap user-input length, and move validation off the hot path. After the fix, replay step 1: time should scale linearly with no timeouts."
     },
     "difficulty": "intermediate"
@@ -1047,7 +1047,7 @@
      "en": "In step 1, submit patterned codebook candidates to the redemption endpoint one by one per the script, recording acceptances and response differences; any candidate redeeming confirms enumerability, with hit rates tallied and entitlement postings checked for impact. Judge success by successful-redemption records. Replace placeholders via the global variables menu; redeem only on test accounts and roll back afterwards."
     },
     "mitigation": {
-     "zh": "优惠码改用 CSPRNG 生成并与用户或订单绑定，核销接口限频且失败计数锁定，权益发放走异步对账。修复后重放第 1 步，候选命中应为零且批量请求被限流。",
+     "zh": "优惠码改用 CSPRNG 生成并与用户或订单绑定，核销接口限频、失败计数锁定，权益发放走异步对账。\n    import secrets\n    code = \"CP-\" + secrets.token_urlsafe(9)  # 不可预测、无序号\n    @limiter.limit(\"5/minute\")               # Flask-Limiter 限频\n    def redeem():\n        fails = cache.get(\"fail:\" + request.remote_addr) or 0\n        if fails >= 10:\n            return {\"msg\": \"locked\"}, 429\n  修复后重放验证第 1 步，候选命中应为零且批量请求被限流。",
      "en": "Generate codes with a CSPRNG bound to users or orders, rate-limit redemption with lockouts on failures, and post entitlements through asynchronous reconciliation. After the fix, replay step 1: candidate hits should be zero with batches throttled."
     },
     "difficulty": "intermediate"
@@ -1801,7 +1801,7 @@
      "en": "Per step 1, submit ?__proto__[evilProperty]=evilPayload and the isAdmin/admin/role variants one by one, keeping business parameters unchanged and changing only one key path; a hit is parsed objects inheriting injected properties reflected in the response. After each submission check shared objects (configuration, template options) across requests, excluding cache and singleton states; identify parser differences (qs, querystring, etc.) on bracket versus dot paths and record each."
     },
     "mitigation": {
-     "zh": "配置查询解析器拒绝原型相关键并关闭不必要的深层解析；对允许参数使用严格 schema 和附加属性禁用；避免把解析结果合并到全局配置，升级依赖并监控原型变更。修复后重放第 1 步变体，确认危险键被解析层拒绝且业务参数正常。",
+     "zh": "查询解析器拒绝原型相关键并关闭不必要的深层解析，允许参数用严格 schema 校验，解析结果不合入全局配置并升级依赖。\n    const qs = require(\"qs\");\n    app.set(\"query parser\", s => qs.parse(s, {\n        allowPrototypes: false, depth: 1 }));\n    Object.freeze(Object.prototype);  // 入口最先执行\n  修复后重放验证第 1 步变体，确认危险键被解析层拒绝且业务参数正常。",
      "en": "Configure query parsers to reject prototype-related keys and disable unnecessary deep parsing; apply strict schemas with additionalProperties disabled to allowed parameters; avoid merging parse results into global configuration, upgrade dependencies, and monitor prototype changes. After the fix, replay the step-1 variants and confirm dangerous keys are rejected at the parse layer while business parameters work."
     },
     "difficulty": "advanced"
@@ -1961,7 +1961,7 @@
      "en": "Use the step 1 command to submit expression injections and per-tag ng-app variants line by line on AngularJS 1.6+ pages; evaluated execution confirms unrestricted expression injection, with popup contents indicating the readable context. Confirm page version, bootstrap points, and the input's DOM context first, then submit in an isolated browser logging execution stacks, CSP reports, and DOM changes."
     },
     "mitigation": {
-     "zh": "停止动态编译不可信 HTML 与 AngularJS 表达式，采用上下文输出编码与成熟净化器并迁移出已停止维护的 AngularJS；部署严格 CSP、Trusted Types 与表达式注入回归测试。",
+     "zh": "停止动态编译不可信 HTML 与 AngularJS 表达式，模板绑定一律用默认转义的 {{}}/ng-bind，改用成熟净化器并迁移出已停止维护的 AngularJS；部署严格 CSP。\n    angular.module(\"app\").config(function ($compileProvider) {\n        $compileProvider.aHrefSanitizationWhitelist(/^\\s*(https?):/);\n    });\n    Content-Security-Policy: default-src 'self'; script-src 'self'; object-src 'none'\n  修复后重放验证第 1 步表达式，确认仅作纯文本渲染且无脚本执行。",
      "en": "Stop dynamically compiling untrusted HTML and AngularJS expressions, apply context output encoding with mature sanitizers, and migrate off end-of-life AngularJS; deploy strict CSP, Trusted Types, and expression-injection regression tests."
     },
     "difficulty": "advanced"
@@ -2445,7 +2445,7 @@
      "en": "In step 1, submit dot-segment, multi-slash and encoded variants of the registered callback to the authorization endpoint one by one per the script, recording code issuance and redirect behavior; any variant completing issuance confirms loose binding, with the gap between landing and registered paths marking the exploitation window. Judge success by issuance records. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "回调校验先规范化路径再与注册值全等比对，禁止点段与多余分隔符；授权服务器拒绝解析歧义的 redirect_uri。修复后重放第 1 步矩阵，全部变体应返回错误。",
+     "zh": "回调校验先规范化路径再与注册值全等比对，禁止点段与多余分隔符，授权服务器拒绝解析歧义的 redirect_uri。\n    URI u = URI.create(raw);\n    if (u.getPath().contains(\"/.\") || u.getPath().contains(\"//\")\n            || !u.equals(URI.create(registered)))\n        return oauthError(\"invalid_redirect_uri\");\n  修复后重放验证第 1 步矩阵，全部变体应返回错误。",
      "en": "Normalize callback paths before full-equality comparison against registered values, banning dot segments and extra separators; the server should refuse ambiguous redirect_uris. After the fix, replay the step 1 matrix: every variant should error."
     },
     "difficulty": "advanced"
@@ -4336,7 +4336,7 @@
      "en": "Per step 1, request package.json, package-lock.json, yarn.lock, and .npmrc one by one; a hit is 200 responses whose content is the corresponding manifest JSON/YAML (.npmrc containing registry or token lines). Record exposure status and sensitive fields per file (dependency versions, private registries, token placeholders); contrast random paths to exclude soft 404s, separating real files from SPA-route fallbacks."
     },
     "mitigation": {
-     "zh": "仅部署编译后的必要静态产物并从 Web 根排除清单、锁文件和配置；在 CI 中扫描发布包与镜像层；将仓库令牌放入密钥存储并轮换任何曾暴露的凭证。修复后重放第 1 步路径，确认全部不可读且业务静态资源可用。",
+     "zh": "仅部署编译后的必要静态产物，Web 根排除清单、锁文件与配置，CI 扫描发布包与镜像层，仓库令牌入密钥存储并轮换曾暴露凭证。\n    location ~* ^/(package(-lock)?\\.json|\\.npmrc)$ {\n        return 404;\n    }\n    COPY --from=build /app/dist/ /usr/share/nginx/html/\n  修复后重放验证第 1 步路径，确认全部不可读且业务静态资源可用。",
      "en": "Deploy only compiled static essentials and exclude manifests, lockfiles, and configuration from the web root; scan release packages and image layers in CI; keep repository tokens in secret storage and rotate any previously exposed credentials. After the fix, replay the step-1 paths and confirm all are unreadable while business static assets work."
     },
     "difficulty": "beginner"
@@ -4597,7 +4597,7 @@
      "en": "Per step 1, request requirements.txt, requirements.in, Pipfile, and Pipfile.lock one by one; a hit is 200 responses whose content follows the manifest syntax (pip lines, TOML sections, JSON lock structures). Record exposure status and sensitive fields per file (internal package names, private index URLs, editable install paths); contrast random paths to exclude soft 404s, verifying content matches the expected syntax rather than error pages."
     },
     "mitigation": {
-     "zh": "通过构建阶段只复制运行所需产物，不把源码根目录作为静态目录；从发布包排除依赖清单与开发配置，必要公开时移除私有源；使用 SBOM 和内部资产清单替代生产文件暴露。修复后重放第 1 步路径，确认全部不可读。",
+     "zh": "构建阶段只复制运行所需产物，不把源码根目录作静态目录；发布包排除依赖清单与开发配置，依赖信息用内部 SBOM 替代生产文件暴露。\n    location ~* ^/(requirements(\\.in)?\\.txt|Pipfile(\\.lock)?|\\.env)$ {\n        return 404;\n    }\n    COPY --from=build /app/wheels/ /app/\n  修复后重放验证第 1 步路径，确认全部不可读。",
      "en": "Copy only runtime-essential artifacts at the build stage and never serve the source root as a static directory; exclude dependency manifests and development configuration from releases, removing private sources when exposure is unavoidable; replace production file exposure with SBOMs and internal asset inventories. After the fix, replay the step-1 paths and confirm all are unreadable."
     },
     "difficulty": "beginner"
@@ -4858,7 +4858,7 @@
      "en": "Per step 1, request composer.json, composer.lock, and autoload.php one by one; a hit is composer.json returning JSON with a require section, composer.lock returning content hashes and package inventory, or autoload.php returned as source. Record exposure status and sensitive fields per file (package versions, repository URLs, absolute paths); if autoload.php executed normally with an empty response, log it as indeterminate rather than a source-leak hit."
     },
     "mitigation": {
-     "zh": "将 Web 根指向 public 目录而不是项目根目录；通过服务器规则拒绝 composer 文件和 PHP 源码下载；在部署流水线扫描公开路径与镜像层，并将私有仓库凭证迁移到密钥管理。修复后重放第 1 步路径，确认全部不可读且应用正常加载。",
+     "zh": "Web 根指向 public 目录而非项目根，服务器规则拒绝 composer 文件与 PHP 源码下载，部署流水线扫描公开路径，私有仓库凭证迁入密钥管理。\n    server {\n        root /var/www/app/public;\n        location ~* ^/composer\\.(json|lock)$ { return 404; }\n        location ~ ^/vendor/ { return 404; }\n    }\n  修复后重放验证第 1 步路径，确认全部不可读且应用正常加载。",
      "en": "Point the web root at public rather than the project root; block composer files and PHP source downloads via server rules; scan public paths and image layers in the deployment pipeline and move private-repository credentials into secret management. After the fix, replay the step-1 paths and confirm all are unreadable while the application loads normally."
     },
     "difficulty": "beginner"
@@ -5103,7 +5103,7 @@
      "en": "Per step 1, request Gemfile, Gemfile.lock, and .gemspec one by one; a hit is Gemfile returning gem-directive content, lockfiles returning dependency-resolution structures, or gemspecs returning gem metadata. Validate text structure rather than status codes alone, focusing on whether source, git, path, platform, and exact versions leak internal development details; contrast random paths to exclude soft 404s."
     },
     "mitigation": {
-     "zh": "只把 Rails public 目录暴露给 Web 服务器；从静态发布物和对象存储排除 Gemfile、锁文件及 gemspec；清理私有源凭据，生成内部 SBOM 并对发布产物做敏感路径检查。修复后重放第 1 步路径，确认全部不可读且应用正常。",
+     "zh": "只把 Rails public 目录暴露给 Web 服务器，发布物与对象存储排除 Gemfile、锁文件及 gemspec，清理私有源凭据并生成内部 SBOM。\n    root /app/public;   # Rails 唯一静态根\n    location ~* ^/(Gemfile(\\.lock)?|[^/]+\\.gemspec)$ {\n        return 404;\n    }\n  修复后重放验证第 1 步路径，确认全部不可读且应用正常。",
      "en": "Expose only the Rails public directory to the web server; exclude Gemfiles, lockfiles, and gemspecs from static releases and object storage; clean private-source credentials, generate internal SBOMs, and run sensitive-path checks on release artifacts. After the fix, replay the step-1 paths and confirm all are unreadable while the application works."
     },
     "difficulty": "beginner"
@@ -5348,7 +5348,7 @@
      "en": "Per step 1, request pom.xml, build.gradle, settings.gradle, and gradle.properties one by one; a hit is pom.xml returning XML with a project root element or Gradle files returning parseable dependencies/plugins/repository structures. Distinguish real service manifests from documentation samples, source mirrors, and SPA-route fallbacks, recording sensitive fields like dependency versions and repository addresses; contrast random paths to exclude soft 404s."
     },
     "mitigation": {
-     "zh": "将构建上下文与运行时静态目录完全分离；从 WAR、镜像和 CDN 发布清单中排除构建脚本与仓库配置；对依赖信息使用内部 SBOM 管理，并轮换任何暴露的仓库凭证。修复后重放第 1 步路径，确认全部不可读且业务正常。",
+     "zh": "构建上下文与运行时静态目录完全分离，WAR、镜像与 CDN 排除构建脚本与仓库配置，依赖信息用内部 SBOM 管理并轮换暴露的仓库凭证。\n    location ~* ^/(pom\\.xml|build\\.gradle|gradle\\.properties)$ {\n        return 404;\n    }\n    COPY --from=build /build/target/app.jar /opt/app/app.jar\n  修复后重放验证第 1 步路径，确认全部不可读且业务正常。",
      "en": "Fully separate build context from runtime static directories; exclude build scripts and repository configuration from WAR, image, and CDN release inventories; manage dependency information via internal SBOMs and rotate any exposed repository credentials. After the fix, replay the step-1 paths and confirm all are unreadable while the business works."
     },
     "difficulty": "beginner"
@@ -5713,7 +5713,7 @@
      "en": "In step 1, submit stripped-signature, empty-signature and empty-kid variants to the protected endpoint one by one per the script, recording responses and effective principals; any variant accepted confirms missing verification, contrasted with fully signed tokens to confirm parsing itself is intact. Judge success by the variant-acceptance matrix. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "验签失败或结构异常一律 401 且日志记录伪造尝试，签名段缺失不进入解析。修复后重放第 1 步矩阵，全部变体应被统一拒绝。",
+     "zh": "验签失败或结构异常一律 401 并记录伪造尝试，签名段缺失不进入解析；算法白名单固定，仅接受预期签名算法。\n    String[] p = token.split(\"\\\\.\");\n    if (p.length != 3 || p[2].isEmpty()) return unauthorized();\n    Claims c = Jwts.parser().verifyWith(hmacKey)  // JJWT 固定 HMAC 验签\n        .build().parseSignedClaims(token).getPayload();\n  修复后重放验证第 1 步矩阵，全部变体应被统一拒绝。",
      "en": "Return 401 on verification failure or structural anomalies with forgery attempts logged, never parsing tokens missing signature segments. After the fix, replay the step 1 matrix: every variant should be uniformly rejected."
     },
     "difficulty": "intermediate"
@@ -5998,7 +5998,7 @@
      "en": "In step 1, submit inputs of repeated characters with different terminators at fixed lengths to the target endpoint one by one per the script, timing multiple rounds for averages; times above baseline growing with length confirm the ReDoS baseline, recorded per round for reproducibility. Judge success by multi-round timing consistency. Replace placeholders via the global variables menu; cap request totals to avoid real impact."
     },
     "mitigation": {
-     "zh": "以线性引擎替换高危正则并对输入限制长度，耗时监控关联告警以定位具体接口。修复后重放第 1 步，耗时应与普通输入无显著差异。",
+     "zh": "以线性引擎替换高危回溯正则，对输入限制长度，耗时监控关联告警以定位具体接口。\n    import com.google.re2j.Pattern;   // RE2/J 线性时间引擎\n    Pattern p = Pattern.compile(\"^[a-z]+$\");\n    if (input.length() > 64)\n        throw new IllegalArgumentException(\"input too long\");\n  修复后重放验证第 1 步，耗时应与普通输入无显著差异。",
      "en": "Replace risky regexes with linear engines and cap input lengths, tying timing monitors to alerts pinpointing specific APIs. After the fix, replay step 1: timings should show no significant difference from normal inputs."
     },
     "difficulty": "intermediate"

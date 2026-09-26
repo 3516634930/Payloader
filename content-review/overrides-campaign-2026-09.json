@@ -169,7 +169,7 @@
      "en": "Run the step 1 main verification command, querying mysql.user.file_priv via UNION or boolean conditions; an echoed Y, or a boolean row returning true under an always-true condition, confirms the current account holds FILE privilege and file read/write testing can proceed. Replace account and file targets with isolated markers beforehand and run only in an authorized lab; without echo, use the boolean differential in the step 1 commands."
     },
     "mitigation": {
-     "zh": "撤销应用账户的 FILE 权限并遵循最小权限原则，配合 secure_file_priv 收紧可访问目录；修复后以同样查询复核 file_priv 应返回 N，同时确认注入点已完成参数化修复。",
+     "zh": "撤销应用账户 FILE 权限并遵循最小权限原则，secure_file_priv 收紧可访问目录；注入点同步完成参数化修复。\n    REVOKE FILE ON *.* FROM 'app'@'%';\n    # my.cnf [mysqld]（重启生效）\n    secure_file_priv = NULL\n    // PHP PDO 参数化\n    $st = $pdo->prepare('SELECT id FROM users WHERE email = ?');\n    $st->execute([$email]);\n    修复后重放验证：以同样查询复核 file_priv 应返回 N，注入点响应不再随注入条件变化。",
      "en": "Revoke the FILE privilege from application accounts, follow least privilege, and tighten accessible directories with secure_file_priv. After the fix, re-run the same query: file_priv must return N, and the injection point must be remediated with parameterized queries."
     },
     "difficulty": "advanced"
@@ -514,7 +514,7 @@
      "en": "Follow step 1: first read @@basedir/@@datadir to confirm path information is visible, then use load_file to read target files such as passwd or application configs; echoed file content, such as passwd entries or config snippets, confirms arbitrary file reads. Replace file targets with isolated markers when verifying; when blocked by a WAF or content filtering, use the encoding and comment variants in the bypass section."
     },
     "mitigation": {
-     "zh": "撤销 FILE 权限，将 secure_file_priv 设为 NULL 或隔离目录，数据库进程以低权限系统账户运行；修复后用 load_file 复核应返回 NULL，并在数据库审计中确认无 load_file 调用残留。",
+     "zh": "撤销 FILE 权限、secure_file_priv 置 NULL，数据库进程以低权限系统账户运行并限制可写路径。\n    REVOKE FILE ON *.* FROM 'app'@'%';\n    # my.cnf [mysqld]\n    secure_file_priv = NULL\n    # /etc/systemd/system/mysqld.service.d/hard.conf\n    [Service]\n    User=mysql\n    ProtectSystem=strict\n    ReadWritePaths=/var/lib/mysql\n    修复后重放验证：用 load_file 复核应返回 NULL，数据库审计中无 load_file 调用残留。",
      "en": "Revoke FILE privilege, set secure_file_priv to NULL or an isolated directory, and run the database process under a low-privilege OS account. After the fix, load_file must return NULL on replay, and database audit logs must show no residual load_file calls."
     },
     "difficulty": "expert"
@@ -1013,7 +1013,7 @@
      "en": "Use the step 1 command to write a PHP test statement to the target path via INTO OUTFILE; requesting the path and seeing the expected output confirms the write succeeded. For real verification, replace content and path with an isolated marker and a one-off non-executable directory to avoid touching business files. When blocked by a WAF, switch to the controlled variants in the WAF bypass section."
     },
     "mitigation": {
-     "zh": "撤销 FILE 权限、收紧 secure_file_priv，Web 目录对数据库运行账户只读；部署后用 INTO OUTFILE 复核应报权限错误，并巡检 Web 目录确认无新增文件。",
+     "zh": "撤销 FILE 权限、收紧 secure_file_priv，Web 根目录对数据库运行账户只读不可写。\n    REVOKE FILE ON *.* FROM 'app'@'%';\n    # my.cnf [mysqld]\n    secure_file_priv = NULL\n    # Web 根目录对 mysql 系统账户不可写\n    setfacl -m u:mysql:--- /var/www/html\n    修复后重放验证：重放 INTO OUTFILE 应报权限错误，巡检 Web 目录确认无新增文件。",
      "en": "Revoke FILE privilege, tighten secure_file_priv, and make the web root read-only for the database runtime account. After deployment, INTO OUTFILE must fail with a permission error, and web-directory sweeps must find no new files."
     },
     "difficulty": "expert"
@@ -1662,7 +1662,7 @@
      "en": "Follow step 1: enable the general log and point the log file at a web path, then run a query containing PHP code so it is recorded; requesting the path and seeing the expected output confirms the log-write chain works. During verification, replace path and content with an isolated marker in a non-executable directory, restore the original log settings afterward, and clean up."
     },
     "mitigation": {
-     "zh": "应用账户禁用 SUPER 与 SET GLOBAL 能力，日志目录与 Web 目录严格分离并限制写入者；修复后尝试设置 general_log_file 应报权限错误，日志目录中不应出现可执行内容。",
+     "zh": "应用账户禁用 SUPER 与 SET GLOBAL 能力，日志目录与 Web 目录严格分离并限制写入者。\n    REVOKE SUPER ON *.* FROM 'app'@'%';\n    SET PERSIST general_log = OFF;\n    # my.cnf [mysqld]：日志独立目录，mysql 属主 750\n    general_log_file = /var/log/mysql/general.log\n    install -d -o mysql -g mysql -m 750 /var/log/mysql\n    修复后重放验证：尝试设置 general_log_file 应报权限错误，日志目录中无可执行内容。",
      "en": "Disable SUPER and SET GLOBAL capability for application accounts, strictly separate log directories from web roots, and restrict who can write there. After the fix, attempts to set general_log_file must fail with a permission error, and the log directory must contain no executable content."
     },
     "difficulty": "expert"
@@ -2035,7 +2035,7 @@
      "en": "Follow step 1: copy the UDF shared library into the plugin directory, register the sys_eval function, and run harmless commands such as id; SELECT sys_eval returning command output confirms the UDF execution chain. Confirm plugin_dir and the service account first, use isolated fixtures and a one-off function name, then DROP FUNCTION and delete the library afterward so no reusable execution primitive remains."
     },
     "mitigation": {
-     "zh": "数据库账户禁止 FILE 与 SUPER 权限，插件目录设为不可写并锁定 plugin_dir；修复后尝试加载共享库应失败，主机层面确认无新增 .so/.dll 文件。",
+     "zh": "数据库账户禁 FILE/SUPER 权限，插件目录锁定为 root 所有、对 mysql 不可写。\n    REVOKE FILE, SUPER ON *.* FROM 'app'@'%';\n    # my.cnf [mysqld]\n    plugin_dir = /usr/lib/mysql/plugin\n    chown root:root /usr/lib/mysql/plugin && chmod 755 /usr/lib/mysql/plugin\n    chattr +i /usr/lib/mysql/plugin/*.so\n    修复后重放验证：尝试加载共享库应失败，主机层面确认无新增 .so/.dll 文件。",
      "en": "Deny FILE and SUPER privileges to database accounts, make the plugin directory non-writable, and pin plugin_dir. After the fix, loading a shared library must fail, and host-level sweeps must find no new .so/.dll files."
     },
     "difficulty": "expert"
@@ -2376,7 +2376,7 @@
      "en": "Follow step 1: use OBJECT_ID to check whether xp_cmdshell exists, enable it with sp_configure, then run commands such as whoami/net user/dir and attempt file writes; echoed command output or a file landing at the target path confirms execution capability. Verify with harmless commands and isolated fixtures, disable the component afterward, and record the service account identity."
     },
     "mitigation": {
-     "zh": "保持 xp_cmdshell 禁用并撤销应用登录的 sysadmin 角色，SQL Server 服务以低权限账户运行；修复后 EXEC xp_cmdshell 应报组件不存在或权限拒绝，配置基线中该组件保持关闭。",
+     "zh": "保持 xp_cmdshell 关闭，撤销应用登录 sysadmin 角色，SQL Server 服务以低权限账户运行。\n    EXEC sp_configure 'show advanced options', 1; RECONFIGURE;\n    EXEC sp_configure 'xp_cmdshell', 0; RECONFIGURE;\n    ALTER SERVER ROLE sysadmin DROP MEMBER app_login;\n    修复后重放验证：EXEC xp_cmdshell 应报组件不存在或权限拒绝，配置基线保持关闭。",
      "en": "Keep xp_cmdshell disabled, revoke the sysadmin role from application logins, and run the SQL Server service under a low-privilege account. After the fix, EXEC xp_cmdshell must fail with a missing-component or permission error, and the configuration baseline must keep the component off."
     },
     "difficulty": "expert"
@@ -2621,7 +2621,7 @@
      "en": "Follow step 1: enable OLE Automation, create a wscript.shell object, run cmd /c whoami, and write output to a file; a file containing the command output at the target path confirms OLE Automation execution. Replace the output path with an isolated fixture, run only harmless commands, then disable the component and remove the dropped file."
     },
     "mitigation": {
-     "zh": "禁用 OLE Automation 并撤销 sysadmin 权限，服务账户最小化；修复后 sp_oacreate 应报组件禁用或权限错误，审计日志中不应出现 sp_oacreate 调用。",
+     "zh": "禁用 OLE Automation Procedures 并撤销 sysadmin 权限，服务账户最小化。\n    EXEC sp_configure 'show advanced options', 1; RECONFIGURE;\n    EXEC sp_configure 'Ole Automation Procedures', 0; RECONFIGURE;\n    ALTER SERVER ROLE sysadmin DROP MEMBER app_login;\n    修复后重放验证：sp_oacreate 应报组件禁用或权限错误，审计日志中无调用残留。",
      "en": "Disable OLE Automation, revoke sysadmin privileges, and minimize the service account. After the fix, sp_oacreate must fail with a component-disabled or permission error, and audit logs must show no sp_oacreate calls."
     },
     "difficulty": "expert"
@@ -2962,7 +2962,7 @@
      "en": "Use the step 1 main verification command to inject boolean comparisons and UNION queries line by line: first read v$version and the current user to confirm controllability, enumerate users via all_users, then traverse table and column structures through all_tables and all_tab_columns; an echoed banner, table names, or column structure confirms the dictionary is enumerable. Replace account and object names with isolated markers before running, advancing level by level and recording results."
     },
     "mitigation": {
-     "zh": "参数化查询并撤销应用账户对敏感字典视图及业务数据之外的授权；修复后重放 UNION 载荷应报列不匹配或无回显，并在审计中监控 all_tables 等字典查询行为。",
+     "zh": "查询一律参数化绑定，撤销应用账户对敏感字典视图及业务数据之外的授权。\n    // Java JDBC\n    try (PreparedStatement ps = conn.prepareStatement(\n        \"SELECT id,name FROM users WHERE email = ?\")) { ps.setString(1, email); }\n    -- 收敛字典可见性\n    REVOKE SELECT_CATALOG_ROLE FROM app_user;\n    修复后重放验证：UNION 载荷应报列不匹配或无回显，审计监控 all_tables 等字典查询行为。",
      "en": "Parameterize queries and revoke application-account grants beyond business data and sensitive dictionary views. After the fix, replaying UNION payloads must raise column-mismatch errors or produce no echo, with dictionary queries such as all_tables monitored in audit logs."
     },
     "difficulty": "advanced"
@@ -3342,7 +3342,7 @@
      "en": "Follow step 1: inject UTL_HTTP.REQUEST with {ATTACKER_HOST} rendered as your own listener domain; the listener receiving a data-carrying GET request confirms outbound HTTP and the OOB channel. Verify database outbound connectivity with a fixed marker first, then concatenate query results into the URL for segmented exfiltration, cross-checking listener logs against database sessions afterward to rule out other sources."
     },
     "mitigation": {
-     "zh": "回收应用账户对 UTL_HTTP 的 EXECUTE 权限，用 ACL 把数据库出站限制为白名单地址；修复后触发带外载荷监听端应无请求，防火墙记录中不应出现数据库发起的异常外连。",
+     "zh": "回收应用账户 UTL_HTTP 的 EXECUTE 权限，用 ACL 将数据库出站限制为白名单地址。\n    REVOKE EXECUTE ON UTL_HTTP FROM app_user;\n    BEGIN\n      DBMS_NETWORK_ACL_ADMIN.CREATE_ACL('net.xml', 'outbound', 'APP_USER', TRUE, 'connect');\n      DBMS_NETWORK_ACL_ADMIN.ASSIGN_ACL('net.xml', 'api.partner.example.com', 443);\n    END;\n    修复后重放验证：触发带外载荷监听端应无请求，防火墙记录无数据库发起的异常外连。",
      "en": "Revoke EXECUTE on UTL_HTTP from application accounts and restrict database outbound traffic to allowlisted addresses via ACLs. After the fix, triggering the OOB payload must produce no listener request, and firewall logs must show no abnormal database-originated connections."
     },
     "difficulty": "expert"
@@ -3672,7 +3672,7 @@
      "en": "Use the step 1 command with CASE WHEN over ALL_OBJECTS and ALL_TAB_PRIVS; fixed markers such as PACKAGE_PRESENT or EXECUTE_GRANTED confirm the package capability boundary. Test package existence first, then the current user's EXECUTE grant, recording both condition families separately to build a full capability matrix before assessing Java-package code-execution escalation. When both conditions are negative, judge the Oracle Java component unavailable and move to other escalation paths."
     },
     "mitigation": {
-     "zh": "撤销应用账户对 DBMS_JAVA 等高危包的 EXECUTE 授权，收敛 ALL_* 字典可见范围；修复后重放探测载荷应返回 ABSENT 或 DENIED 类阴性标记。",
+     "zh": "撤销高危包 EXECUTE 授权并收敛字典可见性，注入点参数化修复。\n    REVOKE EXECUTE ON DBMS_JAVA FROM app_user;\n    REVOKE SELECT_CATALOG_ROLE FROM app_user;\n    // Java JDBC\n    try (PreparedStatement ps = conn.prepareStatement(\n        \"SELECT id,name FROM users WHERE email = ?\")) { ps.setString(1, email); }\n    修复后重放验证：重放探测载荷应返回 ABSENT 或 DENIED 类阴性标记。",
      "en": "Revoke EXECUTE on high-risk packages such as DBMS_JAVA from application accounts and narrow ALL_* dictionary visibility. After the fix, replaying the probes must return negative markers such as ABSENT or DENIED."
     },
     "difficulty": "advanced"
@@ -4018,7 +4018,7 @@
      "en": "Use the step 1 command to call UTL_FILE.FGETATTR against the marker file in an isolated directory; returning PAYLOADER_MARKER_PRESENT confirms directory access, while ABSENT means unreachable or missing privileges. Place the marker file in the authorized environment beforehand, probing DIRECTORY objects one by one and recording results to build a database filesystem access inventory for later assessment."
     },
     "mitigation": {
-     "zh": "审计并收敛 DIRECTORY 对象授权，仅保留必要路径的最小 READ/WRITE；修复后重放探测应返回 ABSENT，并定期复查 ALL_TAB_PRIVS 中 UTL_FILE 相关授权是否回弹。",
+     "zh": "审计并收敛 DIRECTORY 对象授权，仅保留必要路径的最小 READ/WRITE，并回收 UTL_FILE。\n    REVOKE READ, WRITE ON DIRECTORY PAYLOADER_SANDBOX_DIR FROM app_user;\n    REVOKE EXECUTE ON UTL_FILE FROM app_user;\n    -- 定期复查授权回弹\n    SELECT grantee, privilege FROM dba_tab_privs WHERE table_name = 'PAYLOADER_SANDBOX_DIR';\n    修复后重放验证：重放探测应返回 ABSENT，复查无 UTL_FILE 相关授权回弹。",
      "en": "Audit and narrow DIRECTORY object grants, keeping only minimal READ/WRITE on required paths. After the fix, replaying the probe must return ABSENT, and ALL_TAB_PRIVS must be reviewed periodically to ensure UTL_FILE-related grants have not returned."
     },
     "difficulty": "expert"
@@ -4272,7 +4272,7 @@
      "en": "Use the step 1 command to pack the marker into the DBMS_PIPE session buffer and reset the buffer pointer; returning PAYLOADER_MARKER_PACKED confirms the buffer is writable. Then run RECEIVE_MESSAGE on the same pipe from a second session to read the marker, closing the inter-session side-channel loop; record both sessions separately with unique pipe names to rule out residual same-named pipes."
     },
     "mitigation": {
-     "zh": "回收应用账户对 DBMS_PIPE 的 EXECUTE 权限，限制管道命名与创建范围；修复后重放打包载荷应报权限错误，并在审计中监控跨会话的管道读写行为。",
+     "zh": "回收应用账户 DBMS_PIPE 的 EXECUTE 权限，限制管道命名与创建范围，并加审计监控。\n    REVOKE EXECUTE ON DBMS_PIPE FROM app_user;\n    -- 统一审计（12c+）\n    CREATE AUDIT POLICY pipe_audit ACTIONS EXECUTE ON SYS.DBMS_PIPE;\n    AUDIT POLICY pipe_audit;\n    修复后重放验证：重放打包载荷应报权限错误，审计无跨会话管道读写行为。",
      "en": "Revoke EXECUTE on DBMS_PIPE from application accounts and restrict pipe naming and creation. After the fix, replaying the pack payload must raise a permission error, with cross-session pipe reads and writes monitored in audit logs."
     },
     "difficulty": "expert"
@@ -4578,7 +4578,7 @@
      "en": "Use the step 1 main verification command to submit XMLType, CASE, comment-tokenization, CHR-concatenation, HEX, and Base64 variants line by line to read the user; consistent echoes of the same value, or its recoverable encoding, confirm the expression-layer filter is bypassed. First confirm the direct query is blocked as a baseline, then verify each variant, replacing output with isolated markers."
     },
     "mitigation": {
-     "zh": "以参数化查询消除注入点而非依赖关键字过滤；确需过滤时按 SQL 解析器语义判断而非字面匹配，并回归全部等价表达式族。修复后重放各变体应全部无效。",
+     "zh": "以参数化消除注入点而非依赖关键字黑名单；确需过滤须按 SQL 语义解析判断并回归全部等价表达式族。\n    // PHP PDO\n    $st = $pdo->prepare('SELECT id,name FROM users WHERE email = ?');\n    $st->execute([$email]);\n    // Java JDBC\n    try (PreparedStatement ps = conn.prepareStatement(\n        \"SELECT id,name FROM users WHERE email = ?\")) { ps.setString(1, email); }\n    修复后重放验证：重放 XMLType/CHR/CASE 等全部变体应一律无效。",
      "en": "Eliminate the injection point with parameterized queries rather than relying on keyword filtering; if filtering is unavoidable, decide on parser semantics instead of literal matching and regression-test the whole equivalence family. After the fix, replaying every variant must fail."
     },
     "difficulty": "advanced"
@@ -4917,7 +4917,7 @@
      "en": "Use the step 1 main verification command to inject boolean comparisons and UNION queries: first read version() and current_database() to confirm controllability, then enumerate current-database tables and columns via information_schema.tables and columns; an echoed version string, database name, or table listing confirms the catalog is enumerable. Replace table names with isolated markers before running, advancing in step order and recording each level's results."
     },
     "mitigation": {
-     "zh": "参数化查询并按需回收应用角色对 pg_catalog/information_schema 的可见性；修复后重放 UNION 载荷应报列不匹配或无回显，并在审计中监控目录视图的批量查询。",
+     "zh": "查询一律参数化绑定，按需回收应用角色对 pg_catalog/information_schema 的可见性。\n    // PHP PDO(pgsql)\n    $st = $pdo->prepare('SELECT id,name FROM users WHERE email = ?');\n    $st->execute([$email]);\n    // Java JDBC\n    try (PreparedStatement ps = conn.prepareStatement(\n        \"SELECT id,name FROM users WHERE email = ?\")) { ps.setString(1, email); }\n    修复后重放验证：UNION 载荷应报列不匹配或无回显，审计监控目录视图批量查询。",
      "en": "Parameterize queries and revoke application-role visibility into pg_catalog/information_schema as needed. After the fix, replaying UNION payloads must raise column-mismatch errors or produce no echo, with bulk catalog queries monitored in audit logs."
     },
     "difficulty": "advanced"
@@ -5162,7 +5162,7 @@
      "en": "Use the step 1 command to read target text files with pg_read_file, switching to pg_read_binary_file with Base64 recovery for binaries; echoed file content confirms server-side file reads. Verify the read boundary with isolated-marker paths, recording permission errors as negative evidence; when superuser requirements are unmet, state the conclusion as privilege-limited rather than capability-absent."
     },
     "mitigation": {
-     "zh": "应用连接改用非超级用户角色并回收 pg_read_server_files 授权；修复后重放读取应报权限拒绝，并确认应用角色不再继承任何管理能力。",
+     "zh": "应用连接改用非超级用户角色并回收 pg_read_server_files 授权，注入点参数化。\n    REVOKE pg_read_server_files FROM app_role;\n    ALTER ROLE app_role NOSUPERUSER NOBYPASSRLS;\n    # Python psycopg\n    cur.execute(\"SELECT id,name FROM users WHERE email = %s\", (email,))\n    修复后重放验证：重放 pg_read_file 应报权限拒绝，应用角色不再继承任何管理能力。",
      "en": "Move application connections to a non-superuser role and revoke pg_read_server_files. After the fix, replaying reads must raise permission denials, and the application role must no longer inherit administrative capabilities."
     },
     "difficulty": "expert"
@@ -5545,7 +5545,7 @@
      "en": "Use the step 1 command to emit a fixed marker via COPY (SELECT marker) TO STDOUT; STDOUT returning PAYLOADER_MARKER confirms COPY executes at the injection point. Confirm stacked queries as the precursor first, then test COPY output; once established, optionally assess the write boundary of COPY TO file paths using isolated directories and one-off filenames throughout. Confirm no file residue afterward, with the COPY session closing along with the transaction."
     },
     "mitigation": {
-     "zh": "撤销应用角色的 pg_write_server_files 等管理角色并限制 COPY 目标路径权限；修复后重放 COPY 语句应报权限错误，堆叠查询入口一并封堵。",
+     "zh": "撤销 pg_write_server_files 等管理角色并限制 COPY 目标路径权限，堆叠查询入口一并封堵。\n    REVOKE pg_write_server_files, pg_read_server_files FROM app_role;\n    ALTER ROLE app_role NOSUPERUSER;\n    # Python psycopg：参数化即走扩展协议，天然禁堆叠\n    cur.execute(\"SELECT id FROM t WHERE email = %s\", (email,))\n    修复后重放验证：重放 COPY 语句应报权限错误，堆叠载荷仅执行首条或报语法错误。",
      "en": "Revoke administrative roles such as pg_write_server_files from the application role and restrict COPY target paths. After the fix, replaying COPY must raise permission errors, and the stacked-query entry point must be closed as well."
     },
     "difficulty": "advanced"
@@ -5883,7 +5883,7 @@
      "en": "Use the step 1 main verification command to inject UNION queries: first read sqlite_version() to confirm controllability, then read table names and CREATE statements from sqlite_master; an echoed version and table structure confirms the schema is enumerable. Segment long CREATE statements with substr and reassemble; after the full schema is in hand, filter sensitive columns per table to target later data extraction."
     },
     "mitigation": {
-     "zh": "参数化查询消除注入点；SQLite 场景应限制应用对数据库文件的系统权限并隐藏敏感表结构，必要时迁移到带权限控制的存储层。修复后重放 UNION 载荷应报列不匹配或无回显。",
+     "zh": "参数化查询消除注入点；限制应用对数据库文件的系统权限并隐藏敏感表结构，必要时迁移带权限控制的存储层。\n    // PHP PDO(sqlite)\n    $st = $pdo->prepare('SELECT id,name FROM users WHERE email = ?');\n    $st->execute([$email]);\n    // Java JDBC\n    try (PreparedStatement ps = conn.prepareStatement(\n        \"SELECT id,name FROM users WHERE email = ?\")) { ps.setString(1, email); }\n    修复后重放验证：重放 UNION 载荷应报列不匹配或无回显。",
      "en": "Eliminate the injection point with parameterized queries; for SQLite, restrict application OS permissions on the database file, hide sensitive table structures, and migrate to a storage layer with access control when necessary. After the fix, replaying UNION payloads must fail or produce no echo."
     },
     "difficulty": "advanced"
@@ -6310,7 +6310,7 @@
      "en": "Use the step 1 command to first attempt load_extension for a shared library, then readfile for a target file; a successful load or echoed file content confirms the capability exists. Replace paths with isolated markers for verification; record load failures or missing functions as negative evidence that does not change the injection-point conclusion."
     },
     "mitigation": {
-     "zh": "关闭扩展加载（SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION 或 sqlite3_enable_load_extension(0)），应用侧不注册 readfile/writefile 等文件函数（此类函数默认仅 sqlite3 命令行外壳提供），数据库文件与应用连接权限最小化；修复后重放 load_extension 应报 not authorized 或 no such function，readfile 应报 no such function。",
+     "zh": "关闭扩展加载，应用侧不注册 readfile/writefile 等文件函数，数据库文件与连接权限最小化。\n    /* C API：初始化连接后立即关闭 */\n    sqlite3_db_config(db, SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION, 0, NULL);\n    sqlite3_enable_load_extension(db, 0);\n    # 编译期彻底移除：CFLAGS += -DSQLITE_OMIT_LOAD_EXTENSION\n    chown app:app /var/lib/app/app.db && chmod 600 /var/lib/app/app.db\n    修复后重放验证：load_extension 应报 not authorized，readfile/writefile 应报 no such function。",
      "en": "Disable extension loading via SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION, avoid compiling in file functions like readfile, and minimize application-connection privileges. After the fix, load_extension must error and readfile must report no such function."
     },
     "difficulty": "expert"
@@ -6616,7 +6616,7 @@
      "en": "Use the step 1 main verification command to establish a response baseline with always-true/false conditions, then inject marker-length and ASCII-bit checks; the true condition returning the normal page and the false condition returning a differing page enables bit-by-bit extraction. Change one condition per round, record response differences, and advance bit by bit until the target value is complete."
     },
     "mitigation": {
-     "zh": "参数化查询消除条件注入，统一真/假业务路径的响应模板以压缩差分信号；修复后重放恒真/恒假载荷响应应无差异，并对异常条件请求添加监控告警。",
+     "zh": "参数化消除条件注入，统一真/假业务路径响应模板以压缩差分信号，异常条件请求加监控告警。\n    // PHP PDO\n    $st = $pdo->prepare('SELECT id,name FROM users WHERE email = ?');\n    $st->execute([$email]);\n    // Java JDBC\n    try (PreparedStatement ps = conn.prepareStatement(\n        \"SELECT id FROM users WHERE email = ?\")) { ps.setString(1, email); }\n    修复后重放验证：恒真/恒假载荷响应应无差异，异常条件请求触发告警。",
      "en": "Eliminate condition injection with parameterized queries and unify response templates across true/false business paths to compress differential signals. After the fix, replaying always-true/false payloads must produce no difference, with anomalous condition requests alerting in monitoring."
     },
     "difficulty": "advanced"
@@ -6923,7 +6923,7 @@
      "en": "Use the step 1 command to inject SLEEP wrapped in an IF condition referencing a fixed marker; requests about one second slower than baseline confirm time-based blind injection. Collect several baseline delays before comparing payload latency — the final direct SLEEP(1) line is only an environment control; keep delays to one second to avoid straining the service, then extract data character by character with bit-check conditions."
     },
     "mitigation": {
-     "zh": "参数化查询消除注入，配置查询超时（如 max_execution_time）与慢查询告警；修复后注入 SLEEP 载荷响应应无延迟，时间差分通道消失。",
+     "zh": "参数化消除注入，配置 SELECT 超时（max_execution_time）与慢查询告警。\n    # my.cnf [mysqld]\n    max_execution_time = 2000\n    slow_query_log = ON\n    // PHP PDO\n    $st = $pdo->prepare('SELECT id,name FROM users WHERE email = ?');\n    $st->execute([$email]);\n    修复后重放验证：注入 SLEEP/IF 载荷响应应无延迟，时间差分通道消失。",
      "en": "Eliminate injection with parameterized queries and configure query timeouts such as max_execution_time with slow-query alerting. After the fix, injected SLEEP payloads must return without delay and the timing differential channel must disappear."
     },
     "difficulty": "advanced"
@@ -7302,7 +7302,7 @@
      "en": "Use the step 1 command to inject WAITFOR DELAY '00:00:01'; a response about one second behind baseline confirms SQL Server time-based blind injection. Collect several baselines to rule out network jitter, then repeat the payload to confirm stable reproduction; wrap WAITFOR in IF for conditional delays when carrying decision logic, advancing bit by bit to extract target data."
     },
     "mitigation": {
-     "zh": "参数化查询消除注入点，数据库端配置查询超时并监控异常耗时语句；修复后注入 WAITFOR 载荷响应应即时返回，审计中不应出现来自应用连接的 WAITFOR 语句。",
+     "zh": "参数化消除注入点，应用侧设置命令超时并监控异常耗时语句。\n    // C# ADO.NET\n    using var cmd = new SqlCommand(\n        \"SELECT id,name FROM users WHERE email = @e\", conn);\n    cmd.Parameters.Add(\"@e\", SqlDbType.NVarChar, 256).Value = email;\n    cmd.CommandTimeout = 5;\n    修复后重放验证：注入 WAITFOR 载荷响应应即时返回，审计无应用连接的 WAITFOR 语句。",
      "en": "Eliminate the injection point with parameterized queries, configure database query timeouts, and monitor unusually long statements. After the fix, injected WAITFOR payloads must return immediately, and no WAITFOR statements from application connections should appear in audit logs."
     },
     "difficulty": "advanced"
@@ -7512,7 +7512,7 @@
      "en": "Use the step 1 command to inject SELECT pg_sleep(1); a delay of about one second confirms PostgreSQL time-based blind injection. Take a baseline first and repeat the payload to confirm stable delay, wrapping pg_sleep in CASE WHEN so the delay carries condition semantics for character-by-character extraction; keep the one-second delay throughout to protect shared connection pools."
     },
     "mitigation": {
-     "zh": "参数化查询消除注入点，配置 statement_timeout 限制单语句耗时并告警异常延迟；修复后注入 pg_sleep 载荷响应应即时返回。",
+     "zh": "参数化消除注入点，statement_timeout 限制单语句耗时并告警异常延迟。\n    ALTER ROLE app_role SET statement_timeout = '2s';\n    # Python psycopg\n    cur.execute(\"SELECT id,name FROM users WHERE email = %s\", (email,))\n    修复后重放验证：注入 pg_sleep 载荷响应应即时返回或被取消。",
      "en": "Eliminate the injection point with parameterized queries, configure statement_timeout to cap single-statement duration, and alert on abnormal delays. After the fix, injected pg_sleep payloads must return immediately."
     },
     "difficulty": "advanced"
@@ -7714,7 +7714,7 @@
      "en": "Use the step 1 command to run DBMS_LOCK.SLEEP(1); a delay of about one second confirms time-based blind injection. With no DBMS_LOCK privilege, record the permission error as negative evidence and try alternative delay primitives such as DBMS_PIPE.RECEIVE_MESSAGE; baseline before comparing payload latency, keep the one-second delay, and log the primitive used for the report. Compare medians across multiple sampling rounds, avoiding single-jitter misjudgments."
     },
     "mitigation": {
-     "zh": "参数化查询消除注入点，回收应用账户对 DBMS_LOCK/DBMS_PIPE 的 EXECUTE 授权；修复后重放延迟载荷应报权限错误或即时返回。",
+     "zh": "参数化消除注入点，回收应用账户对 DBMS_LOCK/DBMS_PIPE 的 EXECUTE 授权。\n    REVOKE EXECUTE ON DBMS_LOCK FROM app_user;\n    REVOKE EXECUTE ON DBMS_PIPE FROM app_user;\n    // Java JDBC\n    try (PreparedStatement ps = conn.prepareStatement(\n        \"SELECT id FROM users WHERE email = ?\")) { ps.setString(1, email); }\n    修复后重放验证：重放延迟载荷应报权限错误或即时返回。",
      "en": "Eliminate the injection point with parameterized queries and revoke EXECUTE on DBMS_LOCK/DBMS_PIPE from application accounts. After the fix, replaying delay payloads must raise permission errors or return immediately."
     },
     "difficulty": "advanced"
@@ -7917,7 +7917,7 @@
      "en": "Use the step 1 main verification command: cap the column count with increasing ORDER BY, verify count and type slots with UNION SELECT NULL sequences, and locate echo columns with a fixed marker; an echoed marker and data confirm the UNION read chain, after which read the users table and information_schema metadata. Replace table names with isolated markers beforehand; when blocked by a WAF, use the controlled variants in the bypass section."
     },
     "mitigation": {
-     "zh": "参数化查询消除 UNION 注入面，按列校验返回数据类型；修复后重放 ORDER BY/UNION 载荷应报列不匹配，回显区不再出现注入内容。",
+     "zh": "参数化消除 UNION 注入面，ORDER BY 走白名单插值，按列校验返回数据类型。\n    // PHP PDO：过滤值绑定，排序列白名单\n    $sort = in_array($sort, ['id','created_at'], true) ? $sort : 'id';\n    $st = $pdo->prepare(\"SELECT id,name FROM items WHERE cat = ? ORDER BY $sort LIMIT 20\");\n    $st->execute([$cat]);\n    修复后重放验证：ORDER BY/UNION 载荷应报列不匹配，回显区不再出现注入内容。",
      "en": "Eliminate the UNION injection surface with parameterized queries and validate returned column types; after the fix, replaying ORDER BY/UNION payloads must raise column-mismatch errors and no injected content may appear in echo areas."
     },
     "difficulty": "advanced"
@@ -8303,7 +8303,7 @@
      "en": "Use the step 1 command to send a marker as a chunked parameter value in a full chunked request to a local verification endpoint, keeping Host at the local fixture; the server reassembling and echoing the marker confirms the chunked carrier can carry injection payloads. Vary chunk boundaries across submissions to verify consistent reassembly across components."
     },
     "mitigation": {
-     "zh": "在边缘统一 HTTP 分帧与内容类型规则，拒绝歧义分帧或统一重组后再做检测；修复后分块发送的 marker 应被一致处理，检测层与应用层不再出现解析不一致。",
+     "zh": "边缘统一 HTTP 分帧与内容类型规则，拒绝歧义分帧或统一重组后再做检测；应用侧参数化兜底。\n    # ModSecurity：拒绝 chunked 分帧请求\n    SecRule &REQUEST_HEADERS:Transfer-Encoding \"!@eq 0\" \\\n        \"id:900100,phase:1,deny,status:400,msg:'chunked body rejected'\"\n    // PHP PDO 兜底参数化\n    $st = $pdo->prepare('SELECT id FROM t WHERE email = ?');\n    $st->execute([$email]);\n    修复后重放验证：分块发送的 marker 被一致处理，检测层与应用层解析不再不一致。",
      "en": "Unify HTTP framing and content-type rules at the edge, rejecting ambiguous framing or reassembling before inspection; after the fix, chunked markers must be handled consistently with no parsing divergence between the detection and application layers."
     },
     "difficulty": "advanced"
@@ -8662,7 +8662,7 @@
      "en": "Use the step 1 command to stack SELECT SLEEP(5) and SELECT 1; the former delaying about five seconds while the latter returns immediately confirms MySQL stacked execution. The two rows cross-check against mere slow queries; repeat verification in an isolated environment with the shortest distinguishable delay, then assess which statement types and privilege boundaries stacking can reach."
     },
     "mitigation": {
-     "zh": "关闭驱动的多语句支持（如禁用 multi_query），参数化查询消除注入点；修复后堆叠载荷应报语法错误或被截断，审计中不应出现第二条语句。",
+     "zh": "关闭驱动多语句支持并禁用预处理模拟，注入点参数化修复。\n    $pdo = new PDO($dsn, $u, $p, [\n        PDO::MYSQL_ATTR_MULTI_STATEMENTS => false,\n        PDO::ATTR_EMULATE_PREPARES => false,\n        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,\n    ]);\n    $st = $pdo->prepare('SELECT id FROM t WHERE email = ?'); $st->execute([$email]);\n    修复后重放验证：堆叠载荷应报语法错误或被截断，审计中无第二条语句。",
      "en": "Disable driver multi-statement support such as multi_query and eliminate the injection point with parameterized queries; after the fix, stacked payloads must raise syntax errors or be truncated, with no second statement in audit logs."
     },
     "difficulty": "advanced"
@@ -8887,7 +8887,7 @@
      "en": "Use the step 1 command to stack WAITFOR DELAY '0:0:5' and a marker query; a delay of about five seconds or an echoed marker confirms SQL Server stacked execution. Verify the delay first to prove the second statement ran, then the marker to prove results return, combining both into a complete evidence chain; collect several baselines to rule out network and connection-pool waits."
     },
     "mitigation": {
-     "zh": "参数化查询消除注入点，应用登录最小权限并禁用不需要的过程执行权限；修复后堆叠载荷应报语法错误，审计中不应出现注入追加的语句。",
+     "zh": "参数化消除注入点，应用登录最小权限并移除 sysadmin 等服务器角色。\n    // C# ADO.NET\n    using var cmd = new SqlCommand(\n        \"SELECT id,name FROM users WHERE email = @e\", conn);\n    cmd.Parameters.Add(\"@e\", SqlDbType.NVarChar, 256).Value = email;\n    -- 最小权限\n    ALTER SERVER ROLE sysadmin DROP MEMBER app_login;\n    修复后重放验证：堆叠载荷应报语法错误，审计中无注入追加的语句。",
      "en": "Eliminate the injection point with parameterized queries, grant the application login least privilege, and disable unneeded procedure execution; after the fix, stacked payloads must raise syntax errors and no injected statements may appear in audit logs."
     },
     "difficulty": "advanced"
@@ -9139,7 +9139,7 @@
      "en": "Use the step 1 command to stack COPY TO STDOUT and SELECT marker; STDOUT returning the marker confirms PostgreSQL stacked execution. COPY TO STDOUT verifies both statement execution and result return, serving as the precursor check for later COPY file-capability tests; confirm the driver uses the simple query protocol first, then re-verify stacking stability in an isolated environment. Once stacking holds, assess other reachable statement types as needed without expanding the initial scope."
     },
     "mitigation": {
-     "zh": "参数化查询消除注入点，应用连接禁用多语句并最小化角色权限；修复后堆叠载荷应报语法错误或仅执行首条语句。",
+     "zh": "应用连接走参数化（psycopg 扩展协议天然禁多语句）并最小化角色权限。\n    # Python psycopg：参数化即禁堆叠\n    cur.execute(\"SELECT id,name FROM users WHERE email = %s\", (email,))\n    -- 角色最小化\n    REVOKE pg_read_server_files, pg_write_server_files FROM app_role;\n    修复后重放验证：堆叠载荷应报语法错误或仅执行首条语句。",
      "en": "Eliminate the injection point with parameterized queries, disable multi-statements on the application connection, and minimize role privileges; after the fix, stacked payloads must raise syntax errors or execute only the first statement."
     },
     "difficulty": "advanced"
@@ -9373,7 +9373,7 @@
      "en": "Use the step 1 command to run INSERT/UPDATE/DELETE against a temporary table in one transaction and ROLLBACK before commit; constant marker output with zero database residue confirms DML injectability while rollback guarantees no side effects. Operate only on temporary tables in the authorized environment; never run or commit writes against business tables."
     },
     "mitigation": {
-     "zh": "应用账户按需授予最小 DML 权限并禁止堆叠语句，参数化消除注入点；修复后堆叠 DML 应报语法错误，并以审计确认无未授权写操作发生。",
+     "zh": "应用账户按需授予最小 DML 权限，参数化消除注入并以审计确认无未授权写。\n    REVOKE ALL ON SCHEMA public FROM PUBLIC;\n    GRANT SELECT, INSERT, UPDATE ON public.orders TO app_role;\n    # Python psycopg\n    cur.execute(\"UPDATE orders SET status = %s WHERE id = %s\", (status, oid))\n    修复后重放验证：堆叠 DML 应报语法错误，审计确认无未授权写操作发生。",
      "en": "Grant the application account minimal DML as needed, forbid stacked statements, and eliminate injection with parameterization; after the fix, stacked DML must raise syntax errors and audits must confirm no unauthorized writes occurred."
     },
     "difficulty": "advanced"
@@ -9872,7 +9872,7 @@
      "en": "Use the step 1 command to split SQL keywords across multiple same-named id parameters; the server reassembling per its merge strategy and executing with response differences confirms the HPP carrier's effect on parameter parsing. Start with a single-parameter full payload as a control, then test each split pattern to map the platform's merge behavior."
     },
     "mitigation": {
-     "zh": "在应用入口统一同名参数合并策略（如仅取首个）并拒绝重复参数，WAF 与应用参数视图对齐；修复后拆分载荷应被拒绝或与完整载荷同样处理，不再出现视图差异。",
+     "zh": "应用入口统一同名参数合并策略（仅取首个）并拒绝重复参数，使 WAF 与应用参数视图一致；查询一律参数化，杜绝服务端重组后进入 SQL 拼接。\n    // Java：入口拒绝重复同名参数\n    if (request.getParameterMap().values().stream()\n            .anyMatch(v -> v.length > 1)) { response.sendError(400); }\n    // PHP：值仅经 PDO 占位符进库\n    $st = $pdo->prepare('SELECT name FROM t WHERE id = ?');\n    $st->execute([$id]);",
      "en": "Unify the merge strategy for same-named parameters at the application entry (e.g., first-wins) and reject duplicates, aligning WAF and application parameter views; after the fix, split payloads must be rejected or handled identically to complete payloads with no view divergence."
     },
     "difficulty": "advanced"
@@ -10121,7 +10121,7 @@
      "en": "Use the step 1 command to build always-true conditions and column alignment via GREATEST, JOIN-derived tables, and CAST equivalents; statements still executing and echoing the marker confirm the equivalent-expression variants bypass keyword detection. First confirm the original form is blocked as a control, then verify each equivalent form one by one and record its effect."
     },
     "mitigation": {
-     "zh": "参数化查询消除注入面，检测按解析后的查询结构而非字面签名匹配；修复后重放全部等价表达式应被同样处理，回归测试覆盖完整变体族。",
+     "zh": "参数化查询从根上消除注入面，不再依赖字面签名；检测侧对请求解码、剥注释、压缩空白后再按语义匹配，回归覆盖完整变体族。\n    // PreparedStatement 占位符绑定\n    try (PreparedStatement ps = conn.prepareStatement(\n            \"SELECT name FROM emp WHERE id = ?\")) {\n        ps.setInt(1, id);\n    }\n    # ModSecurity：规范化后再检测（防 GREATEST/UNION 等价变体）\n    SecRule ARGS \"@rx (?i:(union\\s+select|greatest\\s*\\())\" \\\n        \"id:1001,t:none,t:urlDecodeUni,t:removeComments,t:compressWhitespace,deny\"",
      "en": "Eliminate the injection surface with parameterized queries and match detection on parsed query structure rather than literal signatures; after the fix, replaying all equivalent expressions must be handled identically, with regression tests covering the full variant family."
     },
     "difficulty": "advanced"
@@ -10411,7 +10411,7 @@
      "en": "Use the step 1 command to inject an oversized comment block before the statement, filling the inspection window; the statement still executing and returning the marker confirms comment padding defeats length or regex limits. Increase comment length from short to long, observing the critical failure point and recording the corresponding length; report the threshold afterward for detection teams resizing inspection windows."
     },
     "mitigation": {
-     "zh": "对请求体设置合理长度上限并对全量内容检测，检测层不因长度截断而跳过检查；参数化消除注入面后，注释填充变体回归应全部无效。",
+     "zh": "对请求体设合理长度上限并对全量内容检测，不因超长截断跳过检查；检测先剥离注释与压缩空白再匹配；参数化消除注入面后填充变体自然失效。\n    # ModSecurity：限制体长 + 剥离注释后检测\n    SecRequestBodyLimit 131072\n    SecRule ARGS \"@rx (?i:union\\s+select)\" \\\n        \"id:1002,t:none,t:urlDecodeUni,t:removeComments,t:compressWhitespace,deny,status:403\"\n    // Java：占位符绑定，注释填充不再进入 SQL 文本\n    ps = conn.prepareStatement(\"SELECT name FROM goods WHERE id = ?\");\n    ps.setLong(1, id);",
      "en": "Set a sensible request-body length cap and inspect the full content, never skipping checks due to truncation; once injection is eliminated via parameterization, comment-padding variants must fail all regression replays."
     },
     "difficulty": "advanced"
@@ -10685,7 +10685,7 @@
      "en": "Use the step 1 command to place injection statements in multipart form fields; server-side parsing feeding values into SQL concatenation with response differences confirms the multipart carrier reaches the injection layer. Baseline with legitimate values first, then substitute boolean and UNION payloads field by field, recording field names and Content-Type for reproducibility and regression."
     },
     "mitigation": {
-     "zh": "multipart 字段值与其他参数同等参数化处理，检测层覆盖完整 multipart 体；修复后注入字段值应报错或无响应差异，文件内容检查与字段检查分离执行。",
+     "zh": "multipart 字段值与普通参数同等走参数化，检测层开启请求体检查覆盖完整 multipart 体；文件内容检查与字段检查分离执行。\n    // Java：multipart 字段经占位符进库（Spring）\n    String v = form.getField(\"id\");\n    return jdbc.queryForObject(\n        \"SELECT name FROM goods WHERE id = ?\", String.class, v);\n    // PHP：字段强转后走 PDO 占位符\n    $id = (int)($_POST['id'] ? 0);\n    $st = $pdo->prepare('SELECT name FROM goods WHERE id = ?');\n    $st->execute([$id]);",
      "en": "Parameterize multipart field values like any other parameter and cover the full multipart body in detection; after the fix, injected field values must error or show no response difference, with file-content checks separated from field checks."
     },
     "difficulty": "advanced"
@@ -10949,7 +10949,7 @@
      "en": "Use the step 1 command to place injection statements in JSON field values; deserialization feeding them into SQL concatenation with response differences confirms the JSON carrier reaches the injection layer. Baseline with legitimate JSON first, then substitute boolean, error-based, and UNION payloads field by field, recording field paths and nesting depth to confirm stable, reproducible deserialization."
     },
     "mitigation": {
-     "zh": "JSON 字段经 DTO 类型约束后参数化处理，检测层解析 JSON 后按语义检查；修复后注入字段值应报错或无响应差异，编码形态不再影响处理结果。",
+     "zh": "JSON 先反序列化到强类型 DTO，字段值再参数化进库；检测层解析后按语义检查，编码形态不影响结果。\n    // Java：DTO 约束 + 占位符\n    record Req(String name, long id) {}\n    Req r = objectMapper.readValue(body, Req.class);\n    jdbc.queryForObject(\"SELECT name FROM users WHERE id=?\", String.class, r.id());\n    // PHP 同理\n    $d = json_decode($body, true, 512, JSON_THROW_ON_ERROR);\n    $st = $pdo->prepare('SELECT name FROM users WHERE id=?');\n    $st->execute([(int)$d['id']]);",
      "en": "Process JSON fields through DTO type constraints and parameterization, with detection inspecting parsed JSON semantics; after the fix, injected field values must error or show no response difference, and encoding shapes must not affect handling."
     },
     "difficulty": "advanced"
@@ -11222,7 +11222,7 @@
      "en": "Use the step 1 command to send the full URL query-parameter sample to an isolated instance, with {LAB_APP} rendered as the isolated lab host; version-constant injection results returning confirm the parameter reaches SQL. After confirming plugin, route, and version, baseline with a legitimate vulnparam on the isolated copy, send one request with the UNION target swapped for a fixed constant, and check whether the iThemes parameter is only a routing condition."
     },
     "mitigation": {
-     "zh": "升级或修复对应插件，使用 WordPress 数据库参数化 API 与严格参数类型，移除隐藏路由触发条件；边界只允许预期参数，数据库账户最小权限，并保留完整 URL 回归用例。",
+     "zh": "升级或修复对应插件，处理器仅接受预期参数并使用 WordPress 参数化 API 与严格类型，边界丢弃附加参数，数据库账户最小权限。\n    // WordPress：$wpdb->prepare + absint\n    $id = absint($_GET[\"vulnparam\"] ? 0);\n    $row = $wpdb->get_row($wpdb->prepare(\n        \"SELECT * FROM {$wpdb->prefix}items WHERE id = %d\", $id));",
      "en": "Upgrade or fix the affected plugin, use WordPress database parameterization APIs with strict parameter types, and remove hidden route triggers; allow only expected parameters at the boundary with least-privileged database accounts, keeping full-URL regression cases."
     },
     "difficulty": "intermediate"
@@ -11494,7 +11494,7 @@
      "en": "Submit ../payloader-fixture/PAYLOADER_MARKER.txt to the inclusion/read endpoint as in step 1, one line per request; a hit is HTTP 200 with the response body exactly the PAYLOADER_MARKER text, cross-checked against the final path or wrapper log. A hit proves a relative path can leave the approved root after one decoding and normalization pass; then test remaining variants on the same endpoint and record request IDs to build the evidence chain."
     },
     "mitigation": {
-     "zh": "使用固定资源 ID 到文件或模板的服务端映射，拒绝用户提供的 scheme 与路径；必须读取文件时只解码一次，在最终规范路径上验证根目录，并以低权限只读方式打开。修复后重放第 1 步请求，确认遍历路径被拒绝而合法资源 ID 仍正常。",
+     "zh": "使用固定资源 ID 到文件的服务端映射，拒绝用户提供的 scheme 与路径；必须读取时只解码一次并在最终规范路径上验证根目录，低权限只读打开：\n    $files = [\"profile\" => \"/srv/files/profile.html\"];\n    if (!isset($files[$id])) { http_response_code(404); exit; }\n    readfile($files[$id]);",
      "en": "Map fixed resource IDs to files or templates server-side and reject user-supplied schemes and paths; when reading files is required, decode once, validate the root on the final canonical path, and open read-only with low privilege. After the fix, replay the step-1 request and confirm traversal paths are rejected while legitimate resource IDs still work."
     },
     "difficulty": "advanced"
@@ -11816,7 +11816,7 @@
      "en": "First send a controlled request carrying PAYLOADER_MARKER so it lands in the access log, then read the log through the inclusion endpoint as in step 1 and filter with grep --fixed-strings PAYLOADER_MARKER; a hit is marker lines in the grep output, proving the log file is includable. Keep the final resolved path and request ID as evidence; afterwards assess the same endpoint's exposure to inclusion-execution variants."
     },
     "mitigation": {
-     "zh": "使用固定资源 ID 到文件的服务端映射，拒绝用户提供的路径；必须读取文件时只解码一次，在最终规范路径上验证根目录并以低权限只读方式打开。修复后重放第 1 步请求，确认日志路径被拒绝且业务读取不受影响。",
+     "zh": "使用固定资源 ID 到日志文件的服务端映射，拒绝用户提供的路径；必须读取时在最终规范路径验证根目录并低权限只读打开：\n    private static final Map<String, Path> LOGS =\n        Map.of(\"app\", Path.of(\"/var/log/app/app.log\"));\n    Path p = LOGS.get(id);\n    if (p == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND);",
      "en": "Map fixed resource IDs to files server-side and reject user-supplied paths; when reading is required, decode once, validate the root on the final canonical path, and open read-only with low privilege. After the fix, replay the step-1 request and confirm log paths are rejected while business reads are unaffected."
     },
     "difficulty": "advanced"
@@ -12106,7 +12106,7 @@
      "en": "Submit ?file=../payloader-fixture/PAYLOADER_MARKER.txt to the inclusion/read endpoint as in step 1; a hit is the response body being the PAYLOADER_MARKER text, showing the traversal resolved into the fixture directory. Confirm normalization behavior via wrapper or final-path logs, then increase traversal depth and encoding variants on the same endpoint, recording request IDs to build the evidence chain."
     },
     "mitigation": {
-     "zh": "使用固定资源 ID 到文件的服务端映射，拒绝用户路径；必须读取时只解码一次，在最终规范路径上验证根目录并以低权限只读打开。修复后重放第 1 步遍历请求，确认返回拒绝且合法对象读取保持可用。",
+     "zh": "优先使用资源 ID 映射；必须按名读取时只解码一次，并在最终规范路径上强制根目录前缀校验，低权限只读打开：\n    Path base = Paths.get(\"/srv/files\").toRealPath();\n    Path target = base.resolve(name).normalize().toRealPath();\n    if (!target.startsWith(base)) throw new AccessDeniedException(name);",
      "en": "Map fixed resource IDs to files server-side and reject user paths; when reading is required, decode once, validate the root on the final canonical path, and open read-only with low privilege. After the fix, replay the step-1 traversal and confirm rejection while legitimate object reads keep working."
     },
     "difficulty": "advanced"
@@ -12389,7 +12389,7 @@
      "en": "Submit ?file=php://filter/convert.base64-encode/resource=./payloader-fixture/PAYLOADER_MARKER.php to the endpoint as in step 1; a hit is a Base64 response that decodes to the marker.php source, proving the filter applied and the target was read rather than executed. Then read other controlled fixtures with the same syntax within scope, logging wrapper activity and request IDs."
     },
     "mitigation": {
-     "zh": "禁止用户输入进入 include/require，读取接口只接受服务端对象 ID 并拒绝非 file scheme；必须读取时在固定根目录内解析规范路径。修复后重放第 1 步 filter URI，确认被拒绝且合法读取不受影响。",
+     "zh": "禁止用户输入进入 include/require，读取接口只接受服务端对象 ID 并拒绝一切非 file scheme 的 wrapper URI：\n    if (preg_match('#^[a-z][a-z0-9+.-]*://#i', $file)\n        || str_starts_with($file, \"//\")) { http_response_code(403); exit; }",
      "en": "Keep user input out of include/require, accept only server-side object IDs in read endpoints, and reject non-file schemes; when reading is required, resolve canonical paths within a fixed root. After the fix, replay the step-1 filter URI and confirm rejection while legitimate reads are unaffected."
     },
     "difficulty": "advanced"
@@ -12688,7 +12688,7 @@
      "en": "As in step 1, send a --data-binary body carrying PAYLOADER_MARKER with Content-Type: text/plain to /include?file=php://input; a hit is the response echoing the body marker, proving the php://input stream reached the target API. After confirming the read, determine whether the endpoint has include semantics: if PHP code in the body executes, escalate to code execution with separate evidence."
     },
     "mitigation": {
-     "zh": "不要让用户选择运行时流 wrapper：读取接口只接受服务端对象 ID，禁止动态 include 并关闭 allow_url_include；请求体只作为数据解析。修复后重放第 1 步请求，确认 php://input 被拒绝且正常接口不受影响。",
+     "zh": "不要让用户选择运行时流 wrapper：读取接口只接受对象 ID，禁止动态 include 并关闭 allow_url_include，请求体只作数据解析：\n    $body = json_decode(file_get_contents(\"php://input\"), true);  // 仅作数据\n    $pages = [\"home\" => \"home.php\"];\n    if (!isset($pages[$p])) { http_response_code(403); exit; }\n    include __DIR__ . \"/\" . $pages[$p];",
      "en": "Never let users choose runtime stream wrappers: read endpoints accept only server-side object IDs, dynamic include is forbidden, and allow_url_include stays off; parse the body as data only. After the fix, replay the step-1 request and confirm php://input is rejected while normal endpoints are unaffected."
     },
     "difficulty": "advanced"
@@ -12979,7 +12979,7 @@
      "en": "Submit ?file=data://text/plain,PAYLOADER_MARKER as in step 1; a hit is the marker text from the data:// stream appearing in the response, proving the inline stream reached the target API. After confirming the read, check allow_url_fopen/allow_url_include and whether the final function reads or includes; if it includes and inline code executes, document it separately as code execution with the configuration."
     },
     "mitigation": {
-     "zh": "文件入口只接受服务端对象 ID 并限制为 file scheme，关闭不需要的 allow_url_include；数据流只交给解析 API 而非 PHP 编译器。修复后重放第 1 步 data:// URI，确认被拒绝且正常读取不受影响。",
+     "zh": "文件入口只接受服务端对象 ID 并限制为 file scheme，关闭不需要的远程包含；数据流只交给解析 API 而非 PHP 编译器：\n    ; php.ini\n    allow_url_include = Off\n    allow_url_fopen = Off\n    if (preg_match('#^(data|php|zip|phar|expect|compress\\.\\w+)://#i', $file)) {\n        http_response_code(403); exit;\n    }",
      "en": "File endpoints accept only server-side object IDs restricted to the file scheme, keep unneeded allow_url_include off, and hand data streams only to parsing APIs, never the PHP compiler. After the fix, replay the step-1 data:// URI and confirm rejection while normal reads are unaffected."
     },
     "difficulty": "advanced"
@@ -13262,7 +13262,7 @@
      "en": "Prepare a controlled ZIP fixture containing marker.txt, then submit ?file=zip://./payloader-fixture/PAYLOADER_MARKER.zip%23marker.txt as in step 1 (%23 is the hash member separator); a hit is marker.txt content from the archive in the response. Then vary member names and container extensions to map resolution behavior, logging wrapper activity and request IDs."
     },
     "mitigation": {
-     "zh": "上传对象使用随机服务端名称存储于 Web 根外，读取接口只接受对象 ID 并拒绝 zip:// 等 wrapper URI；校验真实文件类型而非外层扩展名。修复后重放第 1 步 zip URI，确认被拒绝且归档业务不受影响。",
+     "zh": "上传对象使用随机服务端名称存储于 Web 根外，读取接口只接受对象 ID 并拒绝 zip:// 等 wrapper，校验真实文件类型而非外层扩展名：\n    $name = bin2hex(random_bytes(16));\n    move_uploaded_file($tmpName, \"/srv/store/\" . $name);\n    if (str_contains($file, \"://\") || str_contains($file, \"#\")) exit(\"wrapper denied\");",
      "en": "Store uploads under random server-side names outside the web root, accept only object IDs in read endpoints, and reject wrapper URIs such as zip://; validate real file type rather than the outer extension. After the fix, replay the step-1 zip URI and confirm rejection while archive business flows are unaffected."
     },
     "difficulty": "advanced"
@@ -13545,7 +13545,7 @@
      "en": "Build a controlled PHAR fixture containing only a text member and no deserialization metadata, then submit ?file=phar://./payloader-fixture/PAYLOADER_MARKER.phar/marker.txt as in step 1; a hit is marker.txt content from the archive in the response. After confirming member read, separately check whether the target file function and PHP version perform metadata handling, so member reads are not misreported as deserialization."
     },
     "mitigation": {
-     "zh": "拒绝外部输入中的 phar:// 等非 file scheme，上传对象随机命名并存于 Web 根外；不对不可信归档触发元数据解析，升级 PHP 并限制服务账户文件权限。修复后重放第 1 步 phar URI，确认被拒绝。",
+     "zh": "拒绝外部输入中的 phar:// 等非 file scheme，上传对象随机命名并存于 Web 根外，不对不可信归档触发元数据解析并升级 PHP 版本：\n    if (preg_match('#^(phar|zip|data|php|expect)://#i', $file)) {\n        http_response_code(403); exit;\n    }",
      "en": "Reject non-file schemes such as phar:// in external input, store uploads under random names outside the web root; never trigger metadata parsing on untrusted archives, upgrade PHP, and limit service-account file permissions. After the fix, replay the step-1 phar URI and confirm rejection."
     },
     "difficulty": "advanced"
@@ -13820,7 +13820,7 @@
      "en": "First establish a test session with a controlled marker value and determine its sess_ filename, then submit ?file=./payloader-fixture/sessions/sess_PAYLOADERMARKER as in step 1; a hit is the PAYLOADER_MARKER content of that session file in the response. Record session.save_path and the final resolved path; do not inject PHP or race session locks—keep evidence read-only."
     },
     "mitigation": {
-     "zh": "会话 ID 使用密码学随机并做字符集白名单，存储改用数据库键或哈希文件名；包含入口拒绝用户路径并验证最终规范路径在根目录内。修复后重放第 1 步请求，确认会话文件不可读取且登录流程正常。",
+     "zh": "会话 ID 使用密码学随机并做字符集白名单，存储改用数据库键或哈希文件名；包含入口拒绝用户路径并验证最终规范路径在根目录内：\n    ini_set(\"session.use_strict_mode\", \"1\");\n    ini_set(\"session.sid_bits_per_character\", \"6\");\n    ini_set(\"session.sid_length\", \"64\");",
      "en": "Use cryptographically random session IDs with a character-set allowlist, and store sessions under database keys or hashed filenames; inclusion endpoints reject user paths and verify the final canonical path stays in the root. After the fix, replay the step-1 request and confirm session files are unreadable while login flows work."
     },
     "difficulty": "advanced"
@@ -14095,7 +14095,7 @@
      "en": "Submit ?file=/proc/self/cwd/payloader-fixture/PAYLOADER_MARKER.txt as in step 1; a hit is the response body being the PAYLOADER_MARKER text, proving /proc/self/cwd resolves to the application working directory. A hit shows absolute paths and procfs symlinks both reach the read endpoint; probe other /proc/self/ entries to gauge information exposure, logging resolution activity and request IDs."
     },
     "mitigation": {
-     "zh": "读取接口拒绝 /proc 等伪文件系统路径与绝对路径，使用对象 ID 映射并在最终规范路径上强制根目录；以低权限只读身份打开文件。修复后重放第 1 步请求，确认 procfs 路径被拒绝且业务读取正常。",
+     "zh": "读取接口拒绝绝对路径与 /proc 等伪文件系统路径，使用对象 ID 映射并在最终规范路径上强制根目录（toRealPath 消解符号链接），低权限只读打开：\n    if (name.isAbsolute() || name.startsWith(\"/proc\")) throw new AccessDeniedException(name);\n    Path real = base.resolve(name).normalize().toRealPath();\n    if (!real.startsWith(baseReal)) throw new AccessDeniedException(name);",
      "en": "Reject pseudo-filesystem paths such as /proc and absolute paths in read endpoints, map by object ID, and enforce the root on the final canonical path; open files read-only with low privilege. After the fix, replay the step-1 request and confirm procfs paths are rejected while business reads work."
     },
     "difficulty": "advanced"
@@ -14377,7 +14377,7 @@
      "en": "Upload item by item through the verification blocks of steps 1 and 2: first test PAYLOADER_MARKER.txt.jpg, %00 truncation, .phtml/.php5 alternatives, and case variants; then contrast write order, ADS (::$DATA), semicolon truncation, and trailing dot/space. Read back the stored name after each upload and record acceptance status and reason. A hit is any variant whose final stored extension crosses the allowed-extension boundary, forming a cross-handler storage contrast."
     },
     "mitigation": {
-     "zh": "生成服务端对象名，在目标文件系统语义下统一校验名称、内容和类型，并把上传目录设为不可执行。修复后同时重放第 1、2 步异常样例与正常样例，确认 marker 不再越界且合法文件流程保持可用。",
+     "zh": "放弃用户文件名，由服务端生成对象名（随机 ID+白名单扩展）；在目标文件系统语义下统一校验名称、内容与类型；上传目录设为不可执行。\n    # Python：白名单校验最终扩展 + 生成对象名\n    ext = os.path.splitext(name)[1].lower()\n    if ext not in {'.jpg', '.png', '.pdf'}:\n        raise UploadRejected(ext)\n    stored = f'{uuid4().hex}{ext}'\n    # Nginx：上传目录禁执行\n    location /uploads/ { location ~* \\.(php|jsp|py|cgi)$ { deny all; } }",
      "en": "Generate server-side object names, validate name, content, and type uniformly under target filesystem semantics, and make upload directories non-executable. After the fix, replay the step-1 and step-2 anomalous samples alongside normal samples and confirm markers no longer escape while legitimate file flows keep working."
     },
     "difficulty": "advanced"
@@ -14882,7 +14882,7 @@
      "en": "Upload item by item through the verification blocks of steps 1 and 2: first trailing spaces (raw, %20, %09) and %00 truncation variants, then trailing dots, multiple dots, dot-space mixes, and semicolon truncation; HEAD-read back the stored name after each upload. A hit is a name accepted at validation being folded into a different extension or type on disk—record the two-phase name divergence as evidence."
     },
     "mitigation": {
-     "zh": "生成服务端对象名并在校验前对文件名做显式规范化，拒绝控制字符、尾随点空格与分号；上传目录不可执行。修复后同时重放第 1、2 步变体与正常样例，确认折叠差异消失且合法上传可用。",
+     "zh": "校验前对文件名显式规范化，拒绝尾随空格、点、分号与控制字符（Windows 会在校验后折叠）；生成服务端对象名与用户名解耦；上传目录不可执行。\n    # Python：尾随异常字符一律拒绝，再生成服务端对象名\n    import re\n    if re.search(r'[. ;\\r\\n\\x00-\\x1f]$', name):\n        raise UploadRejected(name)\n    stored = f'{uuid4().hex}{ext}'",
      "en": "Generate server-side object names and normalize filenames explicitly before validation, rejecting control characters, trailing dots/spaces, and semicolons; keep upload directories non-executable. After the fix, replay the step-1 and step-2 variants alongside normal samples and confirm the folding divergence is gone while legitimate uploads work."
     },
     "difficulty": "advanced"
@@ -15343,7 +15343,7 @@
      "en": "As in step 1, upload the three colon variants PAYLOADER_MARKER.txt::DATA, ::INDEX_ALLOCATION, and a named stream as filenames, HEAD-reading back after each as shown in the command; a hit is any variant whose stored result diverges from the validation verdict (e.g., content written to the default stream or stream type changed)—record the colon's differing interpretations at the two layers as evidence."
     },
     "mitigation": {
-     "zh": "文件名校验拒绝冒号与保留流语法，生成服务端对象名并在目标文件系统语义下统一校验；上传目录不可执行。修复后重放第 1 步全部冒号变体，确认被统一拒绝且正常上传可用。",
+     "zh": "文件名校验直接拒绝冒号与 NTFS 保留流语法（::$DATA 等），整体采用\"字符白名单+单扩展\"约束；生成服务端对象名，上传目录不可执行。\n    // Java：严格白名单从源头排除冒号与流语法\n    if (!name.matches(\"[A-Za-z0-9_-]{1,64}\\\\.(jpg|png|pdf)\"))\n        throw new UploadRejectedException(name);",
      "en": "Reject colons and reserved stream syntax in filename validation, generate server-side object names, and validate uniformly under target filesystem semantics; keep upload directories non-executable. After the fix, replay all step-1 colon variants and confirm uniform rejection while normal uploads work."
     },
     "difficulty": "advanced"
@@ -15740,7 +15740,7 @@
      "en": "As in step 1, upload the double-write variants PAYLOADER_MARKER.ttxtxt, tTxTxt, txttxtt, and aasasa one by one, HEAD-reading back under the original filename after each; a hit is the cleaned storage name reassembling the protected extension (e.g., .txt or .php)—record the cleaning input, cleaned output, and stored name as three-way contrast evidence."
     },
     "mitigation": {
-     "zh": "停止使用字符串替换清洗，改为对最终规范化名称执行允许列表校验并生成服务端对象名；上传目录不可执行。修复后重放第 1 步全部双重写入变体，确认存储名不再拼出受保护后缀且正常上传可用。",
+     "zh": "停止单次字符串替换式清洗（黑名单必被双重写入重组绕过），改为对最终规范化名称执行允许列表校验；服务端生成对象名；上传目录不可执行。\n    # Python：只认白名单，不做任何\"删后缀再拼\"的清洗\n    ext = os.path.splitext(name)[1].lower()\n    if ext not in {'.jpg', '.png', '.pdf'}:\n        raise UploadRejected(name)   # ttxtxt 之类直接拒绝\n    stored = f'{uuid4().hex}{ext}'",
      "en": "Stop string-replacement cleaning; validate the final normalized name against an allowlist and generate server-side object names; keep upload directories non-executable. After the fix, replay all step-1 double-write variants and confirm stored names no longer reassemble protected suffixes while normal uploads work."
     },
     "difficulty": "advanced"
@@ -16006,7 +16006,7 @@
      "en": "Per step 1, submit the two references zip:///tmp/payloader-fixture/PAYLOADER_MARKER.zip#marker.txt and phar:///tmp/payloader-fixture/PAYLOADER_MARKER.phar/marker.txt separately; a hit is member content read by reference path. Log wrapper selection and member resolution; on a hit, determine whether the entry reads or includes—the latter needs separate code-execution evidence."
     },
     "mitigation": {
-     "zh": "拒绝控制字节和动态路径，改用逻辑标识允许列表，并让所有组件消费同一规范化结果；上传目录不可执行。修复后重放第 1 步两条引用，确认 wrapper 引用被拒绝且对象 ID 读取正常。",
+     "zh": "上传后引用改用逻辑 ID 允许列表映射到固定物理路径，拒绝控制字节、动态路径与 zip://、phar:// 等运行时 wrapper；上传目录不可执行。\n    // PHP：按逻辑 ID 取白名单映射，杜绝 wrapper 直达\n    $map = ['a1' => '/srv/store/obj-a1.bin'];\n    if (!isset($map[$id]) || preg_match('#^(zip|phar|file|data|expect)://#i', $id)) {\n        http_response_code(400); exit('bad reference');\n    }\n    readfile($map[$id]);",
      "en": "Reject control bytes and dynamic paths, switch to logical-identifier allowlists, and have all components consume the same normalized result; keep upload directories non-executable. After the fix, replay both step-1 references and confirm wrapper references are rejected while object-ID reads work."
     },
     "difficulty": "advanced"
@@ -16290,7 +16290,7 @@
      "en": "As in step 1, apply the seven variants—../, ....//, single and double encoding, backslashes—to the download parameter and record each response; a hit is any variant returning the out-of-root PAYLOADER_MARKER.txt content. Then replay the double-encoding and backslash variants as pure query strings per step 2, contrasting decoding-order differences between entry points; record the final resolved path for every hit as evidence."
     },
     "mitigation": {
-     "zh": "使用服务端对象标识，统一解码和规范化，并在打开文件前强制执行根目录与 scheme 允许列表。修复后同时重放第 1、2 步异常样例与正常样例，确认 marker 不再越界且合法下载保持可用。",
+     "zh": "下载参数只做单一解码，统一规范化后在真实路径上强制根目录前缀校验，并推荐改用服务端对象标识而非用户可控路径。\n    Path root   = Paths.get(storageDir).toRealPath();\n    Path target = root.resolve(requested).normalize().toRealPath();\n    if (!target.startsWith(root))\n        throw new SecurityException(\"path escape\");",
      "en": "Use server-side object identifiers, unify decoding and normalization, and enforce root-directory and scheme allowlists before opening files. After the fix, replay the step-1 and step-2 anomalous samples alongside normal samples and confirm markers no longer escape while legitimate downloads keep working."
     },
     "difficulty": "advanced"
@@ -16622,7 +16622,7 @@
      "en": "As in step 1, first probe ../ traversal across six common parameter names (path, filepath, filename, doc, and others); once a controllable parameter is found, read PAYLOADER_MARKER via the file:// and php://filter wrappers. A hit is a wrapper URI returning marker content rather than an ordinary file response. Record which parameter is controllable, whether wrappers are accepted, and their parse logs; on a php://filter hit, also check whether the return is encoded data or an execution result."
     },
     "mitigation": {
-     "zh": "使用服务端对象标识，统一解码和规范化，并在打开文件前强制执行根目录与 scheme 允许列表，拒绝一切 wrapper URI。修复后重放第 1 步全部参数与 wrapper 探测，确认被统一拒绝且合法下载保持可用。",
+     "zh": "下载参数禁止任何 stream wrapper 形态：含 scheme、父目录段或控制字节直接 400，仅允许相对文件名并做 realpath 根目录校验。\n    if (preg_match('#^[a-zA-Z][\\w+.-]*://#', $p) || strpos($p, '..') !== false\n        || strpbrk($p, \"\\\\\\x00\") !== false) { http_response_code(400); exit; }\n    $real = realpath($baseDir . '/' . basename($p));\n    if ($real === false || strpos($real, $baseReal . DIRECTORY_SEPARATOR) !== 0) exit;",
      "en": "Use server-side object identifiers, unify decoding and normalization, enforce root-directory and scheme allowlists before opening files, and reject all wrapper URIs. After the fix, replay every step-1 parameter and wrapper probe and confirm uniform rejection while legitimate downloads keep working."
     },
     "difficulty": "advanced"
@@ -16869,7 +16869,7 @@
      "en": "As in step 1, request the same path with the %00, %00.txt, dot-padding, ....//, ..;, and backslash variants one by one; a hit is any variant returning out-of-root PAYLOADER_MARKER content after truncation or folding. Record the sent value and final resolved filename per request as a validation-layer versus filesystem-layer contrast; when %00 variants are negative, note the runtime version as evidence that modern components reject null bytes."
     },
     "mitigation": {
-     "zh": "拒绝控制字节和动态路径，改用逻辑标识允许列表，并让所有组件消费同一规范化结果。修复后同时重放第 1 步终止符变体与正常样例，确认 marker 不再越界且合法下载保持可用。",
+     "zh": "拒绝含控制字节的文件名，改用逻辑标识到物理路径的允许列表映射，全部组件消费同一映射结果，不再拼接动态路径。\n    $allow = ['manual.pdf' => '/srv/files/manual.pdf',\n              'logo.png'   => '/srv/files/logo.png'];\n    $name  = $_GET['file'] ? '';\n    if (preg_match('/[\\x00-\\x1f\\x7f]/', $name)) { http_response_code(400); exit; }\n    $file = $allow[$name] ? null;\n    if ($file === null) { http_response_code(404); exit; }\n    readfile($file);",
      "en": "Reject control bytes and dynamic paths, switch to logical-identifier allowlists, and have all components consume the same normalized result. After the fix, replay the step-1 terminator variants alongside normal samples and confirm markers no longer escape while legitimate downloads keep working."
     },
     "difficulty": "advanced"
@@ -17116,7 +17116,7 @@
      "en": "As in step 1, send ../ traversal at depths 1, 2, 3, and 4 in a loop requesting PAYLOADER_MARKER; a hit is marker content at some depth, and the script prints the hit depth. Record the first hit depth and final resolved path to quantify the gap between application filtering and POSIX folding; then broaden the contrast with double-encoding variants on the same endpoint."
     },
     "mitigation": {
-     "zh": "拒绝绝对、设备和父目录形式，通过受限目录句柄访问文件，并在最终路径上执行边界检查。修复后同时重放第 1 步各深度样例与正常样例，确认 marker 不再越界且合法读取保持可用。",
+     "zh": "拒绝绝对路径、设备文件与父目录段，用户输入限定为纯文件名，最终以 realpath 结果做根目录前缀校验后再打开。\n    root = os.path.realpath(BASE_DIR)\n    if '/' in name or '..' in name or '\\x00' in name:\n        abort(400)\n    target = os.path.realpath(os.path.join(root, name))\n    if os.path.commonpath([root, target]) != root:\n        abort(403)",
      "en": "Reject absolute, device, and parent-directory forms, access files through a confined directory handle, and run boundary checks on the final path. After the fix, replay the step-1 depth samples alongside normal samples and confirm markers no longer escape while legitimate reads keep working."
     },
     "difficulty": "advanced"
@@ -17392,7 +17392,7 @@
      "en": "Keeping the BASE variable as in step 1, submit drive (C:%5c…), backslash, and 8.3 short-name variants one by one; a hit is short-name or backslash variants returning the PAYLOADER_MARKER text. Record sent value and final resolved path per request, noting the Windows version and server component, since short-name generation and backslash folding vary by version."
     },
     "mitigation": {
-     "zh": "拒绝绝对、设备和父目录形式，通过受限目录句柄访问文件，并在最终路径上执行边界检查；禁止 8.3 短名（NtfsDisable8dot3NameCreation）。修复后重放第 1 步全部变体，确认被统一拒绝且合法读取保持可用。",
+     "zh": "应用层拒绝绝对路径、盘符、设备名与 8.3 短名形式，规范化后做根目录前缀校验；系统层禁用 8.3 短名创建消除两层解析差异。\n    if (Regex.IsMatch(name, @\"^([A-Za-z]:|\\\\\\\\|//)|(?i)^(con|prn|aux|nul|com\\d|lpt\\d)(\\.|$)|~\\d\"))\n        throw new SecurityException(\"bad path\");\n    Set-ItemProperty HKLM:\\SYSTEM\\CurrentControlSet\\Control\\FileSystem `\n        -Name NtfsDisable8dot3NameCreation -Value 1",
      "en": "Reject absolute, device, and parent-directory forms, access files through a confined directory handle, and run boundary checks on the final path; disable 8.3 short names (NtfsDisable8dot3NameCreation). After the fix, replay all step-1 variants and confirm uniform rejection while legitimate reads keep working."
     },
     "difficulty": "advanced"
@@ -17668,7 +17668,7 @@
      "en": "Prepare a capture on controlled DNS or a monitoring host, then submit a UNC path pointing at example.invalid reusing the controlled entry's BASE variable as in step 1; a hit is the response returning PAYLOADER_MARKER text or the UNC resolution log recording the query. Record the outbound query target and protocol as evidence; on production tests always use your own domain, never real internal hosts."
     },
     "mitigation": {
-     "zh": "拒绝绝对、设备和父目录形式以及 UNC 路径，通过受限目录句柄访问文件，并在最终路径上执行边界检查；限制服务账户的出站 SMB。修复后重放第 1 步请求，确认 UNC 查询不再产生且合法读取保持可用。",
+     "zh": "应用层拒绝以 UNC、双斜杠或盘符开头的路径并禁止其进入支持网络解析的 API；主机层封禁服务账户出站 SMB 消除侧信道。\n    if (name.startsWith(\"\\\\\\\\\") || name.startsWith(\"//\")\n            || name.matches(\"^[A-Za-z]:.*\")) {\n        throw new SecurityException(\"UNC/absolute path rejected\");\n    }\n    New-NetFirewallRule -DisplayName Block-SMB-Out -Direction Outbound `\n        -Action Block -Protocol TCP -RemotePort 445",
      "en": "Reject absolute, device, and parent-directory forms as well as UNC paths, access files through a confined directory handle, and run boundary checks on the final path; restrict service-account outbound SMB. After the fix, replay the step-1 request and confirm no UNC queries occur while legitimate reads keep working."
     },
     "difficulty": "advanced"
@@ -17915,7 +17915,7 @@
      "en": "As in step 1, submit the five variant classes—%00, %2500, 8.3 short names, /./ padding, and trailing dot/space—one by one, recording sent value and final resolved filename per request; a hit is a final filename differing from the validation verdict and pointing at the out-of-root marker. When %00 variants are negative, record the runtime version showing modern components reject null bytes to avoid false positives."
     },
     "mitigation": {
-     "zh": "拒绝控制字节和动态路径，改用逻辑标识允许列表，并让所有组件消费同一规范化结果。修复后同时重放第 1 步终止符变体与正常样例，确认 marker 不再越界且合法读取保持可用。",
+     "zh": "拒绝终止字节与路径填充等控制字符，改用逻辑标识允许列表映射物理文件，各层消费同一映射结果，杜绝截断差异。\n    ALLOWED = {'logo.png': 'static/logo.png', 'report.pdf': 'static/report.pdf'}\n    if any(ord(c) < 0x20 or ord(c) == 0x7f for c in name):\n        abort(400)\n    path = ALLOWED.get(name) or abort(404)",
      "en": "Reject control bytes and dynamic paths, switch to logical-identifier allowlists, and have all components consume the same normalized result. After the fix, replay the step-1 terminator variants alongside normal samples and confirm markers no longer escape while legitimate reads keep working."
     },
     "difficulty": "advanced"
@@ -18162,7 +18162,7 @@
      "en": "Keeping the BASE variable as in step 1, first include the local marker's log/env/session files to confirm dynamic include's selection of regular files; then read the same marker via php://filter with convert.base64-encode—a hit is returned Base64 decoding to the marker content. Record final resolved paths and wrapper logs for both hit classes; when a session file is included, also check whether its content is interpreted and executed."
     },
     "mitigation": {
-     "zh": "拒绝控制字节和动态路径，改用逻辑标识允许列表，并让所有组件消费同一规范化结果；禁止用户输入进入 include/require。修复后重放第 1 步全部包含目标，确认被统一拒绝且固定模板加载保持可用。",
+     "zh": "用户输入一律不进入 include/require：页面选择走逻辑键到固定模板的白名单映射，运行时关闭远程包含与流包装器。\n    $tpl = ['home' => __DIR__ . '/tpl/home.php',\n            'about' => __DIR__ . '/tpl/about.php'];\n    require $tpl[$_GET['page'] ? ''] ? $tpl['home'];\n    ; php.ini\n    allow_url_include = Off\n    allow_url_fopen = Off",
      "en": "Reject control bytes and dynamic paths, switch to logical-identifier allowlists, and have all components consume the same normalized result; keep user input out of include/require. After the fix, replay every step-1 inclusion target and confirm uniform rejection while fixed template loading keeps working."
     },
     "difficulty": "advanced"
@@ -18449,7 +18449,7 @@
      "en": "Build a test ZIP containing a ../outside member with the step-1 script and list all raw member names to confirm construction; then hand the archive to the target extraction flow. A hit is the member written outside the extraction root (PAYLOADER_MARKER appearing in the outside directory). Record the extractor's normalized member names versus actual on-disk locations as a contrast; clean up escaped files and restore the environment afterwards."
     },
     "mitigation": {
-     "zh": "逐项规范化并验证成员目标，拒绝父目录、绝对路径和链接成员，并在独立临时目录使用安全解压 API。修复后重放第 1 步构造的 zip-slip 归档，确认写入被拒绝且正常归档解压不受影响。",
+     "zh": "解压逐成员校验：拒绝绝对路径与父目录段，规范化后必须落在目标目录内，链接成员一律拒绝，解压置于独立临时目录。\n    dest = Path(dest_dir).resolve()\n    for zi in zf.infolist():\n        target = (dest / zi.filename).resolve()\n        if not str(target).startswith(str(dest) + os.sep):\n            raise ValueError(f'zip slip: {zi.filename}')",
      "en": "Normalize and verify each member target, reject parent-directory, absolute, and link members, and use safe extraction APIs in an isolated temp directory. After the fix, replay the step-1 zip-slip archive and confirm writes are rejected while normal archive extraction is unaffected."
     },
     "difficulty": "advanced"
@@ -18707,7 +18707,7 @@
      "en": "Construct tar and zip symlink members pointing at an out-of-root marker with the step-1 script, confirming member types and target paths first; then hand both archives to the target extraction flow. A hit is PAYLOADER_MARKER written outside the root after the extractor follows the link. Record link creation, write paths, and final on-disk locations; delete the links and escaped files immediately after testing."
     },
     "mitigation": {
-     "zh": "逐项规范化并验证成员目标，拒绝父目录、绝对路径和链接成员，并在独立临时目录使用安全解压 API。修复后重放第 1 步构造的链接归档，确认链接成员被拒绝且正常解压不受影响。",
+     "zh": "解压前检查成员 Unix 模式位，符号链接成员直接拒绝，其余成员再执行目标目录边界校验，解压置于独立临时目录。\n    import stat\n    mode = zi.external_attr >> 16\n    if stat.S_ISLNK(mode):\n        raise ValueError(f'symlink member rejected: {zi.filename}')\n    target = (dest / zi.filename).resolve()\n    if not str(target).startswith(str(dest) + os.sep): raise ValueError('escape')",
      "en": "Normalize and verify each member target, reject parent-directory, absolute, and link members, and use safe extraction APIs in an isolated temp directory. After the fix, replay the step-1 link archives and confirm link members are rejected while normal extraction is unaffected."
     },
     "difficulty": "advanced"
@@ -18954,7 +18954,7 @@
      "en": "Construct backslash-separated member names with the step-1 script, outputting repr, flag_bits, and the archive's raw bytes to confirm what the archive library actually preserves; then hand the archive to the target extraction flow. A hit is any layer folding backslashes into directory structure and writing PAYLOADER_MARKER. Record each layer's parsed member names as a contrast; keep raw-byte evidence for non-ASCII or specially encoded names too."
     },
     "mitigation": {
-     "zh": "逐项规范化并验证成员目标，拒绝父目录、绝对路径和链接成员，统一各层对文件名编码的解释，并在独立临时目录使用安全解压 API。修复后重放第 1 步归档，确认反斜杠成员被按字面拒绝且正常解压可用。",
+     "zh": "统一各层对成员名的解释：含反斜杠、绝对路径、盘符、父目录段或控制字节的文件名按字面拒绝，再执行目标目录边界校验。\n    if '\\\\' in zi.filename or zi.filename.startswith(('/', 'C:')) \\\n            or '..' in zi.filename.split('/') or '\\x00' in zi.filename:\n        raise ValueError(f'bad member name: {zi.filename}')",
      "en": "Normalize and verify each member target, reject parent-directory, absolute, and link members, unify filename-encoding interpretation across layers, and use safe extraction APIs in an isolated temp directory. After the fix, replay the step-1 archive and confirm backslash members are rejected literally while normal extraction works."
     },
     "difficulty": "advanced"
@@ -19201,7 +19201,7 @@
      "en": "Keeping the BASE and MARKER variables as in step 1, upload the text marker declared as type=image/jpeg, then upload a control with the honest declaration; a hit is HEAD read-back confirming storage with the declared type recorded as the classification basis, contrasting with the control. Record declared type, detected type, and stored name; if image-declared files enter the image-processing chain, separately assess parser exposure."
     },
     "mitigation": {
-     "zh": "生成服务端对象名，在目标文件系统语义下统一校验名称、内容和类型，声明仅作提示不作为依据；上传目录不可执行。修复后重放第 1 步两种声明，确认分类随真实内容而非声明变化且正常上传可用。",
+     "zh": "声明 Content-Type 仅作提示，类型判定以服务端内容检测为准并与扩展名交叉校验，对象名服务端生成，上传目录禁止执行。\n    $finfo = new finfo(FILEINFO_MIME_TYPE);\n    $real  = $finfo->file($_FILES['file']['tmp_name']);\n    if (!in_array($real, ['image/jpeg', 'image/png', 'application/pdf'], true))\n        { http_response_code(415); exit('type not allowed'); }\n    # nginx：上传目录禁执行\n    location /uploads/ { location ~* \\.php$ { return 403; } }",
      "en": "Generate server-side object names and validate name, content, and type uniformly under target filesystem semantics, treating declarations as hints only; keep upload directories non-executable. After the fix, replay both step-1 declarations and confirm classification follows real content, not declarations, while normal uploads work."
     },
     "difficulty": "advanced"
@@ -19561,7 +19561,7 @@
      "en": "Generate the four fixtures—JPEG/PNG/GIF/BMP magic headers with marker tails—per step 1, outputting file size and first 12 bytes to confirm construction; upload each fixture in turn. A hit is signature checks passing while downstream parsing diverges from the declared type (decode failure or entry into another handler). Record detection verdicts versus downstream handling per fixture as a contrast."
     },
     "mitigation": {
-     "zh": "生成服务端对象名，对上传内容执行完整解码校验而非仅查头部，并把上传目录设为不可执行。修复后重放第 1 步四类夹具，确认内容与签名不符的上传被拒绝且正常图片处理可用。",
+     "zh": "对上传内容执行完整解码校验而非只查 magic bytes：图片用解码器全量验证，校验与业务处理消费同一文件，上传目录不可执行。\n    from PIL import Image\n    with Image.open(tmp) as im:\n        im.verify()          # 完整结构校验\n    with Image.open(tmp) as im:\n        im.load()            # 强制全量解码，失败即拒绝",
      "en": "Generate server-side object names, perform full decoding validation on upload content rather than header-only checks, and keep upload directories non-executable. After the fix, replay the step-1 fixtures and confirm uploads whose content mismatches the signature are rejected while normal image processing works."
     },
     "difficulty": "advanced"
@@ -19816,7 +19816,7 @@
      "en": "Reusing the fixture's BASE and MARKER variables as in step 1, upload the same content under txt.jpg, double-extension, case, and semicolon filename variants; a hit is different filename variants producing different stored names and verdicts, showing at least two layers disagree on the boundary. After each upload, HEAD-read back and record stored name, Content-Type, and handler routing to form a parsing-difference matrix."
     },
     "mitigation": {
-     "zh": "生成服务端对象名，在目标文件系统语义下统一校验名称、内容和类型，让入口与存储消费同一规范化结果；上传目录不可执行。修复后重放第 1 步全部变体，确认存储名与判定一致且正常上传可用。",
+     "zh": "存储名由服务端生成（随机对象名+白名单扩展名），入口、存储与静态服务层消费同一规范化结果，消除多扩展名解释差异；上传目录不可执行。\n    $ext = strtolower(pathinfo($_FILES['file']['name'], PATHINFO_EXTENSION));\n    if (!in_array($ext, ['jpg', 'jpeg', 'png', 'pdf'], true))\n        { http_response_code(415); exit; }\n    $stored = bin2hex(random_bytes(16)) . '.' . $ext;",
      "en": "Generate server-side object names, validate name, content, and type uniformly under target filesystem semantics, and have entry and storage consume the same normalized result; keep upload directories non-executable. After the fix, replay all step-1 variants and confirm stored names and verdicts agree while normal uploads work."
     },
     "difficulty": "advanced"
@@ -20084,7 +20084,7 @@
      "en": "As in step 1, send a fixed-length multipart message (boundary PAYLOADER_BOUNDARY) over a raw socket to 127.0.0.1:8080 and read back the full response; a hit is the application's parsed part name, type, or storage result diverging from the message literal, showing cross-layer boundary-handling differences. Record alongside a curl standard-upload control; also verify Content-Length versus actual byte count is adopted consistently across layers."
     },
     "mitigation": {
-     "zh": "生成服务端对象名，对上传内容统一解析与校验，边界处理遵循规范并让各层消费同一结果；上传目录不可执行。修复后重放第 1 步手工报文与标准上传对照，确认解析结论一致且正常上传可用。",
+     "zh": "各层解析策略对齐：入口对 multipart 边界与部件类型做严格格式校验，应用以单一解析器消费报文，歧义报文直接 400。\n    # ModSecurity：multipart 边界格式非法即拒绝\n    SecRule REQUEST_HEADERS:Content-Type \"!@rx ^multipart/form-data;[ \\t]*boundary=[A-Za-z0-9'()+_,./:=? -]{1,70}$\" \\\n        \"id:1001,phase:1,deny,status:400,msg:'malformed multipart boundary'\"",
      "en": "Generate server-side object names, parse and validate uploads uniformly, follow the specification for boundary handling, and have all layers consume one result; keep upload directories non-executable. After the fix, replay the step-1 hand-crafted message against a standard-upload control and confirm parsing agrees while normal uploads work."
     },
     "difficulty": "advanced"
@@ -20347,7 +20347,7 @@
      "en": "Copy the fixture JPG into a temp working directory as in step 1, write PAYLOADER_MARKER into Comment, XMP Description, and ICC ProfileDescription with exiftool, and read back with -json; a hit is all three fields written and readable as expected, proving controllable metadata fields reach downstream parsers. Then have the target business process the file within scope, observing whether thumbnailing or indexing reads these fields, and record processing logs."
     },
     "mitigation": {
-     "zh": "生成服务端对象名，上传时剥离或重写非必要元数据字段，并对下游解析器启用严格字段允许列表；处理容器隔离运行。修复后重放第 1 步写入流程，确认受控字段被清除且正常图片功能可用。",
+     "zh": "上传入库前剥离非必要元数据字段，下游解析器以最小权限在隔离环境运行并启用严格字段允许列表。\n    exiftool -all= -overwrite_original \"$tmp/$stored\"   # 剥离全部元数据\n    # 下游解析隔离：无网络、独立文件系统视图\n    firejail --noprofile --net=none --private=/srv/sandbox -- exiftool -ver",
      "en": "Generate server-side object names, strip or rewrite non-essential metadata fields at upload, and enforce strict field allowlists on downstream parsers; run processing containers isolated. After the fix, replay the step-1 write flow and confirm controlled fields are removed while normal image features work."
     },
     "difficulty": "advanced"
@@ -20602,7 +20602,7 @@
      "en": "As in step 1, send a multipart message with a NUL byte in the filename over a raw socket and read back the full response, recording the application-layer stored name versus the actual on-disk name; a hit is different truncation points at the two layers making the stored name diverge from the validated name (e.g., the post-NUL extension truncated or kept). Contrast with a normal no-NUL upload baseline; when negative, record the runtime version showing NUL is uniformly rejected."
     },
     "mitigation": {
-     "zh": "拒绝控制字节和动态路径，文件名在所有层消费同一规范化结果，改用服务端对象名；上传目录不可执行。修复后重放第 1 步 NUL 报文与正常对照，确认截断差异消失且正常上传可用。",
+     "zh": "原始文件名拒绝一切控制字节，各层消费同一净化结果；存储名由服务端生成，杜绝 NUL 截断差异；上传目录不可执行。\n    if (preg_match('/[\\x00-\\x1f\\x7f]/', $_FILES['file']['name'] ? '')) {\n        http_response_code(400); exit('bad filename');\n    }\n    $stored = bin2hex(random_bytes(16)) . '.' . $ext;",
      "en": "Reject control bytes and dynamic paths, have all layers consume one normalized filename, and switch to server-side object names; keep upload directories non-executable. After the fix, replay the step-1 NUL message against a normal control and confirm the truncation divergence is gone while normal uploads work."
     },
     "difficulty": "advanced"
@@ -20994,7 +20994,7 @@
      "en": "As in step 1, submit the three overlong variant classes—/./ padding, long letter suffixes, and multi-dot suffixes—one by one, recording sent length and final resolved filename per request; a hit is any variant pointing at the out-of-root PAYLOADER_MARKER after truncation. Contrast the length accepted at validation versus what the filesystem actually processed; when negative, record each layer's length cap as evidence modern systems truncate uniformly."
     },
     "mitigation": {
-     "zh": "拒绝控制字节和动态路径，改用逻辑标识允许列表，统一各层长度上限并在打开前校验最终路径。修复后重放第 1 步全部超长变体，确认截断差异消失且合法读取保持可用。",
+     "zh": "各层统一长度上限（如 255 字节）并在超限时直接拒绝而非截断，最终路径以 realpath 校验根目录前缀后才打开。\n    if (strlen($name) > 255) { http_response_code(400); exit('name too long'); }\n    $real = realpath($baseDir . '/' . $name);\n    if ($real === false || strpos($real, $baseReal . DIRECTORY_SEPARATOR) !== 0)\n        { http_response_code(403); exit; }",
      "en": "Reject control bytes and dynamic paths, switch to logical-identifier allowlists, unify length caps across layers, and validate the final path before opening. After the fix, replay all step-1 overlong variants and confirm the truncation divergence is gone while legitimate reads keep working."
     },
     "difficulty": "advanced"
@@ -21679,7 +21679,7 @@
      "en": "Use the step 1 command to carry a local file entity in an SVG text node, replacing /etc/passwd with a random marker.txt inside the image worker's sandbox; trigger a preview or rasterization job, and marker content in the output text confirms the SVG entry reads local files. If the preview is an image, compare pixels or OCR the text to judge."
     },
     "mitigation": {
-     "zh": "SVG 处理器禁用 DTD 与外部实体，图片 worker 无网络、低权限并以最小文件视图运行；修复后实体 SVG 处理应报错或输出不含 marker 内容。",
+     "zh": "SVG 处理器禁用 DTD 与外部实体，图片 worker 无网络、低权限并以最小文件视图运行：\n    DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();\n    dbf.setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true);\n    dbf.setFeature(\"http://xml.org/sax/features/external-general-entities\", false);\n    dbf.setFeature(\"http://xml.org/sax/features/external-parameter-entities\", false);\n    dbf.setXIncludeAware(false);",
      "en": "Disable DTDs and external entities in the SVG processor, and run image workers network-free with low privileges and a minimal file view; after the fix, processing entity-bearing SVGs must error or produce output without marker content."
     },
     "difficulty": "advanced"
@@ -21978,7 +21978,7 @@
      "en": "Use the step 1 command to request the metadata address via a general entity, redirecting the address to an isolated simulated endpoint returning only a short random XML marker; the simulated endpoint's marker appearing in parse results confirms the parser emits metadata-address requests. Never touch the real metadata service — this proves only the request behavior itself."
     },
     "mitigation": {
-     "zh": "解析器禁用外部实体，主机层对元数据服务实施访问控制（如 IMDSv2），应用出口阻断 169.254.169.254；修复后实体请求元数据地址应失败且无回显。",
+     "zh": "解析器禁用外部实体；云主机强制 IMDSv2 并在应用出口阻断元数据地址段：\n    DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();\n    dbf.setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true);\n    # AWS：强制 IMDSv2 令牌访问\n    aws ec2 modify-instance-metadata-options --instance-id i-0abc123 \\\n      --http-tokens required --http-endpoint enabled\n    # 出口防火墙阻断链路本地段\n    nft add rule inet filter output ip daddr 169.254.0.0/16 drop",
      "en": "Disable external entities in the parser, enforce access controls on the metadata service at the host layer (e.g., IMDSv2), and block 169.254.169.254 at application egress; after the fix, entity requests to the metadata address must fail with no echo."
     },
     "difficulty": "advanced"
@@ -22254,7 +22254,7 @@
      "en": "Use the step 1 command to carry a local file entity in SpreadsheetML shape, submitting at an entry confirmed to receive raw XML with the system path replaced by a random marker; marker content in parse results confirms this XML entry reads local files. This line proves only the bare sst-shaped entry and must not be treated as a full XLSX test — attribute the two separately."
     },
     "mitigation": {
-     "zh": "裸 XML 入口与 OOXML 解析栈统一禁用 DTD 与外部实体，按入口维护回归矩阵并明确各入口接收的形态；修复后重放实体样例应报禁止错误。",
+     "zh": "裸 XML 入口与 OOXML 解析栈统一禁用 DTD 与外部实体，按入口维护回归矩阵并明确各入口接收的形态：\n    from lxml import etree\n    if b'<!DOCTYPE' in raw[:512]:\n        raise ValueError('拒绝携带 DTD 的裸 XML')\n    root = etree.fromstring(raw, etree.XMLParser(\n        load_dtd=False, resolve_entities=False, no_network=True))",
      "en": "Disable DTDs and external entities uniformly across bare-XML entries and the OOXML parsing stack, maintain an entry-level regression matrix, and document which shape each entry accepts; after the fix, replaying entity samples must raise forbidden errors."
     },
     "difficulty": "advanced"
@@ -22689,7 +22689,7 @@
      "en": "Use the step 1 command to inject file, proc, metadata, and Windows-path entity samples into DOCX document.xml line by line; markers in parse logs or document content confirm each target is reachable. Rewrite original targets as sandbox marker files or isolated HTTP endpoints beforehand, modify only word/document.xml keeping valid ZIP structure, then trigger preview or conversion after upload, logging task IDs and conversion logs."
     },
     "mitigation": {
-     "zh": "在所有 Office 文档解析器禁用 DOCTYPE、外部通用实体与参数实体，转换服务置于无网络只读低权限沙箱；解包前后校验文件类型与部件清单，监控文档任务外连并维护恶意 DOCX 回归样例。",
+     "zh": "所有 Office 解析器禁用 DOCTYPE 与外部实体，转换服务置于无网络只读低权限沙箱，解包校验部件清单：\n    DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();\n    dbf.setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true);\n    dbf.setFeature(\"http://xml.org/sax/features/external-general-entities\", false);\n    // 部件白名单\n    Set<String> ok = Set.of(\"[Content_Types].xml\", \"word/document.xml\");\n    if (!ok.contains(entry.getName())) throw new IOException(\"非法部件: \" + entry.getName());",
      "en": "Disable DOCTYPE, external general entities, and parameter entities across all Office document parsers, running conversion services in network-free read-only low-privilege sandboxes; validate file types and part inventories before and after unpacking, monitor document-task egress, and maintain malicious DOCX regression samples."
     },
     "difficulty": "advanced"
@@ -22986,7 +22986,7 @@
      "en": "Use the step 1 command to carry a gopher:// request in a DOCX entity; your resolver receiving it confirms the gopher wrapper was resolved. Never send raw Redis INFO sequences — replace the URI with a single side-effect-free resolver marker, trigger preview or conversion after upload, and correlate parse logs by task ID. Record the error shape as archived negative evidence when wrapper resolution fails."
     },
     "mitigation": {
-     "zh": "文档解析器禁用外部实体并把出站协议限制为白名单，明确拒绝 gopher 等非业务 scheme；转换容器无网络运行，对协议委托与外连事件建立监控。",
+     "zh": "文档解析器禁用外部实体并把出站协议限制为白名单，明确拒绝 gopher 等非业务 scheme，转换容器无网络运行：\n    DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();\n    dbf.setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true);\n    dbf.setFeature(\"http://xml.org/sax/features/external-general-entities\", false);\n    # docker-compose.yml：转换容器断网只读\n    services:\n      doc-convert:\n        network_mode: \"none\"\n        read_only: true",
      "en": "Disable external entities in document parsers and allowlist outbound protocols, explicitly rejecting non-business schemes like gopher; run conversion containers without networking and monitor protocol delegation and egress events."
     },
     "difficulty": "advanced"
@@ -23258,7 +23258,7 @@
      "en": "Use the step 1 command to carry php://filter reads in a DOCX entity; the Base64 result decoding to marker content confirms the filter read chain. Never read source paths — point resource at a marker file holding only random values inside an isolated PHP fixture, then trigger preview or text extraction after upload and record parse logs. Count as positive only when the decoded result matches the preset marker exactly."
     },
     "mitigation": {
-     "zh": "文档处理链禁用外部实体与 stream wrapper，PHP 环境按需关闭非业务协议包装器；转换服务以最小文件视图运行，对 filter 类实体访问建立审计与回归。",
+     "zh": "文档处理链禁用外部实体与 stream wrapper，PHP 按需关闭非业务协议包装器，转换服务以最小文件视图运行并对 filter 类实体访问审计：\n    ; php.ini：关闭 URL 包装器（php://filter 随之失效）\n    allow_url_fopen = Off\n    allow_url_include = Off\n    // 解析前拒绝任何 DTD（PHP 8+ 默认不加载外部实体）\n    if (preg_match('/<!DOCTYPE/i', substr($xmlDoc, 0, 2048))) {\n        throw new RuntimeException('文档携带 DTD，已拒绝');\n    }",
      "en": "Disable external entities and stream wrappers in document chains, closing non-business protocol wrappers in PHP as needed; run conversion services with a minimal file view, auditing and regression-testing filter-class entity access."
     },
     "difficulty": "advanced"
@@ -23539,7 +23539,7 @@
      "en": "Use the step 1 command to carry the expect:// wrapper in a DOCX entity; the wrapper returning a random marker confirms the expect execution boundary was reached. Never run the raw id command — verify only with a registered, subprocess-free test wrapper; record the PHP expect extension state as a precondition first, then assess command-execution impact separately once exposure is confirmed. Keep the test wrapper semantically isolated from real commands, producing no subprocesses at any point."
     },
     "mitigation": {
-     "zh": "生产 PHP 禁用 expect 扩展，Office 解析器禁用外部实体与自定义 wrapper；修复后 expect 实体应报未知 wrapper 且无 marker 返回，并在部署基线中固化。",
+     "zh": "生产 PHP 禁用 expect 扩展，Office 解析器禁用外部实体与自定义 wrapper，并在部署基线中固化：\n    ; php.ini：注释移除 expect 扩展\n    ; extension=expect\n    allow_url_fopen = Off\n    if (preg_match('/<!DOCTYPE|expect:\\/\\//i', $xmlDoc)) {\n        throw new RuntimeException('禁止的实体来源');\n    }",
      "en": "Disable the expect extension in production PHP and forbid external entities and custom wrappers in Office parsers; after the fix, expect entities must report an unknown wrapper with no marker returned, locked into the deployment baseline."
     },
     "difficulty": "advanced"
@@ -23802,7 +23802,7 @@
      "en": "Use the step 1 command to pull a DTD via an external parameter entity in DOCX document.xml, with {LAB_OAST} rendered as a single-token endpoint returning only an empty valid DTD; receiving the single DTD request confirms the external parameter-entity fetch boundary. Trigger preview or conversion proactively after upload, correlating request origins by token and task ID. Trigger one more task to confirm the request is stable rather than sporadic."
     },
     "mitigation": {
-     "zh": "Office 解析器禁用外部 DTD 子集与参数实体，转换服务出站默认拒绝；修复后重放应报禁止错误且监听端无请求。",
+     "zh": "Office 解析器禁用外部 DTD 子集与参数实体，转换服务出站默认拒绝：\n    DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();\n    dbf.setFeature(\"http://apache.org/xml/features/nonvalidating/load-external-dtd\", false);\n    dbf.setFeature(\"http://xml.org/sax/features/external-parameter-entities\", false);\n    dbf.setFeature(\"http://xml.org/sax/features/external-general-entities\", false);",
      "en": "Disable external DTD subsets and parameter entities in Office parsers with conversion-service egress default-denied; after the fix, replays must raise forbidden errors with zero listener requests."
     },
     "difficulty": "advanced"
@@ -24083,7 +24083,7 @@
      "en": "Use the step 1 command to include an external resource inside the DOCX via XInclude; marker content in the inclusion result confirms XInclude processing is on. Point the file URI at a marker.txt holding only random values in the working directory, ensure the processor cannot reach host paths, then trigger preview or text extraction after upload recording parse output. With XInclude off, include elements should remain verbatim in output as the control."
     },
     "mitigation": {
-     "zh": "Office 文档解析器不启用 XInclude 处理，必须使用时以资源白名单与拒绝 file URI 的 resolver 约束；转换容器最小文件视图，对 include 元素与最终 URI 建立审计。",
+     "zh": "Office 文档解析器不启用 XInclude 处理，必须使用时以资源白名单与拒绝 file URI 的 resolver 约束，并对 include 元素与最终 URI 审计：\n    DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();\n    dbf.setXIncludeAware(false);   // 显式固化，默认即 false\n    dbf.setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true);\n    // 必须启用时仅放行资产域\n    if (!href.startsWith(\"https://docs.example.com/assets/\"))\n        throw new SAXException(\"include 拒绝: \" + href);",
      "en": "Do not enable XInclude processing in Office document parsers; when unavoidable, constrain with resource allowlists and resolvers rejecting file URIs; give conversion containers a minimal file view, auditing include elements and final URIs."
     },
     "difficulty": "advanced"
@@ -24355,7 +24355,7 @@
      "en": "Use the step 1 command to inject file, proc, metadata, and loopback entity samples into SharedStrings line by line; markers in parse logs or cell content confirm each target is reachable. Preserve valid workbook relationships and the shared-string index, swap system paths and loopback addresses for import-worker sandbox markers or isolated HTTP endpoints, trigger real imports in batches, and record job logs."
     },
     "mitigation": {
-     "zh": "禁用表格解析栈中的 DTD、外部实体与外部 schema，工作簿导入在无网络低权限只读沙箱执行；校验 OOXML 部件、关系与压缩比，监控作业异常文件访问并维护恶意 sharedStrings.xml 回归文件。",
+     "zh": "表格解析栈禁用 DTD、外部实体与外部 schema，工作簿导入在无网络低权限只读沙箱执行，校验 OOXML 部件与压缩比并维护回归文件：\n    from lxml import etree\n    raw = zf.read('xl/sharedStrings.xml')\n    if b'<!DOCTYPE' in raw[:512]: raise ValueError('禁止 DTD')\n    sst = etree.fromstring(raw, etree.XMLParser(\n        load_dtd=False, resolve_entities=False, no_network=True))",
      "en": "Disable DTDs, external entities, and external schemas in the spreadsheet parsing stack, running workbook imports in network-free low-privilege read-only sandboxes; validate OOXML parts, relationships, and compression ratios, monitor abnormal job file access, and maintain malicious sharedStrings.xml regression files."
     },
     "difficulty": "advanced"
@@ -24629,7 +24629,7 @@
      "en": "Use the step 1 command to carry a gopher:// request in a SharedStrings entity; your resolver receiving one request confirms the gopher wrapper was resolved. Never send raw Redis INFO data — use a single side-effect-free resolver marker instead, triggering real imports in an isolated environment and correlating job logs. Treat successful imports without egress records as negative and recheck parser protocol settings."
     },
     "mitigation": {
-     "zh": "表格解析栈禁用外部实体并把出站协议限制为白名单，明确拒绝 gopher 等非业务 scheme；导入 worker 无网络运行并监控协议委托事件。",
+     "zh": "表格解析栈禁用外部实体并把出站协议限制为白名单，明确拒绝 gopher 等非业务 scheme，导入 worker 无网络运行并监控协议委托事件：\n    from lxml import etree\n    parser = etree.XMLParser(load_dtd=False, resolve_entities=False, no_network=True)\n    etree.fromstring(raw, parser)   # 外部实体不解析\n    # 导入容器断网只读\n    docker run --network none --read-only -v /import:/in:ro importer:1.0",
      "en": "Disable external entities in the spreadsheet parsing stack and allowlist outbound protocols, explicitly rejecting non-business schemes like gopher; run import workers without networking and monitor protocol-delegation events."
     },
     "difficulty": "advanced"
@@ -24894,7 +24894,7 @@
      "en": "Use the step 1 command to carry php://filter reads in a SharedStrings entity; the Base64 result decoding to a marker confirms the filter read boundary. Never read source system paths — point resource at a random marker file in an isolated PHP fixture, trigger real import or preview, and record parse logs. Record negatives on decode failure or content mismatch and check the stream wrapper state."
     },
     "mitigation": {
-     "zh": "表格解析栈禁用外部实体与 stream wrapper，导入 worker 以最小文件视图运行；对 filter 类实体访问建立审计与回归。",
+     "zh": "表格解析栈禁用外部实体与 stream wrapper，导入 worker 以最小文件视图运行，对 filter 类实体访问建立审计与回归：\n    ; php.ini：关闭 URL 包装器使 php://filter 失效\n    allow_url_fopen = Off\n    if (preg_match('/<!DOCTYPE|php:\\/\\//i', $sstXml)) {\n        throw new RuntimeException('禁止的实体来源');\n    }\n    $dom = new DOMDocument();\n    $dom->loadXML($sstXml, LIBXML_NONET);",
      "en": "Disable external entities and stream wrappers in the spreadsheet parsing stack, running import workers with a minimal file view; audit and regression-test filter-class entity access."
     },
     "difficulty": "advanced"
@@ -25159,7 +25159,7 @@
      "en": "Use the step 1 command to carry the expect:// wrapper in a SharedStrings entity; the wrapper returning the current task marker confirms the expect execution boundary was reached. Never run the raw id command — use only a subprocess-free test wrapper; record the expect extension state first, then correlate results by task after triggering imports in an isolated environment. Archive the error shape as negative evidence when the wrapper is unavailable."
     },
     "mitigation": {
-     "zh": "生产 PHP 禁用 expect 扩展，表格解析栈禁用外部实体与自定义 wrapper；修复后 expect 实体应报未知 wrapper 且无 marker 返回。",
+     "zh": "生产 PHP 禁用 expect 扩展，表格解析栈禁用外部实体与自定义 wrapper：\n    ; php.ini：注释移除 expect 扩展\n    ; extension=expect\n    allow_url_fopen = Off\n    if (preg_match('/<!DOCTYPE|expect:\\/\\//i', $sstXml)) {\n        throw new RuntimeException('禁止的实体来源');\n    }",
      "en": "Disable the expect extension in production PHP and forbid external entities and custom wrappers in the spreadsheet parsing stack; after the fix, expect entities must report an unknown wrapper with no marker returned."
     },
     "difficulty": "advanced"
@@ -25718,7 +25718,7 @@
      "en": "Use the step 1 command to read INFORMATION_SCHEMA table and column listings one by one; echoed table/column names confirm the standard catalog is enumerable. First confirm dialect, column count, and the dedicated schema, replace users with a dummy table, and add schema filtering with a result cap rather than sweeping the whole production catalog. Cap result sets with LIMIT so large catalogs never drag down queries."
     },
     "mitigation": {
-     "zh": "参数化查询，动态标识符经服务端映射，数据库账户只授予业务对象权限并尽可能限制目录可见性；错误不泄露 schema，异常 INFORMATION_SCHEMA 访问进入审计与告警。",
+     "zh": "参数化查询与动态标识符服务端映射，数据库账户仅授予业务对象权限并限制目录可见性，异常 INFORMATION_SCHEMA 访问进入审计告警。\n    // Java：参数化 + 标识符固定\n    try (PreparedStatement ps = conn.prepareStatement(\n            \"SELECT id, title FROM posts WHERE uid = ?\")) {\n        ps.setLong(1, uid);\n    }\n    -- MySQL：最小权限账户\n    CREATE USER app@'10.%' IDENTIFIED BY '<strong_pw>';\n    GRANT SELECT, INSERT, UPDATE ON appdb.* TO app@'10.%';",
      "en": "Parameterize queries, map dynamic identifiers server-side, grant the database account only business-object privileges, and limit catalog visibility where feasible; keep schemas out of errors and route abnormal INFORMATION_SCHEMA access into audit and alerting."
     },
     "difficulty": "intermediate"
@@ -26075,7 +26075,7 @@
      "en": "Use the step 1 command to inject file, proc, metadata, and loopback samples line by line via SVG external general entities; markers appearing in rendered text or logs confirm each entity is reachable. Before running, swap real paths, loopback, and metadata addresses for worker-sandbox markers or isolated HTTP tokens; baseline with a legitimate SVG upload first, then run variants one by one."
     },
     "mitigation": {
-     "zh": "上传后立即对 SVG 安全解析或转位图，后续只消费净化产物；为所有图片库禁用外部实体与远程资源，任务容器无出站网络与敏感文件访问；对异步任务记录哈希、异常与网络事件。",
+     "zh": "上传后立即对 SVG 安全解析或转位图，后续只消费净化产物；为所有图片库禁用外部实体与远程资源，任务容器无出站网络与敏感文件访问。\n    from lxml import etree\n    parser = etree.XMLParser(resolve_entities=False, no_network=True,\n                             load_dtd=False, dtd_validation=False)\n    tree = etree.fromstring(svg_bytes, parser)",
      "en": "Sanitize or bitmap-convert SVGs immediately after upload so only clean artifacts flow onward; disable external entities and remote resources in all image libraries, and run task containers without egress or sensitive-file access; log hashes, exceptions, and network events for async tasks."
     },
     "difficulty": "advanced"
@@ -26356,7 +26356,7 @@
      "en": "Use the step 1 command to carry a gopher:// request in an SVG entity; your resolver receiving one request confirms the gopher wrapper was resolved. Never send raw Redis INFO data — replace the URI with a single side-effect-free resolver marker; baseline with a legitimate SVG upload before triggering parsing. Prove only wrapper resolution — protocol side-effect data is never sent."
     },
     "mitigation": {
-     "zh": "图片处理链禁用外部实体并把出站协议限制为白名单（明确拒绝 gopher 等非业务 scheme）；任务容器无网络运行，对协议委托与网络事件建立监控。",
+     "zh": "图片处理链禁用外部实体，并把出站协议收敛为白名单（明确拒绝 gopher 等非业务 scheme），任务容器无网络运行并监控协议委托与网络事件。\n    db.setEntityResolver((pub, sys) -> {\n        URI u = URI.create(sys);\n        if (!\"https\".equals(u.getScheme()))\n            throw new SAXException(\"blocked scheme: \" + u.getScheme());\n        return null;\n    });",
      "en": "Disable external entities in the image-processing chain and allowlist outbound protocols (explicitly rejecting non-business schemes like gopher); run task containers without networking and monitor protocol delegation and network events."
     },
     "difficulty": "advanced"
@@ -26620,7 +26620,7 @@
      "en": "Use the step 1 command to carry php://filter reads in an SVG entity; the Base64 result decoding to a single-line marker confirms the filter read boundary. Never read original system paths — point resource at a single-line random marker inside an isolated PHP fixture; baseline normal thumbnails before triggering preview or conversion tasks. Record negatives when decoded content mismatches the preset marker and recheck wrapper settings."
     },
     "mitigation": {
-     "zh": "图片处理链禁用外部实体与 stream wrapper，PHP 环境按需关闭非业务协议包装器；任务容器最小文件视图，对 filter 类实体访问建立审计与回归。",
+     "zh": "图片处理链禁用外部实体与 stream wrapper，PHP 按需关闭非业务协议包装器；任务容器最小文件视图，对 filter 类实体访问审计。\n    libxml_set_external_entity_loader(fn() => null);\n    $dom->loadXML($svg, LIBXML_NONET);\n    ; php.ini：关闭 URL 型包装器\n    allow_url_fopen = Off",
      "en": "Disable external entities and stream wrappers in the image-processing chain, closing non-business protocol wrappers in PHP as needed; give task containers a minimal file view with audits and regressions over filter-class entity access."
     },
     "difficulty": "advanced"
@@ -26893,7 +26893,7 @@
      "en": "Use the step 1 command to carry the expect:// wrapper in an SVG entity; the wrapper returning the current task marker confirms the expect execution boundary was reached. Never run the raw id command — use only a subprocess-free test wrapper; baseline with a legitimate SVG upload, then trigger within preview or conversion tasks. Archive the error shape as negative evidence when the extension is disabled."
     },
     "mitigation": {
-     "zh": "生产 PHP 禁用 expect 扩展，SVG/XML 解析器禁用外部实体与自定义 wrapper；修复后 expect 实体应报未知 wrapper 且无 marker 返回，并在基线中固化。",
+     "zh": "生产 PHP 禁用 expect 扩展，SVG/XML 解析器禁用外部实体与自定义 wrapper；expect:// 应报未知 wrapper 且无命令执行。\n    ; php.ini：注释扩展加载\n    ;extension=expect\n    allow_url_include = Off\n    libxml_set_external_entity_loader(fn() => null);",
      "en": "Disable the expect extension in production PHP and forbid external entities and custom wrappers in SVG/XML parsers; after the fix, expect entities must report an unknown wrapper with no marker returned, locked into the baseline."
     },
     "difficulty": "advanced"
@@ -27142,7 +27142,7 @@
      "en": "Use the step 1 command to include an external resource in SVG text nodes via XInclude; marker content in the included result confirms XInclude processing is on. Point the file URI at a marker.txt holding only random values inside the worker's working directory, baseline with a legitimate SVG upload, then trigger preview or conversion. Treat empty inclusion results as negative and recheck the processor XInclude switch."
     },
     "mitigation": {
-     "zh": "SVG/XML 解析器不启用 XInclude 处理，必须使用时以资源白名单与拒绝 file URI 的 resolver 约束；worker 无网络低权限，对 include 元素与最终 URI 建立审计。",
+     "zh": "SVG/XML 解析器不启用 XInclude 处理；必须使用时以资源白名单与拒绝 file URI 的 resolver 约束，worker 无网络低权限并审计 include 元素。\n    DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();\n    dbf.setXIncludeAware(false); // 不启用 XInclude\n    db.setEntityResolver((p, s) -> {\n        if (!s.startsWith(\"https://\")) throw new SAXException(\"blocked\");\n        return null;\n    });",
      "en": "Do not enable XInclude processing in SVG/XML parsers; when unavoidable, constrain with resource allowlists and resolvers rejecting file URIs; keep workers network-free with low privileges, auditing include elements and final URIs."
     },
     "difficulty": "advanced"
@@ -27406,7 +27406,7 @@
      "en": "Use the step 1 command to submit variants one by one against authorized test-account fields, compared with random wrong passwords, quote-control inputs, and valid logins; an always-true variant returning login success confirms the authentication bypass. Never spray real admin accounts; once a session is established, confirm identity by accessing side-effect-free resources belonging only to the test principal."
     },
     "mitigation": {
-     "zh": "所有登录查询参数化并严格类型绑定，不动态拼接标识符或条件；密码用独立哈希验证而非 SQL 明文比较，统一失败响应并限速，监控查询语法错误与异常会话建立。",
+     "zh": "登录查询全部参数化并严格类型绑定，不动态拼接标识符或条件；密码用独立哈希验证而非 SQL 明文比较，统一失败响应并限速。\n    $stmt = $pdo->prepare('SELECT id, password_hash FROM users WHERE username = ?');\n    $stmt->execute([$username]);\n    $u = $stmt->fetch();\n    if (!$u || !password_verify($password, $u['password_hash'])) {\n        http_response_code(401);\n        exit(json_encode(['error' => 'invalid credentials']));\n    }",
      "en": "Parameterize all login queries with strict type binding and never concatenate identifiers or conditions; verify passwords via independent hashing rather than SQL plaintext comparison, unify failure responses with rate limits, and monitor query syntax errors and abnormal session establishments."
     },
     "difficulty": "intermediate"
@@ -27691,7 +27691,7 @@
      "en": "Use the step 1 command to store the expression in an experimental field and trigger one doT render; 49 in the same task's artifact proves evaluation. Establish a plain-text control first, then store the single arithmetic marker and correlate queue, compilation logs, and the artifact's 49, excluding client-side or literal echo. Confirm only across repeated task runs with consistent results, re-testing single hits to rule out caches."
     },
     "mitigation": {
-     "zh": "使用固定 doT 模板并只传入结构化数据，禁止从持久化字段构造模板源码，限制模板上下文并回归字面输出。",
+     "zh": "使用固定 doT 模板并只传入结构化数据，禁止从持久化字段构造模板源码，限制模板上下文并回归字面输出：\n    const dot = require('dot');\n    const render = dot.template(fs.readFileSync('views/profile.def', 'utf8'));\n    res.send(render({ bio: row.bio }));   // 模板内 {{= it.bio }} 仅取值\n    // 禁止 dot.template(row.bio)：存储字段不是模板源码",
      "en": "Use fixed doT templates passing only structured data, forbid constructing template source from persisted fields, restrict template context, and regression-test literal output."
     },
     "difficulty": "advanced"
@@ -27977,7 +27977,7 @@
      "en": "Use the step 1 command to submit the minimal external-entity declaration fragment embedded in a complete XML document the target accepts; pass/reject differences between edge device and backend parser confirm the DOCTYPE processing boundary, with system paths replaced by non-sensitive markers in the isolated environment. Send a DOCTYPE-free valid XML baseline first, then correlate WAF, application, and parser logs for marker appearances."
     },
     "mitigation": {
-     "zh": "在每个 XML 入口禁用 DOCTYPE、外部通用实体、参数实体与 XInclude，并限制解析任务的文件系统与出站网络；WAF 仅作补充控制，修复测试直接覆盖实际解析库与异步处理链。",
+     "zh": "XML 入口统一禁用 DOCTYPE 与外部实体、XInclude，不依赖 WAF 文法过滤；解析任务限制文件系统与出站网络。Java 解析器配置：\n    DocumentBuilderFactory f = DocumentBuilderFactory.newInstance();\n    f.setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true);\n    f.setXIncludeAware(false);\n    from lxml import etree\n    parser = etree.XMLParser(resolve_entities=False, load_dtd=False, no_network=True)",
      "en": "Disable DOCTYPE, external general entities, parameter entities, and XInclude at every XML entry while limiting parse-task filesystems and egress; keep the WAF as a supplementary control, with fix tests directly covering the actual parsing libraries and async processing chains."
     },
     "difficulty": "advanced"
@@ -28180,7 +28180,7 @@
      "en": "Start the loopback marker service within scope, then submit ?file=http://127.0.0.1:18080/PAYLOADER_MARKER.txt to the inclusion endpoint as in step 1; a hit requires both a GET for that URL in the marker service log and the marker text in the application response, proving remote content reached server-side inclusion semantics. Record the server first packet and include call stack for each request as complete RFI evidence."
     },
     "mitigation": {
-     "zh": "禁止用户输入参与模板或文件路径，关闭不需要的远程包含能力，使用固定资源映射与 allowlist，并对 URL 规范化后再次授权；运行身份应限制网络与文件权限。修复后重放第 1 步请求，确认 marker 服务不再收到请求。",
+     "zh": "禁止用户输入参与模板或文件路径，关闭远程包含能力，include 仅接受白名单脚本，运行身份限制网络与文件权限：\n    ; php.ini\n    allow_url_include = Off\n    allow_url_fopen = Off\n    $pages = [\"home\" => \"home.php\"];\n    if (!isset($pages[$p])) { http_response_code(403); exit; }\n    include __DIR__ . \"/\" . $pages[$p];",
      "en": "Keep user input out of template and file paths, disable unneeded remote-inclusion capability, use fixed resource mapping with an allowlist, and re-authorize after URL normalization; run with restricted network and file permissions. After the fix, replay the step-1 request and confirm the marker service receives nothing."
     },
     "difficulty": "advanced"
@@ -28461,7 +28461,7 @@
      "en": "Submit the HtTp:// and HTTP:// case forms in turn as in step 1, one line per request, recording the validated value, parser normalization result, and marker first packet each time; a hit is both forms returning marker content with the parse log recording the same normalized scheme. A hit proves scheme validation can be bypassed via case normalization; extend to mixed case and other protocol forms next."
     },
     "mitigation": {
-     "zh": "对 URL 先规范化再做 scheme allowlist 校验，拒绝用户输入参与模板或文件路径，关闭不需要的远程包含；运行身份限制网络与文件权限。修复后重放第 1 步两种大小写形式，确认校验层与解析层结论一致且请求被统一拒绝。",
+     "zh": "对 URL 先规范化（含 scheme 小写）再做 allowlist 校验，拒绝用户输入参与文件路径，关闭远程包含：\n    $u = parse_url(strtolower($url));\n    if (($u[\"scheme\"] ? \"\") !== \"https\" || !in_array($u[\"host\"] ? \"\", $allowHosts, true)) {\n        http_response_code(403); exit;\n    }",
      "en": "Normalize URLs before scheme allowlist validation, keep user input out of template and file paths, and disable unneeded remote inclusion; restrict runtime network and file permissions. After the fix, replay both case forms from step 1 and confirm validator and parser agree and requests are uniformly rejected."
     },
     "difficulty": "advanced"
@@ -28734,7 +28734,7 @@
      "en": "Per step 1, replace the seven variants line by line with isolated marker files before submitting, recording the raw URI, canonical path, filter choice, and response each time; a hit is a Base64 response decoding to the marker-file content, proving the filter applied and the target was read rather than executed. First confirm the read API supports wrappers, then whether the filter syntax applies; always target marker files, never system or business files."
     },
     "mitigation": {
-     "zh": "将外部输入映射为服务端对象 ID，在固定根目录内解析并验证真实路径，拒绝非 file scheme，且禁止用户数据进入 include/require。修复后同时重放合法对象、越界路径和第 1 步全部 filter 变体，确认源码不可编码返回且正常读取可用。",
+     "zh": "将外部输入映射为服务端对象 ID，在固定根目录内 realpath 解析并验证真实路径，拒绝非 file scheme，且禁止用户数据进入 include/require：\n    $map = ['home' => 'pages/home.php', 'about' => 'pages/about.php'];\n    $rel = $map[$_GET['page'] ? ''] ? null;\n    if ($rel === null) { http_response_code(404); exit; }\n    $path = realpath(APP_ROOT . '/' . $rel);\n    if ($path === false || !str_starts_with($path, APP_ROOT)) exit('denied');\n    readfile($path);",
      "en": "Map external input to server-side object IDs, resolve and verify real paths within a fixed root, reject non-file schemes, and keep user data out of include/require. After the fix, replay legitimate objects, out-of-bounds paths, and all step-1 filter variants together, confirming source cannot be encoded out while normal reads work."
     },
     "difficulty": "intermediate"
@@ -29164,7 +29164,7 @@
      "en": "Keep the two original Base64 strings from step 1 for traceability, but before testing re-encode them as PHP fragments that only set a request-random marker, submitting one per request to the inclusion entry; a hit is the marker string in the page after inclusion, proving the data:// stream was included and interpreted. Record the allow_url_include configuration and the final function (read vs include); if the stream only returns as text, log it as a read-boundary hit, not code execution."
     },
     "mitigation": {
-     "zh": "禁止外部输入控制 include/require，关闭不需要的 allow_url_include，并用明确路由映射加载固定模板。修复后重放第 1 步构造的 data 流，确认在解释前被拒绝且合法模板继续工作。",
+     "zh": "禁止外部输入控制 include/require，关闭不需要的 allow_url_include 与 allow_url_fopen，用明确路由映射加载固定模板：\n    ; php.ini（重启生效）\n    allow_url_include = Off\n    allow_url_fopen = Off\n    // PHP：路由映射固定模板\n    $tpl = ['list' => 'list.phtml', 'detail' => 'detail.phtml'][$route] ? 'list.phtml';\n    require __DIR__ . '/templates/' . $tpl;",
      "en": "Keep external input from controlling include/require, disable unneeded allow_url_include, and load fixed templates via explicit route mapping. After the fix, replay the step-1 data streams and confirm rejection before interpretation while legitimate templates keep working."
     },
     "difficulty": "advanced"
@@ -29734,7 +29734,7 @@
      "en": "Keep the three original lines from step 1 for source verification, but replace all execution with the approved marker-helper (emitting only a random marker), submitting expect://id, expect://ls, and read-style variants one by one; a hit is the marker-helper's random marker in the response, proving expect extension, wrapper registration, and stream API preconditions all hold. On a miss, record the PHP version, registered wrapper list, and error type to distinguish missing extension, rejected scheme, and insufficient process permissions."
     },
     "mitigation": {
-     "zh": "生产环境卸载或禁用 expect 扩展，拒绝非 file scheme，使用对象 ID 访问固定文件，并限制 PHP 进程创建子进程。修复后重放第 1 步变体，确认 expect URI 被拒绝且正常文件读取可用。",
+     "zh": "生产环境卸载或禁用 expect 扩展，代码层拒绝非 file scheme、以对象 ID 访问固定文件，并以系统级限制 PHP 进程创建子进程：\n    ; php.ini 移除或禁用（需重启）\n    ; extension = expect.so\n    # systemd：禁止 FPM 再启动新程序\n    [Service]\n    SystemCallFilter=~@execve\n    // PHP：拒绝任意 wrapper scheme\n    $s = parse_url($_GET['f'] ? '', PHP_URL_SCHEME);\n    if ($s !== null) { http_response_code(400); exit; }",
      "en": "Uninstall or disable the expect extension in production, reject non-file schemes, access fixed files via object IDs, and restrict child-process creation for PHP. After the fix, replay the step-1 variants and confirm expect URIs are rejected while normal file reads work."
     },
     "difficulty": "expert"
@@ -30264,7 +30264,7 @@
      "en": "Per step 1, substitute ..\\..\\, double-encoding, overlong UTF-8, and %255c variants into the target path parameter one by one, swapping system files for isolated markers; a hit is any encoded variant resolving to ../ after target decoding and returning marker-file content. Record the decoded values seen at proxy, framework, and file-API layers to locate where filtering and decoding happen; after a hit, retest the same variant family on other entries such as download and inclusion."
     },
     "mitigation": {
-     "zh": "用服务端对象 ID 映射文件而不是接受路径；必须处理路径时，完成全部解码后解析规范绝对路径，验证其严格位于固定根目录且不经符号链接越界，拒绝 NUL、未知编码和跨平台分隔符。修复后重放第 1 步全部变体与正常样例，确认遍历被拒绝且合法读取可用。",
+     "zh": "用服务端对象 ID 映射文件；必须处理路径时完成全部解码后解析规范绝对路径，验证严格位于固定根目录内，拒绝 NUL、未知编码与跨平台分隔符：\n    Path root = Path.of(\"/srv/app/files\").toRealPath();\n    if (raw.contains(\"\\0\")) throw new SecurityException(\"nul byte\");\n    Path p = root.resolve(raw).normalize().toRealPath();  // 解析符号链接\n    if (!p.startsWith(root)) throw new SecurityException(\"traversal\");",
      "en": "Map files by server-side object ID instead of accepting paths; when paths must be handled, parse the canonical absolute path after completing all decoding, verify it lies strictly inside a fixed root without symlink escape, and reject NUL, unknown encodings, and cross-platform separators. After the fix, replay all step-1 variants and normal samples, confirming traversal is rejected while legitimate reads work."
     },
     "difficulty": "advanced"
@@ -30480,7 +30480,7 @@
      "en": "Per step 1, select only target lines matching the confirmed OS and framework (e.g., /proc/cpuinfo, Apache/Nginx logs), preferring same-directory test markers over real files; a hit is the selected target returning content signatures (such as the localhost line in hosts) or marker content. After confirming reads, assess sensitivity by target type and record the minimal data scope; never scan all paths indiscriminately—real files only for minimal metadata confirmation after authorization."
     },
     "mitigation": {
-     "zh": "将客户端输入映射到允许对象 ID，禁止绝对路径和任意相对路径；文件服务在最小权限沙箱中运行，不能读取应用配置与系统日志；对日志中的密钥脱敏并轮换任何已确认暴露的凭据。修复后重放第 1 步目标，确认越界路径被拒绝。",
+     "zh": "将客户端输入映射到允许对象 ID，禁止绝对路径与任意相对路径；文件服务在最小权限沙箱中运行，日志密钥脱敏并轮换已确认暴露的凭据：\n    ALLOWED = {\"logo\": \"/srv/static/logo.png\", \"manual\": \"/srv/static/manual.pdf\"}\n    path = ALLOWED.get(request.args.get(\"f\"))\n    if path is None: abort(404)\n    send_from_directory(os.path.dirname(path), os.path.basename(path))\n    [Service]        # systemd 沙箱\n    ProtectSystem=strict\n    ReadWritePaths=/srv/app/tmp",
      "en": "Map client input to allowed object IDs and forbid absolute and arbitrary relative paths; run the file service in a least-privilege sandbox unable to read application configuration and system logs; mask secrets in logs and rotate any confirmed exposed credentials. After the fix, replay the step-1 targets and confirm out-of-bounds paths are rejected."
     },
     "difficulty": "intermediate"
@@ -30773,7 +30773,7 @@
      "en": "Test per wrapper and per target as in step 1, replacing all system files, code, and archives with isolated harmless markers; first submit php://filter Base64 reads against the marker to verify the filter chain, then test php://input, data://, and zip/phar archive members. A hit is each wrapper returning Base64 source or executing inline stream content as expected. Note that data: and data:// parse differently—submit both; on phar hits, separately check whether metadata processing triggers."
     },
     "mitigation": {
-     "zh": "不把用户输入传给 include/require；读取文件用服务端对象映射与固定根目录，只允许 file 资源；关闭不需要的 allow_url_include，上传目录不可执行，并审计 phar/zip 处理与反序列化路径。修复后重放第 1 步全部 wrapper。",
+     "zh": "用户输入不传给 include/require/fopen 等通用流 API；读取用服务端对象映射与固定根目录、只允许 file 资源；关闭 allow_url_include，上传目录不可执行：\n    $ref = $_GET['f'] ? '';\n    if (preg_match('#^[a-zA-Z][a-zA-Z0-9+.\\-]*://#', $ref)) exit('wrapper denied');\n    $path = realpath(FILES_ROOT . '/' . $ref);\n    if ($path === false || !str_starts_with($path, FILES_ROOT)) exit('denied');\n    readfile($path);",
      "en": "Never pass user input to include/require; read files via server-side object mapping with a fixed root, allowing only file resources; disable unneeded allow_url_include, keep upload directories non-executable, and audit phar/zip handling and deserialization paths. After the fix, replay all step-1 wrappers."
     },
     "difficulty": "advanced"
@@ -31148,7 +31148,7 @@
      "en": "Per step 1, replace index.php in the four filter URIs with an isolated marker resource, execute them in original order, and compute each chain's expected output bytes offline; a hit is transformed bytes exactly matching offline expectations, proving the filter chain applied and resource reads are reproducibly controlled. The final URI without explicit conversion serves as a parsing control, not automatically a bypass; record all comparison results as transformation baselines for later detection-rule validation."
     },
     "mitigation": {
-     "zh": "外部输入只选择预定义文件对象和转换选项，服务端组装固定 filter 链并校验规范路径位于根目录内；不允许任意 wrapper、filter 名称或 resource。修复后重放第 1 步四条 URI 并比较所有转换基线，确认任意链被拒绝且正常转换功能可用。",
+     "zh": "外部输入只选预定义对象与转换项，服务端组装固定 filter 链并校验根目录：\n    $F = ['a'=>'data/a.txt']; $M = ['b64'=>'convert.base64-encode'];\n    $res = $F[$_GET['id'] ? ''] ? null; $flt = $M[$_GET['fmt'] ? ''] ? null;\n    if (!$res || !$flt) exit(http_response_code(400));\n    $path = realpath(APP_ROOT.'/'.$res);\n    if (!$path || !str_starts_with($path, APP_ROOT)) exit;\n    fpassthru(stream_filter_append(fopen($path, 'r'), $flt, STREAM_FILTER_READ));",
      "en": "Let external input select only predefined file objects and transformation options; assemble fixed filter chains server-side and verify canonical paths stay within the root; never allow arbitrary wrappers, filter names, or resources. After the fix, replay the step-1 URIs and compare all transformation baselines, confirming arbitrary chains are rejected while normal transformation features work."
     },
     "difficulty": "advanced"
@@ -31420,7 +31420,7 @@
      "en": "Build a controlled PHAR disguised as JPG/PNG whose member holds only plain-text marker.txt first, upload it, then submit the phar:// member paths one at a time per step 1; a hit is the member path returning marker.txt text. Record the target API and archive-parse logs; scope validation to member reads—never infer code execution from filenames."
     },
     "mitigation": {
-     "zh": "上传对象使用随机服务端名称和不可执行存储，后续访问通过对象 ID，不接受 wrapper URI；在文件调用前校验 scheme、真实路径和允许媒体格式；清除旧上传并回归普通图片读取。修复后重放第 1 步成员路径，确认被拒绝。",
+     "zh": "上传对象用随机服务端名称与不可执行存储（Web 根外），访问只收对象 ID 不收 wrapper URI，调用前校验 scheme、真实路径与媒体格式：\n    if (str_contains($ref = $_GET['obj'] ? '', '://')) exit(http_response_code(400));\n    $rec = $db->findUpload($ref);\n    $path = realpath(STORAGE . '/' . $rec['stored']);\n    if (!$path || !str_starts_with($path, STORAGE)) exit('denied');\n    if (!in_array(mime_content_type($path), ['image/jpeg','image/png'], true)) exit('bad type');",
      "en": "Store uploads under random server-side names in non-executable storage, access them later via object IDs, and never accept wrapper URIs; validate scheme, real path, and allowed media formats before file calls; clear old uploads and regression-test ordinary image reads. After the fix, replay the step-1 member paths and confirm rejection."
     },
     "difficulty": "advanced"
@@ -31800,7 +31800,7 @@
      "en": "Per step 1, replace the trailing file with a random out-of-root marker for the target OS, then submit the four traversal-variant classes—../../../etc/passwd, ....//....//, ....\\....\\, and ..;/..;/—line by line, recording each decoding layer; a hit is any variant resolving to return the out-of-root marker content. Treat %00 only as a version-dependent negative control without presuming truncation; on a hit, record the first successful variant and final canonical path to expose the rule gap between validation and filesystem layers."
     },
     "mitigation": {
-     "zh": "使用对象 ID 选择文件，将候选路径在单次完整解码后与固定根目录组合，解析真实路径并验证其仍为根目录后代；拒绝绝对路径、空字节和平台不支持分隔符。修复后重放第 1 步全部变体与合法样例，确认遍历被拒绝且正常文件功能可用。",
+     "zh": "用对象 ID 选择文件；处理路径时入口单次完整解码后与固定根目录组合，realpath 解析并验证仍为根目录后代，拒绝绝对路径与空字节：\n    $raw = rawurldecode($_GET['p'] ? '');\n    if ($raw === '' || str_contains($raw, \"\\0\") || str_starts_with($raw, '/')) exit('denied');\n    $path = realpath(FILES_ROOT . '/' . $raw);\n    if ($path === false || !str_starts_with($path, FILES_ROOT . DIRECTORY_SEPARATOR)) exit('denied');",
      "en": "Select files by object ID, combine candidate paths with a fixed root after a single full decode, resolve the real path, and verify it remains a root descendant; reject absolute paths, null bytes, and unsupported platform separators. After the fix, replay all step-1 variants and legitimate samples, confirming traversal is rejected while normal file features work."
     },
     "difficulty": "intermediate"
@@ -32802,7 +32802,7 @@
      "en": "Per step 1, choose the line matching the target's actual cookie or parameter, replace system paths with test markers, and submit session_id=../../../, URL-encoded, and PHPSESSID/JSESSIONID variants one by one—never set multiple session identifiers at once; a hit is the session component opening the injected path and returning marker content. Record the session implementation type and final resolved path; on a hit, assess the three impact classes: read, overwrite, or anomalous session loading."
     },
     "mitigation": {
-     "zh": "使用密码学随机且固定编码的会话 ID，并在框架入口实施长度与字符集白名单；存储层使用哈希或数据库键而不是原始 ID 文件名；若必须落盘，解析规范路径并强制根目录、禁用符号链接越界。修复后重放第 1 步变体，确认遍历被拒绝。",
+     "zh": "会话 ID 使用密码学随机且固定编码，入口实施长度与字符集白名单；存储层优先用哈希或数据库键，落盘则解析规范路径并强制根目录、禁符号链接越界。\n    $sid = $_GET['session_id'] ? '';\n    if (!preg_match('/^[A-Za-z0-9,-]{22,128}$/', $sid)) { http_response_code(400); exit; }\n    $path = realpath($dir . '/' . $sid);\n    if ($path === false || !str_starts_with($path, $dir . DIRECTORY_SEPARATOR)) {\n        http_response_code(403); exit;\n    }",
      "en": "Use cryptographically random session IDs with fixed encoding and enforce length and character-set allowlists at the framework entry; store sessions under hashes or database keys instead of raw ID filenames; when disk storage is required, resolve canonical paths, enforce the root, and forbid symlink escape. After the fix, replay the step-1 variants and confirm traversal is rejected."
     },
     "difficulty": "advanced"
@@ -33050,7 +33050,7 @@
      "en": "Keep the step-1 original for source tracing, but render only against a temp marker.png and submit to the HTML-to-PDF entry; a hit is marker image content in the PDF, proving the static img file URI triggered local resource loading. Record the wkhtmltopdf version, local-access switch, and renderer-identity permissions; archive separately from the scripted iframe—static resources need no script-execution precondition, so a hit stands alone."
     },
     "mitigation": {
-     "zh": "禁用本地文件访问或只允许规范化资源根；渲染容器仅挂载批准资产，并拒绝输入中的 file scheme 和路径逃逸。修复后重放第 1 步静态 img，确认 file URI 被拒绝且正常图片渲染可用。",
+     "zh": "禁用渲染器本地文件访问、只允许规范化资源根，容器仅挂载批准资产；转换前对资源 URL 做协议白名单与路径逃逸校验，拒绝 file scheme。\n    wkhtmltopdf --disable-local-file-access \\\n        --allow /var/app/approved-assets/ in.html out.pdf\n    u = urlparse(src)\n    if u.scheme not in (\"http\", \"https\") or \"..\" in u.path:\n        raise ValueError(\"blocked resource: \" + src)\n  修复后重放验证第 1 步静态 img，确认 file URI 被拒绝且正常图片渲染可用。",
      "en": "Disable local file access or allow only a normalized resource root; mount only approved assets in the rendering container and reject file schemes and path escapes in input. After the fix, replay the step-1 static img and confirm file URIs are rejected while normal image rendering works."
     },
     "difficulty": "intermediate"
@@ -33590,7 +33590,7 @@
      "en": "Use the step 1 command's three lines (entity declaration, consuming node, external DTD probe) composed per the target XML structure; echoed file content or {LAB_OAST} receiving the DTD request confirms the channel, with files and external domains swapped for isolated marker resources. Submit a DOCTYPE-free valid XML baseline first, then record task IDs, parse logs, file accesses, and callbacks."
     },
     "mitigation": {
-     "zh": "在所有同步与异步解析器禁用 DOCTYPE、外部实体、外部子集与 XInclude，采用安全预设并限制文件系统与出站网络；对 XML 派生格式采用同样策略并保留回显/盲 XXE 回归样例。",
+     "zh": "所有同步与异步解析器禁用 DTD、外部实体、外部子集与 XInclude，XML 派生格式同策略，解析进程限制文件系统与出站网络。Java 解析器加固：\n    DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();\n    dbf.setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true);\n    dbf.setFeature(\"http://xml.org/sax/features/external-general-entities\", false);\n    dbf.setXIncludeAware(false);\n    PHP 侧不展开实体并禁网络：\n    $d = new DOMDocument();\n    $d->loadXML($xml, LIBXML_NONET); // 绝不传 LIBXML_NOENT\n    修复后重放回显与带外两变体，确认无文件读取与出站连接。",
      "en": "Disable DOCTYPE, external entities, external subsets, and XInclude across all synchronous and asynchronous parsers using secure presets with restricted filesystems and egress; apply the same policy to XML-derived formats, keeping echo/blind XXE regression samples."
     },
     "difficulty": "advanced"
@@ -34325,7 +34325,7 @@
      "en": "In step 1, run the script to generate locally a sequence of tokens differing only in claims and request the localhost read-only marker endpoint one by one, recording the server's algorithm, key and claim decisions; acceptance despite a mismatched field confirms missing validation, while uniform rejection proves complete claim checking. Judge success by server decision logs. Replace placeholders via the global variables menu; file the results with the read-only marker in your report."
     },
     "mitigation": {
-     "zh": "验证器强制校验 iss、aud、exp 与类型声明，任何字段不匹配一律拒绝并采用短有效期。修复后重放第 1 步对照序列，所有不符令牌应被 401 拒绝。",
+     "zh": "验证器强制校验 iss、aud、exp 与类型声明，任何字段不匹配一律拒绝并采用短有效期：\n    Jwts.parser().verifyWith(secretKey)\n        .requireIssuer(\"https://issuer.example.com\")\n        .requireAudience(\"api://payloader\")\n        .require(\"typ\", \"Bearer\")\n        .build().parseSignedClaims(token);   // exp 过期自动抛 ExpiredJwtException",
      "en": "Enforce strict iss, aud, exp and type-claim validation, rejecting any mismatch with short lifetimes. After the fix, replay the step 1 control sequence: every mismatched token should be rejected with 401."
     },
     "difficulty": "advanced"
@@ -34624,7 +34624,7 @@
      "en": "In step 1, run the script to generate a self-made RSA keypair and issue a token embedding its jwk, then request the localhost read-only marker endpoint and record the server decision; acceptance confirms the embedded-JWK trust flaw, rejection shows a fixed key source. The success criterion is the server's key-source record. Replace placeholders via the global variables menu; file results with the read-only marker for the report."
     },
     "mitigation": {
-     "zh": "密钥来源固定为 issuer 配置的 JWKS 地址或本地密钥库，忽略令牌头中 jwk、jku、x5u 等自带密钥字段。修复后重放第 1 步，自签令牌应被拒绝。",
+     "zh": "密钥来源固定为 issuer 配置的 JWKS 地址或本地密钥库，忽略令牌头 jwk、jku、x5u 等自带密钥字段：\n    JWKSource<SecurityContext> jwks = new RemoteJWKSet<>(\n        new URL(\"https://issuer.example.com/.well-known/jwks.json\"));\n    DefaultJWTProcessor<SecurityContext> proc = new DefaultJWTProcessor<>();\n    proc.setJWSKeySelector(new JWSVerificationKeySelector<>(JWSAlgorithm.RS256, jwks));\n    proc.process(token, null);",
      "en": "Fix the key source to the issuer-configured JWKS URL or a local keystore and ignore token-supplied key fields such as jwk, jku and x5u. After the fix, replay step 1: the self-signed token should be rejected."
     },
     "difficulty": "advanced"
@@ -35090,7 +35090,7 @@
      "en": "In step 1, run the script to generate a one-day self-signed certificate with openssl and issue an x5c-carrying token, then request the read-only marker endpoint and record the decision; rejection despite a valid signature shows chain validation works, acceptance confirms the x5c trust flaw. The success criterion is the server's chain decision record. Replace placeholders via the global variables menu; the temp directory is cleaned up when the script exits."
     },
     "mitigation": {
-     "zh": "x5c 证书必须链到本地信任的 CA 并匹配预配置 issuer，禁止直接采信令牌自带证书，同时固定算法。修复后重放第 1 步，自签证书令牌应被拒绝。",
+     "zh": "x5c 证书必须链到本地信任的 CA 并匹配预配置 issuer，禁止直接采信令牌自带证书，同时固定算法白名单：\n    CertPathValidator cpv = CertPathValidator.getInstance(\"PKIX\");\n    PKIXParameters params = new PKIXParameters(trustStore);\n    params.setRevocationEnabled(false);\n    cpv.validate(certFactory.generateCertPath(x5cCerts), params);",
      "en": "Require x5c certificates to chain to a locally trusted CA and match the preconfigured issuer, never trust token-supplied certificates directly, and pin the algorithm. After the fix, replay step 1: the self-signed-certificate token should be rejected."
     },
     "difficulty": "advanced"
@@ -35381,7 +35381,7 @@
      "en": "In steps 1 and 2, run the script to generate none case and missing-alg variant tokens and submit each; any acceptance confirms missing algorithm pinning. In steps 3 and 4, compare empty and arbitrary signature values to see whether verification is skipped. In step 5, submit malformed signature structures to confirm fail-closed behavior. Use the server's 401 decisions as success criteria; accepting any unsigned token proves the flaw. Replace placeholders via the global variables menu; only the read-only marker endpoint is accessed throughout."
     },
     "mitigation": {
-     "zh": "验证器在解析后立即断言 alg 属于预配置白名单，none 一律拒绝，验签失败时中止授权流程。修复后重放第 1 至第 5 步，全部变体应返回拒绝。",
+     "zh": "验证器在解析后立即断言 alg 属于预配置白名单（如仅 RS256），none 与空签名一律拒绝，验签失败中止授权流程：\n      import jwt\n      claims = jwt.decode(token, PUBLIC_KEY, algorithms=[\"RS256\"],\n                          audience=\"api\", issuer=\"https://idp.example.com\",\n                          options={\"require\": [\"exp\", \"iss\", \"sub\"]})\n  修复后重放第 1 至第 5 步 none/空签名变体，全部应返回 401 拒绝。",
      "en": "Assert immediately after parsing that alg is in a preconfigured allowlist, always reject none, and abort authorization when verification fails. After the fix, replay steps 1 through 5: every variant should be rejected."
     },
     "difficulty": "advanced"
@@ -36229,7 +36229,7 @@
      "en": "In step 1, run the script to generate a temporary RSA keypair, sign an HS256 confusion token using the public key as the HMAC secret, and submit it to the local endpoint. In step 2, use curl with the control token against the marker path and read the status code. Acceptance confirms algorithm confusion; a 401 rejection shows binding works. Judge success by the status code and key-decision records. Replace placeholders via the global variables menu; use only your own fixture key for HMAC, not the TLS certificate."
     },
     "mitigation": {
-     "zh": "按签发配置固定算法与密钥类型，RS256 场景显式禁用 HMAC 家族并拒绝类型不符的密钥。修复后重放第 1、2 步，混淆令牌应被 401 拒绝。",
+     "zh": "按签发配置固定算法与密钥类型，RS256 场景显式禁用 HMAC 家族并拒绝类型不符的密钥（PyJWT 传入 RSA 公钥且 algorithms=[\"RS256\"] 时即自动拒绝 HS256）：\n      SignedJWT jws = SignedJWT.parse(token);\n      if (!\"RS256\".equals(jws.getHeader().getAlgorithm()))\n          throw new BadJWTException(\"alg not allowed\");\n      // 强制 RSA 公钥类型，HMAC 混用在此抛类型异常\n      boolean ok = jws.verify(new RSASSAVerifier((RSAPublicKey) key));\n  修复后重放第 1、2 步，混淆令牌应被 401 拒绝。",
      "en": "Pin algorithm and key type to the issuance configuration, explicitly disable the HMAC family for RS256 deployments, and reject type-mismatched keys. After the fix, replay steps 1 and 2: the confusion token should be rejected with 401."
     },
     "difficulty": "advanced"
@@ -36892,7 +36892,7 @@
      "en": "In step 1, run the script to generate an HMAC token sequence with different kids and submit each to the localhost endpoint, recording the resolver decision per kid; out-of-config kids triggering lookups or path resolution confirms the missing boundary, while only allowlisted identifiers reaching verification passes. Judge success by resolver decision records. Replace placeholders via the global variables menu; file results alongside the read-only marker."
     },
     "mitigation": {
-     "zh": "kid 仅作不透明字符串与预配置允许列表比对，命中后才进入密钥查找，并对长度与字符集做白名单校验。修复后重放第 1 步，配置外 kid 应全部被拒绝。",
+     "zh": "kid 仅作不透明字符串与预配置允许列表比对，命中后才进入密钥查找，并对长度与字符集做白名单校验，绝不拼路径或查询：\n      ALLOWED_KIDS = {\"v2024a\", \"v2024b\"}\n      kid = jwt.get_unverified_header(token).get(\"kid\", \"\")\n      if not kid.isalnum() or kid not in ALLOWED_KIDS:\n          raise jwt.InvalidTokenError(\"unknown kid\")\n      claims = jwt.decode(token, KEYS[kid], algorithms=[\"RS256\"])\n  修复后重放第 1 步，路径穿越/注入型 kid 应全部被拒绝。",
      "en": "Treat kid as an opaque string compared against a preconfigured allowlist before any key lookup, with length and charset allowlists. After the fix, replay step 1: every out-of-config kid should be rejected."
     },
     "difficulty": "advanced"
@@ -37499,7 +37499,7 @@
      "en": "In step 1, run the script to sign tokens with the local fixture private key carrying jku values aimed at the preconfigured URL and mismatched URLs, submitting each and recording resolution decisions; only the preconfigured URL being fetched with the rest rejected proves the allowlist, while mismatched URLs also being pulled confirms the trust flaw. Judge success by key-source logs. Replace placeholders via the global variables menu; the local fixture listens on localhost only."
     },
     "mitigation": {
-     "zh": "jku 必须与签发方预配置 URL 完全相等才允许解析，禁用重定向跟随并校验响应来源。修复后重放第 1 步，错配 URL 应全部被拒绝。",
+     "zh": "jku 必须与签发方预配置 URL 完全相等（字符串精确匹配）才允许解析，下载禁用重定向跟随，密钥仅从预置 JWKS 端点加载。\n    ALLOWED_JKU = {'https://auth.example.com/.well-known/jwks.json'}\n    if header.get('jku') not in ALLOWED_JKU:\n        raise JWTError('jku not in allowlist')   # 直接拒绝，不发起下载",
      "en": "Resolve jku only on exact equality with the issuer-preconfigured URL, disable redirect following, and validate response origin. After the fix, replay step 1: every mismatched URL should be rejected."
     },
     "difficulty": "advanced"
@@ -37783,7 +37783,7 @@
      "en": "In step 1, run the script to generate a test certificate with openssl and serve it from a local fixture, building tokens with preconfigured and external x5u values and submitting each while recording the server's certificate-source decisions; trusting only the local preconfigured source proves the allowlist, fetching and verifying against external x5u confirms the trust flaw. Judge success by certificate-source logs. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "x5u 仅允许预注册地址且证书必须链入本地信任库，拒绝重定向与跨域拉取。修复后重放第 1 步，外部 x5u 应被拒绝并记录告警。",
+     "zh": "x5u 仅允许预注册 HTTPS 地址且证书须链入本地信任库，禁重定向与跨域拉取；关闭验证库的自动 x5u 解析，先做白名单校验，再以固定密钥与算法白名单验签：\n    from urllib.parse import urlparse\n    x5u = jwt.get_unverified_header(token).get(\"x5u\", \"\")\n    if x5u not in X5U_ALLOWLIST or urlparse(x5u).scheme != \"https\":\n        raise InvalidTokenError(\"x5u not in allowlist\")\n    claims = jwt.decode(token, TRUSTED_PEM, algorithms=[\"ES256\", \"RS256\"])\n    修复后重放第 1 步，外部 x5u 应被拒绝并记录告警。",
      "en": "Permit x5u only from pre-registered addresses with certificates chaining into the local trust store, refusing redirects and cross-origin fetches. After the fix, replay step 1: external x5u should be rejected with alerts."
     },
     "difficulty": "advanced"

@@ -100,7 +100,7 @@
      "en": "Use in Payload list order: step 1 submits basic script and event payloads; an alert or verbatim payload echo confirms a controllable reflection point. Steps 2-3 test event handlers and case/tag mutations line by line to locate filter gaps. Once confirmed, step 4 sends document.cookie to the {ATTACKER_HOST} collector via Image/fetch/location, and step 5 injects a key listener to verify the keylogging chain. When blocked by a WAF, switch to HTML-entity, Unicode-encoding, and double-write variants."
     },
     "mitigation": {
-     "zh": "按输出上下文使用框架自动编码，富文本走维护中的 sanitizer，部署 CSP 并给 Cookie 加 HttpOnly/Secure/SameSite；修复后重放全部载荷应无脚本执行，收集端不应收到任何外传请求。",
+     "zh": "按输出上下文编码（框架自动转义），富文本走维护中的 sanitizer，部署 CSP 并为 Cookie 加 HttpOnly/Secure/SameSite。\n    // PHP：HTML 上下文输出转义\n    echo htmlspecialchars($userInput, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');\n    // nonce CSP 响应头\n    $nonce = bin2hex(random_bytes(16));\n    header(\"Content-Security-Policy: default-src 'self'; script-src 'self' 'nonce-$nonce'; object-src 'none'; base-uri 'none'\");\n    修复后重放验证：重放全部载荷应无脚本执行，收集端不应收到任何外传请求。",
      "en": "Use framework auto-encoding per output context, route rich text through a maintained sanitizer, deploy CSP, and set HttpOnly/Secure/SameSite on cookies; after the fix, replaying all payloads must yield no script execution and the collector must receive nothing."
     },
     "difficulty": "intermediate"
@@ -560,7 +560,7 @@
      "en": "Use in Payload list order: step 1 injects a script tag directly at the storage point and closes the existing attribute with \">; execution on revisiting the page confirms persistence. Step 2 verifies hidden-styled event payloads bypass visual inspection; step 3 injects a one-time dynamic script pointing at {ATTACKER_HOST} for persistent control; step 4 injects hook.js from {BEEF_HOST}, with the browser appearing in the BeEF console confirming the hooking chain. When blocked by a WAF, switch to SVG/MathML tag variants."
     },
     "mitigation": {
-     "zh": "存储输出按上下文编码，富文本走 sanitizer 白名单，CSP 限制 script-src，危险字段入库前校验；修复后重放存储载荷应在所有查看页原样显示不执行，后台与导出场景一并回归。",
+     "zh": "存储输出按上下文编码，富文本走 sanitizer 白名单，CSP 限制 script-src，危险字段入库前校验。\n    // React 输出自动转义；禁止 dangerouslySetInnerHTML\n    <div>{userComment}</div>\n    // 富文本白名单净化\n    import DOMPurify from 'dompurify';\n    const safe = DOMPurify.sanitize(rich, { ALLOWED_TAGS: ['b', 'i', 'a', 'p'] });\n    修复后重放验证：存储载荷在所有查看页原样显示不执行，后台与导出场景一并回归。",
      "en": "Encode stored output by context, run rich text through a sanitizer allowlist, restrict script-src via CSP, and validate hazardous fields before persistence; after the fix, replayed payloads must render verbatim without execution on every viewing page, including admin and export views."
     },
     "difficulty": "intermediate"
@@ -911,7 +911,7 @@
      "en": "Use in Payload list order: step 1 places payloads into location.hash and location.search to see if they trigger; step 2 checks reachable flows against sinks like document.write, innerHTML, eval, setTimeout, and jQuery html; step 3 opens the full {LAB_APP} URL carrying the hash payload, with the popup confirming end-to-end triggering; step 4 injects an img payload via postMessage to verify the message source. When blocked, switch to javascript: protocol or SVG/MathML variants."
     },
     "mitigation": {
-     "zh": "危险 DOM 汇改用 textContent 等安全 API，postMessage 校验 origin 与数据结构，引入 Trusted Types 与 CSP；修复后重放各源载荷，DOM 中不应出现可执行节点。",
+     "zh": "危险 DOM 汇改用 textContent 等安全 API，postMessage 校验 origin 与数据结构，引入 Trusted Types 与 CSP。\n    el.textContent = location.hash.slice(1);   // 替代 innerHTML/document.write\n    addEventListener('message', (e) => {\n      if (e.origin !== 'https://app.example.com') return;\n      out.textContent = String(e.data.msg);\n    });\n    Content-Security-Policy: require-trusted-types-for 'script'; trusted-types dompurify;\n    修复后重放验证：重放各源载荷，DOM 中不应出现可执行节点。",
      "en": "Replace hazardous DOM sinks with safe APIs like textContent, validate postMessage origin and data shape, and adopt Trusted Types plus CSP; after the fix, replaying payloads from each source must leave no executable nodes in the DOM."
     },
     "difficulty": "intermediate"
@@ -1508,7 +1508,7 @@
      "en": "Use in Payload list order: step 1 reads the target CSP header as a baseline; under unsafe-inline inject directly with step 2, under unsafe-eval execute via eval/setTimeout with step 3; step 4 replaces allowed-domain.com with the policy's actual allowlisted domain to execute via a JSONP callback; step 5 triggers through the Angular orderBy chain when inline/eval are blocked; step 6 concatenates cookies into a {ATTACKER_HOST} URL via img onerror for exfiltration. When blocked, see the base-injection and nonce-theft variants."
     },
     "mitigation": {
-     "zh": "采用基于 nonce/hash 的严格 CSP，移除 unsafe-inline/eval，收紧 img-src/connect-src/base-uri，并审计白名单域上的 JSONP 端点；修复后重放各载荷应被 CSP 拦截并产生违规报告。",
+     "zh": "采用 nonce/hash 严格 CSP，移除 unsafe-inline/unsafe-eval，收紧 img-src/base-uri，审计白名单域 JSONP 端点。\n    // Express：每请求随机 nonce\n    app.use((req, res, next) => {\n      const nonce = crypto.randomBytes(16).toString('base64');\n      res.set('Content-Security-Policy',\n        `default-src 'self'; script-src 'self' 'nonce-${nonce}'; ` +\n        `object-src 'none'; base-uri 'none'; img-src 'self'`);\n      next();\n    });\n    修复后重放验证：重放各载荷应被 CSP 拦截并产生违规报告。",
      "en": "Adopt a strict nonce/hash-based CSP, remove unsafe-inline/eval, tighten img-src/connect-src/base-uri, and audit JSONP endpoints on allowlisted domains; after the fix, replayed payloads must be blocked by CSP and generate violation reports."
     },
     "difficulty": "intermediate"
@@ -2087,7 +2087,7 @@
      "en": "Use in Payload list order: step 1 submits the noscript parsing-differential sample, with the img payload executing after rendering confirming basic mXSS; step 2 verifies namespace revival via SVG CDATA mutation, step 3 the MathML branch via mglyph/style mutation, and step 4 combines duplicate-id forms with DOM clobbering. On a hit, diff pre- and post-sanitization DOMs to pinpoint the mutation. Keep a minimal reproducible fragment per positive sample for post-fix regression comparison."
     },
     "mitigation": {
-     "zh": "净化器按最终 DOM 树输出序列化结果并在浏览器语义下复验，禁止 SVG/MathML 命名空间内的可疑结构，修复重复 id/name 的 DOM clobbering 面；修复后重放各突变载荷应在二次解析后保持不可执行。",
+     "zh": "净化器按最终 DOM 语义输出并复验，禁止 SVG/MathML/noscript 命名空间内的可疑结构，修复 DOM clobbering 面，并叠加 CSP 响应头：\n    el.innerHTML = DOMPurify.sanitize(userHtml, {\n        FORBID_TAGS: [\"svg\", \"math\", \"noscript\"],\n        SANITIZE_DOM: true,\n    });\n    Content-Security-Policy: default-src 'self'; script-src 'self'; object-src 'none'",
      "en": "Have sanitizers serialize from the final DOM tree and re-verify under browser semantics, forbid suspicious structures inside SVG/MathML namespaces, and fix the DOM clobbering surface from duplicate id/name; after the fix, replayed mutation payloads must remain non-executable after re-parsing."
     },
     "difficulty": "intermediate"
@@ -2419,7 +2419,7 @@
      "en": "Use in Payload list order: step 1 writes alert with \\u/\\x/\\u{} escapes; execution after JS decoding confirms escape-based keyword bypass. Step 2 submits event payloads as decimal/hex HTML entities; execution after decoding confirms entity bypass. Steps 3 and 4 are precondition checks — fullwidth and UTF-7 samples form tags only when the authorized chain applies NFKC normalization or explicitly declares UTF-7; modern UTF-8 pages never decode them directly. When blocked by a WAF, see the mixed-encoding variants."
     },
     "mitigation": {
-     "zh": "输出按上下文编码并统一字符集为 UTF-8，禁止在编码转换后再进入 HTML 上下文，过滤层按解码后的语义匹配；修复后重放转义、实体与编码变体均不应产生可执行内容。",
+     "zh": "输出按最终上下文编码并统一字符集为 UTF-8，禁止编码转换后再进入 HTML 上下文，过滤层按解码后的语义匹配：\n    String safe = org.owasp.encoder.Encode.forHTML(userInput);\n    response.setCharacterEncoding(\"UTF-8\");\n    response.setHeader(\"Content-Security-Policy\", \"script-src 'self'\");",
      "en": "Encode output by context, unify charset to UTF-8, never let converted encodings re-enter HTML context, and match filters on decoded semantics; after the fix, replayed escape, entity, and encoding variants must yield no executable content."
     },
     "difficulty": "intermediate"
@@ -2958,7 +2958,7 @@
      "en": "Use in Payload list order: step 1 submits case-mixed payloads — execution proves the filter is case-insensitive; step 2 double-writes keywords — execution after deletion reassembles a valid tag, proving single-pass deletion bypass; steps 3-5 verify comment insertion, null-byte truncation, and tab/newline attribute mutations one by one; step 6 uses uncommon handlers like onpageshow/onstart/ontoggle to prove incomplete blacklist coverage. If still blocked, switch to Data URI or SVG-animation bypasses."
     },
     "mitigation": {
-     "zh": "放弃关键字黑名单，改按输出上下文编码并用维护中的 sanitizer 白名单化，统一解码后再做检测；修复后重放全部六类变体应无可执行差异，并对新增事件属性保持白名单更新。",
+     "zh": "放弃关键字黑名单，改按输出上下文编码并用维护中的 sanitizer 白名单化，统一解码后再做检测：\n    const clean = DOMPurify.sanitize(dirty, {\n        ALLOWED_TAGS: [\"b\", \"i\", \"p\", \"a\"],\n        ALLOWED_ATTR: [\"href\"],\n    });\n    Content-Security-Policy: script-src 'self'; object-src 'none'",
      "en": "Drop keyword blacklists in favor of context-appropriate output encoding and a maintained sanitizer allowlist, decoding uniformly before inspection; after the fix, replaying all six variant families must show no executable differentials, with allowlists kept current for new event attributes."
     },
     "difficulty": "intermediate"
@@ -4178,7 +4178,7 @@
      "en": "Use in Payload list order: step 1 submits URL-encoded tags; execution after one decode confirms the decoding differential. Steps 2-5 verify HTML entities, JS hex/octal/atob encoding, CSS expression (legacy IE), and mixed multi-layer encoding layer by layer; record each decoded layer to locate the failing one. When blocked by a WAF, switch to double-URL-encoding and UTF-16 variants."
     },
     "mitigation": {
-     "zh": "应用入口只做一次确定性解码，输出按最终上下文编码一次，拒绝二次解码与歧义编码；修复后重放全部编码层样例不应产生可执行内容，过滤器与应用的解码层次保持一致。",
+     "zh": "应用入口只做一次确定性解码，输出按最终上下文编码一次，拒绝二次解码与歧义编码，过滤器与应用解码层次保持一致：\n    String safe = org.owasp.encoder.Encode.forHtmlContent(param);\n    response.setHeader(\"Content-Security-Policy\", \"script-src 'self'\");\n    const inJs = JSON.stringify(userInput).replace(/</g, \"\\\\u003c\");\n    node.textContent = inJs;",
      "en": "Decode deterministically exactly once at the application entry, encode output once for the final context, and reject double or ambiguous encodings; after the fix, replaying all encoding-layer samples must yield no executable content, with filter and application decode layers aligned."
     },
     "difficulty": "intermediate"
@@ -4821,7 +4821,7 @@
      "en": "Use in Payload list order: step 1 submits the classic full-context Polyglot; execution in any context (HTML/attribute/script/URL) confirms the input position reaches multiple contexts. Step 2 verifies the short form executing after closing the existing tag; step 3 triggers the attribute-injection form via hover/focus/click; step 4 confirms the URL-parameter form via navigation or script execution. After a hit, move to the dedicated entry for the specific context hit. The WAF section provides advanced Polyglot forms."
     },
     "mitigation": {
-     "zh": "按最终输出上下文编码，模板层固定标签结构避免属性逃逸，CSP 限制内联执行；修复后重放各 Polyglot 应在所有上下文中保持不可执行，并以 DOM 快照复核无突变。",
+     "zh": "按最终输出上下文分别编码，模板层固定标签结构避免属性逃逸，并以 nonce CSP 限制内联执行：\n      String h = Encode.forHtml(input);          // HTML 文本\n      String a = Encode.forHtmlAttribute(input); // 属性上下文\n      String j = Encode.forJavaScript(input);    // 脚本块\n      # Nginx 响应头\n      add_header Content-Security-Policy \"default-src 'self'; script-src 'self' 'nonce-$n'; object-src 'none'\" always;\n  修复后重放各 Polyglot 载荷，在所有上下文中保持不可执行且 DOM 快照复核无突变。",
      "en": "Encode per final output context, pin tag structures at the template layer to avoid attribute escape, and restrict inline execution via CSP; after the fix, replayed Polyglots must stay non-executable in every context, verified with DOM snapshots for mutations."
     },
     "difficulty": "intermediate"
@@ -5411,7 +5411,7 @@
      "en": "Use in Payload list order: step 1 sends the cookie to {ATTACKER_HOST} via an Image request; the collector receiving the c parameter confirms the basic theft chain. Step 2 (fetch/sendBeacon) and step 3 (XHR) verify multi-channel availability; step 4 sends Base64-encoded values with the collector decoding them, confirming encoded transport; step 5 exfiltrates the full cookie, page URL, and UA parameter set. When blocked by a WAF, switch to the obfuscation variant."
     },
     "mitigation": {
-     "zh": "全部会话 Cookie 设置 HttpOnly 并配合 Secure 与 SameSite，同步修复 XSS 注入点（按上下文编码与 CSP）；修复后重放各通道脚本收集端应无任何请求，document.cookie 返回值不含会话凭据。",
+     "zh": "全部会话 Cookie 设置 HttpOnly 并配合 Secure 与 SameSite，同步按上下文编码修复 XSS 注入点：\n      # Spring Boot application.properties\n      server.servlet.session.cookie.http-only=true\n      server.servlet.session.cookie.secure=true\n      server.servlet.session.cookie.same-site=lax\n      # PHP\n      ini_set('session.cookie_httponly', '1');\n      ini_set('session.cookie_secure', '1');\n  修复后重放三条外传通道脚本，收集端应无任何请求，document.cookie 返回值不含会话凭据。",
      "en": "Set HttpOnly on all session cookies together with Secure and SameSite, and fix XSS injection points in parallel (context encoding plus CSP); after the fix, replaying each channel script must produce no collector requests, and document.cookie must not contain session credentials."
     },
     "difficulty": "intermediate"
@@ -5782,7 +5782,7 @@
      "en": "Use in Payload list order: step 1 injects a keypress listener exfiltrating keystrokes; the collector receiving the keystroke stream via the key parameter confirms the basic chain. Step 2 buffers keystrokes and sends the full line on Enter; step 3 listens on password-field change events to exfiltrate field values; step 4 hijacks form submit to exfiltrate the complete form data. Point the collector at your own {ATTACKER_HOST} server; when blocked by a WAF, switch to the obfuscated version."
     },
     "mitigation": {
-     "zh": "修复 XSS 注入点并以 CSP 限制内联脚本，凭据表单避免进入可注入渲染路径；修复后重放监听脚本应无法注册事件或无法外传，并在监控中对异常事件监听注册告警。",
+     "zh": "修复 XSS 注入点并以 CSP 禁止内联脚本与任意外连，凭据表单避免进入可注入渲染路径：\n      add_header Content-Security-Policy \"default-src 'self'; script-src 'self'; connect-src 'self'; form-action 'self'; object-src 'none'\" always;\n      // Spring Security 等价配置\n      http.headers(c -> c.contentSecurityPolicy(\n          p -> p.policyDirectives(\"default-src 'self'; script-src 'self'\")));\n  修复后重放监听脚本应无法注册事件或无法外传，并在监控中对异常事件监听注册建立告警。",
      "en": "Fix XSS injection points and restrict inline scripts via CSP, keeping credential forms out of injectable render paths; after the fix, replayed listeners must fail to register or exfiltrate, with monitoring alerting on abnormal event-listener registration."
     },
     "difficulty": "intermediate"
@@ -6145,7 +6145,7 @@
      "en": "Use in Payload list order: first submit the loopback URLs from step 1 to the injection point; a response body, status code, or timing different from the baseline confirms reachability of local services. Then use step 2 to differentiate listening services port by port; step 3 probes internal admin consoles — a returned login page confirms the panel is reachable; step 4 uses file:// to read local files and prove the scheme is not filtered. On WAF blocks, consult wafBypass for replacement variants; replace placeholders in the commands via the global variables menu."
     },
     "mitigation": {
-     "zh": "只允许业务必需的 http/https 协议与端口，解析后阻断回环、链路本地、私网和保留地址，连接时固定 IP 并在每次重定向后复检；禁止用户控制敏感请求头，并经网络策略隔离元数据、数据库与管理网段。修复后用第 1、4 步样例回归，合法功能保留且回环与 file 读取被拒绝。",
+     "zh": "仅允许 http/https 与白名单端口，DNS 解析后阻断回环/私网/链路本地/保留地址，连接固定解析 IP 且重定向后复检，禁用户控制敏感请求头。\n    // Java\n    static boolean allowed(URI uri) throws Exception {\n      if (!Set.of(\"http\", \"https\").contains(uri.getScheme())) return false;\n      InetAddress ip = InetAddress.getByName(uri.getHost());\n      return !(ip.isLoopbackAddress() || ip.isSiteLocalAddress()\n          || ip.isLinkLocalAddress() || ip.isAnyLocalAddress());\n    }\n    修复后重放验证：合法取回功能保留，回环、私网与 file 目标均被拒绝。",
      "en": "Allow only business-required http/https schemes and ports, block loopback, link-local, private, and reserved addresses after resolution, pin the connected IP, and re-check after every redirect; forbid user control of sensitive headers and isolate metadata, database, and management segments via network policy. After the fix, regress with the step 1 and step 4 samples: legitimate features remain and loopback and file reads are denied."
     },
     "difficulty": "advanced"
@@ -6768,7 +6768,7 @@
      "en": "Use in Payload list order: step 1 accesses the metadata root path — returned directory fields such as instance-id confirm IMDS reachability; step 2 enumerates the attached role name, then reads that role's temporary credential JSON — obtaining an AccessKeyId confirms credential theft; step 3 reads user-data to check for leftover secrets; step 4 first PUTs for a TTL token, then replays the v2 flow with the X-aws-ec2-metadata-token header. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "将实例元数据强制为 IMDSv2 并把 token hop limit 设为 1，阻断工作负载到链路本地的非必要出站；附加角色只授予最小权限并定期轮换。修复后用第 1、2 步样例回归，元数据请求应在网络层被拒绝或无法取得角色凭证。",
+     "zh": "实例元数据强制 IMDSv2 且 hop limit 为 1，网络层阻断工作负载到链路本地的非必要出站，附加角色最小权限并定期轮换。\n    aws ec2 modify-instance-metadata-options \\\n        --instance-id i-1234567890abcdef0 \\\n        --http-tokens required --http-endpoint enabled \\\n        --http-put-response-hop-limit 1\n    # 非必要元数据出站阻断\n    iptables -A OUTPUT -d 169.254.169.254 -m owner ! --uid-owner root -j REJECT\n    修复后重放验证：元数据请求应在网络层被拒绝或无法取得角色凭证。",
      "en": "Enforce IMDSv2 for instance metadata with a token hop limit of 1, and block unnecessary egress from workloads to the link-local address; grant attached roles least privilege and rotate them. After the fix, regress with the step 1 and step 2 samples: metadata requests should be denied at the network layer or yield no role credentials."
     },
     "difficulty": "advanced"
@@ -7090,7 +7090,7 @@
      "en": "Use in Payload list order: step 1 submits file:// for /etc/passwd and similar files — returned content confirms the scheme is unfiltered; step 2 probes loopback Redis and Memcached with dict:// — an INFO or stats reply confirms interactive access; step 3 sends a RESP frame to an isolated listener with gopher:// to prove arbitrary TCP byte forwarding; steps 4 and 5 point ldap:// and tftp:// at your callback host to confirm egress. On blocks, consult wafBypass; replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "URL 获取器只允许业务必需的 http/https，显式拒绝 file、gopher、dict 等协议；解析后阻断回环、私网与链路本地地址，网络层限制到数据库与内网服务端口的访问。修复后用第 1、2 步样例回归，全部非 HTTP scheme 都应被直接拒绝。",
+     "zh": "URL 获取器只允许业务必需的 http/https，显式拒绝 file、gopher、dict 等协议（通用 URL 库默认启用非 HTTP 处理器），网络层限制到内网服务端口的访问：\n      from urllib.parse import urlparse\n      if urlparse(url).scheme.lower() not in (\"http\", \"https\"):\n          raise ValueError(\"scheme denied\")\n      # 出站仅放行 80/443\n      iptables -A OUTPUT -p tcp -m multiport ! --dports 80,443 -j DROP\n  修复后用第 1、2 步样例回归，全部非 HTTP scheme 都应被直接拒绝。",
      "en": "Allow only business-required http/https in the URL fetcher and explicitly reject file, gopher, dict, and similar schemes; block loopback, private, and link-local addresses after resolution, and restrict database and internal service ports at the network layer. After the fix, regress with the step 1 and step 2 samples: every non-HTTP scheme should be denied outright."
     },
     "difficulty": "advanced"
@@ -7444,7 +7444,7 @@
      "en": "Use in Payload list order: step 1 sends a text marker to an isolated catcher — receiving the command line and trailing marker proves the TCP byte path; step 2 replays the gopher-wrapped Redis cron write in a written-authorized lab, and a reverse connection reaching your listener confirms persistence; steps 3 and 4 verify MySQL 3306 and FastCGI 9000 port reachability with side-effect-free markers; step 5 bridges an HTTP request via gopher to read /admin. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "在获取器入口拒绝 gopher 等非业务协议，解析后阻断内网与回环目标，网络层隔离 Redis、MySQL、FastCGI 等服务；Redis 启用认证与 ACL 并禁用危险命令。修复后用第 1 步样例回归，捕获器不应再收到来自应用的任何字节。",
+     "zh": "在获取器入口拒绝 gopher 等非业务协议，解析后阻断内网与回环目标，网络层隔离 Redis、MySQL、FastCGI；Redis 启用 ACL 认证并禁用危险命令：\n      # redis.conf（6.0+ ACL）\n      user default off\n      user app on >强随机口令 ~app:* +@read +@write -@dangerous\n      rename-command CONFIG \"\"\n      rename-command SAVE \"\"\n      bind 10.0.0.5 -::1\n  修复后用第 1 步样例回归，捕获器不应再收到来自应用的任何字节。",
      "en": "Reject gopher and other non-business schemes at the fetcher entrance, block internal and loopback targets after resolution, and isolate Redis, MySQL, and FastCGI at the network layer; enable Redis authentication and ACLs and disable dangerous commands. After the fix, regress with the step 1 sample: the catcher must receive no further bytes from the application."
     },
     "difficulty": "advanced"
@@ -8048,7 +8048,7 @@
      "en": "Use in Payload list order: step 1 sends a dict probe command to the target port — the catcher receiving the command line confirms the port boundary; step 2 sends info and keys to loopback 6379 — a Redis reply confirms interactive access; step 3 sends stats to 11211 to verify Memcached; step 4 runs the set, config set dir/dbfilename, and save sequence in order — a parseable shell.php appearing in the web root confirms the write. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "获取器拒绝 dict 等非业务协议并阻断内网端口访问；Redis 启用认证、ACL 并用 rename-command 禁用 CONFIG/SAVE，Memcached 限制监听范围。修复后用第 2、4 步样例回归，协议命令应被拒绝且不再有任何文件落盘。",
+     "zh": "获取器拒绝 dict 等非业务协议并阻断内网端口访问；Redis 启用认证与 ACL，Memcached 限制监听范围并启用 SASL：\n      # memcached：绑定内网管理地址 + SASL 认证\n      memcached -u memcache -l 10.0.1.10 -S\n      # 防火墙：仅应用网段可达 6379/11211\n      iptables -A INPUT -p tcp -m multiport --dports 6379,11211 ! -s 10.0.1.0/24 -j DROP\n  修复后用第 2、4 步样例回归，协议命令应被拒绝且不再有任何文件落盘。",
      "en": "Reject dict and other non-business schemes in the fetcher and block internal port access; enable Redis authentication and ACLs, disable CONFIG/SAVE via rename-command, and constrain the Memcached listen scope. After the fix, regress with the step 2 and step 4 samples: protocol commands must be denied and no files written."
     },
     "difficulty": "advanced"
@@ -8336,7 +8336,7 @@
      "en": "Use in Payload list order: step 1 reads Linux-side files such as /etc/passwd and /proc/self/environ — returned content confirms file reads; step 2 reads Windows-side win.ini and the SAM hive; step 3 reads config.php and .env for database connection strings and app secrets; step 4 reads the Kubernetes serviceaccount token and AWS credentials; step 5 reads SSH private keys — OPENSSH PRIVATE KEY content confirms theft. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "获取器只允许 http/https 并显式拒绝 file 协议，文件功能改用对象 ID 与固定根目录定位；按最小权限运行应用进程，并把网络获取与本地文件读取拆分到不同服务身份。修复后用第 1 步样例回归，file URI 应在入口即被拒绝。",
+     "zh": "获取器只允许 http/https 并显式拒绝 file 协议；文件功能改用对象 ID 与固定根目录定位，应用进程按最小权限运行：\n      $scheme = parse_url($url, PHP_URL_SCHEME);\n      if (!in_array($scheme, ['http', 'https'], true)) exit('scheme denied');\n      // 文件读取：白名单 ID + realpath 前缀校验\n      $p = realpath($root . '/' . preg_replace('/[^a-z0-9\\-]/i', '', $_GET['id']));\n      if (!$p || !str_starts_with($p, $root)) exit('forbidden');\n  修复后用第 1 步样例回归，file URI 应在入口即被拒绝。",
      "en": "Allow only http/https in the fetcher and explicitly reject the file protocol; locate file functionality by object ID within a fixed root; run the application process with least privilege and split network fetching from local file reads into separate service identities. After the fix, regress with the step 1 sample: file URIs must be rejected at the entrance."
     },
     "difficulty": "advanced"
@@ -8950,7 +8950,7 @@
      "en": "Use in Payload list order: step 1 submits octal, integer, hex, and 127.0.0.1.nip.io variants one by one — the canonical 127.0.0.1 blocked while a variant returns loopback content confirms the gap; step 2 observes request landing points with ambiguous URLs using #@ and \\@; step 3 hops to loopback through an open redirect; step 4 proves hostname-allowlist bypass with sslip.io; steps 5 and 6 cover IPv6 plus percent-encoding, null-byte, and CRLF variants. On blocks, consult wafBypass."
     },
     "mitigation": {
-     "zh": "使用单一标准 URL 解析器，对解析后的全部地址做二进制分类并阻断回环、私网与保留段，拒绝 userinfo/fragment 混淆与非规范 IP 字面量；在重定向与每次 DNS 解析后复检。修复后用第 1、5 步样例回归，所有等价表示都应被统一拒绝。",
+     "zh": "使用单一标准 URL 解析器，对解析后的全部地址做二进制分类，统一拒绝回环、私网、链路本地与保留段及非规范 IP 字面量，重定向后复检：\n      import ipaddress, socket\n      ip = ipaddress.ip_address(socket.getaddrinfo(host, None)[0][4][0])\n      if not ip.is_global:\n          raise ValueError(\"non-global target denied\")\n  修复后用第 1、5 步样例回归，0177.0.0.1、2130706433、[::1] 等等价表示应被统一拒绝。",
      "en": "Use a single standard URL parser, classify all resolved addresses in binary form, block loopback, private, and reserved ranges, and reject userinfo/fragment confusion and non-canonical IP literals; recheck after redirects and every DNS resolution. After the fix, regress with the step 1 and step 5 samples: all equivalent forms must be uniformly denied."
     },
     "difficulty": "advanced"
@@ -9349,7 +9349,7 @@
      "en": "Use in Payload list order: step 1 launches SSRF with the rebinding domain — a legitimate first answer, an internal address on the second, and a successful fetch confirm the window; step 2 retests the TOCTOU gap with public domains such as 7f000001.cip.cc and nip.io; step 3 runs the self-hosted alternating resolver and reproduces odd/even alternation through its domain; step 4 retests with DNS and network pinned — mismatched results confirm the server never pinned the resolution. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "校验并固定解析后的允许地址，连接时使用固定 IP 并保持正确 Host/SNI；重定向、重试与 DNS 刷新后重新执行完整地址分类，必要时限制解析缓存 TTL。修复后用第 1 步样例回归，两次解析不一致时连接应被直接拒绝。",
+     "zh": "校验并固定解析后的允许地址，连接时使用固定 IP 并保持正确 Host/SNI；重定向、重试与 DNS 刷新后重新执行完整地址分类：\n      import http.client, ipaddress, socket\n      ip = ipaddress.ip_address(socket.gethostbyname(host))\n      if not ip.is_global: raise ValueError(\"target denied\")\n      conn = http.client.HTTPConnection(str(ip), timeout=5)\n      conn.request(\"GET\", path, headers={\"Host\": host})\n  修复后用第 1 步样例回归，两次解析不一致时连接应被直接拒绝。",
      "en": "Validate and pin the approved resolved address, connect to the fixed IP with correct Host/SNI, and re-run full address classification after redirects, retries, and DNS refreshes, capping resolver cache TTL where needed. After the fix, regress with the step 1 sample: connections must be denied when the two resolutions disagree."
     },
     "difficulty": "advanced"
@@ -9841,7 +9841,7 @@
      "en": "Use in Payload list order: step 1 confirms Redis reachability with dict info and a gopher PING; step 2 writes a WebShell via the set, config set dir/dbfilename, and save sequence and verifies it parses; step 3 rewrites authorized_keys and logs in as root with the matching key; step 4 plants a cron job and waits for the reverse connection at your listener; step 5 runs the rogue server — MODULE LOAD logs plus completed replica sync confirm the loading chain. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "获取器拒绝非 HTTP 协议并在解析后阻断内网目标；Redis 启用认证、TLS 与 ACL，用 rename-command 禁用 CONFIG/SAVE 危险组合，持久化目录不与 Web 根、SSH、cron 目录共享。修复后用第 1 步回归确认协议不可达，三类写入序列全部失败。",
+     "zh": "获取器拒绝非 HTTP 协议并在解析后阻断内网目标；Redis 启用认证、TLS 与 ACL，禁用 CONFIG/SAVE 危险组合，持久化目录不与 Web 根、SSH、cron 共享：\n      # redis.conf\n      requirepass <强随机口令>\n      rename-command CONFIG \"\"\n      rename-command SAVE \"\"\n      dir /var/lib/redis\n      port 0\n      tls-port 6379\n  修复后用第 1 步回归确认协议不可达，SET+CONFIG+SAVE 三类写入序列全部失败。",
      "en": "Reject non-HTTP schemes in the fetcher and block intranet targets after resolution; enable Redis authentication, TLS, and ACLs, disable the CONFIG/SAVE combination via rename-command, and keep the persistence directory disjoint from the web root, SSH, and cron directories. After the fix, regress with the step 1 sample for protocol isolation; all three write sequences must fail."
     },
     "difficulty": "advanced"
@@ -10297,7 +10297,7 @@
      "en": "Use payloads in list order: probe the injection point with step 1's semicolon, pipe, backtick, and $() payloads—uid= output or a recognizable baseline difference confirms control; verify execution on Linux and Windows via steps 2-3 with whoami, cat /etc/passwd, and type win.ini; without echo, watch step 4's delay and exfiltrate output via HTTP/DNS with step 5. Replace placeholders in the global variables menu; on WAF blocks use the space, keyword, and encoding variants."
     },
     "mitigation": {
-     "zh": "避免拼接 Shell 命令：改用语言内置参数数组或固定 API，对输入做类型与允许列表校验并拒绝控制字符；以最小权限账户运行并限制子进程与出站网络。修复后重放第 1 步全部分隔符样例与延时载荷，确认响应与基线一致、日志无异常子进程。",
+     "zh": "避免拼接 Shell 命令，改用语言内置参数数组 API，输入先经允许列表校验并拒绝控制字符，以最小权限账户运行并限制出站网络：\n    if (!host.matches(\"^[a-zA-Z0-9.-]+$\")) throw new IllegalArgumentException(\"bad host\");\n    ProcessBuilder pb = new ProcessBuilder(\"ping\", \"-c\", \"1\", host);\n    pb.environment().clear(); pb.redirectErrorStream(true);",
      "en": "Avoid building shell commands by concatenation: use language-native argument arrays or fixed APIs, validate input by type and allowlist, and reject control characters; run least-privileged and restrict child processes and outbound traffic. After the fix, replay all separator samples and delay payloads from step 1 and confirm responses match the baseline with no anomalous child processes in logs."
     },
     "difficulty": "advanced"
@@ -11404,7 +11404,7 @@
      "en": "Use payloads in list order: confirm dynamic-evaluation points with step 1's eval/assert/preg_replace forms—a uid= response after cmd=id is a hit; verify command execution with step 2's functions; once confirmed, deploy the step-3 one-liner webshell and verify via cmd=id; when filtered, use step 4's concatenation and Base64 variants; on WAF blocks switch to callback and variable-function variants."
     },
     "mitigation": {
-     "zh": "移除动态求值与命令拼接，改用固定 API 和参数数组；升级受支持 PHP 并淘汰 assert/create_function 等旧路径，上传目录不可执行。修复后重放第 1、2 步样例，确认求值与命令函数均拒绝可控参数且无异常子进程。",
+     "zh": "移除动态求值与命令拼接，改用固定 API 和白名单分派；升级受支持 PHP 淘汰 assert/create_function，上传目录禁执行：\n      // php.ini 兜底禁用危险函数\n      disable_functions = eval,assert,create_function,shell_exec,passthru,popen,proc_open\n      // 必须执行外部命令：白名单映射 + 参数转义\n      $map = ['ping' => '/usr/bin/ping', 'id' => '/usr/bin/id'];\n      $cmd = $map[$op] ? exit('unknown op');\n      system($cmd . ' ' . escapeshellarg($host), $rc);\n  修复后重放第 1、2 步样例，求值与命令函数均拒绝可控参数且无异常子进程。",
      "en": "Remove dynamic evaluation and command concatenation in favor of fixed APIs and argument arrays; upgrade to supported PHP and retire legacy paths like assert/create_function, keeping upload directories non-executable. After the fix, replay step 1 and 2 samples and confirm evaluation and command functions reject controlled input with no anomalous child processes."
     },
     "difficulty": "advanced"
@@ -11782,7 +11782,7 @@
      "en": "Use payloads in list order: first validate inline-stream decoding with step 1's data:// plus base64-decode—PAYLOADER_LAB output is a hit; run system after completing the media type in step 2; when content is blocked by detection, generate an encoded chain with step 3's generator and deliver the full iconv+base64 chain of step 4."
     },
     "mitigation": {
-     "zh": "禁止用户输入进入 include/require，读取接口只接受服务端对象 ID 并拒绝 php://filter 等 wrapper；限制可用过滤器与 scheme。修复后重放第 1 步与第 4 步的 filter 链，确认被拒绝且正常模板加载不受影响。",
+     "zh": "禁止用户输入进入 include/require，读取接口只接受服务端对象 ID 并拒绝 php://filter 等 wrapper，限制可用过滤器与 scheme：\n      // php.ini\n      allow_url_include = Off\n      allow_url_fopen = Off\n      // 读取走固定根目录 + realpath 校验，只读输出不经 include\n      $p = realpath($root . '/' . preg_replace('/[^a-z0-9\\-]/i', '', $_GET['id']));\n      if (!$p || !str_starts_with($p, $root)) exit('forbidden');\n      readfile($p);\n  修复后重放第 1 步与第 4 步 filter 链，确认被拒绝且正常模板加载不受影响。",
      "en": "Keep user input out of include/require, accept only server-side object IDs, and reject wrappers such as php://filter; restrict available filters and schemes. After the fix, replay the step-1 and step-4 filter chains and confirm rejection while normal template loading is unaffected."
     },
     "difficulty": "advanced"
@@ -12254,7 +12254,7 @@
      "en": "For Java, generate the curl|bash payload with step 1's ysoserial CommonsCollections1—a shell.sh request in your HTTP log is a hit; for PHP build step 2's __destruct POP chain, for Python step 3's __reduce__ returning os.system, and for .NET step 4's ObjectDataProvider with Json.Net. If signature checks block the payload, use the re-signed variant."
     },
     "mitigation": {
-     "zh": "停止对不可信数据使用原生反序列化，迁移到 JSON 等数据格式；必须兼容时限制允许类型、校验签名并隔离加载进程，移除危险 gadget 依赖。修复后重放第 1-4 步载荷，确认反序列化被拒绝且无异常类加载与子进程。",
+     "zh": "停止对不可信数据使用原生反序列化，迁移到 JSON 等数据格式；必须兼容时限制允许类型、校验签名并隔离加载进程：\n      // Java：流级类型白名单（JEP 290）\n      ObjectInputStream ois = new ObjectInputStream(in);\n      ois.setObjectInputFilter(ObjectInputFilter.Config.createFilter(\"com.app.dto.*;!*\"));\n      // PHP：优先 JSON 结构化数据\n      $data = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);\n  修复后重放第 1-4 步载荷，反序列化被拒绝且无异常类加载与子进程。",
      "en": "Stop native deserialization of untrusted data and migrate to data formats like JSON; where compatibility is required, restrict allowed types, verify signatures, isolate the loading process, and remove dangerous gadget dependencies. After the fix, replay the step 1-4 payloads and confirm rejection with no anomalous class loading or child processes."
     },
     "difficulty": "advanced"
@@ -12520,7 +12520,7 @@
      "en": "Use payloads in list order: confirm automatic __wakeup/__destruct triggering with step 1's script; deliver step 2's Chain→Action POP chain serialized string—returned whoami output is a hit; with file operations present, trigger step 3's exploit.phar via phar://; with mixed session handlers, use step 4's pipe injection. Adjust the serialized string with property-visibility prefixes when blocked."
     },
     "mitigation": {
-     "zh": "禁止对不可信数据调用 unserialize，改用 JSON；必须兼容时设置 allowed_classes=false 或最小类集并校验签名，统一会话处理器并升级 PHP。修复后重放第 1-4 步样例，确认对象链被拒绝且无魔术方法副作用。",
+     "zh": "禁止对不可信数据调用 unserialize，改用 JSON；必须兼容时设置 allowed_classes=false 或最小类集并校验签名，统一会话处理器并升级 PHP：\n      // 首选：JSON\n      $data = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);\n      // 遗留路径兜底：禁用对象还原，阻断 POP 链\n      $obj = unserialize($raw, ['allowed_classes' => false]);\n      if ($obj === false) exit('bad payload');\n  修复后重放第 1-4 步样例，对象链被拒绝且无 __wakeup/__destruct 魔术方法副作用。",
      "en": "Stop calling unserialize on untrusted data and use JSON instead; where compatibility is required, set allowed_classes=false or a minimal class set, verify signatures, unify session handlers, and upgrade PHP. After the fix, replay the step 1-4 samples and confirm object chains are rejected with no magic-method side effects."
     },
     "difficulty": "advanced"
@@ -12883,7 +12883,7 @@
      "en": "Use payloads in list order: trial step 1's six-chain list by generating serialization files and record the working chain; then generate execution or reverse payloads with step 2—a shell.sh request in HTTP logs or a listener session is a hit; when direct connections are restricted, pair step 3's JRMPListener with the JRMPClient callback. Use the --add-opens variant for module errors on newer JDKs."
     },
     "mitigation": {
-     "zh": "跨信任边界停止使用 Java 原生序列化，迁移期配置进程级与流级 ObjectInputFilter 只允许最小业务类型；移除不需要的 gadget 依赖并隔离反序列化进程。修复后重放第 1、2 步载荷，确认过滤生效且无异常类加载与子进程。",
+     "zh": "跨信任边界停止使用 Java 原生序列化，迁移期配置进程级与流级 ObjectInputFilter 只允许最小业务类型，移除 gadget 依赖并隔离反序列化进程：\n      // JVM 启动参数（进程级，JEP 290）\n      -Djdk.serialFilter=\"com.app.model.*;!*\"\n      // 流级显式设置\n      ois.setObjectInputFilter(ObjectInputFilter.Config.createFilter(\"com.app.model.*;!*\"));\n      Object o = ois.readObject();\n  修复后重放第 1、2 步 ysoserial 载荷，过滤生效且无异常类加载与子进程。",
      "en": "Stop using native Java serialization across trust boundaries; during migration configure process-level and stream-level ObjectInputFilters allowing only minimal business types; remove unneeded gadget dependencies and isolate deserialization. After the fix, replay the step-1 and step-2 payloads and confirm filtering takes effect with no anomalous class loading or child processes."
     },
     "difficulty": "advanced"
@@ -13293,7 +13293,7 @@
      "en": "Use payloads in list order: plant PHP in the User-Agent and include the access log per step 1—a username after cmd=whoami confirms it; if logs are unavailable, switch to step 2's session file or step 3's /proc/self/environ; with stream semantics, deliver code directly via step 4's php://input or data://; with allow_url_include on, load remote shell.txt per step 5. Use URL-encoded variants when log paths are blocked."
     },
     "mitigation": {
-     "zh": "模板加载使用服务端 ID 映射，禁止用户输入进入 include/require；限制文件根目录与 scheme，关闭 allow_url_include，日志与会话目录不放在可包含路径。修复后重放第 1-5 步载体，确认全部被拒绝且正常模板可用。",
+     "zh": "模板加载使用服务端 ID 映射，禁止用户输入进入 include/require；限制文件根目录与 scheme，关闭 allow_url_include，日志与会话目录不放入可包含路径：\n      $templates = ['header' => '/tpl/header.php', 'footer' => '/tpl/footer.php'];\n      $tpl = $templates[$_GET['t']] ? exit('unknown template');\n      include $tpl; // 只包含白名单内服务端文件\n      // php.ini\n      allow_url_include = Off\n  修复后重放第 1-5 步载体（日志/会话/包装器），全部被拒绝且正常模板可用。",
      "en": "Load templates via server-side ID mapping and keep user input out of include/require; confine file roots and schemes, disable allow_url_include, and keep log and session directories off includable paths. After the fix, replay the step 1-5 carriers and confirm all are rejected while normal templates work."
     },
     "difficulty": "advanced"
@@ -13807,7 +13807,7 @@
      "en": "Use payloads in list order: append PHP into an image via copy /b or cat in step 1 to produce shell.jpg; when only headers are checked, use step 2's GIF89a or exiftool Comment; after upload, access it through the inclusion parameter or phar:// per step 3 with cmd=whoami—a returned username confirms execution; when extensions are blocked, add AddType per step 4 and request the .jpg directly."
     },
     "mitigation": {
-     "zh": "上传图片做完整解码重编码，剥离非常规元数据并按允许列表校验真实类型；上传目录不可执行，包含入口拒绝上传路径，服务器不把图片扩展映射到 PHP。修复后重放第 1-4 步，确认图片马无法落地执行且正常图片可用。",
+     "zh": "上传图片做完整解码重编码以剥离注入内容，按允许列表校验真实类型；上传目录不可执行，包含入口拒绝上传路径，服务器不把图片扩展映射到 PHP：\n      $img = imagecreatefromstring(file_get_contents($tmp)); // 完整解码\n      if (!$img) exit('not an image');\n      imagejpeg($img, $store, 90); // 重编码剥离元数据与注入段\n      imagedestroy($img);\n      location ~* ^/uploads/.+\\.(php|phtml|phar)$ { return 403; }\n  修复后重放第 1-4 步，图片马无法落地执行且正常图片可用。",
      "en": "Fully decode and re-encode uploaded images, strip non-standard metadata, and validate real type against an allowlist; keep upload directories non-executable, reject upload paths at inclusion endpoints, and never map image extensions to PHP. After the fix, replay steps 1-4 and confirm image webshells cannot land or execute while normal images work."
     },
     "difficulty": "advanced"
@@ -14122,7 +14122,7 @@
      "en": "Use payloads in list order: upload step 1's .htaccess with AddType, store PHP content as .jpg, and verify the mapping; step 2's auto_prepend_file auto-includes shell.php; when extensions are blocked, force whole-directory PHP via step 3's SetHandler; step 4 points ErrorDocument at shell.php to trigger execution; step 5 hijacks include_path to widen inclusion. If blocked, use the minimal-config variant."
     },
     "mitigation": {
-     "zh": "上传目录禁用 .htaccess 覆盖（AllowOverride None），限制可设置指令；文件存储使用随机对象名并做内容级类型校验。修复后重放第 1-5 步配置上传，确认全部被拒绝且目录内文件均按静态内容返回。",
+     "zh": "上传目录禁用 .htaccess 覆盖并限制可设置指令；文件存储使用随机对象名并做内容级类型校验：\n      <Directory \"/var/www/uploads\">\n          AllowOverride None\n          php_admin_flag engine off\n          Require all denied\n      </Directory>\n  修复后重放第 1-5 步配置上传，全部被拒绝且目录内文件均按静态内容返回。",
      "en": "Disable .htaccess overrides in upload directories (AllowOverride None) and restrict settable directives; store files under random object names with content-level type validation. After the fix, replay the step 1-5 config uploads and confirm all are rejected and directory files are served as static content."
     },
     "difficulty": "advanced"
@@ -14452,7 +14452,7 @@
      "en": "Use in Payload list order: step 1 declares a file:// external entity reading {FILE_PATH}; file content in the response confirms entity parsing is on. Step 2 reads win.ini for the Windows platform; step 3 reads index.php via php://filter Base64, with decoded source confirming the wrapper works; step 4 requests an isolated, simulated metadata endpoint to verify SSRF. When blocked by a WAF, switch to parameter-entity or UTF-16 encoding variants."
     },
     "mitigation": {
-     "zh": "所有 XML 解析路径禁用 DTD、外部实体与 XInclude（如 libxml2 不启用 NOENT、Java 设 disallow-doctype-decl），并限制出站网络；修复后重放实体载荷应报 DTD 禁止且无文件内容回显。",
+     "zh": "所有 XML 解析路径禁用 DTD、外部实体与 XInclude，并限制出站网络：\n    SAXParserFactory f = SAXParserFactory.newInstance();\n    f.setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true);\n    from lxml import etree\n    parser = etree.XMLParser(resolve_entities=False, load_dtd=False, no_network=True)",
      "en": "Disable DTDs, external entities, and XInclude on all XML parsing paths (e.g., libxml2 without NOENT, Java disallow-doctype-decl) and restrict outbound networking; after the fix, replayed entity payloads must report DTD-forbidden errors with no file content echoed."
     },
     "difficulty": "advanced"
@@ -14824,7 +14824,7 @@
      "en": "Use in Payload list order: step 1 has a general entity request the {LAB_OAST} collector; receiving the request confirms the parser can reach out. Step 2 loads a remote DTD via a parameter entity; receiving the DTD request confirms external loading works. Step 3 combines file/eval/exfil parameter entities inside the DOCTYPE to exfiltrate the target file; the collector receiving the file contents confirms the complete exfiltration chain. When blocked by a WAF, switch to the UTF-16LE encoding-conversion variant."
     },
     "mitigation": {
-     "zh": "禁用 DTD 与参数实体（Java 设 disallow-doctype-decl，PHP libxml 关闭实体加载）并限制解析进程出站网络；修复后重放外带载荷收集端应无任何请求，DOCTYPE 提交应被直接拒绝。",
+     "zh": "禁用 DTD 与参数实体（Java 设 disallow-doctype-decl，PHP libxml 不展开实体），并限制解析进程出站网络：\n      // Java：拒绝任何 DOCTYPE\n      DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();\n      dbf.setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true);\n      // PHP：不传 LIBXML_NOENT，外部实体默认不展开\n      $doc = new DOMDocument();\n      $doc->loadXML($xml, LIBXML_NONET);\n  修复后重放外带载荷，收集端应无任何请求，DOCTYPE 提交被直接拒绝。",
      "en": "Disable DTDs and parameter entities (Java disallow-doctype-decl, PHP libxml entity loading off) and restrict parser-process outbound networking; after the fix, replaying exfiltration payloads must produce no collector requests and DOCTYPE submissions must be rejected outright."
     },
     "difficulty": "advanced"
@@ -15113,7 +15113,7 @@
      "en": "Use in Payload list order: step 1 references a remote DTD and exfiltrates file contents over HTTP via a parameter entity; {LAB_OAST} receiving the content-bearing request confirms the HTTP chain. Step 2 switches the same chain to FTP; the FTP listener receiving the request confirms the FTP channel and lets you contrast outbound restrictions between protocols. Step 3 requests a logging endpoint with a file parameter via a general entity as a behavioral comparison."
     },
     "mitigation": {
-     "zh": "解析器禁用 DTD 与外部实体，出站网络按协议与端口白名单严格限制并覆盖 FTP 等非常用协议；修复后重放两条通道载荷监听端均应无任何请求。",
+     "zh": "解析器禁用 DTD 与外部实体；出站网络按协议与端口白名单严格限制并覆盖 FTP 等非常用协议：\n      DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();\n      dbf.setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true);\n      dbf.setFeature(\"http://xml.org/sax/features/external-parameter-entities\", false);\n      # 出站仅放行 80/443\n      iptables -A OUTPUT -p tcp -m multiport ! --dports 80,443 -j DROP\n  修复后重放两条通道载荷，HTTP 与 FTP 监听端均应无任何请求。",
      "en": "Disable DTDs and external entities in the parser and restrict outbound networking by protocol and port allowlist covering uncommon protocols like FTP; after the fix, replaying both channel payloads must produce no listener requests."
     },
     "difficulty": "advanced"
@@ -15560,7 +15560,7 @@
      "en": "Use in Payload list order: step 1 generates a standalone complete XML sample for each intranet port 22, 80, and 443 and submits them one by one; different response characteristics on a port confirm the parser can reach it, judged by response-time and error differentials. Step 2 requests the local port 6379 via an entity to verify loopback service reachability. When blocked by a WAF, switch to the decimal-integer IP variant. Probe only targets within the authorized scope."
     },
     "mitigation": {
-     "zh": "解析器禁用外部实体，网络层对应用出口实施内网地址阻断与协议白名单，回环服务加认证；修复后重放探测载荷应全部失败且响应间无端口差异信号。",
+     "zh": "解析器禁用外部实体，网络层对应用出口实施内网地址阻断与协议白名单，回环服务加认证：\n      from lxml import etree\n      parser = etree.XMLParser(resolve_entities=False, no_network=True)\n      root = etree.fromstring(data, parser)\n      # 应用出口阻断内网段\n      iptables -A OUTPUT -d 10.0.0.0/8 -j DROP\n  修复后重放探测载荷应全部失败，响应间无端口差异信号。",
      "en": "Disable external entities in the parser, block intranet address ranges at the application egress with protocol allowlists, and authenticate loopback services; after the fix, replayed probes must all fail with no port-differential signals across responses."
     },
     "difficulty": "advanced"
@@ -15759,7 +15759,7 @@
      "en": "Use in Payload list order: step 1 emits a fixed marker via an expect:// entity inside the isolated PHP fixture with the expect extension enabled; the marker appearing confirms the command-execution precondition. Step 2 verifies independent conditions such as file writes and web-root permissions separately. When the raw expect URI is blocked, switch to the Expect URI-encoding variant; during verification, use a subprocess-free test wrapper instead of real commands."
     },
     "mitigation": {
-     "zh": "生产 PHP 禁用 expect 扩展，解析器禁用外部实体与自定义 wrapper，文件写入与解析权限分离；修复后重放 expect 载荷应报未知 wrapper 且无标记输出。",
+     "zh": "生产 PHP 禁用 expect 扩展，解析器禁用外部实体与自定义 wrapper，文件写入与解析权限分离：\n      ; php.ini：删除或注释 expect 扩展\n      ; extension=expect\n      allow_url_fopen = Off\n      // 解析时禁止网络访问与实体展开\n      $doc = new DOMDocument();\n      $doc->loadXML($xml, LIBXML_NONET);\n  修复后重放 expect 载荷应报未知 wrapper 且无标记输出。",
      "en": "Disable the expect extension in production PHP, forbid external entities and custom wrappers in the parser, and separate file-write from parse privileges; after the fix, replaying expect payloads must report an unknown wrapper with no marker output."
     },
     "difficulty": "advanced"
@@ -16196,7 +16196,7 @@
      "en": "Use in Payload list order: step 1 reads /etc/passwd via an internal entity; echoed file content confirms the read, with optional enumeration of shadow, hosts, id_rsa, and similar paths. Step 2 reads win.ini for Windows; step 3 reads application config files to confirm sensitive data exposure; step 4 reads source via php://filter Base64, decoding to confirm the non-text read chain. When blocked by a WAF, switch to the parameter-entity variant."
     },
     "mitigation": {
-     "zh": "解析器禁用 DTD 与外部实体，解析进程以低权限运行并限制文件系统视图；修复后重放各文件载荷应报实体禁止错误，响应中无任何文件内容。",
+     "zh": "解析器禁用 DTD 与外部实体（含 XSLT 路径），解析进程以低权限运行并限制文件系统视图：\n      // XSLT 场景：启用安全处理\n      TransformerFactory tf = TransformerFactory.newInstance();\n      tf.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);\n      // XML 场景：拒绝 DOCTYPE\n      dbf.setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true);\n  修复后重放各文件载荷应报实体禁止错误，响应中无任何文件内容。",
      "en": "Disable DTDs and external entities in the parser, run the parsing process with low privileges and a restricted filesystem view; after the fix, replaying each file payload must raise entity-forbidden errors with no file content in responses."
     },
     "difficulty": "advanced"
@@ -16851,7 +16851,7 @@
      "en": "Use in Payload list order: first reference an external DTD per step 2; {LAB_OAST} receiving the DTD request confirms external loading is on. Then place the parameter-entity exfiltration block into the external DTD per step 1; the collector receiving file contents confirms exfiltration. Step 3 wraps the file with %start;%file;%end; inside CDATA to avoid content parsing; step 4 stuffs file contents into a nonexistent path so parser errors carry them back. The WAF fixture section provides a controlled HTTPS external-DTD form."
     },
     "mitigation": {
-     "zh": "解析器禁用外部 DTD 子集与参数实体，出站网络限制为自有域；修复后重放各样例块应报实体禁止或 DTD 拒绝错误，监听端无任何请求。",
+     "zh": "解析器禁用外部 DTD 子集与参数实体，出站网络限制为自有域：\n      DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();\n      dbf.setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true);\n      dbf.setFeature(\"http://xml.org/sax/features/external-parameter-entities\", false);\n      # 解析服务账户禁止任何出站\n      iptables -A OUTPUT -m owner --uid-owner xmlconv -j DROP\n  修复后重放各样例块应报实体禁止或 DTD 拒绝错误，监听端无任何请求。",
      "en": "Disable external DTD subsets and parameter entities in the parser and restrict outbound networking to owned domains; after the fix, replaying each block must raise entity-forbidden or DTD-rejected errors with no listener requests."
     },
     "difficulty": "advanced"
@@ -17458,7 +17458,7 @@
      "en": "Use in Payload list order: step 1 unpacks the XLSX and lists the part inventory to locate parsing entries like workbook.xml; step 2 builds a workbook.xml preserving valid SpreadsheetML namespaces with an embedded entity pointing at your own OAST, uploads it to an authorized import fixture free of business data, and triggers parsing; {LAB_OAST} receiving the request confirms the parser loads entities. When blocked by a WAF, switch to the external parameter-entity variant."
     },
     "mitigation": {
-     "zh": "OOXML 解析栈禁用 DTD 与外部实体，转换服务置于无网络低权限沙箱并校验部件清单、大小与压缩比；修复后上传实体样例应解析失败或无外带请求。",
+     "zh": "OOXML 解析栈禁用 DTD 与外部实体，转换服务置于无网络低权限沙箱并校验部件清单、大小与压缩比：\n      # systemd：转换服务沙箱\n      [Service]\n      NoNewPrivileges=true\n      IPAddressDeny=any\n      PrivateTmp=true\n      User=converter\n      // Java POI：只读打开并设 zip 防护\n      ZipSecureFile.setMinInflateRatio(0.001);\n      Workbook wb = WorkbookFactory.create(new File(f), null, true);\n  修复后重放上传的实体样例，应解析失败且收集端无外带请求。",
      "en": "Disable DTDs and external entities in the OOXML parsing stack, place conversion services in a network-free low-privilege sandbox, and validate part inventory, size, and compression ratio; after the fix, uploaded entity samples must fail parsing or produce no exfiltration requests."
     },
     "difficulty": "advanced"
@@ -17740,7 +17740,7 @@
      "en": "Use in Payload list order: step 1 unpacks the DOCX listing document.xml, relationship parts, and Content_Types to locate the parsing entry; step 2 builds a document.xml preserving WordprocessingML namespaces with an embedded entity pointing at your own OAST, uploads it to an authorized import fixture free of business data, and triggers preview/conversion; {LAB_OAST} receiving the request confirms entity loading. When blocked by a WAF, switch to the external parameter-entity variant."
     },
     "mitigation": {
-     "zh": "Office 解析器禁用 DOCTYPE 与外部实体，转换服务无网络低权限运行并校验部件清单；修复后上传实体样例应无外带请求，并监控文档任务的异常实体错误。",
+     "zh": "Office 解析器禁用 DOCTYPE 与外部实体，转换服务无网络低权限运行并校验部件清单，监控文档任务的异常实体错误：\n      DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();\n      dbf.setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true);\n      dbf.setXIncludeAware(false);\n      dbf.setExpandEntityReferences(false);\n      # 转换服务出站默认拒绝\n      iptables -A OUTPUT -m owner --uid-owner docconv -j DROP\n  修复后重放上传的实体样例应无外带请求，文档任务实体错误纳入监控告警。",
      "en": "Disable DOCTYPE and external entities in Office parsers, run conversion services network-free with low privileges, and validate part inventory; after the fix, uploaded entity samples must produce no exfiltration requests, with abnormal entity errors on document jobs monitored."
     },
     "difficulty": "advanced"
@@ -18022,7 +18022,7 @@
      "en": "Use payloads in list order: confirm the version with step 4 first; for TP5.0.x use step 1's invokefunction route to call call_user_func_array, run system, and write shell.php; for TP5.1.x verify with step 2's three routes; with captcha, POST _method=__construct plus filter[]=system per step 3. A hit is id returning uid= or shell.php reachable; if blocked, use encoding and entry-point variants."
     },
     "mitigation": {
-     "zh": "升级到供应商支持版本并应用补丁，关闭生产调试与动态调用，限制路由参数与允许类型；WAF 兼备编码规范化。修复后重放第 1-3 步路由载荷，确认返回 404 或参数被过滤，且第 4 步指纹不再暴露版本细节。",
+     "zh": "升级至官方已修复版本（5.0.24+/5.1.31+）并应用补丁，生产关闭调试；路由收敛为仅已注册路由可调度，阻断用户输入直达 \\think\\ 命名空间与方法名；WAF 对特征做编码规范化拦截。\n    // config/app.php（ThinkPHP 5.1+）\n    'app_debug'      => false,\n    'url_route_must' => true,  // 仅放行已注册路由，阻断 ?s=/Index/\\think\\app 调度\n    # Nginx 特征拦截\n    if ($query_string ~* \"(invokefunction|call_user_func|filter(\\[|%5B))\") { return 403; }",
      "en": "Upgrade to vendor-supported versions with patches, disable production debug and dynamic invocation, and restrict route parameters and allowed types; pair with a WAF that normalizes encodings. After the fix, replay the step 1-3 route payloads and confirm 404s or filtered parameters, with step-4 fingerprinting no longer revealing version details."
     },
     "difficulty": "advanced"
@@ -18384,7 +18384,7 @@
      "en": "Use payloads in list order: request /.env and siblings per step 3—a returned APP_KEY is configuration leakage; then trigger phar:// inclusion for RCE against /_ignition/health-check with step 1's script; with a deserialization entry, generate and deliver the Laravel/RCE1, RCE2, RCE4, RCE5, RCE9 chains via step 2's phpggc one by one; step 4 decrypts leaked data in tinker. If blocked, use path-variant .env enumeration."
     },
     "mitigation": {
-     "zh": "生产环境关闭调试并移除 /_ignition 路由，Web 根指向 public 目录使 .env 不可回源，轮换已暴露的 APP_KEY 并重加密数据；升级 Laravel 与依赖。修复后重放第 1、3 步，确认错误页与 .env 均不可达且业务正常。",
+     "zh": "生产关闭调试、移除 Ignition（或升级修复 CVE-2021-3129 的 2.5.2+），Web 根仅指向 public 使 .env 不可回源；轮换已泄露的 APP_KEY 并重加密数据、升级依赖。\n    # .env\n    APP_ENV=production\n    APP_DEBUG=false\n    # Nginx：拒绝敏感文件回源\n    location ~ /\\.(env|git) { deny all; return 404; }\n    composer remove facade/ignition --dev",
      "en": "Disable debug in production and remove the /_ignition route, point the web root at public so .env cannot be fetched, rotate any exposed APP_KEY, and re-encrypt data; upgrade Laravel and dependencies. After the fix, replay steps 1 and 3 and confirm the error page and .env are unreachable while the app works normally."
     },
     "difficulty": "advanced"
@@ -18699,7 +18699,7 @@
      "en": "Use payloads in list order: request a nonexistent path to trigger the DEBUG page and confirm SECRET_KEY and database-setting leakage; with the key, forge session values via step 3's signing.dumps verified by loads; then test StringAgg injection with step 1's SQL fragments inside __contains values; finally verify /static traversal with step 4's curl --path-as-is. Use path-encoding variants when blocked."
     },
     "mitigation": {
-     "zh": "生产关闭 DEBUG，SECRET_KEY 进入密钥管理并轮换已泄露密钥，升级到修复 CVE-2020-7471 与 CVE-2021-28658 的版本，静态服务规范化路径并限定根目录。修复后重放第 1-4 步，确认错误页无配置、签名校验拒绝伪造值且遍历被拒绝。",
+     "zh": "升级到修复 CVE-2020-7471（2.2.11+）与 CVE-2021-28658（3.1.9+）的版本；生产关闭 DEBUG，SECRET_KEY 改环境注入并轮换已泄露值；StringAgg delimiter 做白名单；静态服务限定根目录并规范化 ../。\n    # settings.py\n    DEBUG = False\n    SECRET_KEY = os.environ['DJANGO_SECRET_KEY']\n    # delimiter 白名单（CVE-2020-7471）\n    if delimiter not in {',', ';', '|'}:\n        raise ValueError('invalid delimiter')\n    StringAgg('name', delimiter=delimiter)",
      "en": "Disable DEBUG in production, move SECRET_KEY into secret management and rotate leaked keys, upgrade to versions fixing CVE-2020-7471 and CVE-2021-28658, and normalize static paths within a confined root. After the fix, replay steps 1-4 and confirm error pages leak nothing, signature checks reject forgeries, and traversal is denied."
     },
     "difficulty": "advanced"
@@ -19022,7 +19022,7 @@
      "en": "In step 1, send a HEAD with a unique cache parameter and read X-Cache. In step 2, inject X-Forwarded-Host; links pointing at the injected domain with the key ignoring it confirm the unkeyed header. In step 3, send the raw request with the injected header; once cached, header-less requests returning injected content confirm poisoning. In step 4, verify body parameters entering the cache with Fat GET. Replace placeholders via the global variables menu; see wafBypass variant lists if blocked."
     },
     "mitigation": {
-     "zh": "把所有影响响应的输入纳入缓存键，禁用或固定派生 Host 类头，拒绝带正文的 GET 请求；对投毒高危路径降低共享缓存寿命。修复后重放第 3、4 步，缓存应保持原响应且无跨用户污染。",
+     "zh": "把影响响应生成的输入全部纳入缓存键，边界层固定/清洗派生 Host 类头；拒绝带正文的 GET（Fat GET）；投毒高危路径降低共享缓存寿命。\n    # Nginx 边界：清洗未键入头并显式固定缓存键\n    proxy_set_header X-Forwarded-Host $host;\n    proxy_cache_key \"$scheme$request_method$host$request_uri\";\n    # ModSecurity：拒绝带正文的 GET\n    SecRule REQUEST_METHOD \"@streq GET\" \"id:1010,chain,deny,phase:1\"\n        SecRule REQUEST_HEADERS:Content-Length \"!@eq 0\"",
      "en": "Include every response-affecting input in the cache key, disable or pin derived Host headers, reject GETs with bodies, and shorten shared-cache lifetimes on high-risk paths. After the fix, replay steps 3 and 4: the cache should keep the original response with no cross-user contamination."
     },
     "difficulty": "advanced"
@@ -19327,7 +19327,7 @@
      "en": "In step 1, HEAD the home and static paths extracting X-Cache, Age and Cache-Control to learn what gets cached. In step 2, request the account path with a static suffix carrying the session, then anonymously; retrieving private content confirms the deception. In step 3, probe path-classification divergence with semicolon and encoding variants. In step 4, search cached responses for private fields like email as evidence. Replace placeholders via the global variables menu; see wafBypass for variants."
     },
     "mitigation": {
-     "zh": "按 Content-Type 与认证状态决定缓存资格，认证响应一律 no-store 或私有化；规范路径解析避免后缀伪装。修复后重放第 2、4 步，匿名请求应取不到私有内容。",
+     "zh": "缓存资格由认证状态与 Content-Type 决定：携带会话 Cookie 的响应一律绕过缓存并回 no-store，仅独立静态目录可缓存，路径解析规范化防后缀伪装。\n    proxy_no_cache $cookie_session;\n    proxy_cache_bypass $cookie_session;\n    add_header Cache-Control \"no-store\" always;   # 动态路由统一 no-store\n    location /static/ { proxy_cache cdn; }        # 仅静态目录可缓存",
      "en": "Decide cacheability by Content-Type and authentication state, marking authenticated responses no-store or private; normalize path parsing to defeat suffix disguise. After the fix, replay steps 2 and 4: anonymous requests should retrieve no private content."
     },
     "difficulty": "advanced"
@@ -19802,7 +19802,7 @@
      "en": "In step 1, send the raw CL-plus-TE message; SMUGGLED parsed as the next request or a timeout difference confirms CL-TE. In step 2, flip framing to TE-CL; leftover chunks entering the second request confirm it. In step 3, send duplicate TE headers; inconsistent arbitration confirms TE-TE. Send via raw sockets to avoid client rewriting. Replace placeholders via the global variables menu; see wafBypass for variants."
     },
     "mitigation": {
-     "zh": "网关禁止 CL 与 TE 并存及重复 TE 头，统一链路分帧标准并拒绝歧义报文，前后端保持同版本解析实现。修复后重放第 1 至第 3 步，歧义请求应被 400 拒绝且两跳请求计数一致。",
+     "zh": "网关拒绝 CL 与 TE 并存、重复 TE 头与歧义定界，统一链路分帧实现并保持前后端同版本；歧义报文一律 400。\n    # HAProxy 入口：拒绝歧义定界报文\n    http-request deny if { req.hdr_cnt(Content-Length) gt 1 }\n    http-request deny if { req.hdr_cnt(Transfer-Encoding) gt 1 }\n    http-request deny if { req.hdr_cnt(Content-Length) ge 1 } { req.hdr_cnt(Transfer-Encoding) ge 1 }\n    # Apache 2.4.49+：严格协议解析\n    HttpProtocolOptions Strict",
      "en": "Gateways must reject CL-plus-TE coexistence and duplicate TE headers, unify framing standards across the chain, refuse ambiguous messages, and keep parser implementations aligned. After the fix, replay steps 1 through 3: ambiguous requests should get 400 and hop request counts must agree."
     },
     "difficulty": "advanced"
@@ -20450,7 +20450,7 @@
      "en": "In step 1, build a raw POST with two different CL values via printf and socket it to the authorized echo path; both ends should return 400. In step 2, send the dual-message boundary sample and judge second-request appearance from hop-log request counts. In step 3, repeat on a keep-alive connection for persistence behavior. Any backend executing the second request confirms missing rejection. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "所有层级对重复或冲突的 Content-Length 一律返回 400 并断开连接，网关在入口完成规范化校验。修复后重放第 1 至第 3 步，歧义报文应被全部拒绝且两跳计数一致。",
+     "zh": "所有层级对重复或冲突的 Content-Length 一律 400 并断开连接，网关在入口完成仲裁与规范化；链路统一使用 HTTP/2 消除分帧歧义。\n    # ModSecurity：重复 Content-Length 直接拒绝\n    SecRule &REQUEST_HEADERS:Content-Length \"@gt 1\" \\\n        \"id:1010,phase:1,deny,status:400,msg:'duplicate Content-Length'\"\n    listen 443 ssl http2;   # 前后端统一 h2，报文不再歧义定界",
      "en": "Every layer must return 400 and close on duplicate or conflicting Content-Length, with the gateway normalizing at ingress. After the fix, replay steps 1 through 3: ambiguous messages should all be rejected and hop counts agree."
     },
     "difficulty": "advanced"
@@ -20776,7 +20776,7 @@
      "en": "In step 1, first send a chunked request with both TE and CL via curl, then a raw-socket request ending only with the terminator chunk, timing responses; timeout signatures indicate framing divergence. In step 2, craft the backend truncating by CL so leftover bytes become an independent request. In step 3, declare an oversized CL folding the next user's headers into a parameter to prove hijack. Replace placeholders via the global variables menu; see wafBypass for variants."
     },
     "mitigation": {
-     "zh": "禁止同一请求同时携带 CL 与 TE 并统一链路定界标准，对分帧歧义直接 400；监控响应时间异常。修复后重放第 1 至第 3 步，探测应无超时差异且走私报文被拒绝。",
+     "zh": "禁止同一请求同时携带 Content-Length 与 Transfer-Encoding，链路统一定界标准，出现双头即 400 断开，并监控响应时间异常。\n    SecRule &REQUEST_HEADERS:Transfer-Encoding \"@eq 1\" \\\n        \"id:1011,phase:1,deny,status:400,chain,msg:'CL+TE smuggling'\"\n      SecRule &REQUEST_HEADERS:Content-Length \"@ge 1\"",
      "en": "Forbid CL and TE on the same request, unify framing standards across the chain, return 400 on ambiguity, and monitor response-time anomalies. After the fix, replay steps 1 through 3: probing shows no timeout divergence and smuggled messages are rejected."
     },
     "difficulty": "advanced"
@@ -21102,7 +21102,7 @@
      "en": "In step 1, generate requests for eight TE obfuscation spellings one by one per the script and record status lines to identify which end accepts illegal variants. In step 2, build a smuggled message with duplicate TE headers (chunked plus an illegal value) delivering a chosen GET into the back end. In step 3, switch the smuggled target to a static-resource path and check whether the smuggled response binds to the shared cache key. Replace placeholders via the global variables menu; see wafBypass value-combination and control-character lists for variants."
     },
     "mitigation": {
-     "zh": "拒绝重复 TE 头与任何非 chunked 取值，对头名前后空白及控制字符一律 400；CDN 与源站同步解析策略。修复后重放第 1 至第 3 步，全部变体应被拒绝且缓存无污染。",
+     "zh": "拒绝重复 Transfer-Encoding 头、非 chunked 取值以及头名前后空白与 obs-fold 折叠变体，CDN 与源站同步同一解析策略。\n    SecRule &REQUEST_HEADERS:Transfer-Encoding \"@gt 1\" \\\n        \"id:1012,phase:1,deny,status:400,msg:'duplicate TE'\"\n    SecRule REQUEST_HEADERS:Transfer-Encoding \"!@streq chunked\" \\\n        \"id:1013,phase:1,deny,status:400,msg:'non-chunked TE'\"",
      "en": "Reject duplicate TE headers and any non-chunked value, return 400 on surrounding whitespace or control characters in header names, and sync parsing policy between CDN and origin. After the fix, replay steps 1 through 3: every variant should be rejected and the cache stays clean."
     },
     "difficulty": "advanced"
@@ -21535,7 +21535,7 @@
      "en": "In step 1, request user 1001's profile with the current token to baseline the response. In step 2, loop adjacent IDs recording status codes and sizes to identify the accessible range. In step 3, hit the admin list endpoint with an ordinary token, then PUT the target user with privilege-elevating fields. In step 4, probe server-side resolution order with duplicate parameters, duplicate JSON keys and array syntax. Any step returning another user's object or accepting elevation confirms IDOR. Replace placeholders via the global variables menu; see wafBypass for ID boundary values."
     },
     "mitigation": {
-     "zh": "每个对象访问点执行主体归属三元校验，权限字段仅服务端维护；错误响应统一化避免枚举信号。修复后重放第 1 至第 4 步，越权请求应全部返回 404 并记录审计。",
+     "zh": "每个对象访问点执行主体归属三元校验（对象、主体、操作），未命中即统一 404，权限字段仅服务端维护，响应统一化消除枚举信号。\n    @Query(\"SELECT o FROM Order o WHERE o.id = :id AND o.userId = :uid\")\n    Optional<Order> findByIdAndOwner(@Param(\"id\") Long id, @Param(\"uid\") Long uid);\n    Order o = repo.findByIdAndOwner(id, currentUser().id())\n                   .orElseThrow(NotFoundException::new);",
      "en": "Enforce principal-ownership checks at every object access point, keep privilege fields server-managed, and unify error responses to remove enumeration signals. After the fix, replay steps 1 through 4: all cross-account requests should return 404 with audit logs."
     },
     "difficulty": "intermediate"
@@ -22126,7 +22126,7 @@
      "en": "In step 1, lock the state-decreasing endpoint and capture the response plus a count baseline. In step 2, fire 50 identical claim requests concurrently with asyncio and count successes. In step 3, release a synchronized Turbo Intruder gate watching simultaneous hits. In step 4, compare coupon lists and balances before and after to confirm repeated deduction. More than one success confirms missing atomicity. Replace placeholders via the global variables menu; see wafBypass for the HTTP/2 variant."
     },
     "mitigation": {
-     "zh": "扣减操作放入数据库原子事务或使用乐观锁与唯一索引约束，幂等键防重复提交。修复后重放第 2、3 步，成功响应应恒为一次且库存一致。",
+     "zh": "扣减放入单条原子 UPDATE 以影响行数判定成败，配合唯一索引约束防重复发放，业务入口用幂等键防重放提交。\n    UPDATE stock SET num = num - :n\n     WHERE sku = :sku AND num >= :n;\n    -- affected_rows == 1 才发放，否则返回售罄\n    CREATE UNIQUE INDEX uq_claim ON coupon_claim(user_id, activity_id);",
      "en": "Wrap deductions in atomic database transactions or optimistic locking with unique indexes, and add idempotency keys against duplicates. After the fix, replay steps 2 and 3: successes must always be exactly one with consistent stock."
     },
     "difficulty": "intermediate"
@@ -22474,7 +22474,7 @@
      "en": "In step 1, submit four order bodies with price set to normal, 1, 0 and negative values, comparing the charged amounts. In step 2, retest boundaries with zero and negative quantities, negative shipping fees and over-quota discounts. In step 3, submit multi-coupon lists, forged internal coupon IDs and direct discount-field overrides. In step 4, post tampered amounts and forged signatures to the callback endpoint and check the booked result. Any stage honoring the requested amount confirms missing validation. Replace placeholders via the global variables menu; see wafBypass for type-confusion variants."
     },
     "mitigation": {
-     "zh": "金额一律由服务端按商品与优惠规则重算，回调强制验签并核对金额一致；数值字段校验非负与上限。修复后重放第 1 至第 4 步，全部篡改请求应被拒绝且金额不变。",
+     "zh": "金额一律由服务端按商品价格与优惠规则重算，请求中的价格字段仅作对账参考；回调强制验签并核对金额一致，数值字段校验非负与上限。\n    order.amount = product.price * order.qty          # 服务端重算\n    if order.qty <= 0 or order.amount <= 0: abort(400)\n    if not rsa_verify(PLATFORM_PUB, raw_body, headers['X-Sign']):\n        abort(403)                                    # 回调验签+金额核对",
      "en": "Always recalculate amounts server-side from product and discount rules, enforce callback signature verification with amount consistency, and validate numeric fields for non-negativity and caps. After the fix, replay steps 1 through 4: every tampered request should be rejected with amounts unchanged."
     },
     "difficulty": "intermediate"
@@ -22977,7 +22977,7 @@
      "en": "In step 1, inject a malicious Host or X-Forwarded-Host into the reset API and check whether links point at the injected domain. In step 2, enumerate codes 0000-9999, printing and stopping on a hit. In step 3, intercept the failure response rewritten as success to see whether the frontend proceeds. In step 4, predict tokens offline per the timestamp-underscore-username structure. Success at any stage confirms the defect. Replace placeholders via the global variables menu; see wafBypass for Host variants."
     },
     "mitigation": {
-     "zh": "链接域名服务端固定，验证码限制尝试次数并绑定账号，流程放行只认服务端状态，令牌由 CSPRNG 生成。修复后重放第 1 至第 4 步，四个环节均应失败关闭。",
+     "zh": "重置链接域名服务端固定并忽略请求 Host 头；验证码限制尝试次数并绑定账号；令牌由 CSPRNG 生成，流程放行只认服务端状态。\n    token = secrets.token_urlsafe(32)                  # 弃用时间戳派生\n    redis.setex(f'pwreset:{token}', 600, uid)\n    link = f'https://app.example.com/reset?token={token}'  # 域名固定\n    if redis.incr(f'pwtries:{uid}') > 5: abort(429)    # 限次",
      "en": "Pin link domains server-side, cap code attempts bound to the account, gate flow progress only on server state, and generate tokens with a CSPRNG. After the fix, replay steps 1 through 4: every stage must fail closed."
     },
     "difficulty": "intermediate"
@@ -23293,7 +23293,7 @@
      "en": "In step 1, call the SMS-send API checking body, headers and cookies for plaintext codes. In step 2, submit login twice with the same code; a second success confirms no consumption. In step 3, submit missing, empty and null captcha fields watching for skipped validation. In step 4, enumerate weak codes probing backdoors with debug flags and master_code. Login success at any step confirms the defect. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "验证码仅在服务端生成与校验、一次性消费并绑定会话；响应剥离验证码字段，入口强制字段 Schema。修复后重放第 1 至第 4 步，所有旁路应被拒绝。",
+     "zh": "验证码仅服务端生成与存储并绑定会话，校验成功即原子失效；响应剥离验证码字段，入口强制字段 Schema，删除一切万能码后门。\n    code = f'{secrets.randbelow(1000000):06d}'\n    redis.setex(f'sms:{phone}', 300, code)             # 服务端存储\n    stored = redis.execute_command('GETDEL', f'sms:{phone}')\n    ok = stored is not None and compare_digest(stored.decode(), code)",
      "en": "Generate and validate codes server-side only, consume once bound to the session, strip code fields from responses, and enforce field schemas at entry. After the fix, replay steps 1 through 4: every bypass should be rejected."
     },
     "difficulty": "intermediate"

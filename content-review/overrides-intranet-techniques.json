@@ -118,7 +118,7 @@
      "en": "In step 1, list service accounts by enumerating all SPNs with setspn. In step 2, request the target SPN ticket via .NET into cache. In step 3, export .kirbi files with mimikatz. In step 4, tally requestable accounts with Rubeus stats. In step 5, emit crackable hashes with GetUserSPNs.py. In step 6, crack with hashcat and a wordlist; a recovered password confirms weak credentials. Replace placeholders via the global variables menu; authorized lab domain only."
     },
     "mitigation": {
-     "zh": "服务账号改用 gMSA 或 25 位以上随机口令，启用 AES 加密并对票据请求量异常告警。修复后重放第 6 步，弱口令应不再可破解且监控捕获第 2、5 步的申请行为。",
+     "zh": "服务账号改用 gMSA 或 25 位以上随机口令并强制 AES256，对 RC4 票据请求量与异常 TGS 申请建立告警：\n    New-ADServiceAccount -Name svc_web -DNSHostName svc_web.corp.local `\n      -PrincipalsAllowedToRetrieveManagedPassword \"CORP\\Tier0-Servers\" -KerberosEncryptionType AES256\n    Get-WinEvent -FilterHashtable @{LogName='Security';Id=4769} |\n      Where-Object { $_.Message -match \"0x17\" }        # RC4 etype 告警\n    修复后重放第 6 步，弱口令应不再可破解且监控捕获第 2、5 步的申请行为。",
      "en": "Move service accounts to gMSA or 25-plus-character random passwords, enable AES encryption, and alert on anomalous ticket request volume. After the fix, replay step 6: weak passwords should no longer crack, and monitoring should catch the step 2 and 5 requests."
     },
     "difficulty": "advanced"
@@ -672,7 +672,7 @@
      "en": "In step 1, export SAM and SYSTEM together with reg save; two hives mark success. In step 2, parse offline with secretsdump.py LOCAL mode yielding RIDs and hashes. In step 3, cross-check with mimikatz lsadump::sam. In step 4, copy SAM via shadow copy validating the file-lock bypass. Any path producing hashes confirms readable storage. Replace placeholders via the global variables menu; run only on authorized hosts."
     },
     "mitigation": {
-     "zh": "限制 SAM 相关注册表键与卷影服务的访问权限，启用 Credential Guard 并监控 reg save 与 vssadmin 调用。修复后重放第 1、4 步，导出与复制应被拒绝并产生告警。",
+     "zh": "限制 SAM 键与卷影服务访问权限，启用 LSA 保护进程（PPL）与 Credential Guard，对 reg save、vssadmin 调用实时告警：\n    reg add HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa /v RunAsPPL /t REG_DWORD /d 1 /f\n    reg add HKLM\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard /v EnableVirtualizationBasedSecurity /t REG_DWORD /d 1 /f\n    Get-WinEvent -FilterHashtable @{LogName='Security';Id=4688} | ? { $_.Message -match \"reg save|vssadmin|wbadmin\" }\n    修复后重放第 1、4 步，导出与复制应被拒绝并产生告警。",
      "en": "Restrict access to SAM registry keys and the shadow-copy service, enable Credential Guard, and monitor reg save and vssadmin invocations. After the fix, replay steps 1 and 4: export and copy should be denied with alerts."
     },
     "difficulty": "advanced"
@@ -1145,7 +1145,7 @@
      "en": "In step 1, create a full snapshot with ntdsutil ifm mode. In step 2, copy NTDS.dit via shadow copy validating the second path. In step 3, parse domain hashes with secretsdump.py LOCAL mode. In step 4, run just-dc remotely with a replication-authorized test account. In step 5, cross-confirm with mimikatz dcsync. Any path yielding the krbtgt hash confirms the boundary breach. Replace placeholders via the global variables menu; authorized domains only."
     },
     "mitigation": {
-     "zh": "清理域控本地管理员成员并按需委派复制权限，启用 DCSync 与卷影操作的监控告警。修复后重放第 4、5 步，未授权复制应被拒绝并触发高等级告警。",
+     "zh": "清理域控本地管理员成员并按需委派复制权限，移除非特权主体的复制扩展权限，对 DCSync（4662）与卷影操作建立高等级告警：\n    dsacls \"CN=Directory Service,CN=Windows NT,CN=Services,CN=Configuration,DC=corp,DC=local\" /R \"CORP\\Helpdesk\"\n    # 移除 DS-Replication-Get-Changes(-All) 扩展权限（GUID 1131f6aa/1131f6ad）\n    Get-WinEvent -FilterHashtable @{LogName='Security';Id=4662} |\n      Where-Object { $_.Message -match \"1131f6aa|1131f6ad\" }\n    修复后重放第 4、5 步，未授权复制应被拒绝并触发高等级告警。",
      "en": "Prune domain-controller local administrators and delegate replication on demand, with monitoring alerts on DCSync and shadow operations. After the fix, replay steps 4 and 5: unauthorized replication should be denied with high-severity alerts."
     },
     "difficulty": "advanced"
@@ -1636,7 +1636,7 @@
      "en": "In step 1, recursively find XML under SYSVOL printing paths. In step 2, confirm readability with PowerShell. In step 3, extract usernames and plaintext with PowerView's Get-NetGPPPassword. In step 4, decrypt a single cpassword with gpp-decrypt. In step 5, batch-retrieve with Get-GPPPassword.py. Any path recovering plaintext confirms the lingering password. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "安装 KB2962486 清除历史 cpassword，轮换曾用于组策略的本地口令并审计 SYSVOL 全量文件。修复后重放第 1、5 步，检索应无 cpassword 残留且批量抓取为空。",
+     "zh": "安装 KB2962486 后全量清除 SYSVOL 残留 cpassword，轮换曾用于组策略的本地管理员口令并审计 SYSVOL 全量文件：\n    Get-ChildItem \"\\\\corp.local\\SYSVOL\" -Recurse -Include *.xml |\n      Select-String -Pattern \"cpassword\" -List | ForEach-Object { Remove-Item $_.Path -Force }\n    Set-ADAccountPassword -Identity local-admin -Reset `\n      -NewPassword (ConvertTo-SecureString -AsPlainText (New-Guid().Guid + \"Xk9!\") -Force)\n    修复后重放第 1、5 步，检索应无 cpassword 残留且批量抓取为空。",
      "en": "Install KB2962486 to purge historical cpassword values, rotate local passwords once used in GPO, and audit the full SYSVOL tree. After the fix, replay steps 1 and 5: no cpassword remnants should be found and batch retrieval returns empty."
     },
     "difficulty": "advanced"
@@ -2084,7 +2084,7 @@
      "en": "In step 1, enumerate the user Credentials directory to list protected blob files. In step 2, decrypt a chosen blob with mimikatz dpapi::cred; plaintext output confirms the protection scope is crossable. In step 3, extract master keys with associated GUIDs from memory via sekurlsa::dpapi for offline decryption of other blobs. Use plaintext credential output as the success criterion. Replace placeholders via the global variables menu; operate only inside authorized lab sessions."
     },
     "mitigation": {
-     "zh": "为敏感凭据启用域级 DPAPI 备份限制与 LSA 保护，终端监控对 Credentials 目录与 LSASS 的异常访问。修复后重放第 2、3 步，解密与内存提取应被阻断并产生告警。",
+     "zh": "为敏感凭据启用域级 DPAPI 备份限制与 LSA 保护（PPL/Credential Guard），终端监控 Credentials 目录与 LSASS 异常访问：\n    reg add HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa /v RunAsPPL /t REG_DWORD /d 1 /f\n    reg add HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa /v LsaCfgFlags /t REG_DWORD /d 1 /f\n    <ProcessAccess onmatch=\"include\"><TargetImage condition=\"end with\">lsass.exe</TargetImage></ProcessAccess>\n    修复后重放第 2、3 步，解密与内存提取应被阻断并产生告警。",
      "en": "Enable domain-scoped DPAPI backup restrictions and LSA protection for sensitive credentials, monitoring anomalous access to the Credentials directory and LSASS. After the fix, replay steps 2 and 3: decryption and memory extraction should be blocked with alerts."
     },
     "difficulty": "advanced"
@@ -2442,7 +2442,7 @@
      "en": "In step 1, recursively find .rdp files under user document directories and review credential references inside. In step 2, list saved system credentials with cmdkey's list mode; target and username entries confirm the stored surface. In step 3, decrypt RDP-related blobs in the local Credentials directory with mimikatz dpapi::cred; recovered passwords complete the leak chain. Judge success by recovered credentials. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "禁用 RDP 客户端凭据保存策略，清理存量 .rdp 引用并轮换暴露的远程口令，凭据库访问纳入监控。修复后重放第 2、3 步，清单应为空且解密无产出。",
+     "zh": "禁用 RDP 客户端凭据保存策略，清理存量 .rdp 引用与凭据库条目并轮换暴露的远程口令，凭据库访问纳入监控：\n    reg add \"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services\" /v DisablePasswordSaving /t REG_DWORD /d 1 /f\n    Get-ChildItem \"$env:USERPROFILE\\Documents\" -Filter *.rdp -Recurse | Remove-Item -Force\n    cmdkey /list | Select-String \"TERMSRV\"        # 逐项 cmdkey /delete TERMSRV/<host> 后轮换口令\n    修复后重放第 2、3 步，清单应为空且解密无产出。",
      "en": "Disable RDP client credential-saving policy, purge legacy .rdp references, rotate exposed remote passwords, and monitor credential-store access. After the fix, replay steps 2 and 3: the inventory should be empty with no decryption output."
     },
     "difficulty": "advanced"
@@ -2800,7 +2800,7 @@
      "en": "In step 1, list all profile names under the interface with netsh wlan show profiles. In step 2, show the target profile with key=clear; a plaintext security key confirms local extraction, and record SSID, authentication and cipher for evidence. Judge success by the plaintext key. Replace placeholders via the global variables menu; limit extraction to authorized endpoints."
     },
     "mitigation": {
-     "zh": "企业网络改用 802.1X 证书认证替代共享 PSK，定期轮换无法避免的 PSK 并限制本机配置文件读取。修复后重放第 2 步，共享口令应不存在或已轮换失效。",
+     "zh": "企业网络改用 802.1X/WPA2-Enterprise 证书认证替代共享 PSK，删除存量 PSK 配置并限制本机配置文件读取：\n    netsh wlan delete profile name=\"Corp-PSK\"\n    netsh wlan set profileparameter name=\"Corp-Ent\" authentication=WPA2 encryption=AES\n    netsh wlan add profile filename=\"corp-dot1x.xml\" user=all   # 域 GPO 统一下发企业配置\n    修复后重放第 2 步，共享口令应不存在或已轮换失效。",
      "en": "Move enterprise networks to 802.1X certificate authentication instead of shared PSKs, rotate any unavoidable PSKs regularly, and restrict local profile reads. After the fix, replay step 2: shared passphrases should be absent or rotated invalid."
     },
     "difficulty": "advanced"
@@ -3093,7 +3093,7 @@
      "en": "In step 1, list all vault families with vaultcmd's list mode. In step 2, expand Windows Credentials entries with listcreds; credential resources and identities confirm extractable items. In step 3, pull credential-manager keys from memory with mimikatz sekurlsa::credman; username and password output completes the leak chain. Judge success by extracted credential pairs. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "清理终端存量保存凭据并禁用浏览器口令保存，启用 LSA 保护与 LSASS 访问审计。修复后重放第 2、3 步，条目清单应为空且内存提取被 PPL 阻断。",
+     "zh": "清理终端存量保存凭据并禁用浏览器口令保存，启用 LSA 保护（PPL）与 LSASS 访问审计：\n    reg add \"HKLM\\SOFTWARE\\Policies\\Microsoft\\Edge\" /v PasswordManagerEnabled /t REG_DWORD /d 0 /f\n    reg add \"HKLM\\SOFTWARE\\Policies\\Google\\Chrome\" /v PasswordManagerEnabled /t REG_DWORD /d 0 /f\n    reg add HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa /v RunAsPPL /t REG_DWORD /d 1 /f\n    修复后重放第 2、3 步，条目清单应为空且内存提取被 PPL 阻断。",
      "en": "Purge saved credentials from endpoints, disable browser password saving, and enable LSA protection with LSASS access auditing. After the fix, replay steps 2 and 3: the entry list should be empty and memory extraction blocked by PPL."
     },
     "difficulty": "advanced"
@@ -3435,7 +3435,7 @@
      "en": "In step 1, search the disk for .kdbx files and print the path list. In step 2, recursively search user profile directories with a depth limit, listing sizes and modification times. In step 3, load KeeThief and extract the master key and database passphrase from the running KeePass process; output confirms missing memory protection. Judge success by a recovered master key or passphrase. Replace placeholders via the global variables menu; execute only on authorized hosts."
     },
     "mitigation": {
-     "zh": "升级 KeePass 至启用内存防护的版本并锁定工作区后关闭进程，数据库文件集中存储并限制目录枚举。修复后重放第 3 步，内存提取应失败或返回空。",
+     "zh": "升级 KeePass/KeePassXC 至带进程内存防护的版本，锁定工作区后退出进程，数据库文件集中存储并限制目录枚举：\n    winget upgrade KeePassXTeam.KeePassXC          # 或域内部署最新 KeePass 2.x MSI\n    icacls \"D:\\Vaults\" /inheritance:r /grant:r \"CORP\\VaultAdmins:(OI)(CI)F\" \"CORP\\VaultUsers:(OI)(CI)RX\"\n    <FileCreate onmatch=\"include\"><TargetFilename condition=\"end with\">.kdbx</TargetFilename></FileCreate>\n    修复后重放第 3 步，内存提取应失败或返回空。",
      "en": "Upgrade KeePass to builds with memory protection, lock workspaces and close processes when idle, centralize database storage, and restrict directory enumeration. After the fix, replay step 3: memory extraction should fail or return nothing."
     },
     "difficulty": "advanced"
@@ -3833,7 +3833,7 @@
      "en": "In step 1, read directly with mimikatz lsadump::secrets; service-account plaintext or hashes mark extraction success. In step 2, export the SECURITY and SYSTEM hives together with reg save. In step 3, parse both hives offline with secretsdump.py LOCAL mode; recovered plaintext proves the second path is equally reachable. Judge success by plaintext output from either path. Replace placeholders via the global variables menu; destroy exported files after testing."
     },
     "mitigation": {
-     "zh": "服务账号改用 gMSA，禁用自动登录并清理遗留 LSA 密文，监控 reg save 对 SECURITY 键的访问。修复后重放第 1、2 步，读取应被阻断并产生告警。",
+     "zh": "服务账号改用 gMSA，禁用自动登录并清理遗留 LSA 密文，启用 LSA 保护并监控 reg save 对 SECURITY 键的访问：\n    New-ADServiceAccount -Name svc_task -DNSHostName svc_task.corp.local `\n      -PrincipalsAllowedToRetrieveManagedPassword \"CORP\\Servers\"\n    reg add \"HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon\" /v AutoAdminLogon /t REG_SZ /d 0 /f\n    reg add HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa /v RunAsPPL /t REG_DWORD /d 1 /f\n    修复后重放第 1、2 步，读取应被阻断并产生告警。",
      "en": "Move service accounts to gMSA, disable autologon, purge legacy LSA secrets, and monitor reg save access to the SECURITY key. After the fix, replay steps 1 and 2: reads should be blocked with alerts."
     },
     "difficulty": "advanced"
@@ -4215,7 +4215,7 @@
      "en": "Use in Payload list order: step 1 establishes an interactive psexec shell with the lab account password — whoami returning the target context plus a 7045 service-creation event on the target confirms success; step 2 switches to -hashes for NTLM authentication — a 4624 NTLM logon recorded on the target confirms the hash works; step 3 executes whoami remotely to verify command return; step 4 replays with native PsExec.exe and confirms the temporary service is cleaned up. Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "限制 445 端口仅管理网段可达，启用 SMB 签名与 EPA，实施本地管理员隔离并用 LAPS 轮换本机管理员密码，建立分层管理账号；对 7045 服务创建与 4624 异常登录实时告警。修复后用第 1、2 步样例回归，远程服务创建应被拒绝并触发告警。",
+     "zh": "445 仅管理网段可达，强制 SMB 签名与 EPA，本地管理员隔离并以 LAPS 轮换，7045/4624 实时告警：\n    Set-NetFirewallRule -DisplayName \"File and Printer Sharing (SMB-In)\" -RemoteAddress 10.0.10.0/24\n    reg add HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters /v RequireSecuritySignature /t REG_DWORD /d 1 /f\n    Update-LapsADSchema\n    Set-LapsADComputerSelfPermission -Identity \"OU=Servers,DC=corp,DC=local\"\n    修复后用第 1、2 步样例回归，远程服务创建应被拒绝并触发告警。",
      "en": "Restrict port 445 to the management segment, enable SMB signing and EPA, enforce local administrator isolation with LAPS rotation, and adopt tiered admin accounts; alert in real time on 7045 service creation and anomalous 4624 logons. After the fix, regress with the step 1 and step 2 samples: remote service creation must be denied and raise an alert."
     },
     "difficulty": "advanced"
@@ -4640,7 +4640,7 @@
      "en": "Use in Payload list order: step 1 remotely creates a cmd /c whoami process with wmic — returned hostname output plus 4688/5857 events on the target confirms success; step 2 enters an interactive wmiexec shell to verify sustained control; step 3 switches to -hashes to authenticate with the NTLM hash and obtain a shell; step 4 replays with Invoke-WmiMethod — ReturnValue 0 plus a new process on the target confirms. Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "将 WMI/DCOM 远程访问限制到管理网段与跳板机，收紧 WMI 命名空间与 DCOM 激活权限，禁用不需要的远程 WMI 功能；监控 Win32_Process.Create 调用与 5857/4688 事件。修复后用第 1、4 步样例回归，远程进程创建应返回拒绝错误。",
+     "zh": "WMI/DCOM 远程访问限制到管理网段与跳板机，收紧 WMI 命名空间与 DCOM 激活权限，监控 Win32_Process.Create 与 5857/4688 事件：\n    New-NetFirewallRule -DisplayName \"Block-RPC-WMI\" -Direction Inbound -Action Block `\n      -Protocol TCP -LocalPort 135 -RemoteAddress Any\n    reg add HKLM\\SOFTWARE\\Microsoft\\Ole /v EnableDCOM /t REG_SZ /d \"N\" /f   # 评估业务后禁用远程 DCOM\n    AuditPol /set /subcategory:\"Process Creation\" /success:enable /failure:enable\n    修复后用第 1、4 步样例回归，远程进程创建应返回拒绝错误。",
      "en": "Restrict WMI/DCOM remote access to the management segment and jump hosts, tighten WMI namespace and DCOM launch permissions, and disable unnecessary remote WMI features; monitor Win32_Process.Create calls and 5857/4688 events. After the fix, regress with the step 1 and step 4 samples: remote process creation must return an access-denied error."
     },
     "difficulty": "advanced"
@@ -5089,7 +5089,7 @@
      "en": "Use in Payload list order: step 1 opens a shell directly with psexec.py -hashes — a 4624 NewCredentials logon on the target confirms success; step 2 validates the hash with crackmapexec smb — Pwn3d! output confirms local administrator rights; step 3 uses sekurlsa::pth to launch a new process carrying the injected credential and reach domain resources; step 4 lists target shares with Invoke-SMBClient using the hash. Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "启用 SMB 签名与 EPA，实施本地管理员隔离策略（禁止本地管理员跨机复用、LAPS 随机化），对敏感账号禁用 NTLM 并审计 4624 NewCredentials 类型登录。修复后用第 1、2 步样例回归，哈希认证应被目标直接拒绝。",
+     "zh": "启用 SMB 签名与 EPA，本地管理员隔离（禁止跨机复用、LAPS 随机化），对敏感账号拒绝 NTLM 并审计 4624 NewCredentials 登录：\n    reg add HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters /v RequireSecuritySignature /t REG_DWORD /d 1 /f\n    reg add HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa /v RestrictReceivingNTLMTraffic /t REG_DWORD /d 2 /f\n    Set-ItemProperty HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Lsa -Name NoLMHash -Value 1\n    修复后用第 1、2 步样例回归，哈希认证应被目标直接拒绝。",
      "en": "Enable SMB signing and EPA, enforce local-admin isolation (no cross-machine reuse, LAPS randomization), disable NTLM for sensitive accounts, and audit 4624 NewCredentials logons. After the fix, regress with the step 1 and step 2 samples: hash authentication must be rejected by the target."
     },
     "difficulty": "advanced"
@@ -5490,7 +5490,7 @@
      "en": "Use in Payload list order: step 1 runs Responder on an isolated segment — printed NTLMv2 hashes confirm interception; step 2 relays to an SMB target with ntlmrelayx — RELAY success lines plus writable-share enumeration; step 3 relays into LDAP with --escalate-user — the account is escalated and the DC logs 4662 directory changes; step 4 pairs mitm6 answering IPv6 DNS to push the LDAP write through to the DC. Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "全域强制 SMB 签名、LDAP 签名与通道绑定（EPA），禁用 NTLM 或限制到已防护通道，禁用不必要的 IPv6 并对 DNS 记录变更告警；监控 4662 目录变更与异常认证链。修复后用第 2、3 步样例回归，中继应被目标以签名/通道绑定错误拒绝。",
+     "zh": "全域强制 SMB/LDAP 签名与通道绑定，禁用不必要 NTLM 与 IPv6，对 DNS 变更与 4662 告警：\n    reg add HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters /v RequireSecuritySignature /t REG_DWORD /d 1 /f\n    reg add HKLM\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters /v LDAPServerIntegrity /t REG_DWORD /d 2 /f\n    reg add HKLM\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters /v LdapEnforceChannelBinding /t REG_DWORD /d 2 /f\n    修复后用第 2、3 步回归，中继应被签名/通道绑定错误拒绝。",
      "en": "Enforce SMB signing, LDAP signing, and channel binding (EPA) domain-wide; disable NTLM or confine it to protected channels, disable unnecessary IPv6 with alerts on DNS record changes, and monitor 4662 directory changes and abnormal auth chains. After the fix, regress with the step 2 and step 3 samples: relays must be rejected with signing/channel-binding errors."
     },
     "difficulty": "advanced"
@@ -6191,7 +6191,7 @@
      "en": "Use in Payload list order: step 1 instantiates MMC20.Application remotely via GetTypeFromProgID and invokes ExecuteShellCommand to run whoami — a process with a DCOM-activation origin on the target confirms success; step 2 replays execution through the ShellBrowserWindow CLSID via ShellExecute; step 3 triggers DDEInitiate through Excel DCOM — a calc or cmd process confirms the DDE path. All three leave no files on disk; replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "收紧 DCOM 激活与访问权限到管理网段专用账号，禁用不需要的 COM 服务器远程激活，主机防火墙限制 135 端口；监控父进程为 DCOM 服务的 4688 进程创建事件。修复后用第 1 步样例回归，远程激活应返回 E_ACCESSDENIED。",
+     "zh": "DCOM 激活与访问权限收紧到管理网段专用账号，禁用不需要的 COM 服务器远程激活，防火墙限制 135，监控 DCOM 进程链 4688：\n    New-NetFirewallRule -DisplayName \"Block-RPC-135\" -Direction Inbound -Protocol TCP -LocalPort 135 -Action Block\n    reg add HKLM\\SOFTWARE\\Microsoft\\Ole /v EnableDCOM /t REG_SZ /d \"N\" /f\n    AuditPol /set /subcategory:\"Process Creation\" /success:enable /failure:enable\n    修复后用第 1 步样例回归，远程激活应返回 E_ACCESSDENIED。",
      "en": "Tighten DCOM launch and access permissions to dedicated accounts from the management segment, disable remote activation of unneeded COM servers, and restrict port 135 with host firewalls; monitor 4688 process creations whose parent is a DCOM service. After the fix, regress with the step 1 sample: remote activation must return E_ACCESSDENIED."
     },
     "difficulty": "advanced"
@@ -7030,7 +7030,7 @@
      "en": "Use in Payload list order: step 1 enumerates sessions with query user, recording the target username, session ID, and state (Active/Disconnect); step 2 redirects the target session to the local console with tscon SESSION_ID /dest:console — gaining its desktop plus a session-reconnect entry in the system log confirms success; step 3 locates sessions with Mimikatz ts::sessions and replays takeover via ts::remote. Replace the SESSION_ID placeholder via the global variables menu."
     },
     "mitigation": {
-     "zh": "对特权账号启用断开即锁屏与屏幕保护锁定策略，收紧会话所有权接管相关权限，部署 RDP 空闲超时；监控 4778/4779 会话重连与 tscon 命令行调用。修复后用第 2 步样例回归，低权限主体接管他人会话应被拒绝并留痕。",
+     "zh": "特权账号启用断开即锁屏与屏保锁定策略，收紧会话接管权限并部署断开/空闲超时，监控 4778/4779 会话重连与 tscon 调用：\n    reg add \"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services\" /v MaxDisconnectionTime /t REG_DWORD /d 600000 /f\n    reg add \"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Terminal Services\" /v MaxIdleTime /t REG_DWORD /d 1800000 /f\n    Get-WinEvent -FilterHashtable @{LogName='Security';Id=4688} | ? { $_.Message -match \"tscon\" }\n    修复后用第 2 步样例回归，低权限主体接管他人会话应被拒绝并留痕。",
      "en": "Enable disconnect-lock and screensaver lock policies for privileged accounts, tighten session-ownership takeover rights, and deploy RDP idle timeouts; monitor 4778/4779 session reconnects and tscon command-line invocations. After the fix, regress with the step 2 sample: takeover by a lower-privileged principal must be denied and logged."
     },
     "difficulty": "advanced"
@@ -7388,7 +7388,7 @@
      "en": "Use in Payload list order: step 1 injects a ticket with sekurlsa::pth /ptt and spawns a new process — the target user's TGT in klist confirms success; step 2 requests a TGT with Rubeus asktgt /rc4 and injects it into the current session — domain resource access confirms the conversion works; step 3 writes a ccache ticket file with getTGT.py and validates cross-platform via KRB5CCNAME. All three share one success criterion: a usable domain ticket as the target identity. Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "将域功能级别提升至强制 AES Kerberos，禁用 RC4/DES 加密类型，为敏感账号启用保护组与账号隔离；监控 4768 中 RC4 加密类型的 TGT 请求并告警。修复后用第 2 步样例回归，RC4 预认证应被 KDC 直接拒绝。",
+     "zh": "域功能级别提升后强制 AES Kerberos，禁用 RC4/DES 加密类型，敏感账号入保护组，监控 4768 RC4 etype 告警：\n    reg add HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\Kerberos\\Parameters /v SupportedEncryptionTypes /t REG_DWORD /d 24 /f\n    Set-ADUser svc_user -Replace @{'msDS-SupportedEncryptionTypes'=24}\n    Add-ADGroupMember \"Protected Users\" -Members svc_user\n    Get-WinEvent -FilterHashtable @{LogName='Security';Id=4768} | ? Message -match \"0x17\"\n    修复后用第 2 步回归，RC4 预认证应被 KDC 直接拒绝。",
      "en": "Raise the domain functional level to enforce AES Kerberos, disable RC4/DES encryption types, and enable protected groups and account isolation for sensitive accounts; alert on RC4-encrypted TGT requests in 4768. After the fix, regress with the step 2 sample: RC4 pre-authentication must be rejected by the KDC."
     },
     "difficulty": "advanced"
@@ -7794,7 +7794,7 @@
      "en": "Use in Payload list order: step 1 exports tickets from target memory with sekurlsa::tickets /export — multiple .kirbi files appearing locally confirm success; step 2 imports the target service ticket with kerberos::ptt — klist showing the ticket plus access to the corresponding resource confirms takeover; step 3 replays cross-machine import on another host with Rubeus ptt /ticket:<base64>. Tickets remain reusable until expiry; replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "对敏感服务账号启用 Kerberos 凭据守护与 PAC 签名校验，缩短服务票据生命周期，限制调试权限阻断内存导出；监控同一票据在多主机的异常使用。修复后用第 2 步样例回归，导入的票据应被服务以 PAC 校验失败拒绝。",
+     "zh": "敏感服务账号启用 Kerberos 凭据守护与 PAC 签名校验，缩短服务票据生命周期，限制调试权限阻断内存导出，监控同一票据多主机使用：\n    reg add HKLM\\SYSTEM\\CurrentControlSet\\Control\\DeviceGuard /v EnableVirtualizationBasedSecurity /t REG_DWORD /d 1 /f\n    reg add HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa /v LsaCfgFlags /t REG_DWORD /d 1 /f\n    reg add HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\Kerberos\\Parameters /v PacSignatureValidationSupported /t REG_DWORD /d 1 /f\n    修复后用第 2 步样例回归，导入的票据应被服务以 PAC 校验失败拒绝。",
      "en": "Enable Kerberos credential guard and PAC signature validation for sensitive service accounts, shorten service-ticket lifetimes, and restrict debug privileges to block memory export; monitor the same ticket used across multiple hosts. After the fix, regress with the step 2 sample: imported tickets must fail PAC validation at the service."
     },
     "difficulty": "advanced"
@@ -8086,7 +8086,7 @@
      "en": "Use in Payload list order: step 1 runs smbexec.py for a semi-interactive shell — command output returning over SMB confirms success; step 2 replays manually with sc \\HOST create/start/delete: create evilsvc pointing at cmd /c whoami, start it to capture output, then delete the service, matching 7045 create/delete events on the target. The path is fileless and suits credential validation before batch lateral movement. Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "限制 ADMIN$ 与服务控制远程访问到管理网段专用账号，启用 SMB 签名，实施本地管理员隔离与 LAPS 轮换；对 7045 服务创建事件建立实时告警并审计 binPath 内容。修复后用第 1、2 步样例回归，远程服务创建应被拒绝并触发告警。",
+     "zh": "ADMIN$ 与服务控制远程访问限管理网段专用账号，强制 SMB 签名，本地管理员隔离与 LAPS，7045 实时告警并审计 binPath：\n    Set-NetFirewallRule -DisplayName \"File and Printer Sharing (SMB-In)\" -RemoteAddress 10.0.10.0/24\n    reg add HKLM\\SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters /v RequireSecuritySignature /t REG_DWORD /d 1 /f\n    Get-WinEvent -FilterHashtable @{LogName='System';Id=7045} | ? Message -notmatch \"Antivirus|Update\"\n    修复后用第 1、2 步样例回归，远程服务创建应被拒绝并触发告警。",
      "en": "Restrict ADMIN$ and service-control remote access to dedicated management-segment accounts, enable SMB signing, and enforce local-admin isolation with LAPS rotation; build real-time alerts on 7045 service-creation events and audit binPath contents. After the fix, regress with the step 1 and step 2 samples: remote service creation must be denied and raise an alert."
     },
     "difficulty": "advanced"
@@ -8424,7 +8424,7 @@
      "en": "Use in Payload list order: step 1 executes whoami remotely with atexec.py — returned output after the task fires plus a 4698 event on the target confirms success; step 2 replays with schtasks /create /s using a one-shot trigger time and observes the 4698/4699 event pair. Both paths run as SYSTEM and self-clean, suiting credential validation and command-return checks before switching to other persistence. Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "限制任务计划程序远程管理到管理网段专用账号，收紧远程任务注册权限，对 4698/4699 事件建立告警并审计任务 XML 中的异常命令行。修复后用第 1 步样例回归，远程任务注册应返回拒绝错误。",
+     "zh": "任务计划程序远程管理限管理网段专用账号，收紧远程任务注册权限，对 4698/4699 告警并审计任务 XML 异常命令行：\n    AuditPol /set /subcategory:\"Other Object Access Events\" /success:enable /failure:enable\n    New-NetFirewallRule -DisplayName \"SMB-Mgmt-Only\" -Protocol TCP -LocalPort 445 -RemoteAddress 10.0.10.0/24\n    Get-WinEvent -FilterHashtable @{LogName='Security';Id=4698} | ? Message -match \"cmd|powershell\"\n    修复后用第 1 步样例回归，远程任务注册应返回拒绝错误。",
      "en": "Restrict Task Scheduler remote management to dedicated management-segment accounts, tighten remote task registration rights, alert on 4698/4699 events, and audit task XML for anomalous command lines. After the fix, regress with the step 1 sample: remote task registration must return an access-denied error."
     },
     "difficulty": "advanced"
@@ -9265,7 +9265,7 @@
      "en": "In step 1, enumerate tokens with mimikatz token::list locking onto stealable targets. In step 2, verify theft of a specified domain user's token with token::elevate. In steps 3 through 5, run JuicyPotato, PrintSpoofer and GodPotato in turn; bound commands executing as SYSTEM confirm each path, judged by whoami output. Replace placeholders via the global variables menu; authorized lab hosts only."
     },
     "mitigation": {
-     "zh": "移除非必要服务的 SeImpersonate 与 SeAssignPrimaryToken 特权，服务账户改用托管身份，终端监控 potato 家族的进程与管道行为。修复后重放第 3 至第 5 步，提权工具应全部失败并触发告警。",
+     "zh": "移除非必要服务的 SeImpersonate 与 SeAssignPrimaryToken 特权，服务账户改用托管身份，终端监控 potato 家族的进程与管道行为：\n    sc.exe qprivs AppSvc                                   # 查看当前特权\n    sc.exe privs AppSvc \"SeChangeNotifyPrivilege/SeCreateGlobalPrivilege\"   # 收窄特权白名单\n    sc.exe config AppSvc obj= \"NT SERVICE\\AppSvc\"          # 专用虚拟账号运行\n    sc.exe sidtype AppSvc restricted\n    修复后重放第 3 至第 5 步，提权工具应全部失败并触发告警。",
      "en": "Strip SeImpersonate and SeAssignPrimaryToken from unneeded services, use managed identities for service accounts, and monitor potato-family process and pipe behavior on endpoints. After the fix, replay steps 3 through 5: every escalation tool should fail with alerts."
     },
     "difficulty": "advanced"
@@ -9741,7 +9741,7 @@
      "en": "In step 1, write the ms-settings Shell Open command key and run fodhelper; the bound command executing at high integrity confirms the auto-elevate bypass. In step 2, repeat with the mscfile key and eventvwr to retest the second path. In step 3, invoke numbered methods with UACME's Akagi64 to verify other library bypasses. Judge success by process integrity level. Replace placeholders via the global variables menu; clean up all hijack keys after testing."
     },
     "mitigation": {
-     "zh": "把 UAC 级别调至最高并对自动提升程序启用安装程序检测，监控 HKCU 类键的写入与 fodhelper、eventvwr 的异常调用链。修复后重放第 1 至第 3 步，全部方法应失败并触发告警。",
+     "zh": "UAC 调至最高并对自动提升程序启用安装程序检测，监控 HKCU 类键写入与 fodhelper/eventvwr 调用链：\n    reg add HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System /v ConsentPromptBehaviorAdmin /t REG_DWORD /d 2 /f\n    <RegistryEvent onmatch=\"include\"><TargetObject condition=\"begin with\">HKCU\\Software\\Classes\\ms-settings</TargetObject></RegistryEvent>\n    修复后重放第 1 至第 3 步，全部方法应失败并触发告警。",
      "en": "Raise UAC to maximum with installer detection for auto-elevating programs, monitoring HKCU class-key writes and anomalous fodhelper and eventvwr call chains. After the fix, replay steps 1 through 3: every method should fail with alerts."
     },
     "difficulty": "advanced"
@@ -10090,7 +10090,7 @@
      "en": "In step 1, read the target application directory's ACL and identify standard-user-writable paths to lock onto the hijack point. In step 2, generate a 64-bit reverse DLL with msfvenom as the verification payload. In step 3, copy the DLL under the missing DLL's name; an errorless copy confirms writability, then wait for or trigger the privileged process to load it and call back. Judge success by establishing a SYSTEM session. Replace placeholders via the global variables menu; remove the payload after testing."
     },
     "mitigation": {
-     "zh": "修正应用目录 ACL 仅允许管理员写入，启用 DLL 签名或 SetDefaultDllDirectories 限制搜索路径，监控新增 DLL 加载。修复后重放第 3 步，复制应被拒绝且无异常加载事件。",
+     "zh": "修正应用目录 ACL 仅允许管理员写入，启用 DLL 签名或 SetDefaultDllDirectories 限定搜索路径，监控新增 DLL 加载：\n    icacls \"C:\\Program Files\\App\" /inheritance:r /grant:r \"Administrators:(OI)(CI)F\" \"Users:(OI)(CI)RX\"\n    // 应用启动时限定 DLL 搜索目录（仅系统目录与应用目录）\n    SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_SYSTEM32 | LOAD_LIBRARY_SEARCH_APPLICATION_DIR);\n    link /DEPENDENTLOADFLAG:0x800 app.obj      # 构建期强制依赖仅从 System32 加载\n    修复后重放第 3 步，复制应被拒绝且无异常加载事件。",
      "en": "Fix directory ACLs to administrator-only writes, enable DLL signing or SetDefaultDllDirectories to constrain search paths, and monitor new DLL loads. After the fix, replay step 3: the copy should be denied with no anomalous load events."
     },
     "difficulty": "advanced"
@@ -10525,7 +10525,7 @@
      "en": "In step 1, enumerate standard-user-writable services with accesschk; the all-permissions service list locks onto targets. In step 2, rewrite the target binPath with sc config and confirm via qc read-back. In step 3, stop and start the service; the command executing as SYSTEM confirms escalation. Judge success by execution-identity output. Replace placeholders via the global variables menu; restore the original binPath after testing."
     },
     "mitigation": {
-     "zh": "以 accesschk 定期巡检服务 ACL 并回收写权限，修正引号与路径归属，监控 sc config 调用。修复后重放第 2 步，改写应被拒绝并记录访问事件。",
+     "zh": "收敛服务注册表 ACL 至仅 Administrators/SYSTEM 可写，修正带空格 binPath 引号，并监控 sc config 调用：\n    sc.exe config {LAB_SERVICE} binPath= \"\\\"C:\\Program Files\\App\\svc.exe\\\"\"\n    $k = \"HKLM:\\SYSTEM\\CurrentControlSet\\Services\\{LAB_SERVICE}\"\n    $acl = Get-Acl $k\n    $acl.Access | Where-Object { $_.IdentityReference -match 'Users' } | ForEach-Object { $acl.RemoveAccessRule($_) | Out-Null }\n    Set-Acl $k $acl",
      "en": "Periodically audit service ACLs with accesschk and revoke write grants, fix quoting and path ownership, and monitor sc config calls. After the fix, replay step 2: rewrites should be denied with access events logged."
     },
     "difficulty": "advanced"
@@ -10936,7 +10936,7 @@
      "en": "In step 1, query AlwaysInstallElevated under HKCU and HKLM; both reading 0x1 means the policy is live. In step 2, generate a SYSTEM-callback MSI with msfvenom as the verification package. In step 3, install silently with msiexec; the payload executing as SYSTEM and calling back confirms the escalation path. Judge success by a SYSTEM session. Replace placeholders via the global variables menu; uninstall the test package afterwards."
     },
     "mitigation": {
-     "zh": "删除两处 Hive 的 AlwaysInstallElevated 策略值并经组策略固化禁用，监控 msiexec 的 SYSTEM 上下文安装。修复后重放第 1 步，查询应返回值不存在且第 3 步安装失败。",
+     "zh": "删除 HKCU/HKLM 两处策略值，经组策略（管理模板→Windows 组件→Windows Installer→\"始终以提升的权限安装\"=已禁用）固化，监控 SYSTEM 上下文的 msiexec：\n    reg delete \"HKCU\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer\" /v AlwaysInstallElevated /f\n    reg delete \"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Installer\" /v AlwaysInstallElevated /f\n    Get-WinEvent -FilterHashtable @{LogName='System';Id=7045} | ? { $_.Message -match 'msiexec' }",
      "en": "Remove AlwaysInstallElevated from both hives and hard-disable via Group Policy, monitoring SYSTEM-context msiexec installs. After the fix, replay step 1: the value should be absent and step 3 installation should fail."
     },
     "difficulty": "advanced"
@@ -11863,7 +11863,7 @@
      "en": "In step 1, locate SUID files disk-wide with find, locking onto root-owned candidates absent from the baseline list. In step 2, verify known escapes for nmap, vim and find per the script; a root shell confirms the corresponding path. In step 3, re-enumerate within usr directories and print the first 50 entries for cross-checking. Judge success by root-identity output. Replace placeholders via the global variables menu; run read-only commands in test shells."
     },
     "mitigation": {
-     "zh": "移除非必要 SUID 位并以基线比对监控变更，用 nosuid 挂载用户可写分区。修复后重放第 1、2 步，异常位应消失且逃逸尝试失败。",
+     "zh": "移除非必要 SUID 位并基线比对监控变更，用户可写分区 nosuid 挂载，交互式工具一律不授权 SUID：\n    find / -perm -4000 -type f -printf '%m %u %p\\n' | sort > /root/suid.baseline\n    chmod u-s /usr/bin/nmap /usr/bin/vim /usr/bin/find\n    echo '/home ext4 defaults,nosuid 0 2' >> /etc/fstab\n    mount -o remount,nosuid /home",
      "en": "Strip unneeded SUID bits, monitor changes against a baseline, and mount user-writable partitions nosuid. After the fix, replay steps 1 and 2: stray bits should be gone and escapes fail."
     },
     "difficulty": "advanced"
@@ -12314,7 +12314,7 @@
      "en": "In step 1, list current grants with sudo -l and lock onto NOPASSWD entries. In step 2, run known escapes for authorized programs such as vim, find and awk per the script; a root shell confirms the path. In step 3, recheck the list non-interactively with sudo -n -l to support automated audits. Judge success by root-identity output. Replace placeholders via the global variables menu; run read-only commands like id during escape verification."
     },
     "mitigation": {
-     "zh": "sudoers 收敛为参数白名单并禁止编辑器类全权授权，启用 sudo 日志与会话录制。修复后重放第 2 步，逃逸命令应被拒绝且日志可追溯。",
+     "zh": "sudoers 收敛为命令+参数白名单，禁止编辑器/查找类工具全权授权，开启输入输出日志与会话录制：\n    Cmnd_Alias OPS = /usr/bin/systemctl restart nginx, /usr/bin/cat /var/log/app/*\n    dev ALL=(root) NOPASSWD: OPS\n    Defaults log_input, log_output, iolog_dir=/var/log/sudo-io/%{user}\n    visudo -cf /etc/sudoers",
      "en": "Narrow sudoers to argument allowlists, forbid blanket editor-class grants, and enable sudo logging with session recording. After the fix, replay step 2: escape attempts should be denied with traceable logs."
     },
     "difficulty": "advanced"
@@ -12685,7 +12685,7 @@
      "en": "In step 1, review the etc crontab and scheduled-task directories, locking onto root-run jobs with writable paths. In step 2, check target-script and parent-directory permissions; standard-user writability marks the injection point. In step 3, use a tar checkpoint hook to execute a fixture script in a test directory, validating wildcard argument-injection reachability. Judge success by root-context execution traces. Replace placeholders via the global variables menu; run hook tests only in isolated directories."
     },
     "mitigation": {
-     "zh": "任务脚本与父目录仅允许 root 写入，避免通配调用并显式列出文件，cron 编辑与执行纳入审计。修复后重放第 2、3 步，写入应被拒绝且钩子不再触发。",
+     "zh": "root 任务脚本与父目录仅 root 可写，避免通配调用并显式列出文件，cron 变更纳入审计：\n    chown root:root {LAB_CRON_SCRIPT} && chmod 700 {LAB_CRON_SCRIPT}\n    chmod 600 /etc/cron.d/* && chown root:root /etc/cron.d\n    auditctl -w /etc/cron.d/ -p wa -k cron_change",
      "en": "Restrict job scripts and parent directories to root writes, avoid wildcard invocations by listing files explicitly, and audit cron edits and runs. After the fix, replay steps 2 and 3: writes should be denied and hooks never fire."
     },
     "difficulty": "advanced"
@@ -13088,7 +13088,7 @@
      "en": "In step 1, write the HKLM Run key and read it back; execution after reboot confirms autostart. In step 2, write RunOnce verifying one-shot triggering and key deletion. In step 3, append to Userinit; execution alongside userinit at logon confirms the hijack. In step 4, create an autostart service with sc create checked via qc. Judge by read-back values and execution traces. Replace placeholders via the global variables menu; clean up immediately after testing."
     },
     "mitigation": {
-     "zh": "为自启键建立配置基线并监控修改事件（Sysmon 12、13），限制非授权进程写入 HKLM 运行键。修复后重放第 1 至第 4 步，全部写入应触发实时告警并可在基线比对中定位。",
+     "zh": "自启键建配置基线并以 Sysmon 12/13 监控，限制非授权进程写入 HKLM 运行键：\n    $key = \"HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run\"\n    $acl = Get-Acl $key\n    $acl.AddAccessRule((New-Object System.Security.AccessControl.RegistryAccessRule(\"Users\", \"WriteKey\", \"Deny\")))\n    Set-Acl $key $acl\n    <RegistryEvent onmatch=\"include\">\n      <TargetObject condition=\"contains\">\\CurrentVersion\\Run</TargetObject>\n    </RegistryEvent>\n    修复后重放第 1 至第 4 步，全部写入应触发告警并可在基线比对中定位。",
      "en": "Baseline autostart keys and alert on modification events (Sysmon 12 and 13), blocking unauthorized processes from writing HKLM run keys. After the fix, replay steps 1 through 4: every write should trigger real-time alerts and stand out in baseline diffs."
     },
     "difficulty": "advanced"
@@ -13614,7 +13614,7 @@
      "en": "In step 1, register an event filter named evil with Set-WmiInstance and confirm the returned instance. In step 2, create a CommandLineEventConsumer pointing at a Base64-decoded command. In step 3, establish the FilterToConsumerBinding; payload execution on the trigger event confirms persistence. Judge success by the binding instance and execution traces. Replace placeholders via the global variables menu; delete all three objects immediately after testing."
     },
     "mitigation": {
-     "zh": "监控 root subscription 命名空间的创建事件（Sysmon 19 至 21），基线比对订阅对象并限制远程 WMI 管理。修复后重放第 1 至第 3 步，每一步都应触发实时告警。",
+     "zh": "Sysmon 开启 WMI 事件（19-21）集中告警，基线比对 root\\subscription 订阅对象，限制远程 WMI 管理：\n    sysmon64 -accepteula -i C:\\sysmon\\config.xml\n    <EventFiltering>\n      <WMIEvent onmatch=\"exclude\"/>\n    </EventFiltering>\n    Get-CimInstance -Namespace root/subscription -ClassName __EventFilter\n    Get-CimInstance -Namespace root/subscription -ClassName CommandLineEventConsumer",
      "en": "Monitor creation events in the root subscription namespace (Sysmon 19 through 21), diff subscription objects against baselines, and restrict remote WMI management. After the fix, replay steps 1 through 3: every step should raise real-time alerts."
     },
     "difficulty": "advanced"
@@ -13996,7 +13996,7 @@
      "en": "In step 1, copy a test shortcut into the current user's Startup folder; auto-execution at next logon confirms user-level persistence. In step 2, copy into the ProgramData all-users Startup folder, triggered by any account logon, recording the triggering account to verify scope. Judge success by execution traces correlated with logon times. Replace placeholders via the global variables menu; let the shortcut run an echo command only and delete it after testing."
     },
     "mitigation": {
-     "zh": "把两个启动目录纳入文件完整性监控，普通用户回收 ProgramData 启动目录写权限。修复后重放第 1、2 步，放置应触发告警且无登录执行记录。",
+     "zh": "两个启动目录纳入文件完整性监控，回收普通用户对 ProgramData 公共启动目录的写权限：\n    $p = 'C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\StartUp'\n    icacls $p /inheritance:r /grant 'Administrators:(OI)(CI)F' 'SYSTEM:(OI)(CI)F' 'Everyone:(RX)'\n    Get-ChildItem $p, \"$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\" | Get-FileHash",
      "en": "Bring both startup directories under file-integrity monitoring and revoke standard-user write access to the ProgramData startup path. After the fix, replay steps 1 and 2: placement should alert and no logon executions appear."
     },
     "difficulty": "advanced"
@@ -14323,7 +14323,7 @@
      "en": "In step 1, register autostart service evilsvc with sc create, pointing binPath at a Base64-decoded command, and confirm creation via qc read-back. In step 2, trigger execution with sc start; RUNNING status plus payload execution confirms the persistence chain. Judge success by execution traces and service state. Replace placeholders via the global variables menu; clean up with sc delete after testing."
     },
     "mitigation": {
-     "zh": "对服务创建与配置变更启用事件审计（7045、7040）并基线比对服务清单，约束管理员执行来源。修复后重放第 1 步，注册应即时告警并进入审批流程。",
+     "zh": "服务创建/变更事件（7045/7040）默认记录，重点在实时告警与基线比对，并约束管理员执行来源：\n    Get-WinEvent -FilterHashtable @{LogName='System';Id=7045,7040} -MaxEvents 50 | Select TimeCreated, Message\n    Get-Service | Select Name, Status, StartType | Export-Csv C:\\baseline\\services.csv -NoTypeInformation",
      "en": "Enable event auditing for service creation and changes (7045, 7040), diff service inventories against baselines, and constrain administrator execution sources. After the fix, replay step 1: registration should alert instantly and enter approval workflow."
     },
     "difficulty": "advanced"
@@ -14650,7 +14650,7 @@
      "en": "In step 1, generate a 64-bit reverse DLL with msfvenom as the test payload. In step 2, read current AppInit_DLLs and LoadAppInit_DLLs to assess injection conditions. In step 3, write the test DLL path with reg add and read it back; User32-loading processes pulling the DLL and calling back confirm global injection, judged by an established listener session. Replace placeholders via the global variables menu; restore registry values after testing."
     },
     "mitigation": {
-     "zh": "保持 LoadAppInit_DLLs 为 0 并要求签名，基线监控该键值变更，同时对可疑 DLL 加载事件告警。修复后重放第 3 步，写入应触发告警且无进程加载测试 DLL。",
+     "zh": "保持 LoadAppInit_DLLs=0 并强制签名，基线监控键值变更，对可疑 DLL 加载告警：\n    $k = 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Windows'\n    Set-ItemProperty $k AppInit_DLLs ''\n    Set-ItemProperty $k LoadAppInit_DLLs 0\n    Set-ItemProperty $k RequireSignedAppInit_DLLs 1",
      "en": "Keep LoadAppInit_DLLs at 0 with signing required, baseline-monitor changes to the key, and alert on suspicious DLL load events. After the fix, replay step 3: the write should alert and no process loads the test DLL."
     },
     "difficulty": "advanced"
@@ -15024,7 +15024,7 @@
      "en": "In step 1, create a test account, add it to Administrators, and read back membership to confirm privileges. In step 2, create a dollar-suffixed account and verify it is invisible in normal net user listings yet resolvable by name. In step 3, operate the SAM Names registry key to inspect registry-level hiding and F-value linkage. Judge success by read-back results per step. Replace placeholders via the global variables menu; delete all test accounts afterwards and export before/after comparisons."
     },
     "mitigation": {
-     "zh": "以基线监控本地账号与管理组成员变更事件（4720、4732），比对机器与域控账号列表差异并检查注册表 Names 键。修复后重放第 1、2 步，创建与加组应即时告警。",
+     "zh": "基线监控本地账号与管理组变更事件（4720/4732），比对注册表 Names 键识破美元后缀隐藏账号：\n    auditpol /set /subcategory:\"User Account Management\" /success /failure\n    auditpol /set /subcategory:\"Security Group Management\" /success /failure\n    Get-LocalUser | Select Name, Enabled | Export-Csv C:\\baseline\\users.csv\n    reg query \"HKLM\\SAM\\SAM\\Domains\\Account\\Users\\Names\"",
      "en": "Baseline-monitor local-account and group-membership changes (4720, 4732), diff host versus domain account lists, and inspect registry Names keys. After the fix, replay steps 1 and 2: creation and group additions should alert instantly."
     },
     "difficulty": "advanced"
@@ -15799,7 +15799,7 @@
      "en": "In step 1, run mimikatz misc::skeleton on the domain controller; the implant-success notice means the master password is injected into LSASS, then authenticate with any account plus the master password to verify. In step 2, capture LSASS PID, start time and path as a baseline. In step 3, recheck LSASS liveness to confirm the process stayed intact during implantation, recording the comparison. Judge success by master-password authentication succeeding. Replace placeholders via the global variables menu; run only in the authorized lab domain and reboot the DC afterwards to clear it."
     },
     "mitigation": {
-     "zh": "收敛域控交互与远程登录来源并启用 Credential Guard，监控 LSASS 完整性与口令过滤器 DLL 加载。修复后重放第 1 步，注入应被阻断且产生最高级别告警。",
+     "zh": "收敛域控交互与远程登录来源，RunAsPPL+Credential Guard 保护 LSASS，监控口令过滤器 DLL 加载：\n    reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\" /v RunAsPPL /t REG_DWORD /d 1 /f\n    reg add \"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard\" /v EnableVirtualizationBasedSecurity /t REG_DWORD /d 1 /f",
      "en": "Restrict domain-controller logon sources and enable Credential Guard, monitoring LSASS integrity and password-filter DLL loads. After the fix, replay step 1: injection should be blocked with a highest-severity alert."
     },
     "difficulty": "advanced"
@@ -16133,7 +16133,7 @@
      "en": "In step 1, extract krbtgt-class hashes with mimikatz and dump the local SAM. In step 2, sync the DSRM password to a chosen domain account with ntdsutil. In step 3, write DsrmAdminLogonBehavior as 2 lifting logon limits. In step 4, pass the synced NTLM hash against the DC to verify reachability. Judge by an established remote session. Replace placeholders via the global variables menu; restore settings and reset the DSRM password after testing."
     },
     "mitigation": {
-     "zh": "定期轮换每台域控的 DSRM 密码并保证互不相同，监控 DsrmAdminLogonBehavior 与 4657 注册表事件。修复后重放第 3、4 步，改写应被阻断且网络登录被拒绝。",
+     "zh": "定期轮换每台域控 DSRM 密码且互不相同，DsrmAdminLogonBehavior 固定 0 禁止网络登录，监控 4657 注册表事件：\n    reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\" /v DsrmAdminLogonBehavior /t REG_DWORD /d 0 /f\n    auditpol /set /subcategory:\"Registry\" /success /failure\n    ntdsutil\n    set dsrm password\n    reset password on server null",
      "en": "Rotate every DC's DSRM password regularly with unique values, monitor DsrmAdminLogonBehavior and 4657 registry events. After the fix, replay steps 3 and 4: rewrites should be blocked and network logons denied."
     },
     "difficulty": "advanced"
@@ -16589,7 +16589,7 @@
      "en": "In step 1, append the Administrators SID to a test account with mimikatz sid::add. In step 2, query sidHistory with Get-ADUser and compare token groups via whoami, confirming the injected SID enters authorization. In step 3, read sIDHistory per chosen account isolating beyond-baseline appends. Judge by the injected SID in token groups. Replace placeholders via the global variables menu; purge injections immediately after testing."
     },
     "mitigation": {
-     "zh": "定期导出全部账户 sIDHistory 并与迁移清单比对，回收目录写权限并监控 SIDHistory 属性变更。修复后重放第 1 步，注入应失败且变更事件触发告警。",
+     "zh": "定期导出全部账户 sIDHistory 与迁移清单比对并清理注入值，回收目录写权限，监控属性变更：\n    Get-ADUser -LDAPFilter '(sidHistory=*)' -Properties sidHistory\n    Set-ADUser backdoor_user -Clear sidHistory\n    auditpol /set /subcategory:\"Directory Service Changes\" /success /failure",
      "en": "Regularly export all accounts' sIDHistory and diff against migration inventories, revoke directory-write rights, and alert on SIDHistory attribute changes. After the fix, replay step 1: injection should fail with change events firing."
     },
     "difficulty": "advanced"
@@ -16955,7 +16955,7 @@
      "en": "In step 1, pull Sysmon process-creation, image-load and process-access events, checking SVCHOST instances' parent processes and command lines against baselines. In step 2, enumerate running SVCHOST paths and module lists; empty paths or odd module sets mark suspicious hosts. In step 3, trace hits back to creation and load events for a timeline, correlating under one request ID. Judge success by locating anomalous instances. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "保持 Sysmon 全量启用并集中收集 1、7、10 事件，对路径空值与非常规父进程建立实时检测规则。修复后重放第 1 至第 3 步，演练镂空样本应在第 1 步即被检出。",
+     "zh": "Sysmon 全量启用并集中收集 1/7/10 事件，对路径空值与非常规父进程建立实时检测规则：\n    sysmon64 -accepteula -i C:\\sysmon\\config.xml\n    <EventFiltering>\n      <ProcessCreate onmatch=\"exclude\"/>\n      <ImageLoad onmatch=\"exclude\"/>\n      <ProcessAccess onmatch=\"exclude\"/>\n    </EventFiltering>",
      "en": "Run Sysmon at full coverage collecting events 1, 7 and 10 centrally, with real-time rules for empty paths and atypical parents. After the fix, replay steps 1 through 3: a drilled hollowing sample should be caught at step 1."
     },
     "difficulty": "advanced"
@@ -17321,7 +17321,7 @@
      "en": "Use in Payload list order: step 1 queries the BloodHound shortestPath from the current user to domain admins — a returned path confirms the escalation surface; steps 2 and 5 enumerate WriteDACL and GenericAll controllable objects with Get-ObjectAcl; step 3 grants DCSync on the target — a new Replication-Get-Changes-All ACE confirms success; step 4 exports the Administrator hash with dcsync to validate the chain; step 6 resets the target password as an alternate path. Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "实施分层管理与最小目录权限，移除普通账号对特权对象的 WriteDACL/GenericAll，收紧 Replication 扩展权限并部署特权访问工作站；监控 4662 复制访问与 ACL 变更事件。修复后用第 1、2 步样例回归，图查询不应再返回普通用户到特权组的路径。",
+     "zh": "实施分层管理与最小目录权限，移除普通账号对特权对象的 WriteDACL/GenericAll 与复制扩展权限，部署特权访问工作站并监控 4662 与 ACL 变更：\n    $path = \"AD:\\CN=Domain Admins,CN=Users,DC=corp,DC=local\"\n    $acl = Get-Acl $path\n    $acl.Access | Where-Object { $_.IdentityReference -like \"*\\Helpdesk*\" } |\n      ForEach-Object { $acl.RemoveAccessRule($_) | Out-Null }\n    Set-Acl $path $acl\n    dsacls \"DC=corp,DC=local\" /R \"CORP\\Helpdesk\"        # 移除复制扩展权限\n    修复后用第 1、2 步样例回归，图查询不应再返回普通用户到特权组的路径。",
      "en": "Enforce tiered administration and least-privilege directory ACLs, remove WriteDACL/GenericAll from ordinary accounts over privileged objects, tighten replication extended rights, and deploy PAWs; monitor 4662 replication access and ACL change events. After the fix, regress with the step 1 and step 2 samples: graph queries must no longer return ordinary-user paths to privileged groups."
     },
     "difficulty": "advanced"
@@ -17915,7 +17915,7 @@
      "en": "Use in Payload list order: steps 1 and 2 enumerate trust direction and trust attributes with Get-NetDomainTrust and Get-NetForestTrust — bidirectional trusts without SID filtering reveal the gap; steps 3 and 4 inventory target-domain users and groups to lock high-value targets; step 5 forges a cross-domain golden ticket carrying the target domain's 519 SID History with mimikatz kerberos::golden and injects it via /ptt — visible in klist confirms success; step 6 requests a target-domain TGT with asktgt to confirm reachability. Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "对外部信任启用 SID 过滤与选择性认证，按两阶段流程轮换全部域的 krbtgt 密码（首次随机重置，间隔超过票据寿命后再次重置），监控携带 SID History 的票据请求与跨域异常 TGT。修复后用第 5 步样例回归，带 SID History 的票据应被目标域 KDC 拒绝。",
+     "zh": "外部信任启用 SID 过滤与选择性认证，两阶段轮换全部域 krbtgt（首次随机重置、超票据寿命后再次重置），监控带 SID History 的票据：\n    netdom trust corp.local /domain:partner.external /quarantine:yes\n    netdom trust corp.local /domain:partner.external /enablesidfilter:yes\n    netdom trust corp.local /domain:partner.external /selectiveauth:yes\n    Set-ADAccountPassword -Reset -Identity krbtgt -NewPassword (Read-Host -AsSecureString)\n    修复后用第 5 步样例回归，带 SID History 的票据应被目标域 KDC 拒绝。",
      "en": "Enable SID filtering and selective authentication on external trusts, rotate all domains' krbtgt passwords periodically (twice, per registry policy), and monitor ticket requests carrying SID History plus anomalous cross-domain TGTs. After the fix, regress with the step 5 sample: tickets with SID History must be rejected by the target domain's KDC."
     },
     "difficulty": "advanced"
@@ -18378,7 +18378,7 @@
      "en": "Use in Payload list order: step 1 requests the Administrator account with mimikatz lsadump::dcsync — its returned NTLM hash confirms the replication right is abusable; step 2 reproduces single-user export with secretsdump.py -just-dc-user, producing a 4662 directory-replication event on the DC; step 3 dumps all domain hashes with /all /csv, including krbtgt; step 4 reads the domain object's nTSecurityDescriptor with Get-ADObject to locate the granting ACE for traceability. Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "从普通账号移除 Replication-Get-Changes-All，仅保留域控与合法同步服务账号；对 4662 事件中携带该权限 GUID 的访问实时告警并监控非常见主体的复制请求。修复后用第 1 步样例回归，dcsync 请求应被拒绝。",
+     "zh": "从普通账号移除复制权限（GUID 1131f6ad-9c07-11d1-f79f-00c04fc2dcd2），仅保留域控与同步服务账号，对携带该 GUID 的 4662 实时告警：\n    dsacls \"CN=svc,OU=Service,DC=corp,DC=local\" /R \"CORP\\svc\"\n    auditpol /set /subcategory:\"Directory Service Access\" /success\n    Get-WinEvent -FilterHashtable @{LogName='Security';Id=4662} | ? { $_.Message -match '1131f6ad' }",
      "en": "Remove Replication-Get-Changes-All from ordinary accounts, keeping it only on DCs and legitimate sync service accounts; alert in real time on 4662 events carrying that GUID and monitor replication requests from uncommon principals. After the fix, regress with the step 1 sample: dcsync requests must be denied."
     },
     "difficulty": "advanced"
@@ -18818,7 +18818,7 @@
      "en": "Use in Payload list order: step 1 extracts the krbtgt NTLM hash and domain SID with mimikatz lsadump::lsa /inject; step 2 records the current identity baseline with whoami /user for comparison; step 3 forges an Administrator golden ticket with kerberos::golden using the SID and hash from step 1 and injects it via /ptt; step 4 verifies with klist that the domain-admin ticket is active and grants arbitrary service access, confirming the forgery chain. Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "按两阶段流程轮换 krbtgt 密码（首次随机重置，间隔超过票据寿命后再次重置），监控 4768/4769 中票据寿命或签名异常的请求；域控遭受入侵后必须完成该轮换。修复后旧哈希伪造的票据应被 KDC 拒绝。",
+     "zh": "按两阶段轮换 krbtgt 密码（首次随机重置，间隔超过票据寿命后再次重置），监控 4768/4769 异常寿命或签名：\n    Set-ADAccountPassword krbtgt -Reset -NewPassword (ConvertTo-SecureString -AsPlainText '<随机强口令>' -Force)\n    # 间隔 >10 小时（默认 TGT 寿命）后重复执行一次完成第二阶段",
      "en": "Rotate the krbtgt password in two passes (first reset to a random value, second after the ticket lifetime), and monitor 4768/4769 requests with abnormal lifetimes or signatures; the rotation is mandatory after any DC compromise. After the fix, tickets forged with the old hash must be rejected by the KDC."
     },
     "difficulty": "advanced"
@@ -19234,7 +19234,7 @@
      "en": "Use in Payload list order: step 1 extracts in-memory credentials with sekurlsa::logonpasswords to obtain the target service account's NTLM hash; step 2 forges a service ticket with kerberos::golden specifying /target, /service:cifs, and that hash, injects via /ptt — klist showing the cifs ticket plus target share access confirms success; step 3 extends to other service types via the CIFS/HTTP/LDAP/MSSQLSvc/HOST mapping, reusing the same method per SPN. Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "定期轮换服务账号与机器账户密码使伪造密钥失效，为敏感服务启用 PAC 签名校验；在服务端关联比对登录事件与 KDC 侧 4769 票据签发记录，无法配对的登录即为白银票据信号。修复后伪造票据应被服务端 PAC 校验拒绝。",
+     "zh": "定期轮换服务账号与机器账户密码使伪造密钥失效，敏感服务启用 PAC 签名校验，关联比对登录事件与 4769 签发记录：\n    Set-ADAccountPassword svc_sql -Reset -NewPassword (ConvertTo-SecureString -AsPlainText '<随机强口令>' -Force)\n    reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa\\Pac\" /v RelyOnCompat /t REG_DWORD /d 0 /f",
      "en": "Rotate service account and machine account passwords regularly to invalidate forgery keys, and enable PAC signature validation for sensitive services; monitor service-ticket requests with no matching TGT session (missing 4768/4769 pairing at the KDC). After the fix, forged tickets must fail server-side PAC validation."
     },
     "difficulty": "advanced"
@@ -19592,7 +19592,7 @@
      "en": "Use in Payload list order: step 1 probes with zerologon_tester — Success output confirms the DC is unpatched; step 2 runs the exploit to null the DC machine-account password; step 3 exports all domain hashes (including krbtgt) with secretsdump -no-pass using empty credentials; step 4 must run the restore script to recover the DC password from the saved hash, or the DC loses AD synchronization. Execute the entire flow only in written-authorized environments. Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "为全部域控安装 2020-08+ 安全更新并开启 Netlogon 强制模式拒绝脆弱连接，监控 5827-5831 Netlogon 拒绝事件；受影响环境升级后按两阶段轮换 krbtgt。修复后用第 1 步样例回归，tester 应报告不可利用。",
+     "zh": "全部域控安装 2020-08+ 安全更新并开启 Netlogon 强制模式拒绝脆弱连接，监控 5827-5831，升级后两阶段轮换 krbtgt：\n    reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Services\\Netlogon\\Parameters\" /v FullSecureChannelSupport /t REG_DWORD /d 1 /f\n    nltest /sc_query:{LAB_DOMAIN}\n    Get-WinEvent -FilterHashtable @{LogName='System';ProviderName='NETLOGON';Id=(5827..5831)} -MaxEvents 20",
      "en": "Install 2020-08+ security updates on all DCs and enable Netlogon enforcement mode to reject vulnerable connections, monitoring 5827-5831 Netlogon rejection events; rotate krbtgt in two passes after remediation. After the fix, regress with the step 1 sample: the tester must report non-exploitability."
     },
     "difficulty": "advanced"
@@ -20000,7 +20000,7 @@
      "en": "Use in Payload list order: step 1 probes the target with rpcdump.py — a grep hit on MS-RPRN confirms print protocol exposure; step 2 runs CVE-2021-34527.py against a DLL fixture in an authorized environment — SYSTEM loading of the DLL plus abnormal spoolsv loads confirms exploitability; step 3 triggers a target-to-operator share authentication callback with dementor.py, validating the Spooler coercion primitive that pairs with NTLM relay for ADCS certificate theft. Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "为全部主机安装 2021-06+ 打印服务补丁，域控与敏感服务器直接禁用 Print Spooler 服务，启用 RestrictDriverInstallationToAdministrators 并收紧 Point and Print；监控 spoolsv 异常 DLL 加载。修复后用第 1 步样例回归，接口应关闭或由补丁拦截驱动安装。",
+     "zh": "全部主机安装 2021-06+ 打印补丁，域控与敏感服务器直接禁用 Spooler，启用 RestrictDriverInstallationToAdministrators：\n    Stop-Service Spooler -Force; Set-Service Spooler -StartupType Disabled\n    reg add \"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows NT\\Printers\\PointAndPrint\" /v RestrictDriverInstallationToAdministrators /t REG_DWORD /d 1 /f",
      "en": "Install 2021-06+ print-service patches on all hosts, disable the Print Spooler service outright on DCs and sensitive servers, enable RestrictDriverInstallationToAdministrators, and tighten Point and Print; monitor abnormal spoolsv DLL loads. After the fix, regress with the step 1 sample: the interface should be closed or driver installation blocked by the patch."
     },
     "difficulty": "advanced"
@@ -20350,7 +20350,7 @@
      "en": "Use in Payload list order: step 1 starts the relay with ntlmrelayx -t ldap://DC --adcs; step 2 runs petitpotam.py toward the operator host and the DC — an NTLM callback from the DC to the operator confirms coercion, and the relay obtains the DC machine certificate; step 3 reviews signing with Get-SmbServerConfiguration — RequireSecuritySignature True means LDAP relay is constrained, serving as a comparison baseline. Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "为域控安装 EFSRPC 相关补丁并禁用匿名 EFSRPC 调用，AD CS 全部端点强制 EPA，启用 LDAP 签名与通道绑定；监控模板异常或主机名异常的证书申请。修复后用第 2 步样例回归，回调不再触发或中继被 EPA 拒绝。",
+     "zh": "域控安装 EFSRPC 补丁并禁用匿名调用，AD CS certsrv 端点强制 EPA，域控 LDAP 强制签名：\n    Set-WebConfigurationProperty -Location 'Default Web Site/certsrv' -Filter 'system.webServer/security/access' -Name 'sslFlags' -Value 'Ssl,SslNegotiateCert,SslRequireCert'\n    reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Services\\NTDS\\Parameters\" /v LDAPServerIntegrity /t REG_DWORD /d 2 /f",
      "en": "Install EFSRPC-related patches on DCs and disable anonymous EFSRPC calls, require EPA on all ADCS endpoints, and enable LDAP signing with channel binding; monitor certificate requests with abnormal templates or hostnames. After the fix, regress with the step 2 sample: callbacks must stop or the relay must be rejected by EPA."
     },
     "difficulty": "advanced"
@@ -20695,7 +20695,7 @@
      "en": "Use in Payload list order: step 1 runs noPac.py in default mode — the script creates a machine account, renames it, and completes the sAMAccountName spoof, and success output confirms the flaw; step 2 adds -dc-host and -shell for an interactive DC shell proving actual control; step 3 queries the domain functional level and ms-DS-MachineAccountQuota with Get-ADDomain to record gap conditions (missing patch, nonzero quota). Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "为全部域控安装 2021-11+ 累积更新修复 CVE-2021-42278/42287，将 ms-DS-MachineAccountQuota 置 0 或收紧机器账号创建权限；监控 4741/4742 机器账号创建与异常重命名事件。修复后用第 1 步样例回归，欺骗链路应被 KDC 拒绝。",
+     "zh": "全部域控安装 2021-11+ 累积更新，ms-DS-MachineAccountQuota 置 0 收紧机器账号创建，监控 4741/4742 异常重命名：\n    Set-ADObject -Identity (Get-ADRootDSE).defaultNamingContext -Replace @{'ms-DS-MachineAccountQuota' = 0}\n    auditpol /set /subcategory:\"Computer Account Management\" /success /failure",
      "en": "Install 2021-11+ cumulative updates on all DCs fixing CVE-2021-42278/42287, set ms-DS-MachineAccountQuota to 0 or tighten machine-account creation rights, and monitor 4741/4742 machine-account creation and abnormal renames. After the fix, regress with the step 1 sample: the spoof chain must be rejected by the KDC."
     },
     "difficulty": "advanced"
@@ -21281,7 +21281,7 @@
      "en": "Use in Payload list order: step 1 creates the controlled machine account with New-MachineAccount; step 2 writes it into the target computer's delegation attribute with Set-ADComputer -PrincipalsAllowedToDelegateToAccount — the SID appearing in msDS-AllowedToActOnBehalfOfOtherIdentity confirms success; step 3 requests an impersonation ticket for the CIFS service with Rubeus s4u using the machine-account hash — an Administrator-identity ticket confirms the full chain. Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "移除普通账号对计算机对象的写权限，将 ms-DS-MachineAccountQuota 置 0 或收紧创建权限，定期审计委派属性的非预期值并监控带 S4U 标记的 4769 请求。修复后用第 2 步样例回归，属性写入应被目录拒绝。",
+     "zh": "移除普通账号对计算机对象的写权限并清空 RBCD 委派属性，MAQ 置 0，监控带 S4U 标记的 4769：\n    Set-ADComputer -Identity 'target$' -Clear PrincipalsAllowedToDelegateToAccount\n    Set-ADObject -Identity (Get-ADRootDSE).defaultNamingContext -Replace @{'ms-DS-MachineAccountQuota' = 0}\n    dsacls \"CN=target,OU=Servers,DC=corp,DC=local\" /R \"CORP\\helpdesk\"",
      "en": "Remove ordinary accounts' write rights over computer objects, set ms-DS-MachineAccountQuota to 0 or tighten creation rights, audit unexpected delegation attribute values periodically, and monitor 4769 requests with S4U flags. After the fix, regress with the step 2 sample: the attribute write must be denied by the directory."
     },
     "difficulty": "advanced"
@@ -21663,7 +21663,7 @@
      "en": "Use in Payload list order: step 1 stages the change with lsadump::dcshadow /object /attribute:primaryGroupID /value:519 — successful registration confirms the path; step 2 pushes the staged change as replication traffic with /push — the DC reporting completion confirms the attribute rewrite landed; step 3 appends a sidHistory staging entry to demonstrate arbitrary attribute extension. Prerequisites are replication rights plus RPC reachability. Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "收紧复制目录变更与管理复制拓扑权限，实施分层管理；对 4929/4930/4931 恶意 DC 注册与推送事件及非域控来源的复制流量实时告警。修复后用第 1 步样例回归，伪造 DC 注册应被拒绝。",
+     "zh": "收紧复制目录变更与管理复制拓扑权限，实施分层管理，对 4929/4930/4931 与非域控来源复制流量实时告警：\n    dsacls \"DC=corp,DC=local\" /R \"CORP\\helpdesk\"\n    auditpol /set /subcategory:\"Detailed Directory Service Replication\" /success /failure\n    Get-WinEvent -FilterHashtable @{LogName='Directory Service';Id=4929,4930,4931} -MaxEvents 20",
      "en": "Tighten replicate directory changes and manage replication topology rights with tiered administration; alert in real time on 4929/4930/4931 rogue-DC registration and push events plus replication traffic from non-DC sources. After the fix, regress with the step 1 sample: rogue DC registration must be denied."
     },
     "difficulty": "advanced"
@@ -22021,7 +22021,7 @@
      "en": "Use in Payload list order: step 1 enumerates GPOs granting Domain Users GpoEdit with Get-GPO -All plus Get-GPPermission — hits confirm abusable grants; step 2 creates an immediate task under the target GPO with New-GPOImmediateTask — command execution after client application confirms; step 3 writes an HKLM Run startup value with Set-GPPrefRegistryValue — the value appearing after client refresh confirms the alternate path. Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "按最小权限回收普通账号的 GpoEdit 授权并实施分层 GPO 管理；监控 GPO 版本与内容变更（5136/5141）及即时任务、首选项写入内容。修复后用第 1 步样例回归，普通账号不应再持有任何 GPO 编辑权限。",
+     "zh": "按最小权限回收普通账号 GpoEdit 授权并分层管理，监控 GPO 版本与内容变更（5136/5141）及即时任务、首选项写入：\n    Set-GPPermission -Name '{LAB_GPO}' -TargetName 'Domain Users' -TargetType Group -PermissionLevel None\n    Get-GPO -All | % { $_ | Get-GPPermission -TargetName 'Domain Users' -TargetType Group -ErrorAction SilentlyContinue }\n    auditpol /set /subcategory:\"Directory Service Changes\" /success /failure",
      "en": "Revoke GpoEdit from ordinary accounts per least privilege and adopt tiered GPO management; monitor GPO version and content changes (5136/5141) plus immediate-task and preference write contents. After the fix, regress with the step 1 sample: ordinary accounts must hold no GPO edit permissions."
     },
     "difficulty": "advanced"
@@ -22544,7 +22544,7 @@
      "en": "Use in Payload list order: step 1 runs NoAuth.py against the target account — a printed ccache path confirms exploitation; step 2 repeats the same command — identical output confirms reproducibility; step 3 points KRB5CCNAME at the generated ccache and reads it with klist, confirming the ticket loads in standard tools. Bind conclusions by checking DC version and patch state first. Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "按实现方的 CVE 公告安装补丁或升级版本，禁用弱加密类型并强制 AES Kerberos，监控异常 TGT 请求模式与失败预认证。修复后用第 1 步样例回归，利用应失败或产出的票据不可用。",
+     "zh": "按 CVE 公告安装补丁或升级版本，Kerberos 仅允许 AES 加密类型，监控异常 TGT 请求与失败预认证：\n    reg add \"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\Kerberos\\Parameters\" /v SupportedEncryptionTypes /t REG_DWORD /d 24 /f\n    Get-WinEvent -FilterHashtable @{LogName='Security';Id=4768} -MaxEvents 100 | ? { $_.Message -match '0x17' }",
      "en": "Install patches or upgrade per the vendor's CVE advisory, disable weak encryption types and enforce AES Kerberos, and monitor anomalous TGT request patterns and failed pre-authentication. After the fix, regress with the step 1 sample: exploitation must fail or yield unusable tickets."
     },
     "difficulty": "advanced"
@@ -22902,7 +22902,7 @@
      "en": "Use in Payload list order: step 1 executes a base64 command with powershell -enc — marker output plus 4104 recording the decoded command confirms telemetry coverage; step 2 pulls a script from the operator host with IEX+WebClient — a GET in IIS or proxy logs confirms the download path; step 3 replays the download with concatenated variable names and compares telemetry differences; step 4 retests with -w hidden to check whether network logs stay complete without a visible window. Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "启用脚本块日志与 AMSI 并集中收集 4104、模块加载与进程创建事件，部署应用控制把 PowerShell 限制到签名脚本，针对 -enc、IEX 下载与隐藏窗口模式建立检测规则。修复后用第 1-4 步样例回归，每类变体都应产生对应遥测或被拦截。",
+     "zh": "启用脚本块日志与 AMSI，集中收集 4104、模块加载与进程创建事件，应用控制限签名脚本，对 -enc、IEX、隐藏窗口建检测：\n    reg add \"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging\" /v EnableScriptBlockLogging /t REG_DWORD /d 1 /f\n    Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-PowerShell/Operational';Id=4104} | ? { $_.Message -match \"IEX|FromBase64String\" }\n    修复后用第 1-4 步样例回归，每类变体都应产生对应遥测或被拦截。",
      "en": "Enable script-block logging and AMSI, centrally collect 4104, module-load, and process-creation events, deploy application control limiting PowerShell to signed scripts, and build detections for -enc, IEX downloads, and hidden-window patterns. After the fix, regress with the step 1-4 samples: every variant must produce matching telemetry or be blocked."
     },
     "difficulty": "advanced"
@@ -23350,7 +23350,7 @@
      "en": "Use in Payload list order: step 1 sets amsiInitFailed to true via reflection — known-signature scripts no longer blocked confirms success; step 2 replays with an obfuscated field-walk version and compares telemetry; step 3 queries root/SecurityCenter2 for AV products and productState to record the protection baseline explaining interception behavior; step 4 loads Invoke-AmsiBypass to validate the toolchain — a flagged script passing the scan confirms. Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "启用脚本块日志并对 amsiInitFailed 反射访问与 Amsi* API 调用建立检测规则，开启防篡改保护与完整性监控，并为 PowerShell 启用约束语言模式（Constrained Language Mode）；对 AMSI 中断事件实时告警。修复后用第 1 步样例回归，反射置位应被阻断或立即告警。",
+     "zh": "启用脚本块日志与约束语言模式，对 amsiInitFailed 反射访问与 Amsi* API 调用建立检测规则并实时告警：\n    reg add \"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell\\ScriptBlockLogging\" /v EnableScriptBlockLogging /t REG_DWORD /d 1 /f\n    reg add \"HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment\" /v __PSLockdownPolicy /t REG_DWORD /d 4 /f",
      "en": "Enable script-block logging with detections for amsiInitFailed reflection and Amsi* API calls, turn on tamper protection and integrity monitoring, and deploy constrained language mode for PowerShell; alert in real time on AMSI interruption. After the fix, regress with the step 1 sample: the reflective set must be blocked or alerted immediately."
     },
     "difficulty": "advanced"
@@ -23806,7 +23806,7 @@
      "en": "Use in Payload list order: step 1 calls SetEnabled(0) on a managed EventProvider instance in PowerShell — the provider's stream stops confirms success; step 2 replays with C# reflection on the non-public SetEnabled and compares telemetry; step 3 rewrites ntdll!EtwEventWrite's first byte to 0xC3 via VirtualProtect+WriteProcessMemory — ETW telemetry halting confirms the patch, while noting whether the EDR alerts on the memory modification. Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "启用防篡改与内存完整性保护，监控 VirtualProtect/WriteProcessMemory 对 ntdll 区域的写访问与 provider 异常停止事件；以内核回调、安全产品与 ETW 多源交叉校验。修复后用第 1、3 步样例回归，关闭与修补均应被阻断或产生告警。",
+     "zh": "启用防篡改与 VBS/内存完整性，监控对 ntdll 区域的 VirtualProtect/WriteProcessMemory 写访问与 provider 异常停止，多源交叉校验：\n    Set-MpPreference -DisableTamperProtection $false\n    reg add \"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard\" /v EnableVirtualizationBasedSecurity /t REG_DWORD /d 1 /f\n    reg add \"HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\DeviceGuard\" /v HypervisorEnforcedCodeIntegrity /t REG_DWORD /d 1 /f",
      "en": "Enable tamper protection and memory integrity, monitor VirtualProtect/WriteProcessMemory writes into ntdll regions plus abnormal provider stop events, and cross-validate with kernel callbacks, security products, and ETW multi-source collection. After the fix, regress with the step 1 and step 3 samples: both shutdown and patching must be blocked or alerted."
     },
     "difficulty": "advanced"
@@ -24180,7 +24180,7 @@
      "en": "Use in Payload list order: step 1 reads the lab process's mitigation details with Get-ProcessMitigation; step 2 repeats the read for multi-source consistency; step 3 sets SignatureLevel=0x0F via C# SetProcessMitigationPolicy — unsigned DLL loads refused confirms the policy took effect, while observing whether security-product monitoring breaks. Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "为安全产品进程预配置签名策略豁免并启用防篡改保护，监控 SetProcessMitigationPolicy 调用与安全产品 DLL 加载失败事件；EDR 补充内核回调数据源避免单点失明。修复后用第 3 步样例回归，策略设置应被阻断或立即告警。",
+     "zh": "为安全产品进程预配置签名策略豁免并启用防篡改保护，EDR 补充内核回调数据源，监控 SetProcessMitigationPolicy 与 DLL 加载失败：\n    Set-MpPreference -DisableTamperProtection $false\n    New-CIPolicy -Scan -ScanPath 'C:\\Program Files\\EDR' -Level SignedFiles -FilePath C:\\wdac\\edr.xml",
      "en": "Pre-configure signature-policy exemptions for security-product processes and enable tamper protection; monitor SetProcessMitigationPolicy calls and security-product DLL load failures, and give EDRs kernel-callback data sources to avoid single-point blindness. After the fix, regress with the step 3 sample: policy setting must be blocked or alerted immediately."
     },
     "difficulty": "advanced"
@@ -24546,7 +24546,7 @@
      "en": "Use in Payload list order: step 1 encodes the fixture file with shellcode_encoder.py — a reversible-decode match on the output confirms the toolchain; step 2 replays with the XOR-loop reference and matches output; step 3 replays RC4 with PyCryptodome ARC4 and matches the reference ciphertext; step 4 computes the SHA256 of the non-executable byte fixture as the integrity baseline. Use only byte fixtures with no execution semantics throughout; replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "检测侧引入熵值、导入表与内存行为多维规则，对加密载荷落盘与可疑解码链建立告警，并启用内存扫描覆盖解码后形态。修复后用第 1-3 步样例回归，编码文件应触发熵或行为类告警。",
+     "zh": "检测侧引入熵值、导入表与内存行为多维规则，对加密载荷落盘与可疑解码链建立告警，启用内存扫描覆盖解码后形态：\n    rule HighEntropy_Payload {\n      meta: desc = \"高熵可执行载荷\"\n      condition: uint16(0) == 0x4D5A and math.entropy(0..0x4000) > 7.2\n    }\n    Set-MpPreference -DisableRealtimeMonitoring $false",
      "en": "Add multi-dimensional rules over entropy, import tables, and memory behavior, alert on encrypted payload drops and suspicious decode chains, and enable memory scanning to cover post-decode forms. After the fix, regress with the step 1-3 samples: encoded files must trigger entropy or behavior alerts."
     },
     "difficulty": "advanced"
@@ -24954,7 +24954,7 @@
      "en": "Use in Payload list order: step 1 sets the derived process image and parent with spawnto and ppid — effective configuration marks the starting point; step 2 copies cmd.exe as svchost.exe in a temp directory and runs it hidden — Get-Process showing Path in the temp directory confirms the masquerade; step 3 lists PID/parent PID/path/command line with Win32_Process and compares image-path versus command-line mismatches to complete detection validation. Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "检测侧按映像路径、签名与父进程链三维校验而非进程名，对用户可写目录中出现系统进程名建立告警；启用 Sysmon 事件 1 并采集完整命令行。修复后用第 2 步样例回归，伪装进程应触发映像不一致告警。",
+     "zh": "检测按映像路径、签名与父进程链三维校验而非进程名，对用户可写目录中出现系统进程名告警，Sysmon 事件 1 采集完整命令行：\n    Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Sysmon/Operational';Id=1} -MaxEvents 200 | ? { $_.Message -match 'Image: C:\\\\Users\\\\.*(svchost|lsass|csrss)\\.exe' }\n    New-AppLockerRule -RuleType Path -User Everyone -Action Deny -Path 'C:\\Users\\*\\AppData\\*\\*\\svchost.exe'",
      "en": "Validate by image path, signature, and parent chain rather than process name; alert on system process names appearing from user-writable directories; enable Sysmon event 1 with full command lines. After the fix, regress with the step 2 sample: the masquerading process must trigger an image-mismatch alert."
     },
     "difficulty": "advanced"
@@ -25344,7 +25344,7 @@
      "en": "Use in Payload list order: step 1 reviews the PowerShell-hosted STARTUPINFOEX implementation, confirming InitializeProcThreadAttributeList/UpdateProcThreadAttribute as the real implementation path (ProcessStartInfo has no ParentProcessId property to assign); step 2 completes code audit against the structure-definition snippet; step 3 lists PID/parent PID/creation time with Win32_Process, checks parent-child consistency, and locates spoofed samples. Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "检测侧以内核回调与 Sysmon 事件 1 为权威核对父子链，对父进程已退出或服务派生异常的进程告警；安全产品保留多源父字段快照以便比对。修复后用第 3 步样例回归，伪造父子关系应被一致性检查标记。",
+     "zh": "以内核回调与 Sysmon 事件 1 为权威核对父子链，对父进程已退出或服务派生异常的进程告警，保留多源父字段快照比对：\n    Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Sysmon/Operational';Id=1} -MaxEvents 200 |\n      ? { $_.Message -notmatch 'ParentImage: .*(services|wininit|winlogon|svchost)\\.exe' } |\n      Select TimeCreated, @{n='Proc';e={($_.Message -split \"`n\")[0]}}",
      "en": "Treat kernel callbacks and Sysmon event 1 as authoritative for parent chains, alert on processes whose parent has exited or whose service lineage is anomalous, and keep multi-source parent-field snapshots for comparison. After the fix, regress with the step 3 sample: forged parent-child relations must be flagged by consistency checks."
     },
     "difficulty": "advanced"
@@ -25726,7 +25726,7 @@
      "en": "Use in Payload list order: step 1 reads the application binary's signature status and signer with Get-AuthenticodeSignature; step 2 repeats the read for multi-source checks; step 3 outputs again and flags binaries whose signature is missing or untrusted as sideloading candidate hosts, then inspects application-directory ACLs and missing-DLL lists to locate writable injection points. Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "为应用目录配置仅管理员可写 ACL，启用依赖库签名强制并移除多余 DLL；用 Sysmon 事件 7 监控来自异常路径的模块加载。修复后用第 3 步样例回归，侧加载候选点应被 ACL 或签名策略阻断。",
+     "zh": "为应用目录配置仅管理员可写 ACL，启用依赖库签名强制并移除多余 DLL，Sysmon 事件 7 监控异常路径模块加载：\n    icacls \"C:\\Program Files\\App\" /inheritance:r /grant 'Administrators:(OI)(CI)F' 'SYSTEM:(OI)(CI)F' 'Users:(OI)(CI)RX'\n    Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Sysmon/Operational';Id=7} | ? { $_.Message -match 'ImageLoaded: C:\\\\Users\\\\' }",
      "en": "Configure application directories as administrator-writable only, enforce dependency signature checks, and remove surplus DLLs; monitor module loads from abnormal paths with Sysmon event 7. After the fix, regress with the step 3 sample: sideloading candidates must be blocked by ACLs or signature policy."
     },
     "difficulty": "advanced"
@@ -26076,7 +26076,7 @@
      "en": "Use in Payload list order: step 1 creates a process with lpApplicationName pointing at cmd.exe while lpCommandLine carries a different command — divergence across telemetry sources confirms the masquerade; step 2 executes indirectly via an environment variable so the command line shows only the variable name, comparing detection visibility; step 3 lists command lines with Win32_Process and compares against kernel-side data to finish validation. Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "检测侧交叉核对 ETW 内核创建事件与 PEB/WMI 命令行快照，对创建参数不一致与可疑变量间接执行告警，并保留原始审计数据防篡改。修复后用第 1、2 步样例回归，伪装变体应触发多源差异告警。",
+     "zh": "交叉核对 ETW 内核创建事件与 PEB/WMI 命令行快照，对创建参数不一致与可疑变量间接执行告警，保留原始审计数据防篡改：\n    reg add \"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\Audit\" /v ProcessCreationIncludeCmdLine_Enabled /t REG_DWORD /d 1 /f\n    auditpol /set /subcategory:\"Process Creation\" /success\n    Get-CimInstance Win32_Process -Filter \"Name='cmd.exe'\" | Select ProcessId, ExecutablePath, CommandLine",
      "en": "Cross-check ETW kernel creation events against PEB/WMI command-line snapshots, alert on inconsistent creation arguments and suspicious indirect variable execution, and retain raw audit data against tampering. After the fix, regress with the step 1 and step 2 samples: masquerade variants must trigger multi-source divergence alerts."
     },
     "difficulty": "advanced"
@@ -26402,7 +26402,7 @@
      "en": "Use in Payload list order: step 1 reads the latest 20 Microsoft-Windows-DotNETRuntime/Operational entries as a baseline; step 2 loads the target binary with Assembly.Load and invokes EntryPoint reflectively — assembly execution confirms the load path; step 3 re-reads the log and compares against the baseline — a matching load record confirms telemetry coverage, while absence reveals a detection gap. Replace LAB_* placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "启用 DotNETRuntime/Operational 日志与 CLR ETW 提供程序并集中采集，监控进程内异常程序集加载与无文件映像的内存加载，用应用控制限制 Assembly.Load 来源。修复后用第 1-3 步样例回归，加载行为应产生完整遥测或被策略阻止。",
+     "zh": "启用 DotNETRuntime/Operational 日志与 CLR ETW 提供程序集中采集，监控进程内异常程序集加载，用应用控制限制 Assembly.Load 来源：\n    wevtutil sl Microsoft-Windows-DotNETRuntime/Operational /e:true\n    logman create trace DotNETRuntime -ow -o C:\\etw\\net.etl -p {e13c0d23-ccbc-4e12-931b-d9cc2eee27e4} -f bincirc -max 512 -ets",
      "en": "Enable DotNETRuntime/Operational logs and CLR ETW providers with central collection, monitor abnormal in-process assembly loads and fileless in-memory loads, and restrict Assembly.Load sources via application control. After the fix, regress with the step 1-3 samples: loads must produce complete telemetry or be blocked by policy."
     },
     "difficulty": "advanced"
@@ -26726,7 +26726,7 @@
      "en": "Use in Payload list order: step 1 requests /owa/auth/x.js — any non-404 response confirms the pre-condition path exists; step 2 runs proxylogon.py in an authorized lab — an admin session with the server name or webshell URL printed confirms exploitation; step 3 replays the Cookie proxy chain manually (X-AnonResource-Backend pointing at ecp/default.flt) — an ECP response confirms the proxy path. Replace EXCHANGE_HOST and other placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "升级至受支持 CU 并安装 2021-03+ 安全更新，用 Exchange Server Health Checker 核验补丁状态；限制 ECP/PowerShell 暴露并审计异常 Autodiscover、EWS 与邮箱权限变更。修复后用第 1、2 步样例回归，代理链应返回 404/401 且利用失败。",
+     "zh": "升级至受支持 CU 并安装 2021-03+ SU，Health Checker 核验补丁，限制 ECP/PowerShell 外部暴露并审计邮箱权限变更：\n    .\\Setup.exe /IAcceptExchangeServerLicenseTerms_DiagnosticDataON /m:upgrade\n    .\\HealthChecker.ps1 -Server EX01\n    Set-EcpVirtualDirectory -Identity 'EX01\\ecp (Default Web Site)' -ExternalUrl $null",
      "en": "Upgrade to a supported CU and install 2021-03+ security updates, verifying patch state with the Exchange Server Health Checker; restrict ECP/PowerShell exposure and audit anomalous Autodiscover, EWS, and mailbox permission changes. After the fix, regress with the step 1 and step 2 samples: the proxy chain must return 404/401 and exploitation must fail."
     },
     "difficulty": "advanced"
@@ -27177,7 +27177,7 @@
      "en": "Use in Payload list order: step 1 requests the autodiscover.json proxy path — a 200 confirms the back-end proxy chain; step 2 runs proxyshell.py in an authorized lab — a printed accessible webshell path confirms full exploitation; step 3 forwards the request to the back-end /owa/ with a manual GET — returned mailbox information confirms both proxying and identity bypass. Replace EXCHANGE_HOST and other placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "升级至受支持 CU 并安装覆盖三个 CVE 的安全更新，运行 Health Checker 核验；限制 Autodiscover/PowerShell 虚拟目录暴露并审计 PowerShell 管道调用与邮箱访问记录。修复后用第 1 步样例回归，代理路径应返回 401/404。",
+     "zh": "升级至受支持 CU 并安装覆盖三个 CVE 的安全更新，Health Checker 核验，限制 Autodiscover/PowerShell 虚拟目录暴露并审计管道调用：\n    .\\Setup.exe /IAcceptExchangeServerLicenseTerms_DiagnosticDataON /m:upgrade\n    .\\HealthChecker.ps1 -Server EX01\n    Set-PowerShellVirtualDirectory -Identity 'EX01\\PowerShell (Default Web Site)' -ExternalUrl $null",
      "en": "Upgrade to a supported CU and install security updates covering the three CVEs, verifying with the Health Checker; restrict Autodiscover/PowerShell virtual directory exposure and audit PowerShell pipeline invocations and mailbox access records. After the fix, regress with the step 1 sample: the proxy path must return 401/404."
     },
     "difficulty": "advanced"
@@ -27604,7 +27604,7 @@
      "en": "Use in Payload list order: step 1 runs proxytoken.py in an authorized lab — mailbox access confirms exploitation; step 2 performs follow-up mailbox operations in append mode (-a) and reviews the output; step 3 probes /ews/Exchange.asmx with curl carrying the X-ClientApplication header — an accessible response confirms endpoint exposure. Replace EXCHANGE_HOST and other placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "安装覆盖该缺陷的安全更新并升级至受支持 CU，限制 EWS/Autodiscover 暴露并审计异常邮箱权限与会话使用；监控携带异常 X-ClientApplication 的请求。修复后用第 1、3 步样例回归，利用应失败且端点响应受限。",
+     "zh": "安装覆盖该缺陷的安全更新并升级至受支持 CU，收紧 EWS/Autodiscover 暴露，审计邮箱委派与异常 X-ClientApplication 请求：\n    # Exchange 管理外壳：禁用遗留认证、审计 FullAccess 委派\n    # 若无策略先建：New-AuthenticationPolicy -Name BlockLegacyAuth\n    Set-OrganizationConfig -DefaultAuthenticationPolicy \"BlockLegacyAuth\"\n    Get-Mailbox -ResultSize Unlimited | Get-MailboxPermission |\n      Where-Object {$_.AccessRights -contains 'FullAccess' -and -not $_.IsInherited} |\n      Export-Csv C:\\Audit\\delegate-audit.csv -NoTypeInformation",
      "en": "Install the security update covering the flaw and upgrade to a supported CU, restrict EWS/Autodiscover exposure, audit anomalous mailbox permissions and session usage, and monitor requests with unusual X-ClientApplication values. After the fix, regress with the step 1 and step 3 samples: exploitation must fail and endpoint responses must be restricted."
     },
     "difficulty": "advanced"

@@ -51,7 +51,7 @@
      "en": "In step 1, send a uniquely marked text/plain Fetch from the cross-site page to the profile API; JSON parsing and marker rewrite confirm forgery. In step 2, submit a rollback-safe marker via a standard form to test the cookie-only write boundary. In step 3, record the preflight with application/json as a control. In step 4, retest multipart with FormData. Any state rewrite means success; query the synthetic state for evidence. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "后端严格按 Content-Type 分发解析器，仅 application/json 进入 JSON 绑定；状态变更接口绑定会话的 CSRF Token 并校验 Origin。修复后重放第 1、2、4 步，请求应全部被拒绝且无状态变化。",
+     "zh": "后端严格按 Content-Type 分发解析器，仅 application/json 进入 JSON 绑定；状态变更接口绑定会话 CSRF Token 并校验 Origin：\n    @PostMapping(path = \"/api/profile\", consumes = MediaType.APPLICATION_JSON_VALUE)\n    public ResponseEntity<Void> update(@RequestBody ProfileDto dto) {\n        service.update(dto);\n        return ResponseEntity.noContent().build();\n    }",
      "en": "Dispatch parsers strictly by Content-Type so only application/json enters JSON binding; require session-bound CSRF tokens and origin validation on state changes. After the fix, replay steps 1, 2 and 4: all requests should be rejected with no state change."
     },
     "difficulty": "intermediate"
@@ -395,7 +395,7 @@
      "en": "In step 1, save crossdomain.xml with headers and check whether allowed domains are too permissive. In step 2, likewise save clientaccesspolicy.xml. In step 3, search an authorized code copy with rg for SWF and policy references to confirm consumers remain. In step 4, HEAD the legacy SWF asset recording cache and security headers. Any permissive policy domain confirms legacy exposure. Replace placeholders via the global variables menu; see wafBypass for retirement retests."
     },
     "mitigation": {
-     "zh": "删除不再使用的 SWF 资产与策略文件，或将允许域收敛到白名单主机并禁用缓存；Web 服务器对失效路径同样返回安全头。修复后重放第 1、2 步，策略文件应不可达且代码引用清零。",
+     "zh": "删除不再使用的 SWF 资产与跨域策略文件；无法立即删除时由 Web 服务器对失效路径统一返回 410 并保留安全响应头：\n    # nginx\n    location = /crossdomain.xml        { return 410; }\n    location = /clientaccesspolicy.xml { return 410; }\n    location ~ \\.swf$                  { return 410; }",
      "en": "Remove unused SWF assets and policy files, or narrow allowed domains to an allowlist with caching disabled; return security headers on dead paths as well. After the fix, replay steps 1 and 2: policy files should be unreachable and code references eliminated."
     },
     "difficulty": "intermediate"
@@ -684,7 +684,7 @@
      "en": "Use in Payload list order: step 1 requests the instance root object — JSON containing the instance name and region confirms IMDS reachability and that the required header took effect; step 2 reads managed identity info to verify the endpoint boundary; steps 3 and 4 read compute and network metadata and cross-check against portal asset records; step 5 uses format=text to fetch only the instance name as minimal positive evidence. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "在解析与每次重定向后重新校验 scheme、解析地址与最终连接 IP，阻断链路本地、回环和私网目标；禁止用户控制 Metadata 等敏感头，网络层限制工作负载访问 IMDS，托管身份按最小权限配置。修复后用第 1 步样例回归，注入点应拿不到实例元数据。",
+     "zh": "在解析与每次重定向后重新校验 scheme、解析地址与最终连接 IP，阻断链路本地目标，禁止用户控制 Metadata:true 头，托管身份按最小权限配置：\n      # 网络层：工作负载出口阻断 IMDS\n      iptables -A OUTPUT -d 169.254.169.254 -j DROP\n      // 应用侧取托管身份令牌统一走 Azure SDK，不经用户可控 URL\n      var cred = new DefaultAzureCredential();\n      var token = await cred.GetTokenAsync(\n          new TokenRequestContext(new[] { \"https://vault.azure.net/.default\" }));\n  修复后用第 1 步样例回归，注入点应拿不到实例元数据。",
      "en": "Revalidate scheme, resolved address, and final connection IP after parsing and every redirect; block link-local, loopback, and private targets; forbid user control of sensitive headers such as Metadata, restrict workload access to IMDS at the network layer, and configure managed identities with least privilege. After the fix, regress with the step 1 sample: the injection point must obtain no instance metadata."
     },
     "difficulty": "advanced"
@@ -1051,7 +1051,7 @@
      "en": "Use in Payload list order: step 1 requests the metadata root through the injection point — listing keys such as instance/ and project/ confirms endpoint reachability; steps 2 and 3 read the lab service account email and scopes to verify the identity boundary; steps 4 through 6 read the project ID plus project and instance attribute key names to assess configuration exposure. Every request must carry the Metadata-Flavor: Google header; replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "在 DNS 解析后与每次重定向后阻断链路本地、回环和私网地址，禁止用户控制 Metadata-Flavor 等敏感头，并经防火墙或工作负载边界限制元数据访问；服务账号按最小权限配置。修复后用第 1 步样例回归，注入点应无法抵达 computeMetadata/v1。",
+     "zh": "在 DNS 解析后与每次重定向后阻断链路本地、回环和私网地址，禁止用户控制 Metadata-Flavor 等敏感头，服务账号按最小权限配置：\n      import ipaddress, socket\n      from urllib.parse import urlparse\n      u = urlparse(url)\n      if u.scheme not in (\"http\", \"https\"): raise ValueError(\"scheme denied\")\n      ip = ipaddress.ip_address(socket.gethostbyname(u.hostname))\n      if not ip.is_global: raise ValueError(\"private target denied\")\n  修复后用第 1 步样例回归，注入点应无法抵达 computeMetadata/v1。",
      "en": "Block link-local, loopback, and private addresses after DNS resolution and after every redirect, forbid user control of sensitive headers such as Metadata-Flavor, and restrict metadata access via firewall or workload boundaries; configure service accounts with least privilege. After the fix, regress with the step 1 sample: the injection point must no longer reach computeMetadata/v1."
     },
     "difficulty": "advanced"
@@ -1458,7 +1458,7 @@
      "en": "Use in Payload list order: step 1 submits the gopher marker URL — the isolated listener receiving the unique text marker confirms byte-level reachability of 3306; step 2 retests the same port boundary with dict://; step 3 submits the encoded gopher URL through the lab fetch API and saves the result file; step 4 retests the dict channel the same way and compares rejection policy and final connection evidence between the two schemes. Replace LAB_MYSQL_HOST and other placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "获取器只允许 http/https 并在解析后阻断数据库网段与端口，网络层禁止 Web 工作负载访问 3306；MySQL 保持强认证、最小账号权限与受信绑定地址。修复后用第 1、2 步样例回归，两类 scheme 的连接都应在网络层被拒绝。",
+     "zh": "获取器只允许 http/https 并在解析后阻断数据库网段与端口；MySQL 保持强认证、最小账号权限与受信绑定地址：\n      # my.cnf：只监听数据库内网段\n      bind-address = 10.0.1.5\n      # Web 工作负载主机：禁止自发连接 3306\n      iptables -A OUTPUT -p tcp --dport 3306 -j DROP\n  修复后用第 1、2 步样例回归，gopher/dict 两类 scheme 的连接都应在网络层被拒绝。",
      "en": "Restrict the fetcher to http/https and block database segments and ports after resolution; forbid web workload access to 3306 at the network layer; keep MySQL on strong authentication, minimal account privileges, and a trusted bind address. After the fix, regress with the step 1 and step 2 samples: connections for both schemes must be denied at the network layer."
     },
     "difficulty": "advanced"

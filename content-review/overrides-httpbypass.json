@@ -59,7 +59,7 @@
      "en": "In step 1, inject loopback, private-range and internal-hostname Referer and Origin values into admin-path requests one by one, recording status and content; any forged origin returning admin data confirms forgeable source trust, with empty-header controls to rule out default allowance. Judge success by admin-content return. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "来源头仅作辅助信号，管理接口必须依赖会话与角色鉴权；对管理路径默认拒绝并记录来源异常。修复后重放第 1 步，全部伪源头请求应返回 401 或 403。",
+     "zh": "来源头仅作日志辅助信号，管理接口依赖会话与角色鉴权，管理路径默认拒绝并记录来源异常。\n    // Spring Security 6：管理路径强制角色\n    @Bean\n    SecurityFilterChain chain(HttpSecurity http) throws Exception {\n        return http.authorizeHttpRequests(a -> a\n            .requestMatchers(\"/admin/**\").hasRole(\"ADMIN\")\n            .anyRequest().authenticated()).build();\n    }",
      "en": "Treat source headers as auxiliary signals only, requiring session and role authentication for admin APIs; default-deny admin paths and log anomalous origins. After the fix, replay step 1: every forged-origin request should get 401 or 403."
     },
     "difficulty": "intermediate"
@@ -469,7 +469,7 @@
      "en": "In step 1, add method-override headers one by one to admin requests that only allow read methods, recording actual effects; restricted methods executing per the override confirm the method-level bypass, cross-checked against server access logs showing the handler reached. Judge success by actual execution of restricted operations. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "方法授权移到覆盖头解析之后或直接禁用覆盖头，方法白名单同时覆盖外层与最终方法。修复后重放第 1 步，全部覆盖请求应被 405 或 403 拒绝。",
+     "zh": "直接禁用方法覆盖头解析（或把方法授权移到解析之后），方法白名单同时覆盖外层与最终方法。\n    // Spring Boot：禁用 HiddenHttpMethodFilter\n    @Bean\n    FilterRegistrationBean<HiddenHttpMethodFilter> noOverride() {\n        FilterRegistrationBean<HiddenHttpMethodFilter> reg =\n            new FilterRegistrationBean<>(new HiddenHttpMethodFilter());\n        reg.setEnabled(false);\n        return reg;\n    }\n    # Nginx 网关兜底剥离覆盖头\n    proxy_set_header X-HTTP-Method-Override \"\";",
      "en": "Move method authorization after override parsing or disable override headers outright, with method allowlists covering both outer and final methods. After the fix, replay step 1: every override request should get 405 or 403."
     },
     "difficulty": "intermediate"
@@ -737,7 +737,7 @@
      "en": "In step 1, substitute path variants into admin-endpoint requests one by one per the script, recording status codes and bodies; any variant slipping past 401 or 403 to fetch admin content confirms the bypass, mapping hits to specific normalization gaps. Judge success by the variant-response matrix. Replace placeholders via the global variables menu; re-verify hit permission semantics to rule out false positives."
     },
     "mitigation": {
-     "zh": "授权统一在路由规范化后执行并按最终路径判定，边缘层拒绝歧义路径形态。修复后重放第 1 步矩阵，全部变体应返回一致的 401 或 403。",
+     "zh": "授权统一在路由规范化后按最终路径执行，边缘层拒绝点段、编码与分号等歧义路径形态。\n    http.authorizeHttpRequests(a -> a\n        .requestMatchers(\"/admin/**\").hasRole(\"ADMIN\")\n        .anyRequest().denyAll());\n    if ($request_uri ~* \"/(\\.|;//|%2e|%2f|%3b)\") { return 400; }\n  修复后重放验证第 1 步矩阵，全部变体应返回一致的 401 或 403。",
      "en": "Run authorization after route normalization, judging on final paths, with edge layers rejecting ambiguous path shapes. After the fix, replay the step 1 matrix: every variant should return uniform 401 or 403."
     },
     "difficulty": "advanced"
@@ -1028,7 +1028,7 @@
      "en": "In step 1, send standard-method requests to the admin endpoint one by one per the script, recording responses; any unconventional method returning data or changing behavior confirms method-authorization inconsistency, cross-referenced against the GET baseline. Judge success by the method-response matrix. Replace placeholders via the global variables menu; apply write methods only to test resources."
     },
     "mitigation": {
-     "zh": "路由层显式声明允许方法并对未列动词统一 405，授权检查覆盖全部方法分支。修复后重放第 1 步矩阵，未授权方法应全部被拒绝。",
+     "zh": "路由层显式声明允许方法，未列动词统一 405，授权检查覆盖全部方法分支。\n    http.authorizeHttpRequests(a -> a\n        .requestMatchers(HttpMethod.GET, \"/admin/**\").hasRole(\"ADMIN\")\n        .anyRequest().denyAll());\n    @RequestMapping(value = \"/admin\", method = RequestMethod.GET)\n    // 未声明动词由框架统一返回 405\n  修复后重放验证第 1 步矩阵，未授权方法应全部被拒绝。",
      "en": "Declare allowed methods explicitly per route, returning 405 for unlisted verbs, with authorization covering every method branch. After the fix, replay the step 1 matrix: all unauthorized methods should be denied."
     },
     "difficulty": "beginner"
@@ -1443,7 +1443,7 @@
      "en": "In step 1, place internal and loopback names into the Host header against the entry point one by one per the script, recording responses; any name landing on an internal vhost page confirms routing exposure, with the backend noted for impact. Judge success by internal-content returns. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "代理配置默认虚拟主机拒绝未知 Host 并维护域名白名单，内部应用绑定独立网络不对外监听。修复后重放第 1 步，全部内部名称应返回默认拒绝页。",
+     "zh": "默认虚拟主机拒绝未知 Host 并维护域名白名单，内部应用绑定独立网络不对外监听。\n    server {\n        listen 80 default_server;\n        server_name _;\n        return 421;   # 未知 Host 统一拒绝\n    }\n    listen 10.0.0.5:8080;   # 内部管理面仅内网监听\n  修复后重放验证第 1 步，全部内部名称应返回默认拒绝页。",
      "en": "Configure a default vhost rejecting unknown Hosts with a domain allowlist, binding internal apps to isolated networks unexposed externally. After the fix, replay step 1: every internal name should hit the default rejection page."
     },
     "difficulty": "intermediate"
@@ -1710,7 +1710,7 @@
      "en": "In step 1, inject original and rewrite URL header path variants into requests one by one per the script, recording backend routing and authorization; backends returning restricted content per the override header confirm the trust defect, with edge logs checked to confirm unsanitized headers. Judge success by restricted-content returns. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "边缘代理强制剥离全部内部重写头，后端仅接受来自可信代理链的请求并校验共享密钥头。修复后重放第 1 步，注入头应被移除且授权按原始请求行执行。",
+     "zh": "边缘代理强制剥离全部内部重写头，后端仅接受可信代理链请求并校验共享密钥头。\n    proxy_set_header X-Original-URL \"\";\n    proxy_set_header X-Rewrite-URL \"\";\n    proxy_set_header X-Proxy-Secret $upstream_secret;\n    if (!PROXY_SECRET.equals(request.getHeader(\"X-Proxy-Secret\")))\n        response.sendError(401);   // 后端校验可信代理\n  修复后重放验证第 1 步，注入头应被移除且授权按原始请求行执行。",
      "en": "Edge proxies must strip all internal rewrite headers, with backends accepting only trusted proxy chains verified via shared-secret headers. After the fix, replay step 1: injected headers should be removed and authorization follow the original request line."
     },
     "difficulty": "advanced"
@@ -1964,7 +1964,7 @@
      "en": "In step 1, inject single-newline, double-newline and double-encoded variants into echoable parameters one by one per the script, checking responses for header splits, second responses or stray blank lines; any structural anomaly confirms the injection point, with decode-layer counts logged. Judge success by response-structure anomalies. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "所有进入响应头的输入做统一解码后拒绝回车换行，框架层禁用手动头拼接。修复后重放第 1 步矩阵，全部变体应被过滤且响应结构稳定。",
+     "zh": "所有进入响应头的输入统一解码后拒绝回车换行，框架层禁用手动头拼接，检测侧同步加 WAF 规则。\n    String v = URLDecoder.decode(val, StandardCharsets.UTF_8);\n    if (v.indexOf('\\r') >= 0 || v.indexOf('\\n') >= 0)\n        throw new IllegalArgumentException(\"CRLF\");\n    SecRule REQUEST_HEADERS|ARGS \"(?i)(%0d|%0a|\\r|\\n)\" \\\n        \"id:1100,phase:2,deny,status:400\"\n  修复后重放验证第 1 步矩阵，全部变体应被过滤且响应结构稳定。",
      "en": "Uniformly decode inputs bound for headers and reject carriage returns, banning manual header concatenation at framework level. After the fix, replay the step 1 matrix: every variant should be filtered with stable response structure."
     },
     "difficulty": "intermediate"
@@ -2427,7 +2427,7 @@
      "en": "In step 1, inject CRLF-plus-Location variants into redirect parameters one by one and track the browser's final landing; any variant navigating to the injected domain confirms redirect hijack, checking responses for injected cookies to gauge combined impact. Judge success by final navigation domain and cookie state. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "重定向目标做解析后白名单校验并拒绝换行字符，跳转统一经服务端中转页处理。修复后重放第 1 步矩阵，全部变体应保持原跳转目标且无附加头。",
+     "zh": "重定向目标解析后做主机白名单校验并拒绝换行字符，跳转统一经服务端中转页处理。\n    if (target.matches(\"(?s).*[\\r\\n].*\")) return badRequest();\n    URI u = URI.create(target);\n    if (!ALLOWED_HOSTS.contains(u.getHost())) return badRequest();\n    response.setHeader(\"Location\", u.toString());\n  修复后重放验证第 1 步矩阵，全部变体应保持原跳转目标且无附加头。",
      "en": "Validate redirect targets against parsed-host allowlists rejecting newline characters, funneling jumps through a server interstitial. After the fix, replay the step 1 matrix: every variant should keep the original target with no added headers."
     },
     "difficulty": "advanced"
@@ -2916,7 +2916,7 @@
      "en": "In step 1, submit duplicate-key JSON bodies to parsing endpoints one by one per the script, recording values the server actually adopts versus validator conclusions; divergent values with unexpected ones winning confirm exploitable parsing divergence, pinpointing the disagreeing layer. Judge success by the business layer's actual value. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "全链路统一 JSON 解析器配置并在入口拒绝重复键，业务读取与校验复用同一解析结果。修复后重放第 1 步矩阵，含重复键请求应直接被拒绝。",
+     "zh": "全链路统一 JSON 解析器配置并在入口拒绝重复键，业务读取与校验复用同一解析结果。\n    JsonFactory f = JsonFactory.builder()\n        .enable(JsonReadFeature.STRICT_DUPLICATE_DETECTION)\n        .build();\n    ObjectMapper om = new ObjectMapper(f);  // 重复键直接抛异常\n  修复后重放验证第 1 步矩阵，含重复键请求应直接被拒绝。",
      "en": "Standardize JSON parser settings across the chain and reject duplicate keys at ingress, with validation and business reads sharing one parse result. After the fix, replay the step 1 matrix: duplicate-key requests should be refused outright."
     },
     "difficulty": "advanced"
@@ -3177,7 +3177,7 @@
      "en": "In step 1, submit encoded-separator dual-parameter variants one by one per the script, recording parameter sets parsed at edge versus backend; backend-only extra parameters shifting behavior confirm separator-decoding divergence. Judge success by backend parameter sets and business behavior. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "统一各层参数解码时机与分隔符标准，入口对值内编码分隔符做拒绝或转义。修复后重放第 1 步矩阵，全部变体的两端参数集合应一致。",
+     "zh": "统一各层参数解码时机与分隔符标准，入口对值内编码分隔符做拒绝或转义。\n    app.use((req, res, next) => {\n      for (const v of Object.values(req.query))\n        if (/%26|%3b|%3d|%23/i.test(String(v)))\n          return res.status(400).end();\n      next();\n    });\n  修复后重放验证第 1 步矩阵，全部变体的两端参数集合应一致。",
      "en": "Unify parameter-decode timing and separator standards across layers, rejecting or escaping encoded separators inside values at ingress. After the fix, replay the step 1 matrix: parameter sets should match at both ends for every variant."
     },
     "difficulty": "advanced"
@@ -3647,7 +3647,7 @@
      "en": "Use the step 1 command to submit javascript: schemes split by control characters and encoding mutations; post-normalization execution confirms the character-obfuscation differential bypass, serving as the WAF retest baseline. Record safe URLs, control-character plain text, and sanitized DOM attributes first, then submit variants replacing script actions with harmless page markers."
     },
     "mitigation": {
-     "zh": "统一到明确 Unicode 规范形态后再校验；使用上下文编码与协议允许列表而非黑名单；在支持浏览器中测试控制字符、全角字符与多重解码。",
+     "zh": "输入统一到明确 Unicode 规范形态（NFKC）后再校验，用上下文编码与协议允许列表而非黑名单，并在真实浏览器测试控制字符与多重解码。\n    const norm = value.normalize(\"NFKC\").replace(/[\\x00-\\x20]+/g, \"\");\n    if (/^javascript:/i.test(norm))\n        throw new TypeError(\"dangerous href\");\n    Content-Security-Policy: script-src 'self' 'nonce-a9f3'; object-src 'none'\n  修复后重放验证第 1 步矩阵，规范化后形成的脚本执行应被全部阻断。",
      "en": "Normalize to a defined Unicode canonical form before validating; use context encoding and protocol allowlists rather than blacklists; test control characters, fullwidth characters, and multi-decoding in supported browsers."
     },
     "difficulty": "advanced"
@@ -3861,7 +3861,7 @@
      "en": "Use the step 1 command to inject style execution via CSS url/expression/behavior/-moz-binding and comment-split variants; expression execution confirms style-context script execution (legacy engines), serving as the WAF retest baseline. Confirm exactly where input lands — style attribute, style element, or CSS file — with a safe background-image baseline, then swap external actions for your own harmless resources and DOM markers."
     },
     "mitigation": {
-     "zh": "不允许用户提供任意 CSS，改用受限样式属性白名单；对 URL 值执行结构化解析、协议与来源限制；通过 CSP style-src 与 img-src 限制样式和资源来源。",
+     "zh": "不允许用户提供任意 CSS，改用受限样式属性白名单；URL 值做结构化解析、协议与来源限制；用 CSP 限制样式与资源来源。\n    Content-Security-Policy: default-src 'self'; style-src 'self';\n        img-src 'self' data:; script-src 'self'\n    String safe = Jsoup.clean(html, Safelist.relaxed());\n    // Jsoup 白名单默认剥离 style 属性与内联脚本\n  修复后重放验证第 1 步矩阵，样式注入应无脚本执行与数据外带。",
      "en": "Never allow arbitrary user CSS — switch to restricted style-property allowlists; apply structured parsing with protocol and origin limits to URL values; constrain style and resource origins via CSP style-src and img-src."
     },
     "difficulty": "advanced"
@@ -4104,7 +4104,7 @@
      "en": "Use the step 1 command to load external modules via events and in-script dynamic import; module requests reaching {ATTACKER_HOST} confirm dynamic-import sink egress, with the relative /xss.js line testing the target's own path as a control baseline. Record load requests, CSP decisions, and call stacks with a legitimate local module first, then swap remote addresses for your own HTTPS endpoint returning an empty module."
     },
     "mitigation": {
-     "zh": "阻止不可信输入进入事件处理器与 JavaScript 代码上下文；使用严格 CSP script-src 与 Trusted Types 限制动态脚本；对模块 URL 使用固定映射而非拼接用户输入。",
+     "zh": "阻止不可信输入进入事件处理器与 JavaScript 代码上下文，模块 URL 用固定映射而非拼接；用严格 CSP 与 Trusted Types 限制动态脚本。\n    Content-Security-Policy: script-src 'self';\n        require-trusted-types-for 'script'; object-src 'none'\n    import DOMPurify from \"dompurify\";\n    el.innerHTML = DOMPurify.sanitize(userHtml);  // 剥离 on* 事件\n  修复后重放验证第 1 步，动态 import 请求应被 CSP 阻断且无标记执行。",
      "en": "Block untrusted input from entering event handlers and JavaScript code contexts; restrict dynamic scripts with strict CSP script-src and Trusted Types; map module URLs through fixed mappings rather than concatenating user input."
     },
     "difficulty": "advanced"
@@ -4349,7 +4349,7 @@
      "en": "Per step 1, inject Object.prototype.BOOMR = 1 with url pointing at {ATTACKER_HOST} into an isolated page and watch requests through a local proxy; a hit is the page requesting scripts from your domain, proving a downstream gadget inherited the polluted value and changed the load target. Retest with a random non-privileged sentinel, recording own properties, inherited properties, and the actual consumer call stack; requests initiated by the test script itself do not count as evidence."
     },
     "mitigation": {
-     "zh": "避免把不可信键写入 Object.prototype 或递归合并到普通对象；对配置读取使用自有属性检查、无原型对象或 Map；使用 CSP、依赖升级和原型污染回归测试限制触发链。修复后重放第 1 步污染脚本，确认后续库不再继承污染值。",
+     "zh": "不把不可信键写入 Object.prototype 或递归合并到普通对象，配置读取用自有属性检查、无原型对象或 Map；依赖升级并保留污染回归测试。\n    Object.freeze(Object.prototype);  // 入口最先执行\n    const cfg = Object.assign(Object.create(null), defaults);\n    if (!Object.hasOwn(cfg, \"url\")) throw new Error(\"missing url\");\n  修复后重放验证第 1 步污染脚本，确认后续库不再继承污染值。",
      "en": "Never write untrusted keys onto Object.prototype or recursively merge into plain objects; read configuration with own-property checks, prototype-less objects, or Map; constrain trigger chains with CSP, dependency upgrades, and prototype-pollution regression tests. After the fix, replay the step-1 pollution script and confirm downstream libraries no longer inherit polluted values."
     },
     "difficulty": "advanced"
@@ -4530,7 +4530,7 @@
      "en": "Use the step 1 command to bulk-enumerate media and animation events on svg/video/audio elements; any event executing confirms uncommon events escaped filtering, serving as the WAF retest baseline. Record the sanitizer's removal results for safe elements and common onerror first, then submit event attributes one by one, swapping actions for random DOM markers and firing the corresponding harmless events."
     },
     "mitigation": {
-     "zh": "采用允许列表净化 HTML 元素和属性，默认移除所有 on* 属性；用事件监听器绑定固定代码而非拼接输入；部署 CSP 与 Trusted Types 并覆盖浏览器事件矩阵。",
+     "zh": "采用允许列表净化 HTML 元素与属性，默认移除所有 on* 事件属性；事件用监听器绑定固定代码而非拼接输入；部署 CSP 与 Trusted Types。\n    String safe = Jsoup.clean(userHtml, Safelist.relaxed());\n    // Jsoup 白名单默认剥离全部 on* 属性\n    Content-Security-Policy: script-src 'self' 'nonce-d1e2';\n        object-src 'none'; require-trusted-types-for 'script'\n  修复后重放验证第 1 步事件矩阵，冷门事件不应执行任何标记。",
      "en": "Sanitize HTML elements and attributes via allowlists, removing all on* attributes by default; bind fixed code with event listeners rather than concatenated input; deploy CSP and Trusted Types covering the browser event matrix."
     },
     "difficulty": "intermediate"
@@ -5037,7 +5037,7 @@
      "en": "In step 1, send TE syntax variants as raw requests one by one per the script, recording both ends' responses; any variant accepted as chunked on one side only confirms normalization divergence, then chain a second request to prove smuggling. Judge success by single-side acceptance records. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "链路统一 TE 解析实现并拒绝一切非标准写法，头值规范化后再进入分帧决策。修复后重放第 1 步矩阵，全部变体应被两端一致拒绝。",
+     "zh": "链路统一 TE 解析实现、拒绝一切非标准写法，由单一层终结分帧并完整缓冲重组请求。\n    # HAProxy：TE 存在且非标准 chunked 一律拒绝\n    http-request deny if { req.hdr(Transfer-Encoding) -m found } \\\n        !{ req.hdr(Transfer-Encoding) -m str chunked }\n    # Nginx 单层终结并重组请求体\n    proxy_http_version 1.1;\n    proxy_request_buffering on;\n  修复后重放验证第 1 步矩阵，全部变体应被两端一致拒绝。",
      "en": "Unify TE parsing implementations across the chain refusing all nonstandard spellings, normalizing header values before framing decisions. After the fix, replay the step 1 matrix: every variant should be consistently rejected at both ends."
     },
     "difficulty": "advanced"
@@ -5272,7 +5272,7 @@
      "en": "In step 1, build the dual-CL H2 request per the script and send it through the proxy, observing responses and downstream logs; length-conflict errors or a second request executing after downgrade confirm the delimiting defect, with proxy conversion behavior logged as responsibility evidence. Judge success by smuggling or error evidence. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "H2 层拒绝重复或冲突的伪头长度字段，降级转换器对歧义请求直接断流；监控转换层的报错。修复后重放第 1 步，双 CL 请求应在 H2 层即被拒绝。",
+     "zh": "H2 层拒绝重复或冲突的伪头长度字段，降级转换器对歧义请求直接断流，监控转换层报错。\n    frontend fe\n        bind :443 alpn h2,http/1.1\n        # H2 请求拒绝重复/冲突 content-length 伪头\n        http-request deny if { req.hdr_cnt(Content-Length) gt 1 }\n  修复后重放验证第 1 步，双 CL 请求应在 H2 层即被拒绝。",
      "en": "Refuse duplicate or conflicting pseudo-header lengths at the H2 layer, with downgraders cutting off ambiguous requests; monitor conversion-layer errors. After the fix, replay step 1: dual-CL requests should be refused at H2 itself."
     },
     "difficulty": "advanced"
@@ -5515,7 +5515,7 @@
      "en": "In step 1, inject each target-path matrix entry as a second request via the smuggling primitive per the script, recording responses; internal paths executed by the backend with data returned confirm smuggling reaching internal APIs, charted into a reachability matrix by response differences. Judge success by internal-path responses. Replace placeholders via the global variables menu; all target paths use read-only endpoints."
     },
     "mitigation": {
-     "zh": "消除走私原语后为内部路由叠加独立鉴权，内部路径拒绝代理转发的外部会话。修复后重放第 1 步矩阵，走私请求应无法触达内部路径或被拒绝。",
+     "zh": "消除走私原语后为内部路由叠加独立鉴权，内部路径拒绝代理转发的外部会话。\n    http.authorizeHttpRequests(a -> a\n        .requestMatchers(\"/api/v1/users/**\").authenticated()\n        .requestMatchers(\"/api/v1/admin/**\").hasRole(\"OPS\")\n        .anyRequest().denyAll());\n    location /internal/ { deny all; }   # 内部端点不对代理暴露\n  修复后重放验证第 1 步矩阵，走私请求应无法触达内部路径或被拒绝。",
      "en": "Beyond eliminating the smuggling primitive, stack independent authentication on internal routes, rejecting proxied external sessions on internal paths. After the fix, replay the step 1 matrix: smuggled requests should never reach internal paths or be denied."
     },
     "difficulty": "advanced"
@@ -5750,7 +5750,7 @@
      "en": "In step 1, request static-suffix path variants one by one per the script, recording X-Cache and response content; dynamic content served from cache confirms the cache-key classification gap, then hit the same URL from a second session to verify cross-user sharing. Judge success by cache-hit and content comparison. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "CDN 缓存规则按源站返回的 Cache-Control 优先判定，剥离路径伪后缀或对动态路径禁用共享缓存。修复后重放第 1 步矩阵，全部变体应保持动态响应且无缓存命中。",
+     "zh": "CDN 缓存规则以源站返回的 Cache-Control 优先判定，剥离路径伪后缀并对动态路径禁用共享缓存。\n    # Cloudflare 缓存规则表达式：非静态扩展名一律绕过缓存\n    (not http.request.uri.path matches \"\\.(css|js|png|jpg|woff2?)$\")\n    -> action: bypass_cache\n    add_header Cache-Control \"no-store, private\" always;\n  修复后重放验证第 1 步矩阵，全部变体应保持动态响应且无缓存命中。",
      "en": "Give origin Cache-Control precedence in CDN rules, strip path pseudo-suffixes or disable shared caching on dynamic paths. After the fix, replay the step 1 matrix: every variant should stay dynamic with no cache hits."
     },
     "difficulty": "advanced"
@@ -6225,7 +6225,7 @@
      "en": "In step 1, inject forwarded-host variants one by one per the script and inspect generated links; links pointing at the injected domain with unchanged cache keys confirm the unkeyed poisoning surface, then hit the same key with plain header-less requests to prove poisoning reaches other users, recording hit keys and recovery time as evidence. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "派生主机固定为配置值并把影响输出的头纳入缓存键，禁用对不可信来源的主机改写。修复后重放第 1 步矩阵，链接应始终指向合法域且缓存无投毒。",
+     "zh": "派生主机固定为配置值，应用仅信任可信代理改写的主机头，并把影响输出的头纳入缓存键。Nginx 边缘强制覆盖：\n    proxy_set_header Host $host;\n    proxy_set_header X-Forwarded-Host $host;\n    sub vcl_hash {\n      hash_data(req.http.X-Forwarded-Host);\n    }",
      "en": "Pin derived hosts to configuration, fold output-affecting headers into cache keys, and refuse host rewrites from untrusted sources. After the fix, replay the step 1 matrix: links should always point at the legitimate domain with no cache poisoning."
     },
     "difficulty": "advanced"
@@ -6463,7 +6463,7 @@
      "en": "In step 1, inject internal-path override headers one by one per the script, recording responses and cache states; internal content under public-path caches confirms the key confusion, then hit the same key with plain header-less requests to verify sharing scope and affected users, recording hit keys and purge latency as evidence. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "边缘剥离覆盖头且缓存键纳入全部影响资源的头，内部路径响应禁用共享缓存。修复后重放第 1 步矩阵，公开键下不应出现任何内部内容。",
+     "zh": "边缘剥离 X-Original-URL 等覆盖头，缓存键覆盖全部影响资源选择的输入，内部路径响应禁用共享缓存。Nginx：\n    proxy_set_header X-Original-URL \"\";\n    proxy_set_header X-Rewrite-URL \"\";\n    sub vcl_recv {\n      unset req.http.X-Original-URL;\n    }",
      "en": "Edges must strip override headers and fold resource-affecting headers into cache keys, disabling shared caching for internal-path responses. After the fix, replay the step 1 matrix: no internal content should surface under public keys."
     },
     "difficulty": "advanced"
@@ -6701,7 +6701,7 @@
      "en": "In step 1, inject rewrite-header variants one by one per the script, comparing response content against cache ownership keys; restricted content cached under public keys confirms the rewrite mismatch, then hit the same key with plain header-less requests to quantify sharing scope and affected users, recording key-contamination duration as evidence. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "边缘拒绝客户端重写头并让缓存键覆盖路由全部输入，受限路由响应一律私有化。修复后重放第 1 步矩阵，公开键下不应出现受限内容。",
+     "zh": "边缘拒绝客户端 X-Rewrite-URL，路由仅由边缘解析的原始路径决定，受限路由响应一律私有化。Nginx 剥离：\n    proxy_set_header X-Original-URL \"\";\n    proxy_set_header X-Rewrite-URL \"\";\n    app.use((req, res, next) => {\n      delete req.headers[\"x-rewrite-url\"];\n      next();\n    });",
      "en": "Edges must refuse client rewrite headers and cover every routing input in cache keys, marking restricted-route responses private. After the fix, replay the step 1 matrix: no restricted content should appear under public keys."
     },
     "difficulty": "advanced"
@@ -6939,7 +6939,7 @@
      "en": "In step 1, inject scheme-header variants one by one per the script, observing generated links and cache behavior; resources generated per injected schemes and shared via cache confirm the unkeyed defect, with every absolute page address and follow-up request checked for impact, recording cache-key to new-address bindings as evidence. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "协议来源固定为连接实际属性并把协议头纳入缓存键，拒绝非法协议值。修复后重放第 1 步矩阵，生成链接应保持真实协议且缓存无污染。",
+     "zh": "协议由连接实际属性（TLS 监听器）判定，不信任请求头；协议头要么统一覆盖要么纳入缓存键并拒绝非法值。Nginx 按监听固定：\n    proxy_set_header X-Forwarded-Proto $scheme;\n    proxy_set_header X-Forwarded-Scheme $scheme;\n    if (req.http.X-Forwarded-Scheme !~ \"^(https?)$\") {\n      return (synth(400));\n    }",
      "en": "Pin scheme sources to actual connection properties, fold scheme headers into cache keys, and refuse illegal scheme values. After the fix, replay the step 1 matrix: links should keep real schemes with an unpolluted cache."
     },
     "difficulty": "advanced"
@@ -7177,7 +7177,7 @@
      "en": "In step 1, place cache-directive variants into requests one by one per the script, checking response cache headers and subsequent hits; accepted directives extending lifetimes or flipping eligibility confirm the divergence, retested on authenticated pages to gauge private-content exposure. Judge success by cache-behavior changes. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "忽略请求侧缓存指令并以源站响应头为唯一依据，认证内容强制 no-store。修复后重放第 1 步矩阵，全部指令应不影响共享缓存行为。",
+     "zh": "源站忽略请求侧缓存指令，仅以响应头作为缓存依据，认证内容强制 no-store。Varnish 剥离请求指令：\n    sub vcl_recv {\n      unset req.http.Cache-Control;\n    }\n    location /api/ {\n      add_header Cache-Control \"no-store\" always;\n    }",
      "en": "Ignore request-side cache directives, honoring origin response headers alone, and force no-store on authenticated content. After the fix, replay the step 1 matrix: no directive should shift shared-cache behavior."
     },
     "difficulty": "intermediate"
@@ -7461,7 +7461,7 @@
      "en": "In step 1, inject Akamai proprietary-header variants one by one per the script, recording response differences and cache states; edges shifting content or cache keys per forged headers confirm the trust defect, locating affected behaviors via attribute changes. Judge success by cache and routing changes. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "边缘层配置强制覆盖或剥除专有头，仅信任 Akamai 网段来源的属性头，缓存键纳入地理与会话属性。修复后重放第 1 步矩阵，伪造头应无任何行为影响。",
+     "zh": "边缘配置强制覆盖或剥除 Akamai 专有头，属性头仅当来源属于 Akamai 官方网段时采信，地理与会话属性纳入缓存键。Nginx 剥离客户端预置值：\n    proxy_set_header X-Akamai-Session-Info \"\";\n    proxy_set_header X-Akamai-Edgescape \"\";",
      "en": "Configure edge layers to force-overwrite or strip proprietary headers, trusting attribute headers only from Akamai ranges, folding geo and session attributes into cache keys. After the fix, replay the step 1 matrix: forged headers should have zero behavioral impact."
     },
     "difficulty": "advanced"
@@ -7699,7 +7699,7 @@
      "en": "In step 1, inject derived-header variants one by one per the script, watching backend logs and cache-key changes; forged values being adopted confirms derived-header trust defects, then verify poisoned-content visibility to other users across sessions, recording forged-versus-true attribute differences as evidence. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "边缘强制覆盖派生头为真实连接属性并剥离客户端预置值，缓存键与路由基于覆盖后的头计算。修复后重放第 1 步矩阵，伪造值应被真实属性替换。",
+     "zh": "边缘在 vcl_recv 用真实连接属性强制覆盖派生头并剥离客户端预置值，缓存键与路由按覆盖后头计算。VCL：\n    sub vcl_recv {\n      set req.http.Fastly-Client-IP = client.ip;\n      unset req.http.Fastly-FF;\n    }",
      "en": "Edges must overwrite derived headers with real connection attributes and strip client-preset values, computing cache keys and routing from post-overwrite values. After the fix, replay the step 1 matrix: forged values should be replaced by true attributes."
     },
     "difficulty": "advanced"
@@ -7935,7 +7935,7 @@
      "en": "In step 1, inject CF-header variants one by one per the script, recording app behavior and cache differences; forged attributes flipping content branches or cache keys confirm the trust defect, quantifying regional-content and risk deviations against true connection attributes as baseline, recording hit branches and cache keys as evidence. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "仅在 CF 边缘后接受其头并校验来源网段，把连接属性头纳入缓存键；风控以多层信号而非单头判定。修复后重放第 1 步矩阵，伪造头不应改变任何分支。",
+     "zh": "仅在 Cloudflare 边缘之后采信 CF-* 头并校验来源网段，连接属性头纳入缓存键，风控以多层信号判定。Nginx 仅信任 CF 网段的真实 IP：\n    # 网段清单见 https://www.cloudflare.com/ips-v4\n    set_real_ip_from 173.245.48.0/20;\n    set_real_ip_from 103.21.244.0/22;\n    real_ip_header CF-Connecting-IP;\n    proxy_set_header CF-IPCountry \"\";\n    proxy_set_header CF-Connecting-IP $remote_addr;",
      "en": "Accept CF headers only behind its edge with source-range validation, folding connection-attribute headers into cache keys; base risk decisions on multi-layer signals rather than single headers. After the fix, replay the step 1 matrix: forged headers should flip nothing."
     },
     "difficulty": "advanced"
@@ -8171,7 +8171,7 @@
      "en": "In step 1, inject invalid-host and special-character variants into derived headers one by one per the script, watching responses and cache states; error responses cached and then hit by plain requests confirm cache-based denial of service, with affected-key lifetimes recorded to bound impact windows. Judge success by plain requests hitting cached errors. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "错误响应一律标记不可缓存并对派生输入做严格校验，配置缓存层对 5xx 的自动驱逐与告警。修复后重放第 1 步矩阵，错误响应不应进入任何共享键。",
+     "zh": "对派生输入（主机/协议头）做严格校验，错误响应一律标记不可缓存，缓存层对 5xx 自动驱逐并告警。应用过滤器：\n    response.setStatus(500);\n    response.setHeader(\"Cache-Control\", \"no-store\");\n    proxy_cache_valid 200 301 302 10m;\n    # 5xx 未列入即不落缓存，配合源站 no-store",
      "en": "Mark all error responses uncacheable with strict derived-input validation, and configure cache-layer auto-eviction plus alerts for 5xx. After the fix, replay the step 1 matrix: error responses should never enter shared keys."
     },
     "difficulty": "advanced"
@@ -8511,7 +8511,7 @@
      "en": "In step 1, inject combined-forwarded-header variants one by one per the script, comparing cache keys against origin-routing verdicts; unchanged keys with changed content confirm missing dimensions, then hit the same key as different clients to verify collisions pushing content to other users, recording collision keys and content differences as evidence. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "把全部影响源站分流的头纳入缓存键并文档化键构成，未覆盖维度一律按最严格策略禁用缓存。修复后重放第 1 步矩阵，同键异内容现象应消失。",
+     "zh": "缓存键覆盖全部影响源站分流的头（Forwarded、X-Cluster-Client-IP 等）并文档化键构成，未覆盖维度按最严格策略禁用缓存。Varnish：\n    sub vcl_hash {\n      hash_data(req.http.X-Forwarded-For);\n      hash_data(req.http.X-Cluster-Client-IP);\n    }\n    proxy_cache_key \"$scheme$host$request_uri$http_x_forwarded_for\";\n    proxy_no_cache $http_x_cluster_client_ip;",
      "en": "Fold every origin-splitting header into cache keys with documented key composition, disabling caching on uncovered dimensions via strictest policy. After the fix, replay the step 1 matrix: same-key differing content should vanish."
     },
     "difficulty": "advanced"
@@ -8894,7 +8894,7 @@
      "en": "Use in Payload list order: step 1 uses an owned external callback host to confirm whether the target opens server-side connections per Host, recording sources; then exercise the original private addresses and ports one by one on an isolated network (192.168.1.1:8080, 10.0.0.1:8443, etc.) against a controlled mock router service — mock-service connection logs plus target process logs proving the second request originates server-side and affects the response confirm; virtual-host local routing, DNS resolution, or addresses appearing only in error pages are false positives. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "不从客户端 Host 动态选择任意上游地址，对解析后的每个地址阻断私网、回环和链路本地范围；通过固定服务发现或受控出口代理访问下游。修复后用样例回归，Host 派生的私网连接被拒绝。",
+     "zh": "不从客户端 Host 动态选择上游，改用固定服务发现或受控出口代理；必须外呼时校验解析后全部地址，阻断私网、回环与链路本地。Java：\n    for (InetAddress a : InetAddress.getAllByName(host)) {\n      if (a.isLoopbackAddress() || a.isSiteLocalAddress()\n          || a.isLinkLocalAddress()) throw new SecurityException();\n    }\n    if urlparse(url).hostname not in ALLOWED_HOSTS:\n        abort(400)",
      "en": "Never pick arbitrary upstreams dynamically from client Host; block private, loopback, and link-local ranges for every resolved address; reach downstream services via fixed service discovery or a controlled egress proxy. After the fix, regress with the samples: Host-derived private connections are denied."
     },
     "difficulty": "advanced"
@@ -9132,7 +9132,7 @@
      "en": "In step 1, inject control-character Host variants one by one per the script and compare host values recorded at edge versus origin; mismatched resolutions confirm normalization divergence, then check whether the divergent host enters cache keys to gauge poisoning scope. Judge success by the two-end resolution comparison. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "入口对 Host 做字符白名单与长度限制，拒绝含控制字符的值并在全链路统一清洗实现。修复后重放第 1 步矩阵，全部变体应被拒绝或两端解析一致。",
+     "zh": "入口对 Host 做字符白名单与长度限制，拒绝控制字符，并在全链路统一清洗实现。Nginx 正则限定合法 Host：\n    server_name ~^[a-zA-Z0-9.-]+\\.example\\.com$;\n    # 控制字符与超长 Host 交由默认块拒绝\n    server {\n      listen 80 default_server;\n      server_name _;\n      return 400;\n    }",
      "en": "Apply character allowlists and length caps to Host at ingress, refusing control-character values with unified cleaning across the chain. After the fix, replay the step 1 matrix: every variant should be rejected or resolve identically at both ends."
     },
     "difficulty": "advanced"
@@ -9368,7 +9368,7 @@
      "en": "In step 1, submit double-encoded targets to the jump endpoint one by one per the script, recording decoded shapes in layer logs and the final Location header; external landing after the second decode confirms exploitable layer divergence, contrasted with single encoding to bound decode counts. Judge success by the final navigation address and intermediate logs. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "用标准 URL 解析器提取 authority 参与校验并剥离片段，拒绝含 userinfo 的目标。修复后重放第 1 步矩阵，全部变体应按真实主机判定。",
+     "zh": "用标准 URL 解析器提取 authority 的 host 参与白名单校验，剥离 fragment，拒绝含 userinfo 的目标。Java：\n    URI u = URI.create(target);\n    if (u.getRawUserInfo() != null || u.getFragment() != null\n        || !ALLOWED_HOSTS.contains(u.getHost()))\n      throw new IllegalArgumentException(\"bad redirect\");",
      "en": "Extract authority with a standards-compliant URL parser for validation, stripping fragments and refusing userinfo-bearing targets. After the fix, replay the step 1 matrix: every variant should be judged on its true host."
     },
     "difficulty": "intermediate"
@@ -9580,7 +9580,7 @@
      "en": "In step 1, send WebDAV and uncommon methods to admin paths one by one per the script, recording status codes and bodies; any method returning data or changing resources confirms missing extension-method authorization, with hit methods and handler mappings archived. Judge success by business responses to unconventional methods. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "路由层显式允许列表并对其余方法统一 405，禁用未使用 WebDAV 模块；方法审计纳入访问日志。修复后重放第 1 步矩阵，全部扩展方法应被拒绝。",
+     "zh": "路由层显式方法允许列表，其余统一 405；禁用未使用的 WebDAV 模块并把方法审计纳入访问日志。Nginx：\n    if ($request_method !~ ^(GET|POST|HEAD|PUT|DELETE)$) {\n      return 405;\n    }\n    <LimitExcept GET POST HEAD>\n      Require all denied\n    </LimitExcept>",
      "en": "Declare explicit route allowlists returning 405 for all else, disable unused WebDAV modules, and audit methods in access logs. After the fix, replay the step 1 matrix: every extension method should be denied."
     },
     "difficulty": "intermediate"
@@ -9856,7 +9856,7 @@
      "en": "In step 1, place _method override values into form submissions against restricted endpoints one by one per the script, recording the executed verb and authorization outcome; frameworks honoring overrides and performing restricted operations confirm the pseudo-method trust defect. Judge success by the method the server actually executed. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "禁用表单方法覆盖或让授权与 CSRF 检查在覆盖后执行，覆盖值限定白名单动词。修复后重放第 1 步矩阵，未授权动词的覆盖应被拒绝。",
+     "zh": "禁用表单方法覆盖，或让授权与 CSRF 校验在覆盖生效后执行，覆盖值限定白名单动词。Spring Boot 禁用：\n    # 禁用 HiddenHttpMethodFilter 表单方法覆盖\n    spring.mvc.hiddenmethod.filter.enabled=false\n    @DeleteMapping(\"/items/{id}\")\n    @PreAuthorize(\"hasRole('ADMIN')\")",
      "en": "Disable form-method overrides or run authorization and CSRF after translation, with override values limited to allowlisted verbs. After the fix, replay the step 1 matrix: overrides into unauthorized verbs should be refused."
     },
     "difficulty": "intermediate"
@@ -10124,7 +10124,7 @@
      "en": "In step 1, submit method-parameter overrides against restricted endpoints one by one per the script, recording the framework-translated verb and business outcome; values translating into restricted methods and executing confirm the trust defect, cross-checked against edge logs' original methods. Judge success by the verb actually executed. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "移除参数驱动的方法切换或将其收敛到专用接口，边缘与业务对方法认知保持一致。修复后重放第 1 步矩阵，受限动词的参数覆盖应被拒绝。",
+     "zh": "移除参数驱动的方法切换，边缘与业务层对方法认知保持一致；确需保留时收敛到专用接口并限定白名单。Express 删除覆盖中间件：\n    // 删除 app.use(methodOverride(req => req.body.method))\n    router.post(\"/api/items\", handler);  // 仅按真实 POST 路由\n    @PostMapping(\"/api/items\")\n    @PreAuthorize(\"hasRole('ADMIN')\")",
      "en": "Remove parameter-driven method switching or confine it to dedicated endpoints, keeping edge and business method views aligned. After the fix, replay the step 1 matrix: parameter overrides into restricted verbs should be denied."
     },
     "difficulty": "intermediate"
@@ -10376,7 +10376,7 @@
      "en": "In step 1, send absolute-form targets one by one per the script, recording hit backends and returned content; proxies rewriting routes per URI-embedded hosts confirm parsing divergence, locating the disagreeing layer by comparing Host headers against actual services. Judge success by the service actually hit. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "代理拒绝绝对形式请求目标或按其 authority 与 Host 一致性校验，内部虚拟主机不对外部入口暴露。修复后重放第 1 步矩阵，全部绝对形式请求应被拒绝或按 Host 路由。",
+     "zh": "代理拒绝绝对形式请求目标，或校验其 authority 与 Host 一致后才路由，内部虚拟主机不对外部入口暴露。Varnish：\n    sub vcl_recv {\n      if (req.url ~ \"^https?://\") { return (synth(400)); }\n    }\n    http-request deny if { url_reg -i ^https?:// }\n    # 或仅当 authority 与 Host 一致时放行",
      "en": "Have proxies refuse absolute-form targets or verify authority-to-Host consistency, keeping internal vhosts unexposed at external entry points. After the fix, replay the step 1 matrix: every absolute-form request should be denied or routed by Host."
     },
     "difficulty": "advanced"
@@ -10601,7 +10601,7 @@
      "en": "Per step 1, replace targets of ‥/‥/‥/etc/passwd and similar samples with random marker files in a one-off directory and submit one by one; a hit is Unicode dot characters normalized to ../ reading the marker file. Record each layer's decoding, normalization, and real-path resolution per request, noting the target platform's handling of ‥ (U+2025); system and configuration paths remain original only for traceability—never read them directly."
     },
     "mitigation": {
-     "zh": "先执行明确 Unicode 规范化再解析路径；解析后验证真实路径仍位于允许根目录内；使用文件 ID 映射并拒绝路径分隔符和点段。修复后重放第 1 步样例，确认相似点字符被规范化后拒绝且合法读取可用。",
+     "zh": "先执行 Unicode 规范化（NFKC）再解码与解析路径，验证规范绝对路径仍位于固定根目录，业务用对象 ID 映射并拒绝点段与分隔符。Java：\n    String s = Normalizer.normalize(userInput, Normalizer.Form.NFKC);\n    Path p = root.resolve(s).normalize().toRealPath();\n    if (!p.startsWith(root)) throw new SecurityException();",
      "en": "Run explicit Unicode normalization before path parsing; verify the real path remains inside the allowed root after resolution; map by file ID and reject path separators and dot segments. After the fix, replay the step-1 samples and confirm lookalike dots are rejected after normalization while legitimate reads work."
     },
     "difficulty": "advanced"
@@ -10855,7 +10855,7 @@
      "en": "Use the step 1 command to build always-true and UNION statements with fullwidth-quote variants replacing ASCII quotes; statements still standing with true/false response differences after server-side normalization confirm the exploitable Unicode normalization differential. Record parameter values and results for plain text, ASCII quotes, and fullwidth quotes with parameterized test queries first, then submit item by item to authorized test fields under identical query conditions."
     },
     "mitigation": {
-     "zh": "所有查询使用参数化语句禁止拼接输入；在统一 Unicode 规范化后执行类型与长度验证；对兼容字符映射与数据库字符集建立回归测试。",
+     "zh": "全部查询参数化，禁止拼接输入；在统一 Unicode 规范化后再执行类型与长度校验，并为兼容字符映射建立回归测试。Java：\n    try (PreparedStatement ps = conn.prepareStatement(\n        \"SELECT id FROM users WHERE name = ?\")) {\n      ps.setString(1, name);\n    }\n    $st = $pdo->prepare(\"SELECT id FROM users WHERE name = ?\");\n    $st->execute([$name]);",
      "en": "Use parameterized statements for all queries, forbidding concatenation; run type and length validation after unified Unicode normalization; build regression tests over compatibility character mappings and database charsets."
     },
     "difficulty": "advanced"
@@ -11263,7 +11263,7 @@
      "en": "Per step 1, replace targets of xn--/../../../etc/passwd and similar samples with random marker files in a one-off directory and submit one by one; a hit is the path still resolving to traversal past the xn-- confusion and reading the marker file. Record each layer's decoding, normalization, and real-path resolution, confirming exactly how the filter misjudges xn-- as a domain; this set is not legitimate IDN domains—evaluate as path traversal, not URL obfuscation."
     },
     "mitigation": {
-     "zh": "明确区分 URL authority 与路径数据，不以字符串前缀推断类型；对路径完成解码和规范化后验证真实根目录；拒绝点段、分隔符和不符合 schema 的 xn-- 使用。修复后重放第 1 步样例，确认前缀混淆不再绕过点段校验。",
+     "zh": "严格区分 URL authority 与路径：解析后仅以 host 字段做域名判定，不以 xn-- 等字符串前缀推断类型；路径完成解码与规范化后验证位于固定根目录。Python：\n    from urllib.parse import urlparse, unquote\n    real = os.path.realpath(os.path.join(ROOT, unquote(urlparse(url).path)))\n    if not real.startswith(os.path.realpath(ROOT) + os.sep): abort(403)",
      "en": "Explicitly separate URL authority from path data and never infer type from string prefixes; decode and normalize paths fully, then verify the real root; reject dot segments, separators, and schema-violating xn-- usage. After the fix, replay the step-1 samples and confirm prefix confusion no longer bypasses dot-segment validation."
     },
     "difficulty": "advanced"

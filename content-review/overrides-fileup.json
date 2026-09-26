@@ -1451,7 +1451,7 @@
      "en": "Submit /etc/passwd%00.php, %00 truncation, and traversal-with-suffix variants one by one per step 1, replacing system targets with in-scope test markers; a hit is %00 truncation reading the target on legacy PHP, while newer versions return a concatenated-path error. Record runtime version, PHP file function, and response differences per request; when negative, note the version as evidence modern runtimes reject NUL—never assume legacy semantics for the current target."
     },
     "mitigation": {
-     "zh": "升级受支持的 PHP，拒绝控制字符和 NUL，完全解码后解析规范绝对路径，并在文件 API 前强制固定根目录。修复后重放第 1 步全部变体与合法样例，确认 NUL 输入被拒绝、正常上传或读取功能保留，并清除测试对象与日志中的固定标记。",
+     "zh": "升级到受支持的 PHP 版本，输入完成 URL 解码后拒绝 NUL 与控制字符，再解析规范绝对路径并在文件 API 前强制固定根目录：\n    $raw = rawurldecode($_GET['p'] ? '');\n    if (preg_match('/[\\x00-\\x1f\\x7f]/', $raw)) { http_response_code(400); exit; }\n    $path = realpath(APP_ROOT . '/' . $raw);\n    if ($path === false || !str_starts_with($path, APP_ROOT)) exit('denied');",
      "en": "Upgrade to supported PHP, reject control characters and NUL, parse canonical absolute paths after full decoding, and enforce a fixed root before file APIs. After the fix, replay all step-1 variants and legitimate samples, confirm NUL inputs are rejected and normal upload/read flows persist, and clear fixed markers from test objects and logs."
     },
     "difficulty": "intermediate"
@@ -1865,7 +1865,7 @@
      "en": "Upload a controlled ZIP/PHAR containing PHP members and confirm real paths first, then submit zip://…%23ok.php and phar://shell.jpg/shell.php one by one per step 1; a hit is uid= output for cmd=id after member inclusion. Layer the records: member reads return markers, code inclusion shows execution output, and PHAR deserialization needs independent call-stack evidence."
     },
     "mitigation": {
-     "zh": "禁止用户输入进入 include/require，上传目录保持不可执行且位于 Web 根外，读取接口只接收对象 ID 并拒绝非 file scheme。修复后重放第 1 步全部 wrapper URI，确认归档成员不可包含且正常上传读取可用，并清除测试归档与日志标记。",
+     "zh": "禁止用户输入进入 include/require，上传目录置于 Web 根外且不可执行；读取只收对象 ID 并拒绝非 file scheme：\n    <Directory /srv/app/uploads>\n      php_admin_flag engine off\n      Require all denied\n    </Directory>\n    // PHP：拒绝 wrapper，按对象 ID 读取并校验根目录\n    if (preg_match('#^[a-z][a-z0-9+.-]*://#i', $ref)) exit('wrapper denied');\n    $path = realpath(STORAGE . '/' . $db->storedName($ref));\n    if (!$path || !str_starts_with($path, STORAGE)) exit('denied');",
      "en": "Keep user input out of include/require, keep upload directories non-executable outside the web root, and have read interfaces accept only object IDs while rejecting non-file schemes. After the fix, replay all step-1 wrapper URIs, confirm archive members cannot be included and normal upload/read flows work, and clear test archives and log markers."
     },
     "difficulty": "advanced"

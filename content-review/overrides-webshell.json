@@ -35,7 +35,7 @@
      "en": "Submit the samples one by one per step 1, triggering snippet execution at the target entry with cmd=id style query, form, and values parameters; a hit is uid= command output in the response. Verify all three parameter-source entries to locate the input channel; once execution is confirmed, swap in marker-file reads for evidence. The snippet must be genuinely deployed on the target code path—code existence or a 200 response is not a hit."
     },
     "mitigation": {
-     "zh": "移除请求到动态执行函数的直接映射，改用固定操作与参数允许列表，关闭生产调试器，并以低权限隔离账户运行服务。修复后用相同入口重放正常业务参数与 cmd=id 样例，确认合法功能保留且危险 API 拒绝可控值。",
+     "zh": "移除请求参数到动态执行函数的直接映射，改用固定操作白名单与参数数组；关闭生产调试器并以低权限隔离账户运行服务。\n    OPS = {\"restart\": [\"/usr/bin/systemctl\", \"restart\", \"app\"],\n           \"status\":  [\"/usr/bin/systemctl\", \"status\", \"app\"]}\n    op = request.args.get(\"op\", \"\")\n    if op not in OPS:\n        abort(400)\n    out = subprocess.run(OPS[op], capture_output=True, text=True, check=True).stdout",
      "en": "Remove direct request-to-dynamic-execution mappings in favor of fixed operations and parameter allowlists, disable the production debugger, and run the service under an isolated low-privilege account. After the fix, replay normal business parameters and the cmd=id sample through the same entry, confirming legitimate features work while dangerous APIs reject controlled input."
     },
     "difficulty": "intermediate"
@@ -324,7 +324,7 @@
      "en": "Submit import os;os.system(...) style statements to the target execution entry one by one per step 1, with commands covering id, whoami, marker reads, and directory listings; a hit is the corresponding command output returned after statement execution. Once execution is confirmed, standardize on marker-file reads for evidence; cross-check call stacks and worker logs to confirm the expression truly reached evaluation or child-process APIs rather than template interpolation or log echo."
     },
     "mitigation": {
-     "zh": "删除动态求值和 shell=True，使用类型化参数调用固定函数或 subprocess 参数数组，并对后台任务与管理入口执行独立授权。修复后用相同入口重放正常业务参数与第 1 步语句，确认合法功能保留且求值 API 拒绝可控值。",
+     "zh": "删除 eval/exec 与 shell=True，改为白名单命令数组调用；后台任务与管理入口执行独立授权。\n    from django.core.exceptions import PermissionDenied\n    ALLOWED = {\"ping\": [\"/bin/ping\", \"-c\", \"1\"]}\n    def run_task(name: str) -> str:\n        argv = ALLOWED.get(name)\n        if argv is None:\n            raise PermissionDenied\n        return subprocess.run(argv, capture_output=True, text=True).stdout",
      "en": "Remove dynamic evaluation and shell=True, call fixed functions with typed parameters or subprocess argument arrays, and apply independent authorization to background tasks and admin entries. After the fix, replay normal business parameters and the step-1 statements through the same entry, confirming legitimate features work while evaluation APIs reject controlled input."
     },
     "difficulty": "advanced"
@@ -2863,7 +2863,7 @@
      "en": "Use the step 1 command to trigger reverse shells via the three Jinja2 object-graph chains, with {ATTACKER_IP}:{LPORT} rendered as the authorized listener; the listener receiving a callback session confirms the SSTI-to-process-execution chain. Execute only in authorized labs; baseline SSTI with arithmetic and safe property access first, then swap callback commands for fixed stdout markers verifying each object chain, stopping at minimal evidence."
     },
     "mitigation": {
-     "zh": "禁止将用户内容作为模板源码，使用固定模板与数据参数；启用并收紧沙箱属性策略，以低权限运行并阻止模板进程创建子进程；回归确认不可信内容始终作为数据处理且无法访问 globals、类型对象或进程 API。",
+     "zh": "用户内容只作为数据传入固定模板，禁止 from_string 编译不可信输入；启用沙箱环境并清空内建 globals，模板进程低权限运行且不允许派生子进程。\n    from jinja2.sandbox import SandboxedEnvironment\n    env = SandboxedEnvironment(autoescape=True)\n    env.globals.clear()\n    html = env.get_template(\"invoice.html\").render(data=rows)",
      "en": "Never use user content as template source — fixed templates with data parameters instead; enable and tighten sandbox attribute policies, run low-privileged, and block template processes from spawning children; regress to confirm untrusted content stays data and cannot reach globals, type objects, or process APIs."
     },
     "difficulty": "expert"
@@ -3381,7 +3381,7 @@
      "en": "As in step 1, send requests carrying () { :;}; plus a fixed marker in the Cookie and User-Agent headers to /cgi-bin/test.sh; a hit is SHELLSHOCK_TEST_MARKER in the CGI response body, proving trailing text in environment variables executed. Validate both channels separately with CGI child-process logs; once execution is confirmed, swap the marker for commands reading authorized marker files as evidence. curl is only the delivery vehicle—every request targets the local isolated instance."
     },
     "mitigation": {
-     "zh": "升级 Bash 到供应商已修复版本并重启长期运行进程，移除不必要的 CGI，避免 CGI 脚本或其子进程调用 Bash，并限制传入解释器的环境变量。修复后以第 1 步同一标记重放请求头，确认已修复实例不执行尾随文本且正常 CGI 业务可用。",
+     "zh": "升级 Bash 至供应商已修复版本并重启长驻进程；移除不必要的 CGI，确需保留时脚本改用 dash 并过滤传入解释器的环境变量。\n    # Debian/Ubuntu：升级并重启 Web 服务\n    apt-get update && apt-get install --only-upgrade bash\n    systemctl restart apache2\n    # 移除 CGI 模块降低暴露面\n    a2dismod cgid cgi && systemctl reload apache2",
      "en": "Upgrade Bash to vendor-fixed versions and restart long-running processes, remove unnecessary CGI, keep CGI scripts and their children from invoking Bash, and limit environment variables passed to interpreters. After the fix, replay the step-1 headers with the same marker and confirm the patched instance does not execute trailing text while normal CGI business works."
     },
     "difficulty": "advanced"
@@ -3689,7 +3689,7 @@
      "en": "In authorized testing, deploy the step-1 one-liner samples such as system($_GET['cmd']) to target executable locations, then request each with parameters like cmd=id, 1=id, and a=id; a hit is command output returned per corresponding parameter after deployment. Record the effective parameter names and function forms per sample; validate only within authorization and, once capability is confirmed, gather evidence with marker-file reads instead of sensitive commands."
     },
     "mitigation": {
-     "zh": "将上传文件存于 Web 根目录外并设为不可执行，移除动态命令接口，按上下文处理参数，升级 PHP 并删除 assert/create_function 等旧路径。修复后重放第 1 步部署与请求，确认 PHP 文件不再被解释执行且正常业务可用。",
+     "zh": "上传文件存 Web 根外且不可执行，删除动态命令接口，升级 PHP 移除 assert/create_function 旧路径。Nginx 上传目录禁 PHP 处理：\n    location /uploads/ {\n      location ~* \\.php$ { deny all; }\n    }\n    disable_functions = system,exec,shell_exec,passthru,popen,assert\n    expose_php = Off",
      "en": "Store uploads outside the web root as non-executable, remove dynamic command interfaces, process parameters contextually, upgrade PHP, and retire legacy paths like assert/create_function. After the fix, replay the step-1 deployment and requests, confirming PHP files are no longer interpreted while normal business works."
     },
     "difficulty": "advanced"
@@ -5056,7 +5056,7 @@
      "en": "Per step 1, deploy matching-extension one-liner samples into authorized test directories and request the cmd parameter one by one; a hit is command output returned per request after deployment (the wscript.shell exec line returning cmd.exe results). Record effective extensions and handlers (.asp/.aspx/.ashx), application-pool logs, and process audit events per sample; once capability is confirmed, gather evidence with marker-file reads instead of sensitive commands."
     },
     "mitigation": {
-     "zh": "上传目录禁止脚本处理，移除不必要 ASP/ASP.NET 映射，应用池使用最小权限并阻止任意 ProcessStartInfo 参数和用户路径读取。修复后重放第 1 步部署与请求，确认处理器不再解释上传内容且正常业务可用。",
+     "zh": "上传目录禁止脚本处理，移除不必要的 ASP/ASP.NET 处理器映射，应用池最小权限并阻止任意 ProcessStartInfo 参数与用户路径读取。PowerShell：\n    Set-WebConfiguration -PSPath 'IIS:\\Sites\\Web\\uploads' -Filter system.webServer/handlers -Value @{accessPolicy='Read'}\n    Remove-WebHandler -Name ASPClassic -PSPath 'IIS:\\Sites\\Web'",
      "en": "Forbid script processing in upload directories, remove unneeded ASP/ASP.NET mappings, run application pools least-privileged, and block arbitrary ProcessStartInfo parameters and user-path reads. After the fix, replay the step-1 deployment and requests, confirming handlers no longer interpret uploaded content while normal business works."
     },
     "difficulty": "expert"
@@ -5531,7 +5531,7 @@
      "en": "Per step 1, deploy the <%execute(request(\"a\"))%> and <%eval(request(\"a\"))%> samples into authorized test directories, then request each with a=expression parameters; a hit is command output or file content returned per corresponding parameter after deployment. Record ASP handler logs and FileSystemObject/WScript.Shell audit events per sample; scope validation to authorized directories and, once capability is confirmed, gather evidence with fixed marker output instead of sensitive operations."
     },
     "mitigation": {
-     "zh": "停用不需要的 Classic ASP 与危险 COM 创建，上传目录不执行脚本，参数只进入固定业务操作且应用池权限最小化。修复后重放第 1 步部署与请求，确认动态执行不再可达且正常页面渲染可用。",
+     "zh": "停用不需要的 Classic ASP 功能与危险 COM 创建，上传目录不执行脚本，参数只进入固定业务操作，应用池权限最小化。PowerShell：\n    Uninstall-WindowsFeature Web-ASP\n    Set-WebConfiguration -PSPath 'IIS:\\Sites\\Web\\uploads' -Filter system.webServer/handlers -Value @{accessPolicy='Read'}",
      "en": "Disable unneeded Classic ASP and dangerous COM creation, keep upload directories script-free, route parameters only into fixed business operations, and minimize application-pool permissions. After the fix, replay the step-1 deployment and requests, confirming dynamic execution is unreachable while normal pages render."
     },
     "difficulty": "advanced"
@@ -5796,7 +5796,7 @@
      "en": "Per step 1, deploy <%Runtime.getRuntime().exec(request.getParameter(\"cmd\"));%> and similar samples into authorized test paths, trigger container compilation, then request with cmd=id; a hit is command output per request after deployment (IOUtils-echo lines return uid= directly, non-echo lines need out-of-band or on-disk retrieval). Record compiled JSP classes, container access logs, and child-process audit per sample; once capability is confirmed, swap sensitive commands for marker-file reads."
     },
     "mitigation": {
-     "zh": "上传和模板目录禁用 JSP 编译，删除请求到进程 API 的映射，容器以最小权限运行并限制子进程、文件系统和脚本引擎。修复后重放第 1 步部署与请求，确认 JSP 不再编译执行且正常业务可用。",
+     "zh": "上传与模板目录禁用 JSP 编译，删除请求参数到进程 API 的映射，容器最小权限运行并限制子进程与脚本引擎。Tomcat 对上传目录整体拒绝：\n    <security-constraint>\n      <web-resource-collection>\n        <url-pattern>/uploads/*</url-pattern>\n      </web-resource-collection>\n      <auth-constraint/>\n    </security-constraint>",
      "en": "Disable JSP compilation in upload and template directories, remove request-to-process-API mappings, and run containers least-privileged with restricted child processes, filesystems, and script engines. After the fix, replay the step-1 deployment and requests, confirming JSPs no longer compile or execute while normal business works."
     },
     "difficulty": "expert"
@@ -6248,7 +6248,7 @@
      "en": "Per step 1, deploy the Scanner/FileInputStream snippets into the confirmed executable JSP context, replacing system paths with pre-seeded desensitized test files containing unique markers; a hit is marker-file content returned in the response after snippet execution. Record container identity, canonical paths, and read APIs per snippet; test WEB-INF resource reads separately with records—reports must state the service identity and minimal actual data scope, never reading real sensitive files."
     },
     "mitigation": {
-     "zh": "阻止上传 JSP 执行，容器身份仅访问业务目录，所有文件访问采用服务端对象 ID 与固定根目录，并对 WEB-INF 等资源拒绝动态路径。修复后以同一服务账户验证合法业务对象、目录外路径和符号链接边界，确认对象映射与系统权限共同阻止越界读取。",
+     "zh": "阻止上传 JSP 执行（目录禁编译），容器身份仅访问业务目录；文件访问用服务端对象 ID 与固定根目录，WEB-INF 等资源拒绝动态路径。Java：\n    Path root = Paths.get(\"/data\").toRealPath();\n    Path f = root.resolve(objectMap.get(id)).normalize();\n    if (!f.startsWith(root) || f.toString().contains(\"WEB-INF\"))\n      throw new SecurityException();",
      "en": "Block uploaded JSP execution, confine the container identity to business directories, route all file access through server-side object IDs with fixed roots, and reject dynamic paths for WEB-INF-style resources. After the fix, verify legitimate business objects, out-of-directory paths, and symlink boundaries under the same service account, confirming object mapping and OS permissions jointly prevent out-of-bounds reads."
     },
     "difficulty": "advanced"
@@ -6542,7 +6542,7 @@
      "en": "Per step 1, replace targets of open('/etc/passwd').read() and similar expressions with pre-seeded test files containing unique markers before submitting to the confirmed execution entry; a hit is expression evaluation returning marker-file content. Record service identity, canonical paths, and call audits per expression; /proc/self/environ confirms process-environment visibility with returned content masked in records; reports must state this is post-execution capability confirmation and the minimal data scope."
     },
     "mitigation": {
-     "zh": "移除动态 Python 求值，文件访问通过服务端对象 ID 和固定根目录，服务账户最小化文件权限并避免将秘密放入工作目录。修复后以同一服务账户验证合法业务对象、目录外路径和符号链接边界，确认对象映射与系统权限共同阻止越界读取。",
+     "zh": "移除 eval/exec、调试器与模板动态求值入口，数据解析改用 json.loads，文件访问用对象 ID 与固定根目录，服务账户最小权限。Django 生产配置：\n    DEBUG = False\n    ALLOWED_HOSTS = [\"example.com\"]\n    safe = os.path.realpath(os.path.join(ROOT, name))\n    if not safe.startswith(ROOT): abort(403)",
      "en": "Remove dynamic Python evaluation, route file access through server-side object IDs with fixed roots, minimize service-account file permissions, and keep secrets out of working directories. After the fix, verify legitimate business objects, out-of-directory paths, and symlink boundaries under the same service account, confirming object mapping and OS permissions jointly prevent out-of-bounds reads."
     },
     "difficulty": "advanced"
@@ -6828,7 +6828,7 @@
      "en": "Per step 1, submit require('child_process').execSync('id').toString() and similar expressions to the confirmed execution entry (template, eval, function deserialization); a hit is expressions executing and returning command output. After confirming reachability, test fs.readFileSync against pre-seeded marker files, recording the actual entry, Node version, call stack, and worker logs; snippet existence or a 200 response is not a hit—execution output must corroborate."
     },
     "mitigation": {
-     "zh": "不执行用户 JavaScript 或函数字符串，采用数据 schema 与固定操作，隔离 worker 能力并限制 child_process、fs 与 process 暴露。修复后重放第 1 步表达式，确认模块引用不可解析且正常业务功能保留。",
+     "zh": "不执行用户提供的 JS、函数字符串或反序列化对象；数据走 schema 校验与固定操作，worker 隔离并限制 child_process/fs/process 暴露。Node：\n    // 禁止：eval(input)、new Function(input)\n    const data = schema.validate(JSON.parse(input));\n    const { execFile } = require(\"child_process\");\n    execFile(\"/usr/bin/identify\", [\"-v\", path], cb);",
      "en": "Never execute user JavaScript or function strings; adopt data schemas with fixed operations, isolate worker capabilities, and restrict child_process, fs, and process exposure. After the fix, replay the step-1 expressions and confirm module references cannot resolve while legitimate features persist."
     },
     "difficulty": "expert"
@@ -7125,7 +7125,7 @@
      "en": "Per step 1, submit the __proto__ JSON variants injecting shell/NODE_OPTIONS, env, and argv0/execArgv one by one, recording response and log differences; a hit is polluted properties inherited into child-process options executing the specified module or command. Validate in order: confirm the pollution write (fresh objects inherit the property), then the final options passed to child_process, then execution via a one-shot fixed process marker; exclude own-property and explicit-application-configuration interference at every step."
     },
     "mitigation": {
-     "zh": "拒绝 __proto__/prototype/constructor 键，使用无原型对象和 schema 允许列表，读取子进程选项前检查自有属性并显式构造 env 与 execArgv。修复后重放合法嵌套对象、三个危险键和原始选项变体，确认所有子进程选项只来自显式自有属性。",
+     "zh": "解析不可信数据时递归拒绝 __proto__/prototype/constructor 键，用无原型对象与 schema 允许列表；构造子进程选项前只取自有属性并显式 env/execArgv。Node：\n    const clean = o => JSON.parse(JSON.stringify(o,\n      (k, v) => [\"__proto__\",\"prototype\",\"constructor\"].includes(k) ? undefined : v));\n    const opts = { env: { ...process.env }, execArgv: [] };",
      "en": "Reject __proto__/prototype/constructor keys, use prototype-less objects with schema allowlists, check own properties before reading child-process options, and construct env and execArgv explicitly. After the fix, replay legitimate nested objects, the three dangerous keys, and original option variants, confirming all child-process options come only from explicit own properties."
     },
     "difficulty": "expert"
@@ -7374,7 +7374,7 @@
      "en": "Per step 1, submit system('id') and similar expressions to the confirmed execution entry one by one, recording how standard output returns; a hit is expressions executing and returning corresponding command output. After confirming reachability, contrast IO.popen, backtick, and Open3 forms, logging call stacks, API types, and worker logs; once capability is confirmed, swap sensitive commands for pre-seeded marker-file reads, correlating Ruby call stacks with output channels in reports."
     },
     "mitigation": {
-     "zh": "移除不可信 Ruby 求值，业务动作使用固定方法与参数数组，隔离任务 worker 并限制进程、文件和网络权限。修复后重放第 1 步表达式，确认求值入口拒绝可控值且正常业务功能保留。",
+     "zh": "移除不可信 Ruby 求值入口（模板、控制台、规则引擎），业务动作用固定方法与参数数组，worker 隔离并限制进程、文件与网络权限。Ruby：\n    # 禁止：eval(params[:cmd])、system(params[:cmd])\n    require \"open3\"\n    Open3.capture2(\"/usr/bin/file\", \"--\", path)",
      "en": "Remove untrusted Ruby evaluation, use fixed methods with argument arrays for business actions, isolate task workers, and restrict process, file, and network permissions. After the fix, replay the step-1 expressions and confirm the evaluation entry rejects controlled values while legitimate features persist."
     },
     "difficulty": "advanced"
@@ -7814,7 +7814,7 @@
      "en": "Per step 1, submit exec.Command(\"id\").Output() and similar snippets to the confirmed entry, recording how output returns; a hit is snippets executing and returning command output or file content. After confirming reachability, contrast argument-array forms (exec.Command(\"cat\", \"/flag\")) versus shell forms and test ioutil/os.ReadFile against pre-seeded marker files; record final argv, working directory, and fixed child output per snippet—snippet existence alone is not a hit."
     },
     "mitigation": {
-     "zh": "只允许固定可执行程序和类型化参数，禁止用户选择 Shell，文件访问使用对象 ID 与固定根目录，服务进程最小权限运行。修复后重放第 1 步片段，确认程序位与参数位均拒绝可控值且正常业务功能保留。",
+     "zh": "只允许固定可执行程序与类型化参数，禁止用户选择 Shell；文件访问用对象 ID 与固定根目录，服务进程最小权限运行。Go：\n    if action != \"resize\" { return errors.New(\"unknown action\") }\n    out, err := exec.Command(\"/usr/bin/convert\", \"-v\", path).Output()\n    p := filepath.Clean(filepath.Join(root, id))\n    if !strings.HasPrefix(p, root) { return errEscape }",
      "en": "Allow only fixed executables with typed parameters, forbid user-chosen shells, route file access through object IDs with fixed roots, and run service processes least-privileged. After the fix, replay the step-1 snippets and confirm program and argument slots reject controlled values while legitimate features persist."
     },
     "difficulty": "advanced"
@@ -8111,7 +8111,7 @@
      "en": "Per step 1, submit system('/bin/sh', '-c', 'id') and similar snippets to the confirmed entry one by one, recording output channels; a hit is snippets executing and returning corresponding command output. After confirming reachability, contrast list-form versus single-string shell interpretation and test open-pipe forms; record Perl version, final argument lists, and fixed child output per snippet—snippet existence alone is not a hit."
     },
     "mitigation": {
-     "zh": "移除不可信 Perl 求值，使用 list-form system 调用固定程序并验证参数，限制 CGI 账户的子进程与出口权限。修复后重放第 1 步片段，确认求值入口拒绝可控值且正常业务功能保留。",
+     "zh": "移除不可信 Perl 求值（CGI、模板、插件），命令用 list-form system 调固定程序并校验参数白名单，限制 CGI 账户子进程与出口权限。Perl：\n    my %ok = map { $_ => 1 } qw(start stop status);\n    die \"bad cmd\" unless $ok{$cmd};\n    system(\"/usr/bin/supervisorctl\", $cmd);\n    open(my $fh, \"<\", $path) or die;",
      "en": "Remove untrusted Perl evaluation, call fixed programs with list-form system and validated arguments, and restrict CGI-account child processes and egress. After the fix, replay the step-1 snippets and confirm the evaluation entry rejects controlled values while legitimate features persist."
     },
     "difficulty": "advanced"
@@ -8384,7 +8384,7 @@
      "en": "Per step 1, replace targets of file_get_contents('/flag') and similar snippets with pre-seeded test files containing unique markers before deploying to the confirmed execution position; a hit is snippets returning marker content or the dedicated test-directory listing. Record service identity, canonical paths, and read APIs per snippet; highlight_file/show_source confirm source-echo capability, and directory iteration returns only the dedicated test directory—reports state service identity and minimal data scope, never reading real sensitive files."
     },
     "mitigation": {
-     "zh": "阻止动态 PHP 执行，文件访问采用对象 ID、固定根目录和 wrapper 允许列表，服务身份不读取秘密或应用源码目录。修复后以同一服务账户验证合法业务对象、目录外路径和符号链接边界，确认对象映射与系统权限共同阻止越界读取。",
+     "zh": "阻止动态 PHP 执行与源码暴露：生产关闭信息回显，文件访问用对象 ID、固定根目录与 wrapper 白名单。php.ini：\n    expose_php = Off\n    display_errors = Off\n    allow_url_include = Off\n    $name = $map[$id] ? null;\n    if (!$name || strpos(realpath(ROOT.\"/\".$name), ROOT) !== 0) exit(\"404\");\n    readfile(ROOT.\"/\".$name);",
      "en": "Block dynamic PHP execution, route file access through object IDs with fixed roots and wrapper allowlists, and keep the service identity away from secrets and application source directories. After the fix, verify legitimate business objects, out-of-directory paths, and symlink boundaries under the same service account, confirming object mapping and OS permissions jointly prevent out-of-bounds reads."
     },
     "difficulty": "advanced"
@@ -8769,7 +8769,7 @@
      "en": "Per step 1, submit O:1:\"A\":0:{} and similar base layouts, length variants, and internal-class probes (SplFileObject, PDO, SimpleXMLElement) one by one, recording response and log differences; a hit is deserialization restoring internal classes with file-read or iteration side effects. The O:+1 variant tests numeric-parsing laxity; once instantiation is confirmed, target pre-seeded marker files for evidence, keeping the four stages—format recognition, object instantiation, gadget triggering, and final side effects—distinct."
     },
     "mitigation": {
-     "zh": "停止反序列化不可信 PHP 对象，改用 JSON；必须兼容时签名数据、设置 allowed_classes=false 或最小类集并淘汰旧令牌。修复后同时重放合法数据对象、类型越界对象和第 1 步探针，确认业务数据可读而语言对象与未许可类被稳定拒绝。",
+     "zh": "停止对不可信数据使用 unserialize，改用 JSON；兼容期先 HMAC 验签，再以 allowed_classes=false 或最小类集还原并淘汰旧令牌。PHP：\n    $data = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);\n    $sig = hash_hmac(\"sha256\", $raw, $key);\n    if (!hash_equals($sig, $sigSent)) exit(403);\n    $obj = unserialize($raw, [\"allowed_classes\" => false]);",
      "en": "Stop deserializing untrusted PHP objects and use JSON instead; where compatibility is required, sign data, set allowed_classes=false or a minimal class set, and retire old tokens. After the fix, replay valid data objects, type-violating objects, and the step-1 probes together, confirming business data reads while language objects and unpermitted classes are stably rejected."
     },
     "difficulty": "expert"
@@ -9996,7 +9996,7 @@
      "en": "Per step 1, submit the --- !ruby/object:Gem::Installer and similar object-graph documents to the target YAML loading entry one by one; a hit is the gadget chain triggering Kernel.system to execute the git_set-specified command. First record Ruby/Psych/RubyGems versions and the instantiated class graph, then swap commands for harmless fixed markers, using substitute-Kernel-method output as evidence; on a miss, distinguish missing classes, rejected methods, and loader restrictions."
     },
     "mitigation": {
-     "zh": "对不可信 YAML 使用 safe_load 且不给 gadget 类许可，升级 Ruby/RubyGems，移除对象图反序列化并使历史缓存和会话失效。修复后同时重放合法数据对象、类型越界对象和第 1 步对象图，确认业务数据可读而 gadget 类被稳定拒绝。",
+     "zh": "不可信 YAML 一律 safe_load 且不给 gadget 类许可；升级 Ruby/RubyGems，移除对象图反序列化并使历史缓存与会话失效。\n    require \"yaml\"\n    data = YAML.safe_load(yaml_str, permitted_classes: [], aliases: false)\n    # 不可信输入永不使用 YAML.load / unsafe_load\n    修复后重放合法数据对象、越界类型与 gadget 对象图，确认业务数据可读而 gadget 类被稳定拒绝。",
      "en": "Use safe_load without gadget-class permits for untrusted YAML, upgrade Ruby/RubyGems, remove object-graph deserialization, and invalidate historical caches and sessions. After the fix, replay valid data objects, type-violating objects, and the step-1 object graphs together, confirming business data reads while gadget classes are stably rejected."
     },
     "difficulty": "expert"

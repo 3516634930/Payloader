@@ -35,7 +35,7 @@
      "en": "Use the step 1 command to submit script tags and encoding/evaluation variants line by line; any row executing (alert or log output) confirms script-element injection. Build an encoding baseline with plain text first, then check per row whether the tag enters the DOM or is CSP-blocked; assign an independent harmless marker per line and change one tag, attribute, or encoding form per round."
     },
     "mitigation": {
-     "zh": "按 HTML 文本上下文编码输出，禁止不可信值进入 innerHTML、document.write 或模板原样输出，严格 CSP 作为纵深防御；修复后重放样例应无活动节点与执行记录，合法内容正常显示。",
+     "zh": "按 HTML 文本上下文编码输出，禁止不可信值进入 innerHTML、document.write 或模板原样输出，严格 CSP 作为纵深防御。\n    // PHP：HTML 上下文输出转义\n    <?= htmlspecialchars($user, ENT_QUOTES | ENT_SUBSTITUTE, \"UTF-8\") ?>\n    # Nginx：响应 CSP 头\n    add_header Content-Security-Policy \"default-src 'self'; script-src 'self'; object-src 'none'\";",
      "en": "Encode output for the HTML text context, keep untrusted values out of innerHTML, document.write, and verbatim template output, with strict CSP as defense-in-depth; after the fix, replayed samples must show no active nodes or execution records while legitimate content renders normally."
     },
     "difficulty": "beginner"
@@ -392,7 +392,7 @@
      "en": "Use the step 1 command to submit event handlers on img/svg/body/input tags line by line (with javascript: and entity-encoded variants); any row firing confirms that event form is unfiltered. Separate auto-triggering samples from those needing focus/hover, replay them under identical page state, and record which elements and events the sanitizer still allows."
     },
     "mitigation": {
-     "zh": "用维护中的 HTML 消毒器移除事件属性与危险元素，必须保留的属性执行上下文编码，避免字符串拼接创建 DOM；修复后重放各事件形式应均被移除或转义，无执行记录。",
+     "zh": "用维护中的 HTML 消毒器移除事件属性与危险元素，必须保留的属性按上下文编码，避免字符串拼接创建 DOM。\n    // Java：Jsoup 白名单消毒（默认剔除 on* 事件与 script）\n    String safe = Jsoup.clean(dirty, Safelist.relaxed());\n    # Nginx：CSP 纵深防御\n    add_header Content-Security-Policy \"script-src 'self'; object-src 'none'\";",
      "en": "Remove event attributes and hazardous elements with a maintained HTML sanitizer, context-encode attributes that must stay, and avoid string-concatenated DOM creation; after the fix, replaying each event form must end up removed or escaped with no execution records."
     },
     "difficulty": "intermediate"
@@ -1046,7 +1046,7 @@
      "en": "Use the step 1 command to submit SVG script/animate/set/foreignObject/use/CDATA variants line by line; any row executing confirms that vector works in the SVG namespace. Load the same safely marked sample three ways — img reference, standalone file, and inline SVG — and only execution in the real product render path counts. Log browser version and render path alongside positive samples for reproducibility."
     },
     "mitigation": {
-     "zh": "用户 SVG 作为隔离下载或可信转换后的位图提供；必须保留时用命名空间感知消毒器移除 script、事件、foreignObject 与外部引用；修复后各向量重放应均被移除或拒绝。",
+     "zh": "用户 SVG 优先转位图或附件下载提供；必须在线展示时用命名空间感知消毒器移除 script、事件、foreignObject 与外部引用。\n    // PHP：enshrined/svg-sanitize\n    use enshrined\\svgSanitize\\Sanitizer;\n    $clean = (new Sanitizer())->sanitize($svgXml);\n    header(\"Content-Security-Policy: default-src 'none'; sandbox\");",
      "en": "Serve user SVGs as isolated downloads or trusted bitmaps after conversion; when SVG must stay, strip script, events, foreignObject, and external references with a namespace-aware sanitizer; after the fix, replaying every vector must end up removed or rejected."
     },
     "difficulty": "advanced"
@@ -2374,7 +2374,7 @@
      "en": "Use the step 1 command to hijack the base URL with base href variants line by line (including target=_blank); relative-resource requests turning toward {ATTACKER_HOST} confirm the base-injection boundary, judged by post-render network requests. Record pre-injection document.baseURI and key relative-resource URLs as controls, and never collect real credentials on the test endpoint. Only the first effective base participates in resolution; later injection positions record as negative."
     },
     "mitigation": {
-     "zh": "阻止不可信 HTML 进入 head，固定或绝对化敏感资源与表单 URL，CSP 设置 base-uri none 或精确 self 策略；修复后 base 变体应被拒绝或保持原基址。",
+     "zh": "阻止不可信 HTML 进入 head（head 区只输出模板常量），敏感资源与表单 URL 固定为绝对地址；CSP 固化 base-uri：\n    // Express：每响应设置基址策略\n    app.use((req, res, next) => {\n      res.setHeader('Content-Security-Policy',\n        \"base-uri 'none'; default-src 'self'; script-src 'self'\");\n      next();\n    });",
      "en": "Block untrusted HTML from entering head, pin or absolutize sensitive resource and form URLs, and set CSP base-uri none or a precise self policy; after the fix, base variants must be rejected or leave the original base intact."
     },
     "difficulty": "intermediate"
@@ -2775,7 +2775,7 @@
      "en": "Use the step 1 command to trigger egress with prefetch/dns-prefetch/preload/modulepreload line by line; corresponding requests reaching {ATTACKER_HOST} confirm the link resource-hint exfiltration channel, noting by as-type which hints bypassed CSP. Clear caches before testing each rel value, distinguishing DNS from HTTP access with non-user-identifying markers. When no request arrives, attribute per rel value and CSP directive before recording negative."
     },
     "mitigation": {
-     "zh": "消毒不需要的 link 元素与 rel 值，收紧各资源类型 CSP 指令，出口策略限制前端可访问的非业务域名；修复后各提示请求应被阻断并产生 CSP 违规记录。",
+     "zh": "消毒时移除 link 元素与 prefetch/dns-prefetch/preload 等资源提示，收紧各资源类型 CSP 指令，出口策略限制前端可访问的非业务域名：\n    // DOMPurify 禁止 link 注入\n    const clean = DOMPurify.sanitize(html, { FORBID_TAGS: ['link'] });\n    # Nginx：资源指令最小化\n    add_header Content-Security-Policy\n      \"default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self'; font-src 'self'\" always;",
      "en": "Sanitize away unneeded link elements and rel values, tighten CSP directives per resource type, and restrict non-business domains reachable from the frontend via egress policy; after the fix, hint requests must be blocked with CSP violation records."
     },
     "difficulty": "intermediate"
@@ -3245,7 +3245,7 @@
      "en": "Use the step 1 command to navigate via meta refresh to javascript:/data:/external domains line by line; navigation occurring or script executing confirms the meta active-content boundary, recording differences between quoted and unquoted attribute forms. Baseline refresh against a controlled same-origin path, logging final URLs, console, and CSP events with an automated browser. Record navigation outcomes and script execution separately, never merging into one conclusion."
     },
     "mitigation": {
-     "zh": "从用户可控内容中移除 meta http-equiv，服务端只允许业务目标跳转，配合导航策略、frame 限制与上下文 HTML 消毒；修复后各跳转变体应被阻断或仅达业务目标。",
+     "zh": "从用户可控内容移除 meta http-equiv（消毒禁止 meta），服务端跳转只接受固定业务目标映射，不透传原始 URL：\n    // DOMPurify 移除 meta 注入\n    const clean = DOMPurify.sanitize(html, { FORBID_TAGS: ['meta'] });\n    // Java：白名单跳转\n    Map<String,String> T = Map.of(\"docs\", \"https://docs.example.com\");\n    String to = T.get(req.getParameter(\"to\"));\n    if (to == null) { resp.sendError(400); return; }\n    resp.sendRedirect(to);",
      "en": "Remove meta http-equiv from user-controllable content, allow only business-target jumps server-side, and pair navigation policies, frame restrictions, and context-aware HTML sanitization; after the fix, each jump variant must be blocked or land only on business targets."
     },
     "difficulty": "advanced"
@@ -3843,7 +3843,7 @@
      "en": "Use the step 1 command to inject probe scripts pointing at {ATTACKER_HOST} (including attribute-event and base64 variants) into storage points line by line; the collector receiving callbacks after admin or viewer pages trigger confirms Blind XSS reachability. Generate an independent callback marker per input position, wait through the known review flow after submitting, correlate hits with backend access logs, and exclude scanner prefetch."
     },
     "mitigation": {
-     "zh": "在每个展示点按 HTML 上下文编码，富文本用严格消毒策略，管理界面部署 nonce CSP 并限制外连；清理历史存储值后回归，修复后各探针不应再收到回调。",
+     "zh": "每个展示点（含后台、审核、日志界面）按 HTML 上下文编码，富文本严格消毒，管理界面部署 nonce CSP 并限制外连，清理历史存储值：\n    // JSP 输出编码（OWASP Encoder）\n    <%= Encode.forHtml(userComment) %>\n    // Express：后台 nonce CSP，禁止任意外连\n    res.setHeader('Content-Security-Policy',\n      \"default-src 'self'; script-src 'nonce-\" + nonce + \"'; connect-src 'self'; img-src 'self'\");",
      "en": "Encode at every display point per HTML context, apply strict sanitization for rich text, deploy nonce CSP on admin interfaces with restricted egress; purge historical stored values before regression, and after the fix no probe should receive callbacks."
     },
     "difficulty": "advanced"
@@ -4198,7 +4198,7 @@
      "en": "Use the step 1 command to write various event-payload tags via document.write; execution after writing confirms the document.write HTML sink is controllable. Breakpoint document.write in DevTools, observe normal parameters first, then submit samples through the real source; record whether writes happen during parsing or after load and how the browser replaces content. Whether writes occur during parsing or after load changes trigger conditions and must be logged separately."
     },
     "mitigation": {
-     "zh": "删除 document.write 路径，使用 createElement、textContent 和固定属性构建节点；必须渲染 HTML 时采用受审查消毒器与 TrustedHTML。回归确认安全 API 保留原功能且危险汇不再收到可控字符串。",
+     "zh": "删除 document.write 路径，改用 createElement、textContent 构建节点且属性仅绑定固定常量；必须渲染 HTML 时采用受审查消毒器与 TrustedHTML：\n    // 安全 DOM 构建\n    const div = document.createElement('div');\n    div.textContent = hashOrMessage;      // 纯文本，不触发重解析\n    host.replaceChildren(div);\n    # Nginx：启用 Trusted Types\n    add_header Content-Security-Policy \"require-trusted-types-for 'script'\" always;",
      "en": "Remove document.write paths and build nodes with createElement, textContent, and fixed attributes; when HTML rendering is required, use a reviewed sanitizer with TrustedHTML. Regression must confirm safe APIs preserve functionality and hazardous sinks no longer receive controllable strings."
     },
     "difficulty": "intermediate"
@@ -4617,7 +4617,7 @@
      "en": "Use the step 1 command to write source data (location.*, document.URL) and event payloads via innerHTML; execution after writing confirms the innerHTML dataflow is controllable. Use an independent marker per location source, breakpoint the pre-assignment decoded value and post-assignment DOM, and focus on event nodes like img/svg rather than testing script alone. Focus on event nodes like img/svg — a non-executing script tag never proves the sink safe."
     },
     "mitigation": {
-     "zh": "默认改用 textContent；需要结构化 UI 时通过 createElement 绑定固定属性，或在 Trusted Types 策略中调用维护中的 HTML 消毒器。回归确认安全 API 保留原功能且危险汇不再收到攻击者可控字符串。",
+     "zh": "默认改用 textContent；需要结构化 UI 时通过 createElement 绑定固定属性，或在 Trusted Types 策略中调用维护中的 HTML 消毒器：\n    // 文本渲染\n    statusEl.textContent = api.message;\n    // 结构化节点：属性只用固定常量\n    const img = document.createElement('img');\n    img.src = '/static/logo.png';\n    listEl.append(img);",
      "en": "Default to textContent; for structured UI build via createElement with fixed attributes, or call a maintained HTML sanitizer within Trusted Types policies. Regression must confirm safe APIs preserve functionality and the hazardous sink no longer receives attacker-controllable strings."
     },
     "difficulty": "intermediate"
@@ -5012,7 +5012,7 @@
      "en": "Use the step 1 command to evaluate injected strings via eval/Function/setTimeout/setInterval line by line; execution confirms the dynamic evaluation sink places no limits on string input. Breakpoint each sink and trace parameters from the real data source; first confirm evaluation with an arithmetic expression, then verify arbitrary-code semantics with the harmless markers from the set."
     },
     "mitigation": {
-     "zh": "移除字符串求值，改为固定函数映射、JSON.parse 和类型化消息；删除 unsafe-eval，并使用 Trusted Types 或静态分析阻止新汇。回归确认原功能保留且求值汇不再接收不可信字符串。",
+     "zh": "移除字符串求值，改为固定函数映射、JSON.parse 与类型化消息；CSP 删除 unsafe-eval 并以 Trusted Types 或静态分析阻止新汇：\n    // 固定调用映射\n    const handlers = { ping: doPing, stat: doStat };\n    const msg = JSON.parse(event.data);\n    if (msg && Object.hasOwn(handlers, msg.type)) handlers[msg.type](msg);\n    add_header Content-Security-Policy \"script-src 'self'\" always;  # 无 unsafe-eval",
      "en": "Remove string evaluation in favor of fixed function maps, JSON.parse, and typed messages; drop unsafe-eval and block new sinks via Trusted Types or static analysis. Regression must confirm original functionality survives and evaluation sinks no longer receive untrusted strings."
     },
     "difficulty": "advanced"
@@ -5359,7 +5359,7 @@
      "en": "Use the step 1 command to navigate javascript: strings through location assignment/assign/replace forms line by line; execution confirms the navigation sink does not restrict active schemes. Baseline href assignment, assign, and replace separately with same-origin HTTPS, cross-origin HTTPS, and active schemes, recording browser differences and user-gesture requirements. When user-gesture limits apply to active-scheme navigation, record per browser differences."
     },
     "mitigation": {
-     "zh": "使用 URL 构造器解析目标，只允许明确的 https/http origin 与路径；不要把原始用户值传给 Location API，并在跳转前绑定服务端生成的目标 ID。回归确认原功能保留且导航汇不再收到可控活动串。",
+     "zh": "使用 URL 构造器解析目标，只允许白名单 https/http origin 与路径；原始用户值不直接传给 Location API，跳转绑定服务端生成的目标 ID：\n    const ALLOWED = new Set(['https://app.example.com']);\n    const u = new URL(input, location.origin);\n    if (!ALLOWED.has(u.origin)) throw new Error('blocked origin');\n    location.assign(u.href);",
      "en": "Parse targets with the URL constructor, allowing only explicit https/http origins and paths; never pass raw user values to the Location API, and bind server-generated target IDs before jumping. Regression must confirm functionality survives and the navigation sink no longer receives controllable active strings."
     },
     "difficulty": "advanced"
@@ -5698,7 +5698,7 @@
      "en": "Use the step 1 command to execute via fromCharCode, string concatenation, bracket indexing, comma evaluation, atob, and similar obfuscation line by line; execution confirms lexical obfuscation bypasses identifier detection, with the SVG line exfiltrating cookies to {ATTACKER_HOST} as out-of-band proof. Inside a confirmed-executable sink, test direct calls first, then swap encodings one by one to locate which lexical rule makes the difference."
     },
     "mitigation": {
-     "zh": "从根本上移除用户可控代码上下文，采用固定调用映射和数据序列化；服务端与前端都不要依赖危险函数名黑名单。修复后混淆表达式的运行时值与调用目标应无法还原为有效执行。",
+     "zh": "从根本上移除用户可控代码上下文，采用固定调用映射与数据序列化（JSON），服务端与前端均不依赖危险函数名黑名单：\n    const ACTIONS = { probe: () => api.report('probe') };\n    const req = JSON.parse(evt.data);\n    const fn = req && ACTIONS[req.action];\n    if (fn) fn(req);                       // 仅白名单动作可执行\n    add_header Content-Security-Policy \"script-src 'self'; object-src 'none'\" always;",
      "en": "Remove user-controllable code contexts at the root, adopting fixed call maps and data serialization; neither server nor frontend should rely on dangerous-function-name blacklists. After the fix, obfuscated expressions must be unable to resolve into valid execution at runtime."
     },
     "difficulty": "advanced"
@@ -6767,7 +6767,7 @@
      "en": "Use the step 1 command to submit structurally closed Polyglots line by line (including MathML/mglyph branches and module-script forms); breakout execution in any context confirms the corresponding tokenizer state is reachable. Confirm the current element and attribute state before submitting; on hits, strip prefixes and suffixes segment by segment until a minimal sample explaining the state transition remains."
     },
     "mitigation": {
-     "zh": "由模板引擎在最终上下文自动转义，禁止组件重复解码，并对富 HTML 采用命名空间感知消毒器与 Trusted Types；修复后各闭合序列应停留在原解析状态，无事件节点生成。",
+     "zh": "由模板引擎在最终上下文自动转义，禁止中间组件对编码结果再次解码拼接；富 HTML 采用命名空间感知消毒器与 Trusted Types：\n    # Flask/Jinja2：开启上下文自动转义\n    app.jinja_env.autoescape = True\n    // 前端富文本消毒\n    const clean = DOMPurify.sanitize(raw, { USE_PROFILES: { html: true } });",
      "en": "Let the template engine auto-escape in the final context, forbid component re-decoding, and apply namespace-aware sanitizers with Trusted Types for rich HTML; after the fix, closure sequences must remain in their original parse states with no event nodes created."
     },
     "difficulty": "expert"
@@ -7645,7 +7645,7 @@
      "en": "Use the step 1 command to build four CSP failure samples from JSONP callbacks, trusted-CDN scripts, and leaked nonces; the corresponding script executing confirms the trust-model flaw is exploitable. Extract the effective policy from the real page, confirm whether trusted-origin responses are controllable, compare nonces across two responses, and re-verify with sample URLs replaced by your own harmless endpoints."
     },
     "mitigation": {
-     "zh": "采用 strict-dynamic 配合每响应随机 nonce 或稳定脚本 hash，移除通配主机与不必要 JSONP，确保 nonce 不进入用户可控模板或缓存；修复后相关指令应稳定阻断越界脚本执行。",
+     "zh": "script-src 采用 strict-dynamic 配合每响应随机 nonce 或稳定脚本 hash，移除通配主机与不必要 JSONP，确保 nonce 不进入用户可控模板或缓存：\n    // Express：每请求生成随机 nonce\n    app.use((req, res, next) => {\n      const nonce = crypto.randomBytes(16).toString('base64');\n      res.setHeader('Content-Security-Policy',\n        \"script-src 'nonce-\" + nonce + \"' 'strict-dynamic'; object-src 'none'\");\n      res.locals.nonce = nonce; next();\n    });",
      "en": "Adopt strict-dynamic with per-response random nonces or stable script hashes, remove wildcard hosts and unnecessary JSONP, and keep nonces out of user-controllable templates and caches; after the fix, the directives must consistently block out-of-bounds script execution."
     },
     "difficulty": "expert"
@@ -8102,7 +8102,7 @@
      "en": "Use the step 1 command to overwrite script-reachable globals with id/name-named elements; the overwrite taking effect with changed behavior (execution or navigation) confirms DOM clobbering. Record the expected type of the target global first, inject same-named elements one by one while stepping through resolution and branches, and extend impact verification only when controllable values reach URL, HTML, or code sinks."
     },
     "mitigation": {
-     "zh": "避免隐式全局与命名属性访问，用模块局部变量与显式 getElementById 并验证对象类型；消毒 id/name 冲突并以 CSP/Trusted Types 约束后续汇；修复后命名属性不再覆盖配置对象、函数或安全决策。",
+     "zh": "避免隐式全局与命名属性访问，改模块局部变量、显式 getElementById 并验证取回对象类型；消毒处理 id/name 冲突，以 CSP/Trusted Types 约束后续汇：\n    import { cfg } from './config.js';     // 模块局部，不挂 window\n    const el = document.getElementById('submit');\n    if (!(el instanceof HTMLButtonElement)) throw new Error('type mismatch');\n    const clean = DOMPurify.sanitize(html, { SANITIZE_DOM: true });",
      "en": "Avoid implicit globals and named-property access, using module-local variables and explicit getElementById with object-type checks; sanitize id/name collisions and constrain downstream sinks via CSP/Trusted Types; after the fix, named properties must no longer override config objects, functions, or security decisions."
     },
     "difficulty": "advanced"
@@ -8978,7 +8978,7 @@
      "en": "Use the step 1 command to exfiltrate via attribute selectors, @import, link stylesheets, and background images; {ATTACKER_HOST} receiving the matching requests per channel confirms the CSS-injection exfiltration channel, injecting line by line and recording network requests. Place a non-sensitive sentinel attribute in an isolated page, baseline unconditional loads first, then observe selective requests under single-character prefix rules."
     },
     "mitigation": {
-     "zh": "禁止不可信 CSS、style 与任意外部样式 URL，使用严格 HTML/CSS 消毒；以 CSP style-src/img-src/font-src 与出口域允许列表阻断外带；修复后用户样式无法接触敏感 DOM 或发送选择性请求。",
+     "zh": "禁止不可信 CSS、style 与任意外部样式 URL，使用严格 HTML/CSS 消毒；以 CSP style-src/img-src/font-src 与出口域允许列表阻断外带：\n    const clean = DOMPurify.sanitize(html, { FORBID_TAGS: ['style','link'] });\n    add_header Content-Security-Policy\n      \"style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'\" always;",
      "en": "Forbid untrusted CSS, style, and arbitrary external stylesheet URLs, applying strict HTML/CSS sanitization; block exfiltration via CSP style-src/img-src/font-src and egress-domain allowlists; after the fix, user styles must not touch sensitive DOM or send selective requests."
     },
     "difficulty": "advanced"
@@ -9373,7 +9373,7 @@
      "en": "Use the step 1 command to attach load/start-class events on uncommon elements like marquee/iframe/object/embed/link/style; any row executing confirms the event blacklist misses that combination. Load elements one by one across the application's supported browser matrix, recording parsing, resource requests, and event firing separately; use locally unreachable test addresses for samples requiring network failure."
     },
     "mitigation": {
-     "zh": "消毒策略采用最小元素与属性允许列表并统一移除 on* 属性，删除业务不需要的旧元素，用 addEventListener 绑定固定代码；修复后各冷门组合重放应无执行记录。",
+     "zh": "消毒策略采用最小元素与属性允许列表并统一移除 on* 属性，删除业务不需要的旧元素，事件改用 addEventListener 绑定固定代码：\n    const clean = DOMPurify.sanitize(html, {\n      ALLOWED_TAGS: ['p','b','strong','a','img'],\n      ALLOWED_ATTR: ['href','src','alt'] });   // 白名单不含任何 on*\n    el.addEventListener('load', handleFixedLoad);",
      "en": "Adopt minimal element and attribute allowlists in sanitization, stripping on* attributes uniformly, delete legacy elements the business does not need, and bind fixed code via addEventListener; after the fix, replaying each uncommon combination must show no execution records."
     },
     "difficulty": "intermediate"
@@ -9688,7 +9688,7 @@
      "en": "Use the step 1 command to build background requests character by character via attribute-selector prefixes; {ATTACKER_HOST} receiving the per-character request sequence reassembles the field value, confirming character-wise exfiltration. Set the test input value to a random non-sensitive string, clear caches before loading the selector set, and verify uniquely hit prefix requests; never target real password or token fields."
     },
     "mitigation": {
-     "zh": "禁止用户样式进入受信页面并消毒 style 与选择器；敏感值不写入可匹配 DOM 属性，以 CSP img-src/style-src 与网络出口限制远程请求；修复后条件选择器不再产生外发请求。",
+     "zh": "禁止用户样式进入受信页面并消毒 style 与选择器；敏感值不写入可匹配的 DOM 属性（如 value），以 CSP img-src/style-src 与网络出口限制远程请求：\n    # PHP：剥离用户提交的 style 块\n    $clean = preg_replace('/<style\\b.*?<\\/style>/is', '', $raw);\n    add_header Content-Security-Policy \"style-src 'self'; img-src 'self'\" always;",
      "en": "Keep user styles out of trusted pages and sanitize style and selectors; never write sensitive values into matchable DOM attributes, and restrict remote requests via CSP img-src/style-src and network egress; after the fix, conditional selectors must produce no outbound requests."
     },
     "difficulty": "advanced"
@@ -10014,7 +10014,7 @@
      "en": "Use the step 1 command to map character hits to font requests via @font-face unicode-range; requests received at {ATTACKER_HOST} indicate the hit characters, confirming Unicode-range exfiltration. Render fixed A, B, C, and digit sentinel texts in an isolated page, load the font set, record requests, and compare against a control page without the custom fonts."
     },
     "mitigation": {
-     "zh": "禁止不可信 @font-face 与任意字体 URL，收紧 CSP font-src/style-src，敏感文本用隔离渲染且不允许用户样式作用于同一 DOM；修复后哨兵文本不再触发条件字体请求。",
+     "zh": "禁止不可信 @font-face 与任意字体 URL，收紧 CSP font-src/style-src；敏感文本隔离渲染（如独立 iframe 或 Shadow DOM 的用户样式区），用户样式不作用于同一 DOM：\n    # 仅允许自有字体源\n    add_header Content-Security-Policy\n      \"font-src 'self'; style-src 'self'; default-src 'self'\" always;\n    // 消毒时剥离自定义字体规则\n    css = css.replace(/@font-face\\s*\\{[^}]*\\}/g, '');",
      "en": "Forbid untrusted @font-face and arbitrary font URLs, tighten CSP font-src/style-src, and render sensitive text in isolation where user styles cannot apply to the same DOM; after the fix, sentinel texts must no longer trigger conditional font requests."
     },
     "difficulty": "expert"

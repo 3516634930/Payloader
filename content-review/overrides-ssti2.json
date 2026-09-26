@@ -342,7 +342,7 @@
      "en": "Use the step 1 command to execute commands line by line via the Execute/ObjectConstructor/JythonRuntime utility classes; command output confirms the corresponding FreeMarker chain. Establish FTL expression evaluation with constant arithmetic and record template error types first, then inspect template-visible variables and the class resolver without assuming the utilities are available. Execute only in authorized labs."
     },
     "mitigation": {
-     "zh": "用户值永远作为数据模型变量传入，不拼接 FTL 源码；使用 TemplateClassResolver.SAFEST_RESOLVER（或更严格的 ALLOWS_NOTHING_RESOLVER）并禁止危险 utility 类；限制模板加载位置与上传权限，升级 FreeMarker 并为危险内建函数添加负向回归。",
+     "zh": "用户值永远作为数据模型变量传入，不拼接 FTL 源码；启用最严格类解析器并禁止危险 utility 类，限制模板加载位置与上传权限，升级 FreeMarker。\n    Configuration cfg = new Configuration(Configuration.VERSION_2_3_32);\n    cfg.setNewBuiltinClassResolver(TemplateClassResolver.ALLOWS_NOTHING_RESOLVER);\n    cfg.setAPIBuiltinEnabled(false);\n    cfg.setTemplateLoader(new FileTemplateLoader(new File(\"/app/templates\")));",
      "en": "Always pass user values as data-model variables without concatenating FTL source; use SAFER_RESOLVER or a stricter TemplateClassResolver and forbid hazardous utility classes; restrict template loading locations and upload privileges, upgrade FreeMarker, and add negative regressions for dangerous built-ins."
     },
     "difficulty": "advanced"
@@ -809,7 +809,7 @@
      "en": "Use the step 1 command to inject file, /proc, metadata, loopback, and external parameter entity samples into ODT content.xml line by line; corresponding content or requests in parse results or logs confirm the ODT XML entry is injectable. Replace real targets with sandbox markers and isolated endpoints beforehand, build a structurally valid ODT modifying only content.xml, trigger real preview or conversion, and record queue times and output."
     },
     "mitigation": {
-     "zh": "为 ODT/XML 解析器显式禁用 DTD、外部实体与外部模式，转换服务低权限无出站网络只读挂载运行；限制压缩包大小与部件类型，对转换任务的实体错误与网络行为建立监控。",
+     "zh": "ODT/XML 解析器显式禁用 DTD、外部实体与外部模式，转换服务低权限无出网只读挂载，限制包大小与部件类型并监控任务网络行为：\n    // .NET：读取 content.xml 前固定安全配置\n    var settings = new XmlReaderSettings {\n        DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null,\n        MaxCharactersInDocument = 1_000_000\n    };\n    using var reader = XmlReader.Create(entry.Open(), settings);\n    # 转换容器断网只读\n    docker run --network none --read-only odt-convert:2.1",
      "en": "Explicitly disable DTDs, external entities, and external modes for ODT/XML parsers, running conversion services low-privileged, network-free, with read-only mounts; cap archive size and part types, and monitor entity errors and network behavior on conversion tasks."
     },
     "difficulty": "advanced"
@@ -1112,7 +1112,7 @@
      "en": "Submit the input samples one by one per step 1, recording response and log differences: first the __proto__ and constructor.prototype key paths, checking whether subsequently created objects inherit injected properties (admin/role, etc.); then test whether the shell and NODE_OPTIONS variants affect child-process creation. A hit is an unrelated fresh object inheriting the property, or execPath/execArgv variants making a child process execute the specified command. After confirming pollution, assess concrete gadgets—never treat field echo as pollution evidence."
     },
     "mitigation": {
-     "zh": "在入口和所有递归层拒绝 __proto__、prototype、constructor 等键；使用维护良好的合并库、schema 校验及 Object.create(null) 存储字典数据；权限与安全配置只读取自有属性并设明确默认值；升级受影响依赖并为跨请求继承添加回归测试。",
+     "zh": "在入口与所有递归层拒绝 __proto__、prototype、constructor 等危险键，使用维护良好的合并库与 schema 校验，字典数据用 Object.create(null) 存储：\n    const BLOCK = ['__proto__', 'prototype', 'constructor'];\n    function deepMerge(dst, src) {\n      for (const k of Object.keys(src)) {\n        if (BLOCK.includes(k)) throw new Error('危险键: ' + k);\n        if (src[k] && typeof src[k] === 'object') deepMerge(dst[k] ?= Object.create(null), src[k]);\n        else dst[k] = src[k];\n      }\n    }",
      "en": "Reject keys like __proto__, prototype, and constructor at entry and in every recursion layer; use well-maintained merge libraries, schema validation, and Object.create(null) for dictionary data; read permissions and security configuration from own properties only with explicit defaults; upgrade affected dependencies and add cross-request inheritance regression tests."
     },
     "difficulty": "intermediate"
@@ -1480,7 +1480,7 @@
      "en": "Use the step 1 command to run commands and read files via the {php} tag and backticks line by line; command output or file content confirms Smarty PHP code execution (the {php} tag needs legacy versions). First capture the Smarty version and SecurityPolicy configuration with a plain-interpolation baseline, confirm template compilation with side-effect-free expressions, then observe whether PHP tags and function calls are allowed or denied per item. Execute only in authorized labs."
     },
     "mitigation": {
-     "zh": "固定模板文件只通过变量传值，禁止用户编辑 Smarty 源码；启用最严格 SecurityPolicy 限制函数、修饰器与资源访问；升级 Smarty 删除遗留 {php} 支持与危险插件，并对被禁语法建立负向回归。",
+     "zh": "固定模板文件只通过变量传值，禁止用户编辑 Smarty 源码；启用最严格安全策略限制函数、修饰器与资源访问，升级 Smarty 移除 {php} 支持。\n    class StrictSecurity extends Smarty_Security {\n        public $php_functions = [];\n        public $php_modifiers = ['escape'];\n        public $allow_php_tag = false;\n    }\n    $smarty->enableSecurity(new StrictSecurity());",
      "en": "Pin template files and pass values only via variables, forbidding user edits to Smarty source; enable the strictest SecurityPolicy limiting functions, modifiers, and resource access; upgrade Smarty, drop legacy {php} support and hazardous plugins, and build negative regressions for banned syntax."
     },
     "difficulty": "advanced"
@@ -1768,7 +1768,7 @@
      "en": "Use in Payload list order: first record each candidate engine's side-effect-free arithmetic expression and expected value, then submit line by line in batches across ${ }, {{ }}, <% %>, and #{ } delimiter shapes; seeing 49, config, or command output confirms the matching engine evaluates input as template source. Re-test hits with invalid expressions and random constants, then continue with the engine-specific entry. Command-execution lines are verified only in authorized labs with isolated markers."
     },
     "mitigation": {
-     "zh": "统一模板服务边界禁止动态模板源码与动态视图名，各引擎启用变量绑定、自动转义与沙箱，去除不必要的二次渲染；修复后指纹载荷应全部原样输出。",
+     "zh": "统一模板服务边界，禁止动态模板源码与动态视图名，各引擎启用变量绑定与沙箱（FreeMarker 示例），去除不必要的二次渲染：\n    Configuration cfg = new Configuration(Configuration.VERSION_2_3_32);\n    cfg.setNewBuiltinClassResolver(TemplateClassResolver.ALLOWS_NOTHING_RESOLVER);\n    cfg.setAPIBuiltinEnabled(false);\n    if (!tplName.matches(\"[a-zA-Z0-9_/-]+\\\\.ftl\"))\n        throw new IllegalArgumentException(\"非法模板名\");",
      "en": "Unify the template service boundary forbidding dynamic template source and dynamic view names, enable variable binding, autoescaping, and sandboxing per engine, and remove unnecessary secondary rendering; after the fix, fingerprint payloads must all output verbatim."
     },
     "difficulty": "intermediate"
@@ -2409,7 +2409,7 @@
      "en": "Use the step 1 command to enumerate file targets such as logs, configs, and keys via SVG image xlink:href line by line; file content appearing in rasterized output or read events in parse logs confirm SVG image file reads. Map the upload, antivirus, thumbnail, and publishing order first, swap targets for sandbox markers, run variants one by one, and correlate unique task IDs."
     },
     "mitigation": {
-     "zh": "对 SVG 禁用 DTD、外部实体、XInclude 与外部样式资源，首选经安全解析器的位图转码并丢弃原始主动内容；图片处理器放入低权限无网络沙箱，各处理阶段策略统一并建立 SVG 变体回归集。",
+     "zh": "SVG 解析禁用 DTD、外部实体、XInclude 与外部样式资源，首选经安全解析器的位图转码并仅消费净化产物；处理器低权限无网络运行。\n    DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();\n    dbf.setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true);\n    dbf.setExpandEntityReferences(false);\n    dbf.setXIncludeAware(false);",
      "en": "Disable DTDs, external entities, XInclude, and external style resources for SVG; prefer bitmap transcoding through safe parsers, discarding original active content; run image processors in low-privilege network-free sandboxes, unify policy across pipeline stages, and maintain an SVG-variant regression set."
     },
     "difficulty": "advanced"
@@ -2836,7 +2836,7 @@
      "en": "Use the step 1 command to run Runtime via the __${...}__::.x preprocessing form and SpringEL line by line; command output in results confirms Thymeleaf expression execution. Locate controllable view names or fragment parameters from controller mappings and error handling first, then submit constant expressions and invalid syntax to record characteristic responses, comparing plain variables, preprocessing, and dynamic-view paths. Execute only in authorized labs."
     },
     "mitigation": {
-     "zh": "控制器只返回固定视图枚举，不拼接请求参数或错误内容；通过模型变量传数据并避免不必要的预处理表达式；限制 SpringEL 类型与表达式对象暴露，升级 Spring/Thymeleaf 并对动态视图建立回归。",
+     "zh": "控制器只返回固定视图枚举，视图名不拼接请求参数或错误内容；数据一律经 Model 变量传入，升级 Spring/Thymeleaf 并对动态视图回归。\n    private static final Set<String> VIEWS = Set.of(\"user\", \"order\");\n    @GetMapping(\"/page\")\n    public String page(@RequestParam String name, Model model) {\n        if (!VIEWS.contains(name)) throw new IllegalArgumentException();\n        model.addAttribute(\"name\", name);\n        return \"pages/\" + name;\n    }",
      "en": "Controllers must return fixed view enums without concatenating request parameters or error content; pass data via model variables and avoid unnecessary preprocessing expressions; restrict SpringEL types and expression-object exposure, upgrade Spring/Thymeleaf, and regression-test dynamic views."
     },
     "difficulty": "advanced"
@@ -3126,7 +3126,7 @@
      "en": "Use the step 1 command to confirm Twig via _self.env/dump fingerprints first, then test filter/map/reduce callback chains to system/exec line by line; command output confirms the chain works. Verify input enters Twig source rather than variables, record the major version and extensions, establish constant-arithmetic evidence, and compare with sandbox enabled versus disabled in an isolated environment. Execute only in authorized labs."
     },
     "mitigation": {
-     "zh": "只使用受版本控制的固定模板并经变量传值；对用户可编辑模板启用 SandboxExtension 与最小 SecurityPolicy，删除危险函数、过滤器与自定义加载器；升级 Twig 并对允许列表与沙箱逃逸路径回归。",
+     "zh": "只使用受版本控制的固定模板并经变量传值；用户可编辑模板启用沙箱与最小 SecurityPolicy，删除危险函数、过滤器与自定义加载器，升级 Twig。\n    $policy = new \\Twig\\Sandbox\\SecurityPolicy(\n        ['if'], [], [], [], ['range', 'max']\n    );\n    $twig->addExtension(new \\Twig\\Extension\\SandboxExtension($policy, true));",
      "en": "Use only version-controlled fixed templates with variable passing; enable SandboxExtension with a minimal SecurityPolicy for user-editable templates, removing dangerous functions, filters, and custom loaders; upgrade Twig and regression-test allowlists and sandbox-escape paths."
     },
     "difficulty": "advanced"
@@ -3539,7 +3539,7 @@
      "en": "Per step 1, submit system.listMethods and system.methodHelp/methodSignature call messages to the XML-RPC endpoint one by one; a hit is a methodResponse-format method list or signatures in the response. After obtaining the inventory, filter high-risk items by name (pingback, authentication) and check authentication requirements; contrast gateway and WAF behavior to exclude forged responses—method existence alone is not marked a vulnerability."
     },
     "mitigation": {
-     "zh": "不需要 XML-RPC 时在应用层关闭端点而不是仅隐藏路径；仅保留业务必需方法并为敏感方法强制认证和授权；对方法调用实施速率限制、请求大小和并发限制；记录方法名、调用主体、faultCode 和异常频率并加入配置回归检查。修复后重放第 1 步枚举，确认清单收敛。",
+     "zh": "不需要 XML-RPC 时在应用层关闭端点而不是隐藏路径；保留的方法强制认证与授权，实施速率、大小与并发限制并记录调用审计。\n    # Nginx：应用层直接关闭\n    location = /xmlrpc.php {\n        return 403;\n    }\n    // WordPress：清空方法表并整体禁用\n    add_filter('xmlrpc_methods', fn() => []);\n    add_filter('xmlrpc_enabled', '__return_false');",
      "en": "When XML-RPC is unneeded, close the endpoint at the application layer rather than hiding the path; keep only business-essential methods with enforced authentication and authorization on sensitive ones; rate-limit calls and cap request size and concurrency; log method names, callers, faultCodes, and anomalous frequency in configuration regression checks. After the fix, replay the step-1 enumeration and confirm the inventory shrank."
     },
     "difficulty": "beginner"
@@ -3789,7 +3789,7 @@
      "en": "In step 1, call wp.getUsersBlogs with wrong passwords for the target username one by one per the script, recording each response and latency; continuous authentication errors with no lockout or delay confirm unlimited retries, then pack multiple calls via multicall to contrast the amplification. Judge success by consecutive failures without rate limiting. Replace placeholders via the global variables menu; keep retry counts within authorization and target only test accounts."
     },
     "mitigation": {
-     "zh": "XML-RPC 认证接入统一限速与账号锁定，禁用未使用的方法与 multicall，登录失败事件全量入审计。修复后重放第 1 步，连续失败应在阈值处被 429 拒绝。",
+     "zh": "XML-RPC 认证接入统一限速与账号锁定，禁用未使用方法与 multicall，登录失败事件全量写入审计日志。\n    # Nginx：每 IP 2 次/分钟，超限返回 429\n    limit_req_zone $binary_remote_addr zone=xmlrpc:10m rate=2r/m;\n    location = /xmlrpc.php {\n        limit_req zone=xmlrpc burst=3 nodelay;\n        limit_req_status 429;\n    }",
      "en": "Bring XML-RPC authentication under unified rate limits and account lockouts, disable unused methods and multicall, and audit all login failures. After the fix, replay step 1: consecutive failures should get 429 at the threshold."
     },
     "difficulty": "intermediate"
@@ -4245,7 +4245,7 @@
      "en": "Use in Payload list order: step 1 deploys an intranet service returning a random marker on an isolated test network and records sources; then submit the XML-RPC pingback with sourceUrl replaced one by one by loopback, private, and IPv6 forms, recording faultCode, timing, and gateway logs — any internal sourceUrl triggering a server fetch (marker hit or timing difference) confirms Pingback SSRF; finally add public, unreachable, and one controlled-redirect samples as controls. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "统一 URL 解析并只允许明确协议与端口，在 DNS 解析后、连接前与每次重定向后拒绝回环、私网、链路本地及保留地址，辅以出站代理与网络 ACL 二层阻断；记录原始 URL、解析 IP 与最终连接并建立回归矩阵，不需要 pingback 时直接关闭 XML-RPC。",
+     "zh": "统一 URL 解析仅允许明确协议与端口，在 DNS 解析后、连接前与每次重定向后拒绝回环、私网、链路本地及保留地址；不需要 pingback 时直接关闭 XML-RPC：\n    # WordPress functions.php：关闭 XML-RPC 与 pingback\n    add_filter('xmlrpc_enabled', '__return_false');\n    add_filter('pings_open', '__return_false');\n    // 服务端发起回调前校验最终 IP（PHP）\n    $ip = gethostbyname(parse_url($url, PHP_URL_HOST));\n    if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {\n        throw new RuntimeException('目标被拒绝: ' . $ip);\n    }",
      "en": "Canonicalize URL parsing and allow only explicit schemes and ports; reject loopback, private, link-local, and reserved addresses after DNS resolution, before connect, and after every redirect, backed by an outbound proxy and network ACLs; log the raw URL, resolved IPs, and final connections with a regression matrix, and simply disable XML-RPC when pingback is unneeded."
     },
     "difficulty": "advanced"
@@ -4793,7 +4793,7 @@
      "en": "Use the step 1 command to wrap a file entity in an internal parameter entity and reference it; echoed target file content confirms parameter-entity injection. First submit an internal parameter entity without external resources to confirm DTD and %name; parsing, then run samples in an isolated environment recording entity declarations and parse logs, contrasted against DTD-disabled and undeclared-entity controls."
     },
     "mitigation": {
-     "zh": "在解析器工厂层禁用 DOCTYPE、外部通用实体与外部参数实体，提供拒绝所有外部标识符的 EntityResolver；不对不可信 XML 启用 DTD 验证并限制输入大小与实体展开量。",
+     "zh": "在解析器工厂层禁用 DOCTYPE、外部通用实体与外部参数实体，提供拒绝所有外部标识符的 EntityResolver，限制输入大小与实体展开量。\n    DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();\n    dbf.setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true);\n    dbf.setFeature(\"http://xml.org/sax/features/external-general-entities\", false);\n    dbf.setFeature(\"http://xml.org/sax/features/external-parameter-entities\", false);",
      "en": "Disable DOCTYPE, external general entities, and external parameter entities at the parser-factory layer, providing an EntityResolver that rejects all external identifiers; never enable DTD validation on untrusted XML, and cap input size and entity expansion."
     },
     "difficulty": "intermediate"
@@ -5540,7 +5540,7 @@
      "en": "Use the step 1 command to read /etc/hostname via entity echo in an SVG text node; the hostname appearing in upload-preview text confirms the image-upload entry triggers XXE. Prepare a test file containing only a random hostname inside an isolated conversion container, trigger real preview or rasterization, and contrast no-DOCTYPE, literal-text, and nonexistent-resource versions."
     },
     "mitigation": {
-     "zh": "在 SVG/XML 解析器禁用 DOCTYPE 与外部实体，原始 SVG 清洗或栅格化后仅使用净化产物；转换器无网络低权限且只能读取任务目录，对文本节点实体建立自动回归。",
+     "zh": "在 SVG/XML 解析器禁用 DOCTYPE 与外部实体，原始 SVG 清洗或栅格化后仅使用净化产物；转换器无网络低权限且只能读取任务目录。\n    libxml_set_external_entity_loader(fn() => null); // 拒绝外部实体\n    $dom = new DOMDocument();\n    $dom->loadXML($svg, LIBXML_NONET | LIBXML_COMPACT); // 不传 LIBXML_NOENT",
      "en": "Disable DOCTYPE and external entities in SVG/XML parsers, sanitizing or rasterizing original SVGs so only clean artifacts flow onward; run converters network-free with low privileges limited to task directories, and build automated regressions for text-node entities."
     },
     "difficulty": "intermediate"
@@ -5827,7 +5827,7 @@
      "en": "Use the step 1 command to include an external resource via XInclude to read the target file (no root-element control needed); included content appearing in results confirms XInclude processing is on. First confirm the target executes XInclude via inline fallback or authorized HTTP text, then submit the parse=\"text\" sample recording parse output, contrasted against XInclude disabled and wrong namespaces."
     },
     "mitigation": {
-     "zh": "不对不可信 XML 调用 XInclude 处理；必须使用时采用严格资源白名单与拒绝 file/私网/远程 URI 的 resolver，在无网络低权限容器解析，并记录 XInclude 元素与最终 URI。",
+     "zh": "不对不可信 XML 调用 XInclude 处理；必须使用时以严格白名单 resolver 拒绝 file/私网/远程 URI，在无网络低权限容器解析并记录最终 URI。\n    DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();\n    dbf.setXIncludeAware(false);\n    db.setEntityResolver((pub, sys) -> {\n        String s = URI.create(sys).getScheme();\n        if (!\"https\".equals(s)) throw new SAXException(\"blocked include\");\n        return new InputSource(new StringReader(\"\"));\n    });",
      "en": "Do not invoke XInclude processing on untrusted XML; when unavoidable, apply strict resource allowlists with resolvers rejecting file/private/remote URIs, parse inside network-free low-privilege containers, and log XInclude elements and final URIs."
     },
     "difficulty": "intermediate"

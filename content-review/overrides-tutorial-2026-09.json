@@ -171,7 +171,7 @@
      "en": "Use the step 1 command to pull two tokenized DTD paths via external parameter entities, with {LAB_OAST} rendered as your own endpoint returning only an empty valid DTD; receiving two independent DTD requests confirms the external DTD fetch boundary. Record each request's time and token to attribute them to the target parser rather than other components."
     },
     "mitigation": {
-     "zh": "解析器禁用外部 DTD 子集与参数实体，出站网络限制为自有域；修复后重放 DTD 拉取载荷应报禁止错误且监听端无任何请求。",
+     "zh": "解析器禁用外部 DTD 子集与参数实体，出站网络限制为自有域并默认拒绝：\n    DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();\n    dbf.setFeature(\"http://apache.org/xml/features/nonvalidating/load-external-dtd\", false);\n    dbf.setFeature(\"http://xml.org/sax/features/external-parameter-entities\", false);\n    dbf.setExpandEntityReferences(false);",
      "en": "Disable external DTD subsets and parameter entities in the parser and restrict outbound networking to owned domains; after the fix, replaying DTD fetch payloads must raise forbidden errors with zero listener requests."
     },
     "difficulty": "advanced"
@@ -606,7 +606,7 @@
      "en": "Use the step 1 command to pull a DTD via an external parameter entity in SharedStrings, with {LAB_OAST} rendered as a single-token endpoint returning only an empty valid DTD; receiving the single DTD request confirms the XLSX external DTD fetch boundary. Preserve valid workbook structure, trigger real imports in an isolated environment, and correlate requests by token. Treat missing requests as negative and recheck external-subset settings."
     },
     "mitigation": {
-     "zh": "表格解析栈禁用外部 DTD 子集与参数实体，导入 worker 出站默认拒绝；修复后重放应报禁止错误且监听端无请求。",
+     "zh": "表格解析栈禁用外部 DTD 子集与参数实体，导入 worker 出站默认拒绝：\n    // .NET：读取 sharedStrings.xml 前直接拒绝 DTD\n    var settings = new XmlReaderSettings {\n        DtdProcessing = DtdProcessing.Prohibit,\n        XmlResolver = null\n    };\n    using var reader = XmlReader.Create(new MemoryStream(sstBytes), settings);",
      "en": "Disable external DTD subsets and parameter entities in the spreadsheet parsing stack with import-worker egress default-denied; after the fix, replays must raise forbidden errors with zero listener requests."
     },
     "difficulty": "advanced"
@@ -895,7 +895,7 @@
      "en": "Use the step 1 command to exfiltrate page cookies in a controlled browser fixture via sendBeacon, navigation, and Image, executing the three lines one by one; the collector receiving all three request types confirms the page-data egress channel. Render {ATTACKER_HOST} as an isolated collector with random test-only cookie values, assigning distinct random cookies and capture paths per API and comparing against HttpOnly controls."
     },
     "mitigation": {
-     "zh": "在独立无会话来源中渲染不可信内容，禁用不需要的 JavaScript，应用严格 CSP 与出口允许列表；敏感 Cookie 设置 HttpOnly、Secure 与适当 SameSite。",
+     "zh": "不可信内容在独立无会话来源渲染并禁用非必要脚本；敏感 Cookie 强制 HttpOnly、Secure、SameSite，渲染域应用仅允许固定出口的 CSP。\n    // Express：敏感 Cookie 属性\n    res.cookie(\"sid\", token, { httpOnly: true, secure: true, sameSite: \"strict\" });\n    // 渲染域 CSP：禁任意外连\n    res.setHeader(\"Content-Security-Policy\", \"default-src 'none'; style-src 'unsafe-inline'\");",
      "en": "Render untrusted content in a separate session-less origin, disable unneeded JavaScript, and apply strict CSP with egress allowlists; set HttpOnly, Secure, and appropriate SameSite on sensitive cookies."
     },
     "difficulty": "intermediate"
@@ -1309,7 +1309,7 @@
      "en": "Use the step 1 command to apply encoding variants to test queries per the confirmed database dialect, swapping table, column, and user targets for test objects; record post-decode SQL and result column alignment. Fix column count and echo positions with constant test columns first, then pick only the target dialect's row against test tables, correlating requests, normalized SQL, database audit, and fixed-marker results."
     },
     "mitigation": {
-     "zh": "使用参数化查询和固定查询结构，动态排序/列名经服务端允许列表映射；边界与应用统一解码一次但不依赖 WAF 修复注入，数据库账户最小权限，并把全部编码变体纳入回归。",
+     "zh": "参数化查询与固定查询结构，动态排序/列名经服务端允许列表映射；边界统一解码一次但不依赖 WAF 修复注入，账户最小权限。\n    // PHP：标识符白名单 + 参数化\n    $SORT = [\"name\" => \"name\", \"date\" => \"created_at\"];\n    $col = $SORT[$sortKey] ? \"id\";\n    $st = $pdo->prepare(\"SELECT id, {$col} FROM items WHERE uid = ? LIMIT 10\");\n    $st->execute([$uid]);",
      "en": "Use parameterized queries with fixed query structure, mapping dynamic ordering/columns through server-side allowlists; decode exactly once at the boundary and application without relying on the WAF to fix injection, keep database accounts least-privileged, and regression-test every encoding variant."
     },
     "difficulty": "advanced"
@@ -1843,7 +1843,7 @@
      "en": "Use the step 1 command's blind true/false and timing samples, where the state/case/BENCHMARK three lines form one continuous sample; pick test predicates per the confirmed dialect, swap file, user, and password conditions for test data, and run true/false pairs. Measure baselines with fixed true/false business inputs first, then interleave true, false, and no-delay controls across multiple rounds, confirming statistical stability with database query durations."
     },
     "mitigation": {
-     "zh": "参数化所有值并把动态查询分支映射到固定模板，限制数据库时间/文件/元数据函数权限与语句超时；统一错误响应与缓存策略，并用真假成对用例回归。",
+     "zh": "参数化所有值，动态查询分支映射到固定模板；限制时间/文件/元数据函数权限与语句超时，统一错误与缓存策略。\n    // Java：多条件全部绑定\n    try (PreparedStatement ps = conn.prepareStatement(\n            \"SELECT * FROM t WHERE id = ? AND status = ?\")) {\n        ps.setInt(1, id); ps.setInt(2, st);\n    }\n    // PHP\n    $q = $pdo->prepare(\"SELECT * FROM t WHERE id = ? AND status = ?\");\n    $q->execute([$id, $st]);",
      "en": "Parameterize all values, mapping dynamic query branches to fixed templates; restrict database time/file/metadata function privileges with statement timeouts; unify error responses and caching policies, regressing with paired true/false cases."
     },
     "difficulty": "advanced"
@@ -2209,7 +2209,7 @@
      "en": "Use the step 1 command to ATTACH DATABASE a new library at the target path and write a marker table; a SQLite file appearing at the path and opening confirms the ATTACH write primitive. For real verification, point the path at a one-off non-executable directory with fixed text-marker content, submit once, correlate SQL audit, file owner, and SQLite header, then delete."
     },
     "mitigation": {
-     "zh": "修复注入并禁用不需要的多语句，数据库文件目录最小权限且 Web 根不可由数据库进程写入，限制 ATTACH 能力；监控 ATTACH/CREATE TABLE 异常组合，修复后重放应报权限或语法拒绝。",
+     "zh": "参数化消除注入，禁止用 exec/executescript 处理用户输入以杜绝多语句，数据库目录最小权限且 Web 根不可由数据库进程写入。\n    // PHP：单一预编译语句\n    $st = $pdo->prepare(\"SELECT * FROM t WHERE id = ?\");\n    $st->execute([$id]);\n    # 数据库目录与 Web 根权限隔离\n    chown app:app /var/lib/appdb && chmod 750 /var/lib/appdb",
      "en": "Fix injection, disable unneeded multi-statements, keep database file directories least-privileged with web roots unwritable by the database process, and restrict ATTACH; monitor abnormal ATTACH/CREATE TABLE combinations, and after the fix replays must raise permission or syntax denials."
     },
     "difficulty": "expert"
@@ -2521,7 +2521,7 @@
      "en": "Use the step 1 command selecting rows by input quote context, reducing the five-second delay to the smallest distinguishable value in an isolated environment; run no-delay and false-condition controls in parallel. Interleave no-delay, false-condition, and legitimate requests to build a baseline distribution, then run multiple rounds correlating final SQL with database execution time."
     },
     "mitigation": {
-     "zh": "使用参数化语句并关闭驱动多语句支持，动态条件映射为固定查询模板；配置语句超时与最小数据库权限，监控 SLEEP 等异常函数并回归成对时间用例。",
+     "zh": "参数化语句并关闭驱动多语句支持，动态条件映射为固定查询模板；配置语句超时与最小数据库权限。\n    // PHP PDO：关闭多语句\n    $pdo = new PDO($dsn, $user, $pass, [\n        PDO::MYSQL_ATTR_MULTI_STATEMENTS => false,\n    ]);\n    $st = $pdo->prepare(\"SELECT * FROM t WHERE id = ?\");\n    $st->execute([$id]);\n    // Java JDBC URL：确认未开启多语句\n    jdbc:mysql://host/appdb?allowMultiQueries=false",
      "en": "Use parameterized statements, disable driver multi-statement support, and map dynamic conditions to fixed query templates; configure statement timeouts and minimal database privileges, monitor abnormal functions like SLEEP, and regress with paired timing cases."
     },
     "difficulty": "advanced"
@@ -3314,7 +3314,7 @@
      "en": "Use the step 1 command to test each mode in isolated pages, replacing alert with its own random memory flag; record post-click navigation for the form, and loads, sub-document origins, and CSP events for the iframe. Only the flag executing in the sub/parent document counts — element presence or frame loads alone do not, and one mode's result never extrapolates to the others."
     },
     "mitigation": {
-     "zh": "修复 HTML 注入并在富文本中禁用 form、iframe、srcdoc 与活动协议；CSP 使用 nonce/hash 且不含 unsafe-inline，frame-src 仅允许必要来源并排除 data:，同时设置 object-src 'none'、base-uri 与 form-action。",
+     "zh": "修复 HTML 注入点并在最终上下文输出编码（如 OWASP Encode.forHtml），富文本消毒禁用 form/iframe/srcdoc 与 javascript:、data: 活动协议；CSP 用 nonce、frame-src 排除 data:，补 object-src/base-uri/form-action：\n    # Nginx 响应头（nonce 由应用每响应随机生成）\n    add_header Content-Security-Policy\n      \"default-src 'self'; script-src 'nonce-$n'; frame-src https://cdn.example.com; object-src 'none'; base-uri 'self'; form-action 'self'\" always;",
      "en": "Fix HTML injection and disable form, iframe, srcdoc, and active protocols in rich text; use nonce/hash CSP without unsafe-inline, restrict frame-src to necessary origins excluding data:, and set object-src 'none', base-uri, and form-action."
     },
     "difficulty": "advanced"
@@ -3665,7 +3665,7 @@
      "en": "Use the step 1 command to pull a DTD via an external parameter entity in the SVG, with {LAB_OAST} rendered as a single-token endpoint returning only an empty valid DTD; receiving the single DTD request confirms the SVG external-parameter-entity fetch boundary. Baseline with a legitimate SVG upload first, then trigger preview or conversion and correlate requests by token. Re-trigger one task confirming request stability, excluding sporadic cache hits."
     },
     "mitigation": {
-     "zh": "SVG 解析器禁用外部 DTD 子集与参数实体，worker 出站默认拒绝；修复后重放应报禁止错误且监听端无请求。",
+     "zh": "SVG 解析器禁用外部 DTD 子集与参数实体，worker 出站默认拒绝并对外部加载尝试告警。\n    DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();\n    dbf.setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true);\n    dbf.setFeature(\"http://xml.org/sax/features/external-parameter-entities\", false);",
      "en": "Disable external DTD subsets and parameter entities in SVG parsers with worker egress default-denied; after the fix, replays must raise forbidden errors with zero listener requests."
     },
     "difficulty": "advanced"
@@ -3930,7 +3930,7 @@
      "en": "Use the step 1 command to store the single expression first, then trigger one controlled render task; only 49 in the same task's server-side artifact counts as positive. Baseline with random plain text recording the task ID, then store the expression and correlate write records, queue messages, template logs, and artifact output, excluding literal echo via unrendered fields."
     },
     "mitigation": {
-     "zh": "固定服务端模板并把存储值作为数据变量传入，禁止动态编译用户字段；最小化上下文并启用沙箱，为所有异步渲染路径添加字面输出回归测试。",
+     "zh": "固定服务端模板并把存储值作为数据变量传入，禁止动态编译用户字段，关闭 PERL 求值并最小化上下文：\n    use Template;\n    my $tt = Template->new({ EVAL_PERL => 0 });\n    $tt->process('profile.tt', { bio => $row->{bio} })   # bio 仅为数据\n        or die $tt->error();\n    # profile.tt 内：[% bio | html %] —— 只输出不解析",
      "en": "Pin server-side templates and pass stored values as data variables, forbidding dynamic compilation of user fields; minimize context and enable sandboxing, adding literal-output regressions across all async render paths."
     },
     "difficulty": "advanced"
@@ -4232,7 +4232,7 @@
      "en": "Use the step 1 command to store each expression in order and trigger tasks individually, comparing server output across string concatenation, numeric subtraction, and numeric multiplication; never submit in bulk. Create separate records and task IDs per line, correlating expected outputs with template logs, using plain strings and unrendered fields as controls."
     },
     "mitigation": {
-     "zh": "禁止动态编译存储字段，固定模板、收窄上下文并把用户值编码为普通数据；对类型强制探测建立日志告警与回归。",
+     "zh": "禁止动态编译存储字段：固定模板、收窄上下文，用户值编码为普通数据；检测侧对类型强制探针建立日志告警与回归：\n    # Jinja2：沙箱 + 自动转义（Python）\n    from jinja2.sandbox import SandboxedEnvironment\n    env = SandboxedEnvironment(autoescape=True)\n    html = env.from_string(open('tpl/profile.j2').read()).render(bio=row['bio'])\n    # ModSecurity：模板样探针入库告警\n    SecRule ARGS \"@rx (\\{\\{.*\\}\\}|\\[%.*%\\])\" \"id:1101,phase:2,pass,log\"",
      "en": "Forbid dynamic compilation of stored fields; pin templates, narrow context, and encode user values as plain data, with log alerting and regressions over type-coercion probes."
     },
     "difficulty": "advanced"
@@ -4517,7 +4517,7 @@
      "en": "Use the step 1 command to submit outbound requests (HTTP/UNC/LDAP/COPY) using only rows matching the confirmed database dialect; DNS resolution or request logs against your callback domain confirming the record establish the database OOB resolution channel. Render {LAB_OAST} as the OOB verification domain with a unique subdomain per request for correlation. Confirm the database type via error signatures first, then correlate application requests, database audit, DNS/HTTP listeners, and source addresses."
     },
     "mitigation": {
-     "zh": "使用参数化查询并禁止动态 SQL 片段；移除数据库账户不需要的网络、文件与扩展过程权限，在网络层阻断数据库出站并审计相关函数调用；修复后重放正常查询、注入样例与唯一回连控制。",
+     "zh": "全部查询参数化并禁止动态 SQL 片段；数据库账户移除网络、文件与扩展过程权限，网络层阻断出站并审计调用。Java：\n    try (PreparedStatement ps = conn.prepareStatement(\n        \"SELECT name FROM archive WHERE id = ?\")) {\n      ps.setInt(1, id);\n      try (ResultSet rs = ps.executeQuery()) { /* 处理 */ }\n    }\n    REVOKE EXECUTE ON OBJECT::master.dbo.xp_dirtree TO app_user;\n    DENY EXECUTE ON OBJECT::master.dbo.xp_cmdshell TO app_user;",
      "en": "Parameterize queries and forbid dynamic SQL fragments; revoke unneeded network, file, and extension-procedure privileges from database accounts, blocking database egress at the network layer with audits over related function calls; after the fix, replay normal queries, injection samples, and unique-callback controls."
     },
     "difficulty": "expert"
@@ -4837,7 +4837,7 @@
      "en": "Use the step 1 command's integral response-construction fragment (four lines as one), only within isolated proxies or test routes, replacing visible actions with side-effect-free markers. Baseline a normal 301 on a non-cacheable test route first, then submit the full fragment capturing raw bytes, DOM, and CSP events; it stands only when the server emits a standalone HTML response and the browser executes the marker."
     },
     "mitigation": {
-     "zh": "禁止用户输入控制原始 HTTP 响应结构，使用框架重定向与响应 API 并拒绝控制字符；对 HTML 输出上下文编码与消毒，设置严格 CSP、nosniff 与不可缓存错误响应，统一代理与应用解析。",
+     "zh": "禁止用户输入控制原始响应结构，使用框架重定向与响应 API 并拒绝控制字符；HTML 输出按上下文编码，配严格 CSP 与 nosniff。目标白名单与编码（Spring）：\n    String h = URI.create(target).getHost();\n    if (!ALLOWED_HOSTS.contains(h)) throw new IllegalArgumentException();\n    model.put(\"msg\", HtmlUtils.htmlEscape(value));\n    Content-Security-Policy: default-src 'self'; script-src 'self'\n    X-Content-Type-Options: nosniff",
      "en": "Forbid user input controlling raw HTTP response structure, using framework redirect and response APIs while rejecting control characters; context-encode and sanitize HTML output with strict CSP, nosniff, and non-cacheable error responses, aligning proxy and application parsing."
     },
     "difficulty": "advanced"
@@ -5170,7 +5170,7 @@
      "en": "Use the step 1 command to send the three lines one by one to an isolated schema: the first two should be rejected at GraphQL Int coercion, and the third targets only a rollback-able test table verified under a transaction/read-only account without executing DROP. Baseline resolver behavior and results with legitimate integers/strings first, then correlate GraphQL validation, resolver calls, and final SQL; type errors are safe outcomes — only changed final SQL structure returning fixed dummy data counts."
     },
     "mitigation": {
-     "zh": "保持严格 schema 与标准 scalar，不在 resolver 中动态拼接 SQL；所有值使用数据库参数绑定，动态列/排序映射服务端枚举；应用数据库账户只读最小权限并回归这三类变量。",
+     "zh": "保持严格 schema 与标准 scalar，resolver 严禁动态拼接 SQL，值一律参数绑定；动态列/排序映射服务端枚举，数据库账户只读最小权限。\n    // Java\n    try (PreparedStatement ps = conn.prepareStatement(\n        \"SELECT id, email, role FROM users WHERE id = ?\")) {\n      ps.setInt(1, id);\n    }\n    // PHP\n    $st = $pdo->prepare(\"SELECT id, email, role FROM users WHERE id = :id\");\n    $st->execute([\"id\" => $id]);\n    修复后重放三类注入变量，均按字面值处理且正常查询可用。",
      "en": "Keep strict schemas and standard scalars, never concatenating SQL in resolvers; bind all values as database parameters and map dynamic columns/ordering via server-side enums; run the application's database account read-only with minimal privileges, regressing over these three variable classes."
     },
     "difficulty": "intermediate"
@@ -5459,7 +5459,7 @@
      "en": "Use the step 1 command to swap alert for a random memory flag, submitting once in a dedicated record while checking API response, stored value, rendered DOM, and CSP — no cookie reads or exfiltration. Baseline import/render with plain text first, then submit the harmless-marker version opening every actual consumer view in an isolated browser; response echo or source text is not execution."
     },
     "mitigation": {
-     "zh": "所有消费者按 HTML/属性/URL/JS 上下文编码，富文本使用成熟消毒器并禁止 script/事件属性；避免 innerHTML，部署 nonce/hash CSP 作为补充；导入 schema 校验数据类型并为 API 到 UI 建立端到端回归。",
+     "zh": "所有消费者按 HTML/属性/URL/JS 上下文编码，避免 innerHTML/dangerouslySetInnerHTML；富文本用成熟消毒器禁止 script/事件属性，部署 nonce CSP，导入 schema 校验数据类型。\n    import DOMPurify from \"dompurify\";\n    el.innerHTML = DOMPurify.sanitize(data, { ALLOWED_TAGS: [\"b\", \"i\", \"a\"] });\n    Content-Security-Policy: script-src 'self' 'nonce-{RANDOM}'; object-src 'none'\n    修复后重放导入样例，预览/报表无脚本执行且合法富文本保留。",
      "en": "Encode at every consumer per HTML/attribute/URL/JS contexts, run rich text through mature sanitizers banning script/event attributes; avoid innerHTML with nonce/hash CSP as backup; validate data types in the import schema and build end-to-end regressions from API to UI."
     },
     "difficulty": "intermediate"
@@ -5888,7 +5888,7 @@
      "en": "As in step 1, POST a message carrying the LOOKUP_CANARY and ${java...} shape to the local fixture at /api/lab/log4j/log with a request ID; a hit is the log expanding or recording the shape per policy while asserting zero network lookups. Use the result to confirm the message-substitution policy (e.g., network_lookup=false); it does not establish a Log4Shell exploit chain."
     },
     "mitigation": {
-     "zh": "升级到 Apache 公告认可的安全版本，移除不需要的 JNDI Lookup 能力，限制应用网络出口，避免记录未规范化的敏感输入。修复后以第 1 步同一消息重放，确认策略符合预期且无异常解析或出站连接。",
+     "zh": "升级到 Apache 公告认可的安全版本（≥2.17.1），移除不需要的 JNDI Lookup 能力并限制应用网络出口，避免记录未规范化的敏感输入（兜底参数 -Dlog4j2.formatMsgNoLookups=true）：\n    <dependency>\n        <groupId>org.apache.logging.log4j</groupId>\n        <artifactId>log4j-core</artifactId>\n        <version>2.17.1</version>\n    </dependency>",
      "en": "Upgrade to versions endorsed by the Apache advisory, remove unneeded JNDI lookup capability, restrict application egress, and avoid logging unsanitized sensitive input. After the fix, replay the step-1 message and confirm the policy behaves as expected with no anomalous parsing or outbound connections."
     },
     "difficulty": "advanced"
@@ -6196,7 +6196,7 @@
      "en": "First submit a plain object to establish a field baseline, then send a java.util.HashMap @type marker to /api/lab/fastjson/parse as in step 1; a hit is the synthetic marker retained with external_lookup=false. Compare parse results, rejection reasons, and type-resolution logs; avoid JdbcRowSet, BCEL, or any remote reference, and do not equate a policy pass with gadget availability."
     },
     "mitigation": {
-     "zh": "升级到供应商维护版本，优先避免客户端控制类型元数据，使用显式 DTO 与类型允许列表；关闭不需要的 AutoType 并限制类加载与网络出口。修复后重放第 1 步请求，确认类型标记被拒绝并建立拒绝类型审计。",
+     "zh": "升级到供应商维护版本，优先用显式 DTO 避免客户端控制类型元数据，关闭 AutoType 并仅保留前缀白名单，限制类加载与网络出口：\n    ParserConfig cfg = ParserConfig.getGlobalInstance();\n    cfg.setAutoTypeSupport(false);\n    cfg.addAccept(\"com.app.dto.\");\n    UserDTO u = JSON.parseObject(text, UserDTO.class);",
      "en": "Upgrade to vendor-maintained versions, prefer avoiding client-controlled type metadata, and use explicit DTOs with a type allowlist; disable unneeded AutoType and restrict class loading and egress. After the fix, replay the step-1 request and confirm the type marker is rejected with a denial audit in place."
     },
     "difficulty": "advanced"
@@ -6622,7 +6622,7 @@
      "en": "As in step 1, submit the fixed arithmetic 7*7 to /api/lab/spel/evaluate in simple mode with a request ID; a hit is a returned 49 with both the type_access and method_invoke capability flags disabled. The combination is configuration evidence: 49 proves server-side evaluation while the flags prove the dangerous context is closed. Do not judge arbitrary SpEL injection from the echoed number alone, and do not attempt Runtime, ProcessBuilder, or reflective calls."
     },
     "mitigation": {
-     "zh": "避免求值不可信表达式；必须支持时使用 SimpleEvaluationContext、受限属性访问器与明确变量，禁用类型定位、构造器、方法与 Bean 解析，并对长度、复杂度和超时设限。修复后重放第 1 步请求，确认能力标志保持关闭并记录拒绝。",
+     "zh": "避免求值不可信表达式；必须支持时用 SimpleEvaluationContext 关闭类型定位、构造器、方法与 Bean 解析，并对长度、复杂度和超时设限：\n      Expression e = parser.parseExpression(expr);\n      SimpleEvaluationContext ctx = SimpleEvaluationContext\n          .forReadOnlyDataBinding().withRootObject(data).build();\n      Object r = e.getValue(ctx); // 只读数据绑定，无类型/方法访问\n  修复后重放第 1 步请求，确认能力标志保持关闭并记录拒绝。",
      "en": "Avoid evaluating untrusted expressions; when expression support is required, use SimpleEvaluationContext with restricted property accessors and explicit variables, disable type location, constructors, methods, and bean resolution, and cap length, complexity, and timeouts. After the fix, replay the step-1 request and confirm the capability flags stay off with rejections logged."
     },
     "difficulty": "advanced"
@@ -6930,7 +6930,7 @@
      "en": "As in step 1, issue a read-only GET to /actuator/gateway/routes with the low-privilege spring-user-token and a request ID; a hit is 401, 403, or 404, showing the management endpoint is closed to low-privilege principals. A 200 with a route list means the management plane is exposed—record the returned route structure as evidence. Never create, refresh, or modify routes during validation."
     },
     "mitigation": {
-     "zh": "升级受影响 Spring Cloud 组件，只暴露必要 Actuator 端点并用 Spring Security 对 Gateway 管理端点执行最小角色授权；关闭不需要的路由写操作。修复后重放第 1 步请求，确认低权限令牌无法读取 routes 且正常业务路由不受影响。",
+     "zh": "升级受影响 Spring Cloud 组件，只暴露必要 Actuator 端点并用 Spring Security 对 Gateway 管理端点执行最小角色授权，关闭路由写操作：\n      management.endpoint.gateway.enabled=false\n      management.endpoints.web.exposure.include=health\n      http.authorizeHttpRequests(a -> a\n          .requestMatchers(\"/actuator/**\").hasRole(\"OPS\")\n          .anyRequest().denyAll());\n  修复后重放第 1 步请求，低权限令牌无法读取 routes 且正常业务路由不受影响。",
      "en": "Upgrade affected Spring Cloud components, expose only necessary Actuator endpoints, and enforce minimal roles on Gateway management endpoints with Spring Security; disable unneeded route writes. After the fix, replay the step-1 request and confirm the low-privilege token cannot read routes while business routing is unaffected."
     },
     "difficulty": "intermediate"
@@ -7158,7 +7158,7 @@
      "en": "As in step 1, submit value=%{7*7} to the local restricted evaluator with a request ID; a hit is a result of 49 with static_method_access and process_start both false. The result proves the OGNL evaluation entry is reachable while the capability flags prove dangerous boundaries are closed—together a configuration baseline. Do not submit payloads clearing exclusion classes or replacing MemberAccess; if a capability flag is true, escalate immediately with separate evidence."
     },
     "mitigation": {
-     "zh": "升级到 Apache Struts 受支持版本，避免把不可信字符串作为 OGNL 求值，保持成员访问限制、排除类与包设置，并用允许字段的数据绑定。修复后重放第 1 步请求，确认能力标志保持关闭并对异常表达式建立审计。",
+     "zh": "升级到 Apache Struts 受支持版本，避免把不可信字符串作为 OGNL 求值，保持成员访问限制、排除类与包设置，数据绑定仅允许显式字段：\n      <constant name=\"struts.devMode\" value=\"false\"/>\n      <constant name=\"struts.ognl.allowStaticMethodAccess\" value=\"false\"/>\n      <!-- 输出走转义，禁止把请求参数拼入 value 表达式 -->\n      <s:property value=\"name\" escapeHtml=\"true\"/>\n  修复后重放第 1 步请求，确认能力标志保持关闭并对异常表达式建立审计。",
      "en": "Upgrade to supported Apache Struts versions, avoid evaluating untrusted strings as OGNL, keep member-access restrictions, exclusion classes, and package settings, and bind data through allowed fields. After the fix, replay the step-1 request, confirm capability flags stay off, and audit anomalous expressions."
     },
     "difficulty": "advanced"
@@ -7568,7 +7568,7 @@
      "en": "As in step 1, issue an unauthenticated GET to /jmx-console/ with a request ID; a hit is 401, 403, or 404, showing anonymous access is denied and forming the security baseline. A 200 rendering the console page means the management plane is exposed—record the page and version details as evidence. Never invoke deployment or management actions during validation; server access logs confirm the request reached the right instance."
     },
     "mitigation": {
-     "zh": "升级到受支持的 WildFly 或 JBoss EAP，删除不需要的旧 Console 与 Invoker 应用，管理接口绑定专用地址并启用强认证与角色控制，用防火墙限制管理端口。修复后重放第 1 步请求，确认匿名访问被拒绝且授权管理流程正常。",
+     "zh": "升级到受支持的 WildFly/JBoss EAP，删除不需要的 jmx-console、web-console 与 http-invoker；管理接口绑定专用地址并启用强认证与角色控制，防火墙限制管理端口。\n    <!-- standalone.xml：管理面仅绑内网地址 -->\n    <interfaces>\n      <interface name=\"management\">\n        <inet-address value=\"${jboss.bind.address.management:127.0.0.1}\"/>\n      </interface>\n    </interfaces>\n    # 防火墙仅放行管理网段\n    iptables -A INPUT -p tcp --dport 9990 ! -s 10.10.0.0/16 -j DROP",
      "en": "Upgrade to supported WildFly or JBoss EAP, remove unneeded legacy console and Invoker applications, bind the management interface to a dedicated address with strong authentication and role control, and firewall the management port. After the fix, replay the step-1 request and confirm anonymous access is denied while authorized management flows work."
     },
     "difficulty": "intermediate"
@@ -7788,7 +7788,7 @@
      "en": "As in step 1, issue a credential-free GET to /manager/html with a request ID; a hit is 401, 403, or 404, showing Manager is closed to anonymous principals and forming the baseline. A 200 rendering the management page means exposure—record page characteristics as evidence. Never attempt usernames, passwords, WAR uploads, or deployment during validation, and require consistency with Realm and RemoteAddrValve logs."
     },
     "mitigation": {
-     "zh": "删除不需要的 Manager 并限制到管理网段，使用强认证与最小角色；升级 Tomcat，禁用不需要的 AJP 或绑定回环并设置 secretRequired 与随机 secret，保持 DefaultServlet readonly。修复后重放第 1 步请求，确认匿名访问被拒绝。",
+     "zh": "不需要时删除 Manager，保留时限制到管理网段并强认证最小角色；升级 Tomcat，AJP 绑定回环并强制 secretRequired+随机 secret，保持 DefaultServlet readonly。\n    <!-- conf/server.xml -->\n    <Connector protocol=\"AJP/1.3\" address=\"127.0.0.1\" port=\"8009\"\n               secretRequired=\"true\" secret=\"${AJP_SECRET}\"/>\n    <Context docBase=\"manager\">\n      <Valve className=\"org.apache.catalina.valves.RemoteAddrValve\" allow=\"10\\.10\\.\\d+\\.\\d+\"/>\n    </Context>",
      "en": "Remove unneeded Manager instances and confine them to management segments with strong authentication and minimal roles; upgrade Tomcat, disable unneeded AJP or bind it to loopback with secretRequired and a random secret, and keep DefaultServlet readonly. After the fix, replay the step-1 request and confirm anonymous access is denied."
     },
     "difficulty": "intermediate"
@@ -8008,7 +8008,7 @@
      "en": "As in step 1, submit name={{7*7}} to /lab/flask/render with a request ID; a hit is JSON returning rendered=49 with a matching request_id, proving the input was parsed as template source. After confirming the evaluation boundary, assess context exposure as needed; if keywords are blocked, use the Jinja string-concatenation marker form in the WAF-bypass section. Do not mix SECRET_KEY leakage or debugger exposure into the same finding—verify and report them separately."
     },
     "mitigation": {
-     "zh": "不要把用户输入作为模板源传给 render_template_string，使用固定模板文件并把输入作为数据变量传入；生产关闭调试器并使用高熵 SECRET_KEY。修复后重放第 1 步请求，确认响应按字面返回 {{7*7}} 且正常渲染不受影响。",
+     "zh": "用户输入只作为数据变量传入固定模板文件，绝不传给 render_template_string 当模板源；输出经 autoescape 转义；生产关闭调试器并使用高熵 SECRET_KEY。\n    # 修复：固定模板 + 数据变量（Jinja2 autoescape 自动转义）\n    return render_template('greet.html', name=user_text)\n    # greet.html：<p>Hello {{ name }}</p>\n    # 需要拼接回显时显式转义，并关闭调试器\n    from markupsafe import escape\n    return f'Hello {escape(user_text)}'\n    app.run(debug=False)",
      "en": "Never pass user input as template source to render_template_string—use fixed template files and pass input as data variables; disable the debugger in production and use a high-entropy SECRET_KEY. After the fix, replay the step-1 request and confirm the response returns {{7*7}} literally while normal rendering is unaffected."
     },
     "difficulty": "intermediate"
@@ -8213,7 +8213,7 @@
      "en": "As in step 1, POST a SOAP Envelope containing only lab:marker to /wls-wsat/CoordinatorPortType with a request ID; a hit is a rejection status (non-200 or SOAP fault) with logs showing safe handling. Record the response status and WorkContext parse logs as patch-effectiveness evidence. The validation deliberately excludes XMLDecoder, ProcessBuilder, or any Java object tags, avoiding real execution risk to the target."
     },
     "mitigation": {
-     "zh": "应用 Oracle CPU 补丁，删除或限制不需要的 WSAT 与 AsyncResponseService，使用严格 XML 解析与元素允许列表，拒绝 Java 对象语义标签；管理服务绑定受控网络。修复后重放第 1 步请求，确认拒绝行为与解析日志保持一致。",
+     "zh": "应用 Oracle CPU 补丁；删除或限制 wls-wsat、AsyncResponseService；XML 解析禁 DTD 与外部实体，拒绝 Java 对象语义标签；管理服务绑定受控网络。\n    # 下线 WSAT（或前置网关拒绝）\n    location /wls-wsat/ { deny all; return 404; }\n    // Java：严格解析，禁 DTD 与外部实体\n    SAXParserFactory f = SAXParserFactory.newInstance();\n    f.setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true);\n    f.setFeature(\"http://xml.org/sax/features/external-general-entities\", false);",
      "en": "Apply Oracle CPU patches, remove or restrict unneeded WSAT and AsyncResponseService, use strict XML parsing with element allowlists, and reject Java-object semantic tags; bind management services to controlled networks. After the fix, replay the step-1 request and confirm rejection behavior and parse logs remain consistent."
     },
     "difficulty": "advanced"
@@ -8521,7 +8521,7 @@
      "en": "Use payloads in list order: step 1 submits the __proto__ labMarker—a hit is both direct and prototype properties empty; step 2 submits the constructor.prototype path marker to verify schema rejection too; on WAF blocks use the nested __proto__ marker. A returned prototype property on either confirms pollution—then assess gadgets separately, never equating it with RCE."
     },
     "mitigation": {
-     "zh": "Schema 层拒绝未知字段和危险键，任意键值用 Object.create(null) 或 Map；递归合并只处理自有属性并拒绝 __proto__、prototype 与 constructor；升级依赖并加回归。修复后重放第 1、2 步 marker，确认原型未污染。",
+     "zh": "Schema 拒绝未知字段与危险键，合并只遍历自有属性并拒绝 __proto__/prototype/constructor，任意键值用 Map，升级缺陷库：\n    const BAD = new Set([\"__proto__\", \"prototype\", \"constructor\"]);\n    function safeMerge(dst, src) {\n      for (const k of Object.keys(src)) {\n        if (BAD.has(k)) throw new Error(\"forbidden key\");\n        dst[k] = typeof src[k] === \"object\" ? safeMerge(dst[k] ? {}, src[k]) : src[k];\n      }\n      return dst;\n    }\n    修复后重放第 1、2 步 marker，确认原型未污染。",
      "en": "Reject unknown fields and dangerous keys at the schema layer, storing arbitrary key-values in Object.create(null) or Map; recursive merges process only own properties and reject __proto__, prototype, and constructor; upgrade dependencies and add regressions. After the fix, replay the step 1-2 markers and confirm clean prototypes."
     },
     "difficulty": "advanced"
@@ -8789,7 +8789,7 @@
      "en": "Use payloads in list order: step 1 submits __proto__[labMarker] and checks in a real Chromium whether a fresh object inherits it, confirming the pollution source; step 2 submits span-only HTML to observe DOM-sink entry; step 3's ALLOWED_ATTR marker separates configuration inheritance from script interpretation. Use encoded and nested-path markers when filtered, confirming evidence level by level."
     },
     "mitigation": {
-     "zh": "解析器拒绝 __proto__、prototype 与 constructor，任意键值用 Map 或 Object.create(null)；DOM 写入用 textContent 或严格 Sanitizer。修复后重放第 1-3 步 marker，确认原型无污染。",
+     "zh": "URL 解析拒绝 __proto__/prototype/constructor 键，键值容器用 Map；DOM 纯文本走 textContent，富文本经 DOMPurify 净化，CSP 兜底：\n    for (const k of new URLSearchParams(location.search).keys())\n      if ([\"__proto__\", \"prototype\", \"constructor\"].includes(k)) throw new Error(\"bad param\");\n    el.textContent = value;\n    el.innerHTML = DOMPurify.sanitize(html);\n    Content-Security-Policy: script-src 'self'; require-trusted-types-for 'script'\n    修复后重放第 1-3 步 marker，确认原型无污染。",
      "en": "Parsers reject __proto__, prototype, and constructor, storing arbitrary key-values in Map or Object.create(null); write DOM via textContent or a strict Sanitizer. After the fix, replay the step 1-3 markers and confirm clean prototypes."
     },
     "difficulty": "advanced"
@@ -9016,7 +9016,7 @@
      "en": "Use payloads in list order: flip the synthetic status field to a $ne object and submit to /lab/nosql/filter per step 1—a hit is rejection before querying with zero matches; then submit __proto__.filterMarker per step 2, asserting the prototype value is empty while the normal synthetic-user query still returns one result; retest the form entry with the form-operator rejection samples in the WAF-bypass section. Save request ID, matched_count, and query logs each step as differential evidence of semantic change."
     },
     "mitigation": {
-     "zh": "通过 Schema 将用户名字段强制为标量并拒绝未知或美元前缀键，不把请求对象直接传给数据库驱动；使用显式字段构造查询、关闭服务端 JavaScript、拒绝危险原型键并只遍历 own properties。修复后重放第 1、2 步样例，覆盖 JSON 与表单两类解析器的回归。",
+     "zh": "Schema 强制字段为标量并拒绝未知与 $ 前缀键，请求对象不直接传 find/aggregate，显式构造查询并关闭服务端 JavaScript：\n    const q = Joi.object({ username: Joi.string().required() })\n      .unknown(false)                     // 拒绝未知键与 $ 操作符\n      .validate(req.body);\n    if (q.error) return res.status(400).json({ error: q.error.message });\n    await User.findOne({ username: q.value.username }).lean();\n    修复后重放第 1、2 步样例，覆盖 JSON 与表单两类解析器的回归。",
      "en": "Force fields like username to scalars via schema and reject unknown or dollar-prefixed keys; never pass request objects directly to the database driver; construct queries with explicit fields, disable server-side JavaScript, reject dangerous prototype keys, and traverse own properties only. After the fix, replay the step 1-2 samples, covering regression for both JSON and form parsers."
     },
     "difficulty": "advanced"
@@ -9284,7 +9284,7 @@
      "en": "Keep the complete five-line XSLT stylesheet structure from step 1, change the document() argument to an in-sandbox marker.xml, and submit to the target transform entry; a hit is transform output containing marker.xml content, proving the processor lets document() resolve external files. Record transformer type, base URI, and resolver behavior; once read capability is confirmed, evaluate escaping the resource root with the same syntax—never read system files directly."
     },
     "mitigation": {
-     "zh": "只允许签名或版本控制的固定样式表，启用安全处理并用拒绝外部 URI 的 resolver；转换进程使用最小只读资源根、无网络和低权限身份。修复后重放第 1 步样式表，确认 document() 外部引用被拒绝且正常转换可用。",
+     "zh": "只允许签名或版本控制的固定样式表，启用安全处理并用拒绝外部 URI 的 resolver 约束 document()，转换进程最小只读资源根、无网络低权限运行：\n    TransformerFactory tf = TransformerFactory.newInstance();\n    tf.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);\n    tf.setURIResolver((href, base) -> {\n        if (!href.matches(\"https://cdn\\\\.example\\\\.com/[\\\\w\\\\-/]+\\\\.xsl\"))\n            throw new TransformerException(\"外部 URI 拒绝: \" + href);\n        return new StreamSource(href);\n    });",
      "en": "Allow only signed or version-controlled fixed stylesheets, enable secure processing, and use a resolver that rejects external URIs; run transforms with a minimal read-only resource root, no network, and low privilege. After the fix, replay the step-1 stylesheet and confirm external document() references are rejected while normal transforms work."
     },
     "difficulty": "advanced"
@@ -9540,7 +9540,7 @@
      "en": "The original fragment is not complete XML and cannot be submitted directly: first embed it in a valid stylesheet with a template and closing root, replacing process-start statements with a one-shot marker function as step 1 requires; then submit to the target transform entry. A hit is the marker string in transform output, proving script extensions are enabled and the function invoked. Record engine type and compile logs; Process-related checks only in explicitly authorized isolated environments."
     },
     "mitigation": {
-     "zh": "禁止用户提供 XSLT，或使用禁用脚本和 document() 的固定受信样式表；隔离转换身份并限制文件、进程和网络权限。修复后重放第 1 步构造的脚本样式表，确认 msxsl:script 被拒绝且正常转换可用。",
+     "zh": "禁止用户提供 XSLT，使用禁用脚本与 document() 的固定受信样式表，隔离转换身份并限制文件、进程与网络权限：\n    var xslt = new XslCompiledTransform();\n    xslt.Load(signedStyleXml, new XsltSettings(false, false), null);\n    if (styleText.Contains(\"msxsl:script\"))\n        throw new InvalidOperationException(\"样式表禁止脚本扩展\");",
      "en": "Forbid user-supplied XSLT, or use fixed trusted stylesheets with scripting and document() disabled; isolate the transform identity and restrict file, process, and network permissions. After the fix, replay the step-1 script stylesheet and confirm msxsl:script is rejected while normal transforms work."
     },
     "difficulty": "expert"
@@ -9829,7 +9829,7 @@
      "en": "Keep the two original lines from step 1 for traceability but point the URI at a temp marker.txt when executing: first read via fetch and write the result into document.title, then repeat the same read with synchronous XMLHttpRequest; a hit is marker content in title or the return channel, proving page scripts can read file URIs. Record launch flags, page origin, and read results separately; distinguish policy blocks from missing files on failure."
     },
     "mitigation": {
-     "zh": "禁用本地文件访问启动选项，把渲染器放入只含工作目录的只读沙箱，并在输入规范化后拒绝 file scheme；避免把任意页面输出直接返回。修复后重放第 1 步变体，确认 file URI 读取被拒绝且正常渲染可用。",
+     "zh": "启动参数不放行任何本地文件访问选项，渲染器只读挂载工作目录，请求层拒绝 file/data scheme，页面输出不直接回传调用方。\n    await page.setRequestInterception(true);\n    page.on(\"request\", req => {\n        const scheme = new URL(req.url()).protocol;\n        scheme === \"file:\" || scheme === \"data:\" ? req.abort() : req.continue();\n    });",
      "en": "Disable local-file-access launch options, place the renderer in a read-only sandbox containing only the working directory, and reject the file scheme after input normalization; never return arbitrary page output directly. After the fix, replay the step-1 variants and confirm file-URI reads are rejected while normal rendering works."
     },
     "difficulty": "advanced"
@@ -10085,7 +10085,7 @@
      "en": "Keep the two original references from step 1 for traceability, but before executing change the paths to a minimal marker.css and marker.png: first trigger fetcher reads via a link stylesheet, then repeat via an SVG image reference; a hit is rendered output or error messages carrying marker-content characteristics, proving file URIs reach the fetcher. Record fetcher customization, base URL, and renderer-identity file permissions separately; after confirming read capability, assess escaping the resource root."
     },
     "mitigation": {
-     "zh": "自定义 fetcher 拒绝 file scheme 或仅允许规范化后的专用资源根目录，同时以无宿主挂载的低权限容器运行渲染器。修复后重放第 1 步两类引用，确认 file URI 被拒绝且正常渲染可用。",
+     "zh": "fetcher 拒绝 file/data scheme，仅允许白名单 https 资源；渲染器以无宿主挂载的低权限容器运行。\n    from weasyprint import HTML, default_url_fetcher\n    def fetcher(url):\n        scheme = url.split(\":\", 1)[0].lower()\n        if scheme != \"https\":\n            raise ValueError(\"scheme blocked\")\n        return default_url_fetcher(url)\n    HTML(string=markup, url_fetcher=fetcher).write_pdf(\"out.pdf\")",
      "en": "Customize the fetcher to reject the file scheme or allow only a normalized dedicated resource root, and run the renderer in a low-privilege container without host mounts. After the fix, replay both step-1 reference classes and confirm file URIs are rejected while normal rendering works."
     },
     "difficulty": "advanced"
@@ -10334,7 +10334,7 @@
      "en": "First confirm stacked execution and the calling account's permissions with ordinary injected statements, then submit the xp_cmdshell samples per step 1—for real validation replace whoami/type with commands that only emit a random fixed marker and read a dedicated marker file, executing once; a hit is the marker output returned by the query, proving the database session crossed into host-process execution. If xp_cmdshell is disabled, record the error; attempting enablement requires explicit authorization with configuration-change auditing."
     },
     "mitigation": {
-     "zh": "参数化查询，应用数据库账户不授予高权限角色或扩展过程执行，保持 xp_cmdshell 禁用并监控配置变更；SQL Server 使用专用低权限服务账户，限制子进程和出站网络。修复后重放第 1 步样例，确认调用被拒绝且配置变更触发告警。",
+     "zh": "应用账户不授予高权限角色与扩展过程执行权，保持 xp_cmdshell 禁用并监控配置变更；SQL Server 以专用低权限服务账户运行，限制子进程与出站网络。\n    -- T-SQL：禁用 xp_cmdshell 并显式拒绝\n    EXEC sp_configure 'show advanced options', 1; RECONFIGURE;\n    EXEC sp_configure 'xp_cmdshell', 0; RECONFIGURE;\n    DENY EXECUTE ON sys.xp_cmdshell TO app_user;\n    // Java：参数化语句\n    try (PreparedStatement ps = conn.prepareStatement(\n        \"SELECT c FROM t WHERE id = ?\")) { ps.setInt(1, id); }",
      "en": "Use parameterized queries, grant the application's database account no high-privilege roles or extended-procedure execution, keep xp_cmdshell disabled, and monitor configuration changes; run SQL Server under a dedicated low-privilege service account with restricted child processes and egress. After the fix, replay the step-1 samples and confirm invocation is denied and configuration changes trigger alerts."
     },
     "difficulty": "expert"
@@ -10775,7 +10775,7 @@
      "en": "Apply php://stdin, php://memory, and php://temp to the confirmed read API one by one per step 1; for stdin put only fixed text in the request body—a hit is the response returning that text, proving process standard input was read. memory/temp usually create fresh in-process streams, so empty results may be expected rather than vulnerabilities—judge together with whether the target API includes content; record all three wrapper results separately without merging conclusions."
     },
     "mitigation": {
-     "zh": "不要让用户选择 wrapper；为每个业务场景调用固定 API 和资源类型；禁止动态 include，请求体作为数据解析，关闭不需要的 wrapper，并以最小权限和资源限制运行 PHP。修复后重放第 1 步三类流 URI，确认被拒绝。",
+     "zh": "不让用户选择 wrapper；每个业务场景调用固定 API 与资源类型，禁止动态 include，请求体只作数据解析，并以最小权限运行 PHP：\n    // PHP：拒绝一切带 scheme 的流 URI\n    $in = $_GET['res'] ? '';\n    if (preg_match('#^[a-zA-Z][a-zA-Z0-9+.\\-]*://#', $in)) { http_response_code(400); exit; }\n    $path = realpath(FILES_ROOT . '/' . $in);\n    if (!$path || !str_starts_with($path, FILES_ROOT)) exit('denied');\n    echo htmlspecialchars(file_get_contents($path));   // 读取按数据输出",
      "en": "Never let users choose wrappers; call fixed APIs and resource types per business scenario; forbid dynamic include, parse request bodies as data, disable unneeded wrappers, and run PHP with least privilege and resource limits. After the fix, replay the step-1 stream URIs and confirm rejection."
     },
     "difficulty": "advanced"
@@ -11176,7 +11176,7 @@
      "en": "Per step 1, issue GET/HEAD requests against inventory endpoints—/actuator, /actuator/env, /actuator/health, /actuator/info—recording authentication requirements, response types, and data sensitivity; a hit is an unauthorized principal obtaining data beyond business need (environment variables, route mappings, log levels). Get explicit approval before testing costly endpoints like heapdump and threaddump; contrast reverse-proxy versus direct connections to confirm the protection layer is complete."
     },
     "mitigation": {
-     "zh": "将管理服务绑定到独立内网接口，默认只暴露 health/info，并对详细健康信息及所有敏感端点实施强认证、细粒度授权和网络访问控制；关闭不需要的 Jolokia、环境、日志和转储功能，轮换已泄露凭据并持续审计访问。修复后重放第 1 步清单，确认敏感端点全部不可达。",
+     "zh": "管理服务绑定独立内网接口并默认只暴露 health/info，敏感端点实施强认证与网络访问控制，轮换已泄露凭据并审计访问。\n    management:\n      server:\n        port: 9001\n        address: 127.0.0.1  # 独立内网管理端口\n      endpoints:\n        web:\n          exposure:\n            include: health,info  # 最小暴露集合\n      endpoint:\n        env:\n          enabled: false\n        heapdump:\n          enabled: false",
      "en": "Bind management services to a separate internal interface, expose only health/info by default, and enforce strong authentication, fine-grained authorization, and network controls on detailed health and all sensitive endpoints; disable unneeded Jolokia, env, loggers, and dumps, rotate leaked credentials, and audit access continuously. After the fix, replay the step-1 inventory and confirm all sensitive endpoints are unreachable."
     },
     "difficulty": "intermediate"
@@ -11395,7 +11395,7 @@
      "en": "Per step 1, request /.hg/dirstate, /debug, /trace, and /health one by one, comparing status codes, Content-Type, response signatures, and authentication requirements, with a random path excluding uniform soft 404s; a hit is usable source state, internal structure, run metrics, or sensitive configuration in the response. Record each path's exposure layer (direct app return or proxy alias); paths that exist but return empty content or error pages are not hits."
     },
     "mitigation": {
-     "zh": "构建制品时排除 .hg 等版本库目录并在 Web 服务器层显式拒绝隐藏元数据；生产环境关闭调试处理器，将必要监控端点置于独立网络与强认证之后，并用部署后自动扫描阻止这些路径重新出现。修复后重放第 1 步路径，确认全部返回 404/403 且业务静态资源可用。",
+     "zh": "构建制品排除 .hg 等版本库目录，Web 服务器显式拒绝隐藏元数据；生产关闭调试处理器，监控端点置于强认证后的独立网络。\n    location ~ /(^|/)\\.(hg|git|svn)/ { return 404; }  # 拒绝版本库元数据\n    location ~ ^/(debug|trace|vars)(/|$) { return 404; }  # 下线调试处理器",
      "en": "Exclude repository directories like .hg from build artifacts and explicitly reject hidden metadata at the web-server layer; disable debug handlers in production, place necessary monitoring endpoints behind separate networks and strong authentication, and run post-deployment scans to stop these paths reappearing. After the fix, replay the step-1 paths and confirm 404/403 across the board while business static assets work."
     },
     "difficulty": "beginner"
@@ -11614,7 +11614,7 @@
      "en": "Keep the step-1 original for traceability, but change the iframe URI to a temp marker.txt when executing and submit to the HTML-to-PDF entry; a hit is marker content in the rendered artifact (PDF text layer), proving scripted iframes can open file URIs. Record in layers: script execution, iframe creation, local-file policy decision, and content readability; on failure distinguish policy blocks from missing paths."
     },
     "mitigation": {
-     "zh": "禁用 JavaScript 和本地文件访问；必须加载本地资产时只暴露规范化资源根，并以无宿主挂载权限身份运行渲染器。修复后重放第 1 步脚本化 iframe，确认 file URI 打开被拒绝且正常渲染可用。",
+     "zh": "禁用 JavaScript 与本地文件访问；必须加载本地资产时只暴露规范化资源根，以无宿主挂载权限身份运行渲染器。\n    wkhtmltopdf --disable-javascript \\\n      --disable-local-file-access in.html out.pdf  # 默认禁 file URI\n    # 需要本地资产时仅放行资源根：\n    wkhtmltopdf --allow /var/www/assets in.html out.pdf",
      "en": "Disable JavaScript and local file access; when local assets are required expose only a normalized resource root and run the renderer without host-mount permissions. After the fix, replay the step-1 scripted iframe and confirm file-URI opens are rejected while normal rendering works."
     },
     "difficulty": "advanced"
@@ -11862,7 +11862,7 @@
      "en": "Write the external HTTPS anchor into input the HTML-to-PDF entry accepts per step 1, replacing the original domain with your own blank test domain before generation; a hit is the generated PDF keeping a clickable link annotation targeting the test domain. Check whether link target and visible text match and whether the viewer presents source hints; no credential harvesting and no automatic visits—prove only link preservation via annotation structure."
     },
     "mitigation": {
-     "zh": "服务端只允许批准 scheme/host，重写或移除外部链接并在文档中显示规范化目标；对用户生成 PDF 增加明显来源提示。修复后重放第 1 步锚点，确认外部目标被阻断或重写且站内链接可用。",
+     "zh": "服务端只允许批准 scheme/host，重写或移除外部链接并在文档中显示规范化目标；用户生成 PDF 增加明显来源提示。\n    from urllib.parse import urlparse\n    ALLOWED_HOSTS = {\"www.example.com\"}\n    u = urlparse(href)\n    if not (u.scheme in (\"http\", \"https\") and u.hostname in ALLOWED_HOSTS):\n        href = \"#blocked-external-link\"   # 外部目标重写为占位\n  修复后重放验证第 1 步锚点，确认外部目标被阻断或重写且站内链接可用。",
      "en": "Allow only approved schemes/hosts server-side, rewriting or removing external links and displaying normalized targets in the document; add clear source hints to user-generated PDFs. After the fix, replay the step-1 anchor and confirm external targets are blocked or rewritten while internal links work."
     },
     "difficulty": "beginner"
@@ -12228,7 +12228,7 @@
      "en": "Per step 1, write the javascript:app.alert(1) anchor into input the conversion entry accepts and generate the PDF; after generation, inspect offline whether the scheme/action survived, then manually activate once in an isolated viewer; a hit is the viewer executing the simple prompt (an alert popup or corresponding event log). Record how the converter handled it (deleted, kept as plain URI, or mapped to action) and the viewer policy; do not extend the script and never open on workstations."
     },
     "mitigation": {
-     "zh": "转换前拒绝非 http/https/站内 scheme，生成后清除 JavaScript、Launch、URI 等非批准动作，并采用默认禁用活动内容的查看器策略。修复后重放第 1 步锚点，确认脚本 scheme 被移除且 PDF 无活动动作。",
+     "zh": "转换前拒绝非 http/https/站内 scheme，生成后清除 JavaScript、Launch、URI 等非批准动作，查看器策略默认禁用活动内容。\n    URI u = URI.create(href);\n    if (!List.of(\"http\", \"https\").contains(u.getScheme()))\n        throw new IllegalArgumentException(\"scheme denied: \" + href);\n    PDDocument doc = Loader.loadPDF(new File(\"out.pdf\"));\n    doc.getDocumentCatalog().setOpenAction(null);  // 清除自动动作\n  修复后重放验证第 1 步锚点，确认脚本 scheme 被移除且 PDF 无活动动作。",
      "en": "Reject non-http/https/internal schemes before conversion, strip JavaScript, Launch, URI, and other unapproved actions after generation, and adopt viewer policy disabling active content by default. After the fix, replay the step-1 anchor and confirm script schemes are removed with no active actions left in the PDF."
     },
     "difficulty": "intermediate"
@@ -12476,7 +12476,7 @@
      "en": "Keep the step-1 original for traceability, but swap the path to a sandbox marker.txt when generating and submit to the conversion entry; a hit is the generated PDF keeping a local file-URI link annotation, with clicks in an isolated viewer triggering scheme-validation prompts or open behavior. Record the viewer's file-scheme policy and prompt text; validation stays at annotation structure and click feedback—never read host file content."
     },
     "mitigation": {
-     "zh": "转换前拒绝 file scheme，生成后移除本地 URI 动作；查看器默认阻断不可信文档访问本地文件，并把业务附件通过受控对象 ID 提供。修复后重放第 1 步锚点，确认本地 URI 被移除且正常链接可用。",
+     "zh": "转换前拒绝 file scheme，生成后移除本地 URI 动作；查看器默认阻断不可信文档访问本地文件，业务附件通过受控对象 ID 提供。\n    String scheme = URI.create(href).getScheme();\n    if (!\"http\".equals(scheme) && !\"https\".equals(scheme))\n        throw new SecurityException(\"file scheme denied\");\n    reg add \"HKLM\\SOFTWARE\\Policies\\Adobe\\Adobe Acrobat\\DC\\FeatureLockDown\" /v bEnhancedSecurityStandalone /t REG_DWORD /d 1 /f\n  修复后重放验证第 1 步锚点，确认本地 URI 被移除且正常链接可用。",
      "en": "Reject file schemes before conversion and remove local URI actions after generation; viewers block untrusted documents from accessing local files by default, serving business attachments via controlled object IDs. After the fix, replay the step-1 anchor and confirm local URIs are removed while normal links work."
     },
     "difficulty": "intermediate"
@@ -12987,7 +12987,7 @@
      "en": "Per step 1, select samples matching the target stack (the F5 /tmui/... route, the .asp IIS variant, the ithemes-sync-request WordPress parameter, etc.), replacing sensitive files with isolated markers; a hit is a variant passing the boundary while the backend returns marker content. Never send product-specific URLs indiscriminately to other frameworks; record the two-layer contrast of boundary-decoded values versus final backend paths per sample."
     },
     "mitigation": {
-     "zh": "把用户标识映射到服务端对象 ID，不接受任意路径；必须处理路径时，完成全部解码后解析规范绝对路径并验证其位于固定根目录，拒绝符号链接越界；同时升级存在已知问题的产品组件，WAF 规则仅作补充。修复后重放第 1 步全部样例。",
+     "zh": "用户输入只映射服务端对象 ID，不接受任意路径；必须处理路径时完成全部解码后取规范绝对路径并验证位于固定根目录、拒绝符号链接，同步升级受影响组件。Java：\n    Path root = Paths.get(\"/data\").toRealPath();\n    Path p = root.resolve(userInput).normalize().toRealPath();\n    if (!p.startsWith(root)) throw new SecurityException(\"path escape\");",
      "en": "Map user identifiers to server-side object IDs and never accept arbitrary paths; when paths must be handled, resolve canonical absolute paths after completing all decoding, verify they sit in a fixed root, and forbid symlink escape; upgrade product components with known issues while treating WAF rules as supplemental. After the fix, replay all step-1 samples."
     },
     "difficulty": "advanced"
@@ -13190,7 +13190,7 @@
      "en": "Keep the step-1 original for source verification, but for real validation replace cmd.exe and the dir operation with a harmless marker CGI in an isolated instance before submitting /cgi/%252E%252E%252F… paths; a hit is double-encoded dot segments reaching the unintended CGI downstream and returning marker output. Record decoded values seen at the boundary layer versus the IIS layer per request; when modern servers are negative, note the version and never assume historical behavior for the current target."
     },
     "mitigation": {
-     "zh": "升级受支持 IIS/Windows 版本，移除不需要的 CGI 映射，在边界和后端使用相同的单次规范化路径并拒绝重复编码；Web 服务身份最小权限，系统目录不可映射到 Web 路径，并保留双重解码回归。修复后重放第 1 步路径，确认被统一拒绝。",
+     "zh": "升级受支持 IIS/Windows，移除 CGI 角色与处理器映射，边界与后端统一单次规范化路径并拒绝重复编码，Web 服务身份最小权限。PowerShell：\n    Uninstall-WindowsFeature Web-Cgi\n    Remove-WebHandler -Name CGI-exe -PSPath 'IIS:\\Sites\\Default Web Site'\n    <requestFiltering>\n      <denyUrlSequences><add sequence=\"%25\" /></denyUrlSequences>\n    </requestFiltering>",
      "en": "Upgrade to supported IIS/Windows versions, remove unneeded CGI mappings, apply identical single-pass normalization at boundary and backend, and reject repeated encodings; run the web identity least-privileged, keep system directories unmapped from web paths, and retain double-decoding regression. After the fix, replay the step-1 path and confirm uniform rejection."
     },
     "difficulty": "expert"
@@ -14241,7 +14241,7 @@
      "en": "Deploy isolated captors that only log connections, close immediately, and return no loadable content first; then per step 1 replace ATTACKER with captor addresses, parsing one protocol per request (rmi:// and ldap:// once each); a hit is the captor logging the target's callback. Layer the records: type instantiation, setter invocation, outbound connection, and any subsequent load attempts—the captor provides no object-factory content; after a hit, assess upgrade conditions per JDK version."
     },
     "mitigation": {
-     "zh": "升级 Fastjson，关闭或精确允许 AutoType，绑定固定 DTO；限制应用到 RMI/LDAP 端口的出站，并采用受支持 JDK 安全默认值。修复后重放两个协议变体并对照普通 DTO 请求，确认普通 DTO 正常且两个捕获端均无连接。",
+     "zh": "升级 Fastjson 至受支持版本，全局关闭 AutoType 并开启 safeMode，仅显式放行业务 DTO；网络层限制应用到 RMI/LDAP 端口出站，JDK 采用受支持安全默认值。\n    ParserConfig cfg = ParserConfig.getGlobalInstance();\n    cfg.setAutoTypeSupport(false);\n    cfg.setSafeMode(true); // 彻底禁用 @type 反序列化\n    cfg.addAccept(\"com.app.dto.\"); // 仅放行业务 DTO\n    修复后重放 RMI/LDAP 两个变体并对照普通 DTO 请求，确认普通 DTO 正常且两个捕获端均无连接。",
      "en": "Upgrade Fastjson, disable or precisely allowlist AutoType, bind to fixed DTOs; restrict application egress to RMI/LDAP ports and adopt supported JDK security defaults. After the fix, replay both protocol variants against a normal DTO control, confirming the DTO works while both captors receive nothing."
     },
     "difficulty": "expert"
@@ -14524,7 +14524,7 @@
      "en": "Replace ATTACKER with isolated HTTP/RMI captors respectively, then parse the two array-style JSON payloads one by one per step 1—one type per request, with the server never returning classes, objects, or executable content; a hit is the captor logging an outbound request, proving default typing allows network-capable type instantiation. Record Jackson version, type validators, and module visibility; rejections are negative—verify PolymorphicTypeValidator configuration alongside."
     },
     "mitigation": {
-     "zh": "禁用不需要的默认类型，使用 PolymorphicTypeValidator 精确允许业务类型，绑定固定 DTO 并升级受支持 Jackson/JDK；网络层阻断应用到任意 HTTP/RMI 目标。修复后重放第 1 步两个输入并对照合法 DTO，确认合法反序列化正常且捕获端无连接。",
+     "zh": "禁用不需要的默认多态类型，用 PolymorphicTypeValidator 精确放行业务类型并绑定固定 DTO，升级受支持 Jackson/JDK；网络层阻断应用到任意 HTTP/RMI 目标。\n    BasicPolymorphicTypeValidator ptv = BasicPolymorphicTypeValidator.builder()\n        .allowIfSubType(\"com.app.dto.\")\n        .build();\n    mapper.activateDefaultTyping(ptv, ObjectMapper.DefaultTyping.NON_FINAL);\n    修复后重放两个多态输入并对照合法 DTO，确认合法反序列化正常且捕获端无连接。",
      "en": "Disable unneeded default typing, precisely allowlist business types via PolymorphicTypeValidator, bind to fixed DTOs, and upgrade to supported Jackson/JDK; block application egress to arbitrary HTTP/RMI targets at the network layer. After the fix, replay both step-1 inputs against a legitimate DTO control, confirming valid deserialization works while captors receive nothing."
     },
     "difficulty": "expert"
@@ -14740,7 +14740,7 @@
      "en": "First confirm via code or logs that the id variable genuinely enters path APIs (the sample does not apply if it is only a database key), then submit the standard query with variables.id set to ../../etc/passwd per step 1, replacing system paths with an out-of-root test marker; a hit is the resolver opening the file per the injected path and returning marker content. Record the schema type, resolver implementation, and final resolved path; after a hit, assess the read, write, and inclusion impact classes."
     },
     "mitigation": {
-     "zh": "把 GraphQL id 映射到服务端对象而非路径；必须处理路径时，完全解码后解析规范绝对路径并强制固定根目录、禁止符号链接越界；文件服务身份最小权限，schema 使用语义明确的 ID scalar。修复后重放第 1 步变量，确认路径被拒绝且正常查询可用。",
+     "zh": "把 GraphQL id 映射到服务端对象而非路径；必须处理路径时完全解码后取规范绝对路径并强制固定根目录、禁符号链接；文件服务身份最小权限。\n    const ROOT = path.resolve(\"/srv/data\");\n    const p = path.resolve(ROOT, id);\n    if (p !== ROOT && !p.startsWith(ROOT + path.sep))\n      throw new ForbiddenError(\"invalid id\");\n    修复后重放 ../ 变量，路径被拒绝且正常查询可用。",
      "en": "Map GraphQL ids to server-side objects rather than paths; when paths must be handled, resolve canonical absolute paths after full decoding, enforce a fixed root, and forbid symlink escape; run the file-service identity least-privileged and use semantically clear ID scalars in schemas. After the fix, replay the step-1 variables and confirm paths are rejected while normal queries work."
     },
     "difficulty": "intermediate"
@@ -15009,7 +15009,7 @@
      "en": "In step 1, place a top-level link and an img subresource on the same cross-site page and trigger both, comparing cookie markers at the server; a subresource still carrying cookies exposes the sending boundary. In step 2, visit the callback marker via a noopener popup to observe top-level attachment. Repeat per SameSite value for a full matrix. Replace placeholders via the global variables menu; see wafBypass Schemeful Site comparisons for extensions."
     },
     "mitigation": {
-     "zh": "会话 Cookie 显式设置 SameSite=Lax 或 Strict 并配 Secure；跨站回调流程改用 Token 而非 Cookie 承载身份。修复后重放第 1、2 步，跨站子资源与弹窗请求应不再携带会话 Cookie。",
+     "zh": "会话 Cookie 显式设置 SameSite=Lax（或 Strict）并配 Secure、HttpOnly；跨站回调流程改用 Token 而非 Cookie 承载身份：\n    # Spring Boot application.properties\n    server.servlet.session.cookie.same-site=Lax\n    server.servlet.session.cookie.secure=true\n    server.servlet.session.cookie.http-only=true",
      "en": "Set session cookies explicitly to SameSite=Lax or Strict with Secure; carry identity in cross-site callback flows via tokens instead of cookies. After the fix, replay steps 1 and 2: cross-site subresource and popup requests should no longer carry the session cookie."
     },
     "difficulty": "intermediate"
@@ -15284,7 +15284,7 @@
      "en": "In step 1, send a POST combining the victim session header with an attacker fixture X-CSRF-Token; a binding-mismatch rejection proves the binding works, acceptance indicates the flaw. In step 2, send requests with a missing token and an empty token; any acceptance confirms the validation defect. Judge success by response status and server logs. Replace placeholders via the global variables menu; if blocked, see the method-override and JSON-parsing consistency samples in wafBypass."
     },
     "mitigation": {
-     "zh": "校验逻辑要求每个状态变更请求携带与会话绑定的随机 Token，缺失、空值或不匹配一律拒绝并告警。修复后重放第 1、2 步，所有异常组合应返回 403 且无状态变化。",
+     "zh": "每个状态变更请求必须携带与会话绑定的随机 Token，缺失、空值或不匹配一律拒绝并告警，比较使用常数时间算法：\n    String expected = (String) session.getAttribute(\"csrf_token\");\n    String got = request.getHeader(\"X-CSRF-Token\");\n    if (expected == null || got == null\n            || !MessageDigest.isEqual(expected.getBytes(), got.getBytes()))\n        throw new ResponseStatusException(HttpStatus.FORBIDDEN);",
      "en": "Require every state-changing request to carry a random, session-bound token; reject missing, empty or mismatched tokens and raise alerts. After the fix, replay steps 1 and 2: all abnormal combinations should return 403 with no state change."
     },
     "difficulty": "intermediate"
@@ -15575,7 +15575,7 @@
      "en": "In step 1, send a credentialed request from a separate local origin; the page reading back the unique marker confirms the reflective-origin response is readable. In step 2, repeat from a sandbox srcdoc null origin; browser readability confirms null-origin allowance. Use the displayed marker and ACAO/ACAC records as evidence. Replace placeholders via the global variables menu; see wafBypass entries for controls."
     },
     "mitigation": {
-     "zh": "CORS 允许列表精确匹配预注册 Origin，禁止通配或反射；带凭据响应仅回给可信源。修复后重放第 1、2 步，浏览器应阻断读取且响应不含 ACAO 反射头。",
+     "zh": "CORS 允许列表精确匹配预注册 Origin，禁止通配或反射；带凭据响应仅回给可信源：\n    http.cors(c -> c.configurationSource(req -> {\n        CorsConfiguration cfg = new CorsConfiguration();\n        cfg.setAllowedOrigins(List.of(\"https://app.example.com\"));\n        cfg.setAllowCredentials(true);\n        return cfg;\n    }));",
      "en": "Match CORS allowlists exactly against pre-registered origins, banning wildcard or reflection; return credentialed responses only to trusted origins. After the fix, replay steps 1 and 2: the browser should block reads and responses should carry no reflected ACAO header."
     },
     "difficulty": "intermediate"
@@ -16004,7 +16004,7 @@
      "en": "In step 1, submit a body containing the allowed display name plus one review_tier to the side-effect-free evaluate endpoint and observe the response and normalization; explicit rejection or ignoring of the managed field with no persistence passes, acceptance confirms the property-level authorization gap. Judge success by response fields versus persisted state. Replace placeholders via the global variables menu; query the object state before and after for evidence."
     },
     "mitigation": {
-     "zh": "服务端维护字段级可写清单，管理属性仅由特权接口更新；绑定层忽略未知字段并记录告警。修复后重放第 1 步，管理字段应被拒绝且对象无变化。",
+     "zh": "服务端维护字段级可写清单，管理属性仅由特权接口更新；绑定层忽略未知字段并记录告警：\n      // NestJS：全局管道拒绝未声明字段\n      app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));\n      // Java：DTO 显式字段，实体不直接绑定请求体\n      @JsonIgnoreProperties(ignoreUnknown = true)\n      public record UpdateCmd(String display_name) {}\n      entity.setDisplayName(cmd.display_name()); // review_tier 不在可写清单\n  修复后重放第 1 步，review_tier 等管理字段应被拒绝且对象无变化。",
      "en": "Maintain a field-level writable list server-side, update managed properties only through privileged APIs, and have the binding layer ignore unknown fields with alerts. After the fix, replay step 1: the managed field should be rejected and the object unchanged."
     },
     "difficulty": "intermediate"
@@ -16285,7 +16285,7 @@
      "en": "In step 1, read the same synthetic object as the owner and as a second low-privileged lab principal, comparing authorization results, status codes and server request IDs; the second principal still receiving content confirms the escalation, while 404 or 403 shows validation. Judge success by response and request-ID comparison. Replace placeholders via the global variables menu; use synthetic objects only to avoid touching real data."
     },
     "mitigation": {
-     "zh": "每个数据访问点强制执行主体、租户与对象三元校验，未命中归属关系一律返回 404 并记录审计日志。修复后重放第 1 步，非属主主体应无法读取对象。",
+     "zh": "每个数据访问点强制执行主体、租户与对象三元校验，未命中归属关系一律返回 404 并记录审计日志：\n      @GetMapping(\"/api/documents/{id}\")\n      public Document get(@PathVariable String id, @AuthenticationPrincipal ApiUser u) {\n          return repo.findByIdAndTenantId(id, u.getTenant())\n                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));\n      }\n  修复后重放第 1 步，非属主主体访问他人对象应返回 404 且产生审计记录。",
      "en": "Enforce principal-tenant-object checks at every data access point, return 404 on failed ownership and log audits. After the fix, replay step 1: non-owners should be unable to read the object."
     },
     "difficulty": "intermediate"
@@ -16566,7 +16566,7 @@
      "en": "In step 1, submit a fixed canary containing a single apostrophe to the local evaluate endpoint and observe the request ID and normalized input in the response; verbatim storage or explicit rejection means consistent boundaries, while interpreter-style errors or semantic drift should be logged as suspicious and routed to specialized tests. Judge success by normalized-output comparison. Replace placeholders via the global variables menu; use platform tool cards for SQL, directory and host-parameter orchestration."
     },
     "mitigation": {
-     "zh": "输入按目标解释器做统一编码与白名单校验，参数化查询与模板自动转义保持一致。修复后重放第 1 步，Canary 的输入输出应保持同义且无解释器报错。",
+     "zh": "输入按目标解释器做统一编码与白名单校验，参数化查询与模板自动转义保持一致：\n      // 统一入口校验：白名单字符集与长度\n      if (!preg_match(\"/^[\\p{L}\\p{N}_ '\\-]{1,64}$/u\", $q)) exit('bad input');\n      // 查询一律参数化，不经二次字符串解释\n      $st = $pdo->prepare('SELECT id, title FROM docs WHERE title LIKE :q');\n      $st->execute([':q' => '%' . $q . '%']);\n  修复后重放第 1 步，Canary 的输入输出应保持同义且无解释器报错。",
      "en": "Apply unified encoding and allowlist validation per target interpreter, keeping parameterized queries and template escaping consistent. After the fix, replay step 1: canary input and output should stay semantically identical with no interpreter errors."
     },
     "difficulty": "advanced"
@@ -16839,7 +16839,7 @@
      "en": "In step 1, execute the two samples (quote-plus-comment and OR tautology) against the login endpoint as a synthetic principal in an isolated environment; an authenticated session or redirect confirms the query boundary is breached, and server SQL logs should show the injected statement executing. Judge success by the read-only marker and session evidence. Replace placeholders via the global variables menu; run all tests within written authorization."
     },
     "mitigation": {
-     "zh": "登录查询改用参数化绑定并禁止字符串拼接，对凭据字段做长度与字符白名单。修复后重放第 1 步样例，应统一返回认证失败且日志无异常查询。",
+     "zh": "登录查询改参数化绑定，口令以哈希恒时比较校验；用户名做长度与字符白名单。\n    // PHP\n    $st = $pdo->prepare('SELECT password_hash FROM users WHERE username = ?');\n    $st->execute([$username]);\n    $u = $st->fetch();\n    $ok = $u && password_verify($password, $u['password_hash']);\n    // Java 同理\n    try (PreparedStatement ps = conn.prepareStatement(\n        \"SELECT password_hash FROM users WHERE username=?\")) { ps.setString(1, username); }",
      "en": "Switch login queries to parameterized binding, forbid string concatenation, and apply length and character allowlists to credential fields. After the fix, replay the step 1 samples: uniform authentication failure with no anomalous queries in logs."
     },
     "difficulty": "advanced"
@@ -17166,7 +17166,7 @@
      "en": "In step 1, submit login parameters using array syntax for user and pass; authentication success or a characteristic error confirms type confusion. In step 2, submit the array and structured-JSON negative controls per the script; any accepted non-string value is the flaw, uniform rejection shows type assertions are in place. Judge success by authentication results and logs. Replace placeholders via the global variables menu; use samples only in authorized tests."
     },
     "mitigation": {
-     "zh": "认证入口显式断言凭据为字符串类型，比较使用恒时严格函数而非松散相等。修复后重放第 1、2 步，非字符串凭据应全部被拒绝。",
+     "zh": "认证入口对凭据显式断言字符串类型，非字符串（数组/对象）一律 400 拒绝；比较使用恒时严格函数，杜绝松散相等与类型戏法。\n    // PHP：类型断言 + 恒时比较\n    foreach (['user', 'pass'] as $k) {\n        if (!isset($_POST[$k]) || !is_string($_POST[$k])) {\n            http_response_code(400); exit('bad request');\n        }\n    }\n    $ok = $storedHash && hash_equals($storedHash, hash('sha256', $pass, true));",
      "en": "Assert explicitly that credentials are strings at the authentication entry, and compare with constant-time strict functions instead of loose equality. After the fix, replay steps 1 and 2: all non-string credentials should be rejected."
     },
     "difficulty": "advanced"
@@ -17603,7 +17603,7 @@
      "en": "In step 1, submit a JSON login request with an operator object in the password field as a synthetic principal; an authenticated session confirms operator injection, rejection shows a type allowlist at the query layer. Judge success by session establishment and the read-only marker, and inspect the condition structure in server query logs. Replace placeholders via the global variables menu; run tests only in isolated environments."
     },
     "mitigation": {
-     "zh": "凭据字段在进入查询前强制为标量类型，禁用操作符键或启用 ODM 净化选项，并返回统一认证失败信息。修复后重放第 1 步，操作符对象应被拒绝。",
+     "zh": "凭据字段进入查询前强制标量类型，操作符对象直接拒绝；启用 ODM 净化选项（$ne 等对象被强制按等值处理），并返回统一认证失败信息。\n    // Node/Mongoose：开启过滤器净化\n    mongoose.set('sanitizeFilter', true);\n    // 显式类型守卫：非字符串凭据拒绝\n    if (typeof body.user !== 'string' || typeof body.pass !== 'string')\n        return res.status(400).end();\n    const u = await User.findOne({ user: body.user, pass: body.pass });",
      "en": "Coerce credential fields to scalar types before querying, disable operator keys or enable ODM sanitization, and return a uniform authentication-failure message. After the fix, replay step 1: operator objects should be rejected."
     },
     "difficulty": "advanced"
@@ -17858,7 +17858,7 @@
      "en": "In step 1, submit a request as a synthetic principal carrying X-Forwarded-For set to LAB_HOST together with X-Original-URL pointing at the protected marker path, then inspect the client address and routing object parsed in server logs; any change in access control driven by header values confirms the trust boundary breach. Judge success by server-side evidence and the read-only marker. Replace placeholders via the global variables menu; compare against a normal request's parsed results for evidence."
     },
     "mitigation": {
-     "zh": "仅在直接边界代理层清洗覆盖类头，应用侧配置可信代理网段，未列来源的头一律丢弃。修复后重放第 1 步，伪造头应被剥离且路由按真实请求行解析。",
+     "zh": "仅在直接边界代理层清洗 XFF 等覆盖类头，应用侧显式配置可信代理网段，未列来源的头一律不可信，路由按真实请求行解析。\n    // Express：仅信任指定代理\n    app.set('trust proxy', ['loopback', '10.0.0.0/8']);\n    # Nginx 边界层：固定转发头，覆盖客户端注入值\n    proxy_set_header X-Forwarded-For  $remote_addr;\n    proxy_set_header X-Forwarded-Host $host;",
      "en": "Strip override-class headers only at the directly adjacent edge proxy, configure trusted proxy CIDRs on the app, and drop such headers from unlisted sources. After the fix, replay step 1: forged headers should be stripped and routing resolved from the real request line."
     },
     "difficulty": "advanced"
@@ -18279,7 +18279,7 @@
      "en": "In step 1, send GET, HEAD and OPTIONS method variants one by one against the protected marker path; any method returning 200 or data confirms missing method-level authorization. In step 2, repeat over HTTP/2 with prior knowledge and add an X-Original-URL control to see whether routing and authorization shift with the protocol. Judge success by response status and the read-only marker. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "授权统一收敛到路由层并覆盖全部方法，显式拒绝未登记动词；路径规范化先于授权执行且跨协议一致。修复后重放第 1、2 步，所有变体应返回一致拒绝。",
+     "zh": "授权统一收敛到路由层并覆盖全部方法（含 HEAD/OPTIONS），显式拒绝未登记动词；路径规范化（合并斜杠、解码）先于授权执行且跨协议一致。\n    # Nginx：未登记动词拒绝 + 路径规范化\n    if ($request_method !~ ^(GET|POST|HEAD|OPTIONS)$) { return 405; }\n    merge_slashes on;\n    // Spring Security：兜底全拒绝，授权作用于规范化后路径\n    http.authorizeHttpRequests(a -> a\n        .requestMatchers(\"/admin/**\").hasRole(\"ADMIN\")\n        .anyRequest().denyAll());",
      "en": "Centralize authorization at the routing layer covering every method and explicitly reject unregistered verbs; normalize paths before authorization and keep behavior consistent across protocols. After the fix, replay steps 1 and 2: all variants should be uniformly rejected."
     },
     "difficulty": "advanced"
@@ -18621,7 +18621,7 @@
      "en": "In step 1, deploy the single-control alignment sample showing the local confirm page and marker at low opacity; one click landing on the target button confirms coordinate alignment. In step 2, verify two-step interface positioning with the sandboxed profile preview page; both clicks landing on the right controls confirm multi-step luring. In step 3, keep visible guide borders with pointer-events disabled and watch whether events pass through to the consent preview page. Judge success by interaction hit records. Replace placeholders via the global variables menu; all actions touch synthetic markers only."
     },
     "mitigation": {
-     "zh": "所有敏感页面返回 X-Frame-Options DENY 或 CSP frame-ancestors none，关键操作增加二次确认与重新认证。修复后重放第 1 至第 3 步，嵌入应被浏览器拦截且交互无法对齐。",
+     "zh": "所有敏感页面返回 X-Frame-Options DENY 与 CSP frame-ancestors 'none'，禁止被 iframe 嵌入；关键操作增加二次确认与重新认证。\n    # Nginx：全局响应头\n    add_header X-Frame-Options \"DENY\" always;\n    add_header Content-Security-Policy \"frame-ancestors 'none'\" always;\n    // Spring Security：等价框架级配置\n    http.headers(h -> h.frameOptions(f -> f.deny())\n        .contentSecurityPolicy(c -> c.policyDirectives(\"frame-ancestors 'none'\")));",
      "en": "Serve X-Frame-Options DENY or CSP frame-ancestors none on sensitive pages, and add second confirmation or reauthentication for critical actions. After the fix, replay steps 1 through 3: framing should be browser-blocked and interactions impossible to align."
     },
     "difficulty": "intermediate"
@@ -18952,7 +18952,7 @@
      "en": "In step 1, obtain the pre-login cookie anonymously and hash it, then complete a synthetic login reusing the same cookie and hash it again; differing hashes confirm rotation, identical hashes confirm the fixation flaw. Judge success by hash comparison and server session records. Replace placeholders via the global variables menu; use only synthetic test credentials."
     },
     "mitigation": {
-     "zh": "认证状态变化时调用框架的会话再生接口强制轮换 ID，并使旧会话立即失效。修复后重放第 1 步，登录前后会话标识应完全不同且旧值不可复用。",
+     "zh": "认证状态变化时调用框架会话再生接口强制轮换 ID 并使旧会话立即失效；预认证发放的 Cookie 值在认证后不可复用。\n    // Servlet 3.1+：登录成功后轮换会话 ID\n    HttpSession s = request.getSession(false);\n    if (s != null) request.changeSessionId();\n    s.setAttribute(\"uid\", user.getId());\n    // Express：等价再生\n    req.session.regenerate(() => { req.session.uid = user.id; });",
      "en": "Invoke the framework's session-regeneration routine on authentication state changes to force ID rotation and invalidate the old session immediately. After the fix, replay step 1: identifiers before and after login should differ completely and the old value must be unusable."
     },
     "difficulty": "advanced"
@@ -19345,7 +19345,7 @@
      "en": "In step 1, execute the script in the target page context to write four marker cookies, then plant a forged session value with a Domain attribute, request the protected path, and check which session the server actually resolved; a forged value winning or multi-value concatenation confirms exploitable collision. Judge success by the server session decision. Replace placeholders via the global variables menu; use rollback-safe synthetic sessions."
     },
     "mitigation": {
-     "zh": "统一会话 Cookie 的名称、Domain 与 Path 并避免同名变体，解析时按 RFC 特异性规则取最精确值；设置前缀机制如 __Host 会话 Cookie。修复后重放第 1 步，伪造值应被忽略。",
+     "zh": "统一会话 Cookie 的名称、Domain 与 Path 并避免同名变体；采用 __Host- 前缀（强制无 Domain、Path=/、Secure），投掷的同名低特异性 Cookie 不再被优先读取。\n    // Express：__Host- 前缀会话 Cookie\n    res.cookie('__Host-session', sid, {\n        secure: true, httpOnly: true, path: '/', sameSite: 'lax'\n    });\n    # 响应头形态\n    Set-Cookie: __Host-session=abc123; Secure; HttpOnly; Path=/; SameSite=Lax",
      "en": "Unify session cookie name, Domain and Path to avoid same-name variants, resolve per RFC specificity rules taking the most specific value, and use prefixes like __Host for session cookies. After the fix, replay step 1: forged values should be ignored."
     },
     "difficulty": "advanced"
@@ -19616,7 +19616,7 @@
      "en": "In step 1, deploy a cross-site sample page containing a top-level link and a noopener popup script, trigger navigation to the marker page both by click and auto-open, and check which session cookies the server logs for each; any Strict-session attachment during navigation confirms the boundary gap. Judge success by cookie-attachment records. Replace placeholders via the global variables menu; compare Lax and None configurations for a complete matrix."
     },
     "mitigation": {
-     "zh": "会话 Cookie 采用 SameSite=Strict 或对登录态区分严格策略，配合 Sec-Fetch-Site 校验拒绝跨站发起的状态变更。修复后重放第 1 步，跨站导航请求应不再携带会话。",
+     "zh": "会话 Cookie 采用 SameSite=Strict（至少登录态区分严格策略），服务端按 Sec-Fetch-Site 拒绝跨站发起的状态变更请求。\n    // Express：严格 SameSite\n    res.cookie('session', sid, { sameSite: 'strict', secure: true, httpOnly: true });\n    // 状态变更接口：校验 Sec-Fetch-Site\n    const site = req.get('sec-fetch-site');\n    if (site === 'cross-site' && req.method !== 'GET' && req.method !== 'HEAD')\n        return res.status(403).json({ error: 'cross-site' });",
      "en": "Adopt SameSite=Strict for session cookies or apply stricter policies to logged-in state, and add Sec-Fetch-Site validation to reject cross-site-initiated state changes. After the fix, replay step 1: cross-site navigation requests should no longer carry the session."
     },
     "difficulty": "advanced"
@@ -19879,7 +19879,7 @@
      "en": "In step 1, send raw POST messages with different Host values and inspect the host portion of the reset link in the response or a simulated email. In step 2, use curl with app and callback domain Host headers and compare link derivation. In step 3, trigger the reset flow with a dry_run parameter and archive the generated link. Any link pointing at the injected domain confirms manipulable host derivation. Replace placeholders via the global variables menu; use lab mailboxes only to avoid disturbing real users."
     },
     "mitigation": {
-     "zh": "重置链接主机固定为服务端配置域名，忽略请求 Host 与转发头；对 Host 异常的请求直接拒绝。修复后重放第 1 至第 3 步，链接始终落在合法域。",
+     "zh": "重置链接主机固定取服务端配置域名，忽略请求 Host 与 X-Forwarded-Host；Host 与配置不符的请求直接拒绝，令牌不落入外域链接。\n    // 基址只来自环境配置\n    const BASE = new URL(process.env.PUBLIC_ORIGIN);\n    if (req.get('host') !== BASE.host) return res.sendStatus(400);\n    const link = `${BASE.origin}/reset?token=${token}`;\n    sendMail(email, link);",
      "en": "Fix reset-link hosts to the server-configured domain, ignore request Host and forwarded headers, and reject requests with anomalous Host values. After the fix, replay steps 1 through 3: links should always land on the legitimate domain."
     },
     "difficulty": "advanced"
@@ -20369,7 +20369,7 @@
      "en": "In step 1, submit a reset-confirm request using your own account's test token paired with the target account payloader-b and a dry_run flag; rejection without any change proves binding, acceptance or a success response confirms the token is not account-bound. Judge success by the response and dry_run status. Replace placeholders via the global variables menu; use rollback-safe synthetic accounts throughout."
     },
     "mitigation": {
-     "zh": "重置令牌签发时写入账号标识并签名，确认时校验令牌、账号与会话三者一致；令牌存储做哈希处理。修复后重放第 1 步，跨账号组合应被拒绝。",
+     "zh": "令牌签发时写入账号标识并 HMAC 签名，确认接口校验令牌、账号与会话三者一致；令牌存储只保留哈希，跨账号组合直接拒绝。\n    // 签发：raw = account.expires，HMAC 签名\n    const raw = `${account}.${expires}`;\n    const token = Buffer.from(raw).toString('base64url') + '.' +\n        crypto.createHmac('sha256', process.env.RESET_KEY).update(raw).digest('base64url');\n    // 确认：验签后必须比对账号一致\n    if (verifiedAccount !== body.account)\n        return res.status(403).json({ error: 'mismatch' });",
      "en": "Embed and sign the account identity at token issuance and verify token, account and session consistency on confirmation; store token hashes. After the fix, replay step 1: the cross-account pairing should be rejected."
     },
     "difficulty": "advanced"
@@ -20625,7 +20625,7 @@
      "en": "In step 1, call the set-password endpoint directly with a synthetic account and a marker new password plus a dry_run flag; rejection for missing flow state proves proper chaining, acceptance confirms the missing state validation. Judge success by response status and the dry_run outcome. Replace placeholders via the global variables menu; never actually change any account password."
     },
     "mitigation": {
-     "zh": "把验证通过状态写入服务端会话或一次性流程票据，设密端点强制校验该状态并绑定账号；完成后立即作废票据。修复后重放第 1 步，直连请求应被拒绝。",
+     "zh": "把\"已验证\"状态写入服务端会话或一次性流程票据（绑定账号+短时效），设密端点强制校验该状态；完成后立即作废票据，前端步骤不可作为凭据。\n    // 验证通过：发放一次性票据（10 分钟）\n    const ticket = crypto.randomBytes(16).toString('hex');\n    await redis.set(`reset:${ticket}`, account, 'EX', 600);\n    // 设密端点：原子消费票据并比对账号\n    const acct = await redis.getdel(`reset:${ticket}`);\n    if (!acct || acct !== body.account) return res.sendStatus(403);",
      "en": "Record verified status in a server-side session or one-time flow ticket, require it at the set-password endpoint bound to the account, and void the ticket on completion. After the fix, replay step 1: direct calls should be rejected."
     },
     "difficulty": "advanced"
@@ -20881,7 +20881,7 @@
      "en": "In step 1, submit a reset-confirm with a test token marked as already consumed plus a dry_run flag; an expired or rejected response proves single-use enforcement, acceptance confirms the replay flaw. Judge success by response status and token-state records. Replace placeholders via the global variables menu; use the lab's dedicated consumed-token fixture."
     },
     "mitigation": {
-     "zh": "令牌消费与口令更新放在同一原子事务并立即烧毁令牌记录，同时保留使用日志与告警。修复后重放第 1 步，已用令牌应返回明确的失效错误。",
+     "zh": "令牌消费与口令更新放进同一原子事务，成功即烧毁令牌记录；保留使用日志与告警，重放返回明确失效错误。\n    -- 原子消费：仅当未使用时才能更新\n    UPDATE reset_tokens\n       SET used_at = NOW(), password_hash = :new_hash\n     WHERE token_hash = :h AND used_at IS NULL AND expires_at > NOW();\n    -- affected=0 → 令牌已用/过期，拒绝并告警\n    // Java 侧事务包裹并检查影响行数\n    if (jdbc.update(sql, params) == 0) throw new TokenConsumedException();",
      "en": "Perform token consumption and the password update in one atomic transaction, burning the token immediately with usage logs and alerts. After the fix, replay step 1: used tokens should return a clear expired error."
     },
     "difficulty": "advanced"
@@ -21161,7 +21161,7 @@
      "en": "In step 1, place an img on a cross-site page loading the callback with a forged code and wrong state, then check server logs and the target session; a rejected callback with no account binding proves state binding, an established login confirms login CSRF. Judge success by callback-rejection records. Replace placeholders via the global variables menu; use synthetic codes to avoid real authorization flows."
     },
     "mitigation": {
-     "zh": "发起授权时生成加密随机 state 存入会话，回调时严格比对并一次性消费；不匹配立即终止流程。修复后重放第 1 步，错误 state 的回调应被全部拒绝。",
+     "zh": "发起授权时生成加密随机 state 存入会话，回调时严格比对并一次性消费；不匹配立即终止流程，防止攻击者 code 注入受害者会话（登录 CSRF）。\n    // 发起：随机 state 入会话\n    const state = crypto.randomBytes(16).toString('hex');\n    req.session.oauthState = state;\n    res.redirect(authorizeUrl + '&state=' + state);\n    // 回调：比对并消费\n    if (!req.session.oauthState || state !== req.session.oauthState)\n        return res.status(403).end('state mismatch');\n    delete req.session.oauthState;",
      "en": "Generate a cryptographically random state at flow start, store it in the session, compare strictly on callback and consume once; terminate immediately on mismatch. After the fix, replay step 1: wrong-state callbacks should all be rejected."
     },
     "difficulty": "advanced"
@@ -21449,7 +21449,7 @@
      "en": "In step 1, submit registered-callback variants with appended paths, trailing slashes, query placeholders and encodings one by one as redirect_uri to the authorization endpoint, watching for code issuance or a redirect; any unregistered variant completing issuance confirms loose binding. Judge success by the authorization server error codes and redirect behavior. Replace placeholders via the global variables menu; baseline with the legitimate value first, then compare differences."
     },
     "mitigation": {
-     "zh": "授权服务器对 redirect_uri 执行注册值的完整字符串比对，禁止通配、前缀与忽略查询的宽松模式。修复后重放第 1 步矩阵，所有未注册变体应返回 invalid_request。",
+     "zh": "授权服务器对 redirect_uri 执行注册值的完整字符串精确比对（恒时比较），禁止通配、前缀与忽略查询的宽松模式；未注册变体返回 invalid_request。\n    # Python/Flask 授权端点\n    import hmac\n    if not hmac.compare_digest(redirect_uri or '', client.registered_redirect_uri):\n        return jsonify(error='invalid_request'), 400\n    # /callback/extra、尾缀斜杠、编码变体均不等于注册值，全部拒绝",
      "en": "The authorization server must compare redirect_uri against the registered value in full, banning wildcard, prefix and query-ignoring modes. After the fix, replay the step 1 matrix: every unregistered variant should return invalid_request."
     },
     "difficulty": "advanced"
@@ -21826,7 +21826,7 @@
      "en": "In step 1, build the fragment-callback sample carrying an access_token per the script and print the control notes; check whether the authorization server rejects fragment response types and whether issued token scopes and aud exactly match registered values; any usable over-scoped token confirms the missing boundary. Judge success by token claims and server rejection records. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "签发时把请求 scope 与 audience 写入令牌并逐接口校验，禁用 fragment 响应类型仅允许 code 流。修复后重放第 1 步，超范围与 fragment 请求应被拒绝。",
+     "zh": "签发时把请求 scope 与 audience 写入令牌，资源接口逐项校验；禁用 implicit 等 fragment 响应类型，仅允许 code 流。\n    // 签发：scope/aud 写入令牌\n    const token = jwt.sign({ sub: uid, scope: granted.join(' '), aud: audience },\n        process.env.JWT_KEY, { algorithm: 'ES256', expiresIn: 600 });\n    // 资源接口校验\n    if (!tok.scope.split(' ').includes('read') || tok.aud !== 'orders-api')\n        return res.status(403).json({ error: 'insufficient_scope' });",
      "en": "Embed the requested scope and audience into tokens and verify per API, disabling fragment response types and allowing only the code flow. After the fix, replay step 1: over-scoped and fragment requests should be rejected."
     },
     "difficulty": "advanced"
@@ -22098,7 +22098,7 @@
      "en": "In step 1, remove the Signature node from the sample response with xmlstarlet and verify with xmlsec1; verification should fail immediately. In step 2, run the same verification on the untouched signed fixture and confirm success. Combine both results with ACS behavior: acceptance of the stripped response confirms the validation boundary flaw. Replace placeholders via the global variables menu; operate only on isolated fixtures."
     },
     "mitigation": {
-     "zh": "服务端强制 Assertion 级签名验证并校验签名引用的 ID 与消费对象一致，缺失签名直接拒绝。修复后重放第 1 步，剥离签名的响应应被拒绝并记录告警。",
+     "zh": "服务端强制 Assertion 级签名验证，并校验签名引用 ID 与被消费对象一致；Response/Assertion 缺签名直接拒绝并告警。\n    # python3-saml settings：断言必须签名\n    'security': {\n        'wantAssertionsSigned': True,\n        'wantResponseSigned': True,\n    }\n    # 消费前完整验证\n    auth = OneLogin_Saml2_Auth(req, saml_settings)\n    auth.process_response()\n    if not auth.is_authenticated():\n        abort(401, 'invalid signature')",
      "en": "Enforce Assertion-level signature verification, ensure the signed reference matches the consumed object, and reject missing signatures outright. After the fix, replay step 1: signature-stripped responses should be rejected with alerts."
     },
     "difficulty": "advanced"
@@ -22417,7 +22417,7 @@
      "en": "In step 1, submit the consumed-SAMLResponse fixture with a RelayState to the ACS; a used-token rejection proves replay protection, a new session confirms the replay flaw. Judge success by response status and assertion-cache records. Replace placeholders via the global variables menu; use only synthetic assertions from lab fixtures."
     },
     "mitigation": {
-     "zh": "ACS 以断言 ID 建立带时效的已用缓存并在验证通过后立即登记，重复提交一律拒绝。修复后重放第 1 步，已消费断言应返回拒绝且日志出现重放告警。",
+     "zh": "ACS 以断言 ID 建立带时效的已用缓存（原子登记），验证通过后立即写入，重复提交一律拒绝并产生重放告警。\n    # 验证通过后原子登记断言 ID（NX+EX）\n    ttl = max(int(assertion.not_on_or_after - time.time()), 60)\n    if not redis.set(f\"saml:auid:{assertion.id}\", 1, nx=True, ex=ttl):\n        abort(409, 'assertion replayed')   # 已存在=已消费",
      "en": "Maintain a time-windowed used-ID cache at the ACS, register assertions immediately after successful verification, and reject all resubmissions. After the fix, replay step 1: consumed assertions should be rejected with replay alerts in logs."
     },
     "difficulty": "advanced"
@@ -22680,7 +22680,7 @@
      "en": "In step 1, sign the template with xmlsec1 using the test IdP key to produce signed-test.xml, then tamper the NameID, re-verify, and submit to the ACS: failed re-verification or ACS rejection proves wrapper protection, while verified acceptance with a swapped identity confirms the XSW flaw. Judge success by re-verification results and ACS decisions. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "验证器解析签名引用的 URI 并只消费被签名覆盖的 Assertion，禁止文档出现多个未引用断言；同时校验 Subject 与 InResponseTo。修复后重放第 1 步，包装文档应被拒绝。",
+     "zh": "验证器只消费签名引用 URI 命中的 Assertion，多个未引用断言即拒绝；校验 Subject 与 InResponseTo；SAML 库保持最新。\n    # python3-saml 签名安全项\n    'security': {'wantAssertionsSigned': True, 'wantResponseSigned': True}\n    # 兜底：仅允许一个被签名的 Assertion\n    ids = [a.get('ID') for a in\n           tree.findall('.//{urn:oasis:names:tc:SAML:2.0:assertion}Assertion')]\n    if len(ids) != 1 or '#' + ids[0] != sig_ref_uri:\n        abort(400, 'XSW suspected')",
      "en": "Parse the signature reference URI and consume only the covered Assertion, forbid unreferenced assertions in the document, and validate Subject and InResponseTo. After the fix, replay step 1: wrapper documents should be rejected."
     },
     "difficulty": "advanced"
@@ -23049,7 +23049,7 @@
      "en": "In step 1, craft a synthetic Response carrying an external entity pointing at the local marker listener and submit it to the ACS; parser rejection of DTD-bearing documents shows the boundary is closed, while a marker hit confirms XXE. Judge success by marker-hit records and parser errors. Replace placeholders via the global variables menu; point entity targets only at lab-internal addresses."
     },
     "mitigation": {
-     "zh": "解析器禁用 DTD 与外部实体（disallow-doctype-decl 等），SAML 处理库保持最新版本。修复后重放第 1 步，含实体文档应被直接拒绝且无外呼请求。",
+     "zh": "解析器禁用 DTD 与外部实体，含 DOCTYPE 文档直接拒绝，杜绝外呼与文件读取。\n    # lxml\n    parser = etree.XMLParser(load_dtd=False, resolve_entities=False, no_network=True)\n    if etree.fromstring(data, parser).getroottree().docinfo.doctype:\n        raise XXERejected('DOCTYPE')\n    # Java 等价\n    f.setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true);\n    f.setFeature(\"http://xml.org/sax/features/external-general-entities\", false);",
      "en": "Disable DTDs and external entities in the parser (disallow-doctype-decl and similar), and keep the SAML library current. After the fix, replay step 1: entity-bearing documents should be rejected outright with no outbound request."
     },
     "difficulty": "advanced"
@@ -23312,7 +23312,7 @@
      "en": "In step 1, decode the sample response and use xmlstarlet to rewrite the NameID into whitespace and case variants. In step 2, re-sign with the test key and submit to the ACS, observing account matching: a variant resolving to another account confirms the canonicalization flaw, while rejection or same-account mapping passes. Judge success by account-mapping records. Replace placeholders via the global variables menu; use synthetic identities throughout."
     },
     "mitigation": {
-     "zh": "在账户查找前按固定规则规范化 NameID（小写化、去空白、统一编码），并校验规范化后与 IdP 声明一致。修复后重放第 1、2 步，变体应映射到同一账户或被拒绝。",
+     "zh": "账户查找前对 NameID 统一规范化（NFKC 归一、去首尾空白、小写化），逻辑收敛为单一工具方法且与 IdP 配置对齐，规范化后再比对账户映射，任一步失败即拒绝断言。\n    String canonicalNameId(String raw) {\n        String n = Normalizer.normalize(raw, Normalizer.Form.NFKC)\n                              .trim().toLowerCase(Locale.ROOT);\n        if (n.isEmpty() || n.chars().anyMatch(c -> c < 0x20))\n            throw new IllegalArgumentException(\"invalid NameID\");\n        return n;\n    }",
      "en": "Canonicalize NameID by fixed rules (lowercasing, whitespace trimming, unified encoding) before account lookup and verify consistency with the IdP claim. After the fix, replay steps 1 and 2: variants should map to the same account or be rejected."
     },
     "difficulty": "advanced"
@@ -23607,7 +23607,7 @@
      "en": "In step 1, use a session cookie holding only the first factor to send a raw request for the marker resource, then POST the verify endpoint directly attempting a skip or empty-code path; the marker returning protected content or the verify endpoint passing confirms missing state enforcement, uniform blocking passes. Judge success by responses and mfa-state records. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "登录后颁发 mfa-pending 限定会话，受保护接口校验完整认证状态，验证端点忽略客户端声明的通过字段。修复后重放第 1 步，两类请求都应被拒绝并跳转验证页。",
+     "zh": "登录首步只颁发 mfa-pending 限态会话，受保护接口统一校验完整认证状态，验证结果以服务端会话字段为准，客户端声明的通过字段一律忽略。\n    // 登录首步成功：仅置 pending，绝非完整认证\n    req.session.authStage = 'pending';\n    // 受保护接口统一门禁\n    app.use('/api', (req, res, next) => {\n      if (req.session.authStage !== 'complete')\n        return res.status(403).json({ error: 'mfa_required' });\n      next();\n    });",
      "en": "Issue an mfa-pending restricted session after login, have protected APIs check full authentication state, and ignore client-asserted pass fields at the verify endpoint. After the fix, replay step 1: both requests should be rejected and redirected to verification."
     },
     "difficulty": "intermediate"
@@ -23895,7 +23895,7 @@
      "en": "In step 1, submit empty-string, null, array, skip-bearing and verified-field OTP bodies one by one per the script; uniform rejection with no session-state change proves a complete schema, any accepted malformed input or flow progression confirms the parsing defect. Judge success by responses versus mfa state. Replace placeholders via the global variables menu; all submissions are side-effect free."
     },
     "mitigation": {
-     "zh": "验证端点定义严格的请求 Schema：otp 必须为定长字符串，未知字段忽略并告警，客户端状态字段一律不采信。修复后重放第 1 步，全部畸形请求应被 400 拒绝。",
+     "zh": "验证端点定义严格请求 Schema：otp 为 6 位定长数字字符串，未知字段直接拒绝，客户端提交的 verified、skip 等状态字段一律不采信。\n    from pydantic import BaseModel, Field, ConfigDict\n    class OtpRequest(BaseModel):\n        otp: str = Field(pattern=r'^\\d{6}$')\n        model_config = ConfigDict(extra='forbid')",
      "en": "Define a strict request schema: otp must be a fixed-length string, unknown fields ignored with alerts, and client status fields never trusted. After the fix, replay step 1: every malformed request should be rejected with 400."
     },
     "difficulty": "intermediate"
@@ -24159,7 +24159,7 @@
      "en": "In step 1, fire multiple concurrent consume requests with the same recovery code via the script and count successes; exactly one success with the rest rejected proves atomicity, multiple successes confirm the race defect. Judge success by the success count and account state. Replace placeholders via the global variables menu; use a dedicated test code and reset it afterwards."
     },
     "mitigation": {
-     "zh": "消费恢复码采用数据库原子更新或分布式锁，校验与烧毁在同一事务完成并记录消费序号。修复后重放第 1 步，成功响应应恒等于一次。",
+     "zh": "恢复码校验与烧毁合并为同一原子操作：条件 UPDATE 保证仅首个并发请求命中未消费记录，以影响行数判定成败并记录消费序号。\n    UPDATE recovery_codes\n       SET used_at = NOW(), used_seq = used_seq + 1\n     WHERE code_hash = SHA2(?, 256) AND user_id = ? AND used_at IS NULL;\n    -- affected_rows == 1 才视为消费成功，否则拒绝",
      "en": "Consume recovery codes via atomic database updates or distributed locks, completing validation and burning in one transaction with a consumption sequence logged. After the fix, replay step 1: successes must always equal exactly one."
     },
     "difficulty": "intermediate"
@@ -24447,7 +24447,7 @@
      "en": "In step 1, first submit the valid test code as a baseline, replay the same value, then submit empty, null, undefined and array variants per the script; replay rejection plus uniform malformed-value rejection proves complete validation, any acceptance confirms a binding or consumption defect. Judge success by the response matrix. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "验证码签发时绑定会话指纹，校验通过或失败均立即烧毁，缺失与类型异常统一失败关闭。修复后重放第 1 步矩阵，所有重放与畸形提交应被拒绝。",
+     "zh": "验证码签发即绑定会话指纹，校验用 GETDEL 原子取出并立即失效，缺失、空值与类型异常统一失败关闭，不落任何放行分支。\n    captcha = (request.form.get('captcha') or '').strip()\n    expected = redis.execute_command('GETDEL', f'captcha:{session.id}')\n    if not expected or not compare_digest(str(expected), captcha):\n        abort(401)  # 取出即烧毁，重放必失败",
      "en": "Bind challenges to a session fingerprint at issuance, burn on both pass and fail, and fail closed on missing or type-anomalous values. After the fix, replay the step 1 matrix: every replay and malformed submission should be rejected."
     },
     "difficulty": "intermediate"
@@ -25013,7 +25013,7 @@
      "en": "In step 1, submit the same wrong-password login without a captcha using both form and JSON encodings and compare the routes' responses; one blocked by captcha while the other proceeds to password checking confirms policy inconsistency. Judge success by response differences and logs. Replace placeholders via the global variables menu; also compare the two routes' error-code shapes."
     },
     "mitigation": {
-     "zh": "把验证码校验收敛到统一登录服务层而非路由中间件，所有入口共享同一策略。修复后重放第 1 步，两条路由应返回一致的验证码要求。",
+     "zh": "验证码校验下沉到统一登录服务层，表单与 JSON 路由共用同一守卫函数，杜绝按 Content-Type 分流的中间件差异。\n    app.post(['/login', '/api/login'], rateLimit, captchaGuard, loginHandler);\n    function captchaGuard(req, res, next) {\n      const ok = captcha.verify(req.session.id, req.body.captcha);\n      if (!ok) return res.status(400).json({ error: 'captcha_failed' });\n      next();\n    }",
      "en": "Centralize captcha validation in a shared login service layer instead of route middleware so every entry applies one policy. After the fix, replay step 1: both routes should return identical captcha requirements."
     },
     "difficulty": "intermediate"
@@ -25277,7 +25277,7 @@
      "en": "In step 1, decode the sample token with base64 to inspect its structure, rewrite the expiry and username, re-encode and submit to the login endpoint alongside an untouched control; acceptance of the tampered token confirms missing integrity, rejection shows signature verification exists. Judge success by authentication results and logs. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "持久令牌采用带密钥的 HMAC 或加密结构并绑定随机系列号，服务端校验签名与系列号有效性。修复后重放第 1 步，篡改令牌应被拒绝并触发令牌族吊销。",
+     "zh": "持久令牌改为带密钥签名结构并绑定随机系列号：内容防篡改由签名保证，系列号用于令牌族管理，服务端只存令牌哈希。\n    from itsdangerous import URLSafeTimedSerializer\n    s = URLSafeTimedSerializer(SECRET_KEY, salt='remember-me')\n    token = s.dumps({'uid': user.id, 'series': secrets.token_hex(16)})\n    data = s.loads(token, max_age=30 * 86400)  # 验签失败整体拒绝",
      "en": "Build persistent tokens as HMAC-signed or encrypted structures bound to a random series, verifying signature and series server-side. After the fix, replay step 1: tampered tokens should be rejected and trigger family revocation."
     },
     "difficulty": "advanced"
@@ -25574,7 +25574,7 @@
      "en": "In step 1, log in three consecutive times with remember-me, hashing each token to confirm uniqueness, then perform logout or revocation and replay the pre-revocation token against a protected endpoint; rejection proves revocation works, a granted session confirms the replay flaw. Judge success by responses and revocation logs. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "注销与盗用检测时立即删除服务端令牌记录并吊销整个令牌族，记住我验证每次比对哈希存储。修复后重放第 1 步，撤销后令牌应全部失效。",
+     "zh": "注销与盗用检测时立即吊销服务端整个令牌族，记住我校验只认库内哈希且逐次比对，轮换链断裂即判定重用。\n    # 注销：吊销整个令牌族\n    UPDATE remember_tokens SET revoked_at = NOW()\n     WHERE user_id = %s AND series = %s;\n    row = db.one(\"SELECT token_hash FROM remember_tokens \"\n                 \"WHERE series=%s AND revoked_at IS NULL\", series)\n    if not row or not compare_digest(row.token_hash, sha256(token)): reject()",
      "en": "Delete server-side token records and revoke the whole token family immediately on logout or theft detection, validating remember-me against hashed storage each time. After the fix, replay step 1: post-revocation tokens must all be dead."
     },
     "difficulty": "advanced"
@@ -25863,7 +25863,7 @@
      "en": "In step 1, submit malformed rememberMe cookies across case variants per the script and compare responses; a uniform delete-cookie redirect proves fail-closed parsing, while deserialization-style errors or behavioral differences should be logged as high-risk leads for specialized verification. Judge success by responses and logs. Replace placeholders via the global variables menu; probe payloads carry no executable content."
     },
     "mitigation": {
-     "zh": "升级 Shiro 至修复版本并更换随机密钥，记住我改用不依赖原生反序列化的存储或签名结构。修复后重放第 1 步，全部畸形 Cookie 应被统一拒绝且无异常泄露。",
+     "zh": "升级 Shiro 至 1.11.x 以上并弃用默认/固定密钥：cipherKey 用本机随机 128bit（openssl rand -base64 16 生成），必要时关闭 rememberMe 改用服务端会话。\n    # shiro.ini\n    [main]\n    rememberMeManager = org.apache.shiro.web.mgt.CookieRememberMeManager\n    rememberMeManager.cipherKey = <openssl rand -base64 16 本机随机值>\n    securityManager.rememberMeManager = $rememberMeManager",
      "en": "Upgrade Shiro to a patched release with a fresh random key, and move remember-me to storage or signed structures that avoid native deserialization. After the fix, replay step 1: every malformed cookie should be uniformly rejected with no exception leakage."
     },
     "difficulty": "advanced"
@@ -26759,7 +26759,7 @@
      "en": "In step 1, build payloads carrying a marker sub, anomalous aud and iss, and an embedded unsigned token per the script and submit each to the protected endpoint, recording per-claim validation decisions; trusted anomalous claims or parsed nested tokens confirm missing checks. Judge success by claim decisions and responses. Replace placeholders via the global variables menu; use synthetic identities and the read-only marker throughout."
     },
     "mitigation": {
-     "zh": "服务端对每项声明执行白名单与类型校验，仅采信本层令牌的声明并拒绝嵌套令牌结构。修复后重放第 1 步，异常声明与嵌套载荷应被全部拒绝。",
+     "zh": "服务端逐项校验声明类型与白名单并只采信本层令牌：aud 必须匹配、sub 绑定会话用户，检测到嵌套 inner_token 结构直接拒绝。\n    claims = jwt.decode(token, PUBKEY, algorithms=['RS256'],\n                        audience='api-app',\n                        options={'require': ['exp', 'iat', 'aud', 'sub']})\n    if not isinstance(claims['sub'], str) or 'inner_token' in claims:\n        raise AuthError('illegal claims')",
      "en": "Enforce allowlist and type validation per claim, trust only the current layer's token, and reject nested-token structures. After the fix, replay step 1: anomalous claims and nested payloads should all be rejected."
     },
     "difficulty": "advanced"
@@ -27055,7 +27055,7 @@
      "en": "In step 1, have the local fetcher process a one-hop redirect to an independent loopback canary and assert the outcome: no canary hit plus a fetcher block error proves per-hop validation, a canary hit confirms the redirect-following flaw. Judge success by canary-hit records and fetcher errors. Replace placeholders via the global variables menu; see wafBypass for IPv4-mapped IPv6 and alternate IP-text samples."
     },
     "mitigation": {
-     "zh": "取回器在每次跳转后重新解析目标并校验地址类别，禁用跨协议降级并限制重定向次数。修复后重放第 1 步，重定向到回环的请求应被第二跳拒绝。",
+     "zh": "取回器在每一跳重新解析目标并校验地址类别（拒绝回环、私网、链路本地），禁用跨协议降级，限制最大重定向次数。\n    def fetch(url, hop=0):\n        if hop > 3: raise FetchError('too many redirects')\n        ip = ipaddress.ip_address(socket.gethostbyname(urlparse(url).hostname))\n        if ip.is_private or ip.is_loopback or ip.is_link_local:\n            raise FetchError('blocked target')",
      "en": "Re-resolve and re-classify the target after every hop, disable cross-protocol downgrades, and cap redirect counts. After the fix, replay step 1: a redirect to loopback should be rejected on the second hop."
     },
     "difficulty": "advanced"
@@ -27283,7 +27283,7 @@
      "en": "In step 1, deploy the multi-step interaction frame sample showing the local frame and marker at low opacity, verifying interaction alignment without touching the clipboard. In step 2, load the interaction-gated sample page, click the button, and observe whether the body dataset marker enters an interpreted sink, recording frame, interaction and execution evidence; any missing layer is logged as a blocking point. Replace placeholders via the global variables menu; see wafBypass for sandbox permission baselines."
     },
     "mitigation": {
-     "zh": "敏感页面禁止第三方嵌入并对交互数据做输出编码，DOM 写入使用安全 API；CSP 限制内联脚本执行。修复后重放第 1、2 步，marker 不应进入任何可执行 Sink。",
+     "zh": "敏感页面禁止第三方嵌入（CSP frame-ancestors 配 XFO 兜底），交互数据写入 DOM 一律用安全 API 并按上下文编码，CSP 限制内联脚本。\n    add_header Content-Security-Policy \"default-src 'self'; frame-ancestors 'self'; object-src 'none'\" always;\n    add_header X-Frame-Options \"DENY\" always;\n    el.textContent = String(data);   // 永不使用 innerHTML 拼接",
      "en": "Block third-party embedding on sensitive pages and encode interaction data on output, using safe DOM APIs; restrict inline script execution via CSP. After the fix, replay steps 1 and 2: the marker must never reach an executable sink."
     },
     "difficulty": "advanced"
@@ -27589,7 +27589,7 @@
      "en": "In step 1, deploy a cross-site page opening a WebSocket to the target and sending a synthetic echo marker; a successful handshake with a reply confirms cross-site session reachability, rendering results via textContent to keep data local. In step 2, send a non-sensitive profile_preview marker on the same socket to distinguish handshake success from message-authorization success. Replace placeholders via the global variables menu; use Origin-rejection records as success criteria."
     },
     "mitigation": {
-     "zh": "握手端点按预注册 Origin 白名单严格校验并拒绝跨站来源，敏感消息在应用层二次校验会话权限。修复后重放第 1、2 步，跨站握手应被 403 拒绝。",
+     "zh": "握手端点按预注册 Origin 白名单严格校验并拒绝跨站来源，敏感消息在应用层二次校验会话权限（Node ws）：\n    const wss = new WebSocketServer({ noServer: true });\n    server.on(\"upgrade\", (req, socket, head) => {\n      if (!ORIGIN_ALLOWLIST.has(req.headers.origin || \"\")) {\n        socket.write(\"HTTP/1.1 403 Forbidden\\r\\n\\r\\n\");\n        return socket.destroy();\n      }\n      wss.handleUpgrade(req, socket, head, ws => wss.emit(\"connection\", ws, req));\n    });\n    修复后重放第 1、2 步，跨站握手应被 403 拒绝。",
      "en": "Strictly validate the handshake against a pre-registered Origin allowlist and reject cross-site origins, re-checking session permissions at the application layer for sensitive messages. After the fix, replay steps 1 and 2: cross-site handshakes should get 403."
     },
     "difficulty": "intermediate"
@@ -27931,7 +27931,7 @@
      "en": "In step 1, send subscription markers for the self channel and the other channel on the same connection, expecting allow and reject respectively; then repeat the differential with object-scoped synthetic channel names. Inconsistent authorization across the two paths confirms the object-level subscription flaw. Judge success by subscribe allow and reject records. Replace placeholders via the global variables menu; also verify subscriptions die on token expiry and logout."
     },
     "mitigation": {
-     "zh": "每次订阅请求都对照主体与频道归属校验，注销与令牌过期即时断开连接并清理订阅。修复后重放第 1 步，other 频道订阅应被拒绝且生命周期事件后连接关闭。",
+     "zh": "每次订阅对照主体与频道归属校验，注销与令牌过期即时断开并清理订阅：\n    ws.on(\"message\", raw => {\n      const msg = JSON.parse(raw);\n      if (msg.action !== \"subscribe\") return;\n      const owner = /^user\\.([\\w-]+)\\./.exec(msg.channel)?.[1];\n      if (!owner || owner !== session.userId)\n        return ws.send(JSON.stringify({ error: \"forbidden\" }));\n      subscriptions.get(session.userId).add(msg.channel);\n    });\n    修复后重放第 1 步，other 频道订阅应被拒绝且生命周期事件后连接关闭。",
      "en": "Validate principal-versus-channel ownership on every subscribe request, tearing down connections and subscriptions immediately on logout or expiry. After the fix, replay step 1: other-channel subscriptions should be rejected and connections closed on lifecycle events."
     },
     "difficulty": "advanced"
@@ -28205,7 +28205,7 @@
      "en": "In step 1, replace the sample's wildcard domains with your own isolated DNS name pointing at the local marker service, embed the iframe, and observe load results and origin determination; the iframe loading the intranet marker page confirms the navigation path, recording resolution timing and cache behavior. Judge success by local marker hits. Replace placeholders via the global variables menu; probe only your own intranet addresses, never public services."
     },
     "mitigation": {
-     "zh": "内网服务校验 Host 与来源并拒绝外部域名解析结果的访问，浏览器侧部署 DNS Rebinding 防护，网络层隔离内外 DNS 视图。修复后重放第 1 步，iframe 应加载失败且标记无命中。",
+     "zh": "内网服务校验 Host 白名单并拒绝来自外部解析域名的访问，浏览器侧部署 DNS 重绑定防护，网络层隔离内外 DNS 视图。\n    # dnsmasq：拒绝解析结果指向内网\n    stop-dns-rebind\n    server {\n        if ($host !~ ^(app|api)\\.example\\.com$) { return 403; }\n    }",
      "en": "Intranet services must validate Host and origin and refuse accesses resolved from external domains, deploy DNS-rebinding protection browser-side, and isolate internal-external DNS views at the network layer. After the fix, replay step 1: the iframe should fail to load with no marker hits."
     },
     "difficulty": "expert"
@@ -28465,7 +28465,7 @@
      "en": "In step 1, replace the sample's targets with your own isolated DNS name and local marker service, run the fetch script, and keep only the boolean marker-inclusion result in memory or page state; a marker hit confirms same-origin reads, recording the two-resolution interval and cache effects. Judge success by the local boolean marker result. Replace placeholders via the global variables menu; probe only your own intranet addresses, and never touch public rebinding or metadata endpoints."
     },
     "mitigation": {
-     "zh": "内网服务拒绝携带外部解析域名来源的请求并校验 Host 头，API 响应附加不缓存与来源校验；部署网络层内外 DNS 隔离。修复后重放第 1 步，标记读取应失败且请求被记录。",
+     "zh": "内网服务拒绝携带外部解析域名来源的请求并校验 Host 头，API 响应附加不缓存与来源校验，网络层隔离内外 DNS 视图。\n    const ALLOW = new Set(['app.internal.example.com:8080']);\n    app.use((req, res, next) => {\n        if (!ALLOW.has(req.headers.host || '')) return res.status(403).end();\n        res.set('Cache-Control', 'no-store');\n        next();\n    });",
      "en": "Intranet services must refuse requests carrying externally resolved domain origins and validate Host headers, adding no-store and origin checks on API responses; isolate internal-external DNS at the network layer. After the fix, replay step 1: the marker read should fail with the request logged."
     },
     "difficulty": "expert"
@@ -28730,7 +28730,7 @@
      "en": "In step 1, baseline with an ordinary user token per the script, changing exactly one header or claim field per variant and submitting each, recording server decisions; acceptance of unsigned or embedded-JWK variants, or claim changes affecting authorization, confirms the corresponding defect. Judge success by the variant-decision matrix. Replace placeholders via the global variables menu; keep the original user context throughout."
     },
     "mitigation": {
-     "zh": "验证器统一策略：固定算法白名单、密钥仅来自配置、声明进入授权前逐项校验。修复后重放第 1 步矩阵，全部单字段变体应被拒绝且授权结果不变。",
+     "zh": "验证器统一策略：固定算法白名单、密钥仅来自配置、声明进入授权前逐项校验。\n    import jwt\n    claims = jwt.decode(token, key=PUBLIC_KEY, algorithms=['RS256'],\n                        audience='api', issuer='https://idp.example.com',\n                        options={'require': ['exp', 'sub', 'aud']})\n    if claims['role'] not in ALLOWED_ROLES: abort(403)",
      "en": "Adopt a unified verifier policy: pinned algorithm allowlists, keys only from configuration, and per-claim validation before authorization. After the fix, replay the step 1 matrix: every single-field variant should be rejected with unchanged authorization outcomes."
     },
     "difficulty": "advanced"
@@ -29179,7 +29179,7 @@
      "en": "In step 1, baseline with an ordinary test account and, per the script, add or replace exactly one privilege field per request, observing persisted objects, the effective principal and API authorization; any field taking effect confirms that parameter is client-manipulable. Judge success by server persistence and authorization outcomes. Replace placeholders via the global variables menu; roll back each object after every test."
     },
     "mitigation": {
-     "zh": "建立字段级可写白名单并在服务端重算角色与状态，调试参数仅接受受控环境注入。修复后重放第 1 步，全部权限字段应被忽略并记录批量赋值告警。",
+     "zh": "建立字段级可写白名单，服务端重算角色与状态；调试参数仅接受受控环境注入，客户端提交的权限字段一律忽略。\n    @InitBinder\n    public void initBinder(WebDataBinder binder) {\n        binder.setAllowedFields(\"username\", \"password\"); // 忽略 admin/isAdmin\n    }\n    user.setRoles(roleService.loadRoles(user.getId())); // 服务端重算",
      "en": "Establish field-level writable allowlists, recompute roles and state server-side, and accept debug parameters only from controlled-environment injection. After the fix, replay step 1: every privilege field should be ignored with mass-assignment alerts logged."
     },
     "difficulty": "beginner"
@@ -29435,7 +29435,7 @@
      "en": "In step 1, replace jump parameters one by one with dot-segment, encoded-control-character and encoded-slash variants per the script, comparing ingress validation values, response Location and the browser's final address; any inconsistency causing an external landing confirms the confusion. Judge success by the three-way comparison. Replace placeholders via the global variables menu; request each variant independently without concatenation."
     },
     "mitigation": {
-     "zh": "跳转目标在服务端完成与浏览器一致的规范化后再判定，拒绝含控制字符与点段的原始值。修复后重放第 1 步矩阵，全部变体的三层结果应一致且落在白名单域。",
+     "zh": "跳转目标在服务端完成与浏览器一致的规范化后再判定，拒绝含控制字符与点段的原始值。\n    from urllib.parse import urlsplit\n    def safe_redirect(t):\n        t = t.replace(chr(92), '/')  # 斜杠归一\n        t = \"\".join(ch for ch in t if ch.isprintable())  # 去控制字符\n        p = urlsplit(t if '//' in t else '//' + t)\n        if (p.hostname or \"\") not in ALLOWED_HOSTS:  # 点段/外部主机拒绝\n            raise RedirectBlocked(t)\n        return \"/\" + p.path.lstrip(\"/\")",
      "en": "Normalize jump targets server-side to match browser semantics before judging, rejecting raw values with control characters or dot segments. After the fix, replay the step 1 matrix: all three layers must agree and land on allowlisted domains."
     },
     "difficulty": "intermediate"
@@ -29675,7 +29675,7 @@
      "en": "In step 1, append suffix and negotiation combinations to known routes one by one per the script, comparing route matches, Content-Type, response fields and authorization verdicts; restricted fields in the new format or bypassed authorization confirm the negotiation gap. Judge success by response-field and status comparisons. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "授权与字段过滤在格式协商之前统一执行，内容协商白名单限定可接受格式。修复后重放第 1 步矩阵，全部后缀变体应与原始路由同权受限。",
+     "zh": "授权与字段过滤在格式协商之前统一执行，内容协商白名单限定可接受格式。\n    @Override\n    public void configureContentNegotiation(ContentNegotiationConfigurer c) {\n        c.favorPathExtension(false)\n         .defaultContentType(MediaType.APPLICATION_JSON)\n         .mediaType(\"json\", MediaType.APPLICATION_JSON);  // 白名单格式\n    }\n    @PreAuthorize(\"hasRole('USER')\")  // 授权先于协商，全格式一致\n    public Content get(@PathVariable String id) { /* ... */ }",
      "en": "Run authorization and field filtering before format negotiation with an allowlist of acceptable formats. After the fix, replay the step 1 matrix: every suffix variant should be as restricted as the original route."
     },
     "difficulty": "intermediate"
@@ -29939,7 +29939,7 @@
      "en": "In step 1, apply the proxy-header, author-parameter and special-route samples to their respective requests per the script, comparing identity and object authorization between standard paths and variants; any variant yielding unauthorized content confirms its defect, grouped for distinct fixes. Judge success by grouped authorization comparisons. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "边缘剥离来源头并在应用侧校验可信代理，升级 WordPress 使载入脚本纳入统一鉴权。修复后重放第 1 步分组矩阵，全部变体应与标准路径同等受限。",
+     "zh": "边缘剥离来源头并在应用侧校验可信代理，升级 WordPress 使载入脚本纳入统一鉴权；内部直连路径在边缘封禁。\n    proxy_set_header X-Remote-Addr \"\";\n    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n    location ~* /wp-admin/load-(scripts|styles)\\.php$ {\n        deny all;   # 载入脚本不经由外部直接调用\n    }\n  修复后重放验证第 1 步分组矩阵，全部变体应与标准路径同等受限。",
      "en": "Strip source headers at the edge with trusted-proxy validation in the app, and update WordPress so load scripts join unified authentication. After the fix, replay the step 1 groups: every variant should be as restricted as standard paths."
     },
     "difficulty": "intermediate"
@@ -30150,7 +30150,7 @@
      "en": "In step 1, submit exactly one encoded proxy-header sample at a time per the script, correlating the header sets received across edge and backend logs; the backend treating injected values as proxy metadata confirms the injection, logging authorization-principal changes. Judge success by backend header sets and principals. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "边界层对所有头值做换行拒绝并只从指定来源接受代理头，后端与边缘通过共享密钥互相认证。修复后重放第 1 步，注入头应被丢弃且授权保持原主体。",
+     "zh": "边界层对所有头值拒绝 CR/LF 控制字符，代理元数据头仅接受可信代理链并以共享密钥互相认证。Nginx 用真实连接属性覆盖注入值：\n    set_real_ip_from 10.0.0.0/8;\n    real_ip_header X-Forwarded-For;\n    real_ip_recursive on;\n    proxy_set_header X-Forwarded-For $remote_addr;",
      "en": "Boundary layers must reject newlines in all header values and accept proxy headers only from designated sources, with mutual shared-secret authentication between edge and backend. After the fix, replay step 1: injected headers should be dropped and authorization stay with the original principal."
     },
     "difficulty": "advanced"
@@ -30573,7 +30573,7 @@
      "en": "In step 1, modify exactly one host-class field at a time per the script, observing backend routing, generated links and tenant context; any field changing output targets confirms that header is trusted, recorded per field to separate fixes. Judge success by output changes against the normal baseline. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "主机来源固定为服务端配置并在入口校验 Host 合法性，转发主机头仅接受可信代理链。修复后重放第 1 步矩阵，全部注入字段的输出应保持配置域名。",
+     "zh": "主机来源固定为服务端配置，入口校验 Host 白名单，转发主机头仅接受可信代理链，重置链接用配置域名生成。Nginx 默认虚拟主机拒绝未授权 Host：\n    server {\n      listen 80 default_server;\n      server_name _;\n      return 421;   # 未授权 Host 一律拒绝\n    }\n    # 合法域名在专属 server 块枚举：server_name example.com www.example.com;",
      "en": "Pin host sources to server configuration with Host legitimacy checks at ingress, accepting forwarded-host headers only from trusted proxy chains. After the fix, replay the step 1 matrix: every injected field's output should keep the configured domain."
     },
     "difficulty": "intermediate"
@@ -30840,7 +30840,7 @@
      "en": "In step 1, submit privilege-carrying mutations one by one for a dedicated low-privilege test user with id pointed at its own object per the script, querying the database and effective principal after each; persisted privileged fields confirm the mass-assignment defect, rolled back immediately. Judge success by persisted state. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "input 类型仅暴露可写字段并显式忽略特权属性，角色变更走独立授权 mutation。修复后重放第 1 步矩阵，特权字段应被忽略且无状态变化。",
+     "zh": "input 类型仅暴露可写字段并显式忽略特权属性，角色变更走独立授权 mutation。\n    const { role, isAdmin, ...writable } = input; // 剥离特权字段\n    await repo.updateById(input.id, writable);\n    修复后重放第 1 步 role/isAdmin 矩阵，特权字段被忽略且无状态变化。",
      "en": "Expose only writable fields in input types explicitly ignoring privileged attributes, routing role changes through a separately authorized mutation. After the fix, replay the step 1 matrix: privileged fields should be ignored with no state change."
     },
     "difficulty": "beginner"
@@ -31096,7 +31096,7 @@
      "en": "In step 1, first confirm the resolver re-parses String variables, then submit JSON-encoded role filters per the script with targets limited to a dedicated pseudo-role and a single result, contrasting plain text and invalid JSON as controls; structured predicates taking effect confirm the injection surface. Judge success by filtered-result differences. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "禁止对字符串变量二次结构解析，过滤条件由服务端白名单构建并经授权层校验。修复后重放第 1 步，编码过滤器应被视为普通文本且结果不变。",
+     "zh": "禁止对字符串变量二次结构解析，过滤条件改用类型化 Input，由服务端白名单构建并经授权层校验。\n    input UserFilter { role: RoleEnum, active: Boolean }\n    type Query { users(filter: UserFilter!): [User] }\n    const where = _.pick(args.filter, [\"role\", \"active\"]); // 仅白名单字段\n    修复后重放第 1 步编码过滤器，应被视为普通文本且结果不变。",
      "en": "Forbid re-parsing string variables into structures, building filters from server allowlists validated through the authorization layer. After the fix, replay step 1: encoded filters should be treated as plain text with unchanged results."
     },
     "difficulty": "advanced"
@@ -31339,7 +31339,7 @@
      "en": "In step 1, run wildcard searches and pagination ladders from low to high on a small synthetic dataset per the script, watching response times and server truncation; missing rejections past policy values with spiking times confirm the cost-boundary gap, with oversized values verifying rejection logic only and never fetching results. Judge success by server rejection or truncation records. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "为查询设置分页上限与复杂度评分并在执行前拒绝超限文档，重查询走异步与缓存。修复后重放第 1 步阶梯，超限请求应在执行前被拒绝。",
+     "zh": "为查询设置分页上限与复杂度评分并在执行前拒绝超限文档，重查询走异步与缓存。\n    validationRules: [depthLimit(10)] // Apollo + graphql-depth-limit\n    // resolver 内限制分页尺寸\n    const take = Math.min(args.first ? 20, 50);\n    修复后重放 * 通配与超大 first 阶梯，超限请求应在执行前被拒绝。",
      "en": "Set pagination caps and complexity scores refusing over-limit documents before execution, routing heavy queries through async paths and caches. After the fix, replay the step 1 ladder: over-limit requests should be refused pre-execution."
     },
     "difficulty": "intermediate"
@@ -31595,7 +31595,7 @@
      "en": "Use in Payload list order: step 1 runs the synthetic membership-inference benchmark, generating member and non-member score distributions with a fixed seed and reporting AUC plus the maximum TPR at FPR no greater than 1%, validating the evaluation pipeline and metric implementation. When applying it to a real model, fix the data split and attack score function first, then report metrics and confidence intervals on a fully independent evaluation set. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "训练侧引入正则化、早停、去重与适当的差分隐私，按业务最小化对外分数粒度与查询预算，并在相同数据划分上持续回归隐私与效用指标。修复后用同一步骤复测，AUC 应逼近 0.5 且低 FPR 区间 TPR 显著回落。",
+     "zh": "训练侧引入正则化、早停、去重与差分隐私，按业务最小化对外分数粒度并设查询预算，在相同数据划分上持续回归隐私与效用指标：\n    # Opacus 差分隐私训练\n    model, optimizer, loader = PrivacyEngine().make_private(\n        model, optimizer, loader, noise_multiplier=1.0, max_grad_norm=1.0)\n    # 推理侧收敛分数粒度，压缩成员/非成员可分性\n    p = round(float(model(torch.tensor(x)).softmax(-1)[0, 1]), 2)\n    修复后用同一步骤复测，AUC 应逼近 0.5 且低 FPR 区间 TPR 显著回落。",
      "en": "Introduce regularization, early stopping, deduplication, and appropriate differential privacy in training; minimize exposed score granularity and query budgets per business needs, and continuously regress privacy and utility metrics on the same splits. After the fix, rerun the same procedure: AUC should approach 0.5 and low-FPR TPR should drop markedly."
     },
     "difficulty": "advanced"
@@ -31868,7 +31868,7 @@
      "en": "Use in Payload list order: step 1 queries the local completion fixture three times with a fixed prompt, temperature 0, and a fixed seed, counting exact hits of the MEM_CANARY-prefixed canary while storing only output hashes. Any full canary return confirms memorized recovery; then compare recovery rates against a never-trained control canary, excluding retrieval, cache, and system-prompt sources. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "训练前执行秘密扫描与语料去重、限制样本重复次数并应用适当的隐私训练，输出侧限制确定性解码与重复抽取路径。修复后用相同 Canary 套件回归，命中数应与随机猜测基线无显著差异。",
+     "zh": "训练前执行哈希去重与秘密扫描、限制样本重复次数并应用差分隐私训练，输出侧禁用温度 0 的确定性抽取路径：\n    import hashlib\n    seen = set()\n    corpus = [t for t in corpus\n              if (h := hashlib.sha256(t.encode()).hexdigest()) not in seen and not seen.add(h)]\n    out = model.generate(**enc, do_sample=True, temperature=0.9, top_p=0.95, max_new_tokens=64)\n    修复后用相同 Canary 套件回归，命中数应与随机猜测基线无显著差异。",
      "en": "Run secret scanning and corpus deduplication before training, cap sample repetition, apply appropriate privacy training, and constrain deterministic decoding and repeated extraction on the output side. After the fix, regress with the same canary suite: hit rates should show no significant difference from a random-guess baseline."
     },
     "difficulty": "advanced"
@@ -32141,7 +32141,7 @@
      "en": "Use in Payload list order: step 1 first establishes a baseline with an ordinary page denied networking; then submit fetch and synchronous XHR variants (targeting 169.254.169.254 and 127.0.0.1, writing responses into document.title) — full correlation of render request, Chromium request, simulated response, and the same token in title confirms. In testing, replace both addresses with isolated marker endpoints and keep responses to short random constants. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "在解析后与每次跳转前执行地址策略，阻断回环、链路本地、私网及保留网段；禁用不需要的脚本并让渲染进程运行在无内部路由的独立网络。修复后用第 1 步样例回归，脚本对内部地址的请求应全部失败。",
+     "zh": "每次请求与跳转前执行地址策略，阻断回环、链路本地、私网及元数据地址；渲染进程运行在无内部路由的独立网络，非必需脚本禁用。\n    await page.setRequestInterception(true);\n    const PRIV = [/^127\\./, /^10\\./, /^192\\.168\\./, /^169\\.254\\./, /^172\\.(1[6-9]|2\\d|3[01])\\./, /^0\\./];\n    page.on(\"request\", req => {\n        const host = new URL(req.url()).hostname;\n        PRIV.some(re => re.test(host)) ? req.abort() : req.continue();\n    });",
      "en": "Apply address policy after parsing and before every hop, blocking loopback, link-local, private, and reserved ranges; disable unneeded scripts and run the renderer on an isolated network without internal routes. After the fix, regress with the step 1 sample: script requests to internal addresses must all fail."
     },
     "difficulty": "advanced"
@@ -32393,7 +32393,7 @@
      "en": "Use in Payload list order: step 1 renders a baseline document without external resources; then replace the link stylesheet and SVG image addresses with two simulated paths carrying distinct tokens and render separately — correlation of each endpoint's first packet with its render task confirms, with resource presentation as secondary evidence. Responses need only minimal valid CSS or an image. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "用自定义 URL fetcher 只允许批准的 scheme、域名与解析地址，并在重定向后重复校验；渲染容器网络默认拒绝内部与链路本地路由。修复后用第 1 步样例回归，外部引用应全部被拒绝。",
+     "zh": "自定义 URL fetcher 仅允许批准的 https 域名并在重定向后重复校验；渲染容器网络默认拒绝内部与链路本地路由。\n    from weasyprint import HTML, default_url_fetcher\n    ALLOWED = {\"cdn.example.com\"}\n    def fetcher(url):\n        from urllib.parse import urlparse\n        u = urlparse(url)\n        if u.scheme != \"https\" or u.hostname not in ALLOWED:\n            raise ValueError(\"blocked \" + url)\n        return default_url_fetcher(url)\n    HTML(string=markup, url_fetcher=fetcher).write_pdf(\"out.pdf\")",
      "en": "Use a custom URL fetcher allowing only approved schemes, domains, and resolved addresses with revalidation after redirects; default-deny internal and link-local routing for the render container network. After the fix, regress with the step 1 sample: external references must all be denied."
     },
     "difficulty": "advanced"
@@ -32916,7 +32916,7 @@
      "en": "Use in Payload list order: step 1 generates a random subdomain `<request-id>.<owned-zone>` per application request, recording the request ID, submission time, and expected window; then search authoritative DNS, TLS, and HTTP logs for the token — a positive requires a unique token with a source in the application's egress ranges; exclude local browser resolution, mail scanning, and stale-token replays. Prefer HTTPS. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "获取功能采用目的地主机允许列表、解析后 IP 分类、重定向复检和受限出站代理，不需要联网的工作负载直接禁止外连；保留回归域验证合法业务目标可达而任意令牌域不可达。修复后用第 1 步样例回归，回调应消失。",
+     "zh": "获取功能采用主机白名单、解析后 IP 分类、重定向复检与出站代理；无需联网的工作负载直接禁止外连：\n    static boolean allowed(URI u) throws Exception {\n      if (!\"https\".equals(u.getScheme())) return false;\n      InetAddress ip = InetAddress.getByName(u.getHost());\n      return ALLOWED.contains(u.getHost()) && !ip.isSiteLocalAddress()\n          && !ip.isLoopbackAddress() && !ip.isLinkLocalAddress();\n    }\n    HttpClient.newBuilder().followRedirects(NEVER).build();",
      "en": "Give the fetch function a destination-host allowlist, resolved-IP classification, redirect rechecks, and a restricted egress proxy, and deny all egress for workloads that need no networking; keep a regression domain proving legitimate business targets resolve while arbitrary token domains do not. After the fix, regress with the step 1 sample: callbacks must disappear."
     },
     "difficulty": "intermediate"
@@ -33288,7 +33288,7 @@
      "en": "Use in Payload list order: step 1 first establishes the server-side request baseline with an owned HTTP endpoint; then point ftp and tftp at isolated listeners and netdoc at an unsensitive marker file, submitting one by one; network protocols need a completed listener handshake tied to the request source, and netdoc needs server-side marker-read evidence. Do not download or upload real files. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "使用只支持所需 HTTP/HTTPS 的客户端并拒绝其他协议，解析和 DNS 后检查目标，重定向时重复校验；限制网络与文件权限，移除不需要的 FTP/TFTP/Netdoc 处理能力。修复后用第 1 步样例回归，三类协议请求应全部被拒绝。",
+     "zh": "客户端仅启用所需 HTTP/HTTPS 处理器并显式拒绝其他协议；DNS 解析后逐地址分类检查目标，重定向复检，并限制网络与文件权限：\n    from urllib.parse import urlsplit\n    if urlsplit(target).scheme != \"https\": abort(400)\n    for r in socket.getaddrinfo(urlsplit(target).hostname, 443):\n        a = ipaddress.ip_address(r[4][0])\n        if a.is_private or a.is_loopback or a.is_link_local: abort(403)\n    # requests: allow_redirects=False，逐跳复检",
      "en": "Use clients supporting only required HTTP/HTTPS, reject other protocols, check targets after resolution and DNS, and recheck on redirects; constrain network and file permissions and remove unneeded FTP/TFTP/Netdoc handling. After the fix, regress with the step 1 sample: all three protocol requests must be denied."
     },
     "difficulty": "intermediate"
@@ -33983,7 +33983,7 @@
      "en": "Use in Payload list order: step 1 first proves the server-side request via an owned external marker URL; then substitute both lines with your own DNS name resolving to 0.0.0.0 on an isolated instance, recording resolution, socket target, and local marker requests — success requires the server connecting to local 8080 carrying the unique request token. Never rely on public nip.io/sslip.io or scan other ports. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "解析全部 A/AAAA 后分类并阻断未指定、回环、链路本地、私网和其他非业务地址，连接到固定已批准 IP，并在重定向/重试时重复校验；网络层限制获取服务出站。修复后用样例回归，零地址目标被拒绝。",
+     "zh": "解析全部 A/AAAA 后分类并阻断未指定、回环、链路本地、私网等非业务地址，重定向与重试时重复校验，网络层限制获取服务出站。\n    import socket, ipaddress\n    for info in socket.getaddrinfo(host, port):\n        ip = ipaddress.ip_address(info[4][0])\n        if (ip.is_unspecified or ip.is_loopback\n                or ip.is_private or ip.is_link_local):\n            raise PermissionError('blocked ' + str(ip))",
      "en": "Classify and block unspecified, loopback, link-local, private, and other non-business addresses after resolving all A/AAAA records, connect to fixed approved IPs, and recheck on redirects/retries; restrict the fetch service's egress at the network layer. After the fix, regress with the sample: zero-address targets denied."
     },
     "difficulty": "advanced"
@@ -34202,7 +34202,7 @@
      "en": "Use in Payload list order: step 1 first establishes a negative baseline with JavaScript disabled on the same input; then enable scripts, point the iframe target at a one-time marker endpoint without redirects, and render once — time-correlated script-execution logs, the dynamic iframe node, and a marker request from the renderer process confirm; finally retest with scripts or private targets blocked to verify protection. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "默认禁用 JavaScript；确需脚本时在独立无内部路由容器中运行渲染器，并对所有初始与动态资源执行解析后地址允许列表。修复后用第 1 步样例回归，动态 iframe 请求应被策略拒绝。",
+     "zh": "默认禁用 JavaScript；确需脚本时在无内部路由容器中运行，并对初始与动态资源执行解析后地址允许列表。\n    wkhtmltopdf --disable-javascript in.html out.pdf\n    docker network create --internal rendernet\n    docker run --rm --network rendernet --cap-drop=ALL \\\n      wkhtmltopdf --proxy http://egress-allowlist:3128 in.html out.pdf",
      "en": "Disable JavaScript by default; where scripting is required, run the renderer in an isolated container without internal routes and apply a resolved-address allowlist to all initial and dynamic resources. After the fix, regress with the step 1 sample: dynamic iframe requests must be denied by policy."
     },
     "difficulty": "advanced"
@@ -34445,7 +34445,7 @@
      "en": "Use in Payload list order: step 1 assigns each of the eight tag types a unique token plus a minimal-response endpoint with the matching MIME; then render tag by tag in fixed order (img src, link rel=stylesheet, object data, embed src, video poster, etc.), recording per-tag requests from the renderer process — a hit confirms that entry; grade whether content enters the PDF separately. Never touch real metadata or loopback services. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "在统一资源加载层执行 scheme、DNS 与解析 IP 允许列表并复查重定向，同时通过容器防火墙阻断私网、回环和链路本地目标。修复后用八类标签样例回归，任一入口的内部请求都应被拒绝。",
+     "zh": "在统一资源加载层执行 scheme、DNS 与解析 IP 允许列表并复查重定向，容器防火墙阻断私网、回环与链路本地目标。\n    for cidr in 127.0.0.0/8 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16; do\n        iptables -I FORWARD -s 172.20.0.0/24 -d \"$cidr\" -j DROP  # 渲染容器出口管控\n    done",
      "en": "Enforce scheme, DNS, and resolved-IP allowlists in a unified resource-loading layer with redirect rechecks, and block private, loopback, and link-local targets via container firewalls. After the fix, regress with all eight tag samples: internal requests through any entry must be denied."
     },
     "difficulty": "advanced"

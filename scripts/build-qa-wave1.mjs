@@ -62,7 +62,9 @@ const cmdPatches = new Map(); // id → [{area,index,fields}]
 for (const f of findings) {
   if (!byId.has(f.id)) { dropped.push({ ...f, why: 'id-not-in-db' }); continue; }
   const p = byId.get(f.id);
-  let rw = cleanDumpArtifacts(stripCmdPrefix(stripFence(String(f.rewrite || ''))));
+  // 命令类改文需全量清洗（dump 污染）；prose/tutorial 类只剥围栏与 CMD 前缀，保留代码内转义字符原样
+  const base = stripCmdPrefix(stripFence(String(f.rewrite || '')));
+  let rw = f.field.endsWith('.command') ? cleanDumpArtifacts(base) : base;
   const q = quality(f, rw);
   if (q !== 'ok') {
     (q === 'manual-instruction' ? manual : dropped).push({ ...f, why: q });

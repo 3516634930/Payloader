@@ -281,7 +281,7 @@
      "en": "In step 1, submit boolean, JSON and unsigned-JWT values for the session parameter one by one to registration or staging endpoints per the script, then complete a normal login and inspect the final session privileges; the server promoting the role per submitted values confirms the state confusion, archived with session records. Judge success by the final principal and role. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "会话字段由服务端单一来源生成并在登录时整体重建，拒绝客户端提供的任何角色或状态字段。修复后重放第 1 步，最终会话权限应与凭据对应且不受预置值影响。",
+     "zh": "会话字段由服务端单一来源生成并在登录成功时整体重建，拒绝客户端提供的任何角色或状态字段：\n    // Express + express-session：登录后重建会话\n    req.session.regenerate(err => {\n      if (err) return res.sendStatus(500);\n      req.session.userId = user.id;\n      req.session.role = user.role;  // 仅取数据库值，忽略预置 session/admin 字段\n      res.redirect('/home');\n    });",
      "en": "Generate session fields from a single server-side source and rebuild the session wholesale at login, rejecting any client-supplied role or state fields. After the fix, replay step 1: final session privileges must match the credentials and ignore preset values."
     },
     "difficulty": "advanced"
@@ -1150,7 +1150,7 @@
      "en": "In step 1, build tokens keeping the original header and payload but with empty signatures, set role to an administrator value, and submit each to the protected endpoint per the script, recording responses and the effective principal; the server honoring the payload role confirms the verification-order flaw. Judge success by post-elevation API access. Replace placeholders via the global variables menu; contrast with correctly signed tokens to rule out parsing issues."
     },
     "mitigation": {
-     "zh": "验签必须在任何载荷字段进入授权逻辑前完成且失败即中止，身份对象仅由验证后的载荷构建。修复后重放第 1 步，全部空签名令牌应被拒绝且无提权效果。",
+     "zh": "验签必须在任何载荷字段进入授权逻辑之前完成且失败即中止，身份对象仅由验证后的载荷构建。\n    Claims claims = Jwts.parserBuilder()\n        .setSigningKey(secretKey)   // 固定密钥与算法\n        .build()\n        .parseClaimsJws(token)     // 失败即抛异常并中止\n        .getBody();\n    String role = claims.get(\"role\", String.class); // 验签后才读取",
      "en": "Verification must complete before any payload field reaches authorization logic and abort on failure, building identity objects only from verified payloads. After the fix, replay step 1: every empty-signature token should be rejected with no elevation effect."
     },
     "difficulty": "intermediate"
@@ -1571,7 +1571,7 @@
      "en": "Per step 1, send a length-consistent RESP SET message storing isolated test PHP content under the key; then within authorization follow the tool-card flow to set dir to the web directory, dbfilename to shell.php, and SAVE to disk. A hit is command output returned when requesting the generated shell.php with a cmd parameter. If the directory is unwritable or the web server does not interpret PHP, the chain fails—record the exact break point; restore configuration and clean files after testing."
     },
     "mitigation": {
-     "zh": "Redis 仅监听受信网络并使用 ACL 禁止不需要的 CONFIG、SAVE 与模块命令；以专用低权限账户运行 Redis，文件系统隔离且不可写 Web 根目录；对 CONFIG SET、持久化路径变化和 Web 目录新增脚本文件告警。修复后重放第 1 步序列，确认写入被拒绝。",
+     "zh": "Redis 仅监听受信网络，ACL 禁止业务主体调用 CONFIG、SAVE 与模块命令；专用低权限账户运行且文件系统不可写 Web 根目录，对路径变化与新增脚本文件告警。\n    # redis.conf\n    bind 10.0.0.5\n    protected-mode yes\n    rename-command CONFIG \"\"\n    rename-command SAVE \"\"\n    # Redis 6+ ACL：禁管理命令\n    user appuser on >StrongPass ~app:* +@read +@write -@dangerous",
      "en": "Bind Redis to trusted networks only and use ACLs to block unneeded CONFIG, SAVE, and module commands; run Redis under a dedicated low-privilege account with isolated filesystem that cannot write the web root; alert on CONFIG SET, persistence-path changes, and new script files in web directories. After the fix, replay the step-1 sequence and confirm writes are denied."
     },
     "difficulty": "advanced"
@@ -1714,7 +1714,7 @@
      "en": "On a rollback-capable experimental replica, send the full RESP sequence per step 1: CONFIG SET dir to the cron directory, dbfilename to root, SET a key containing the newline-framed task line, then SAVE; a hit is cron executing the task on schedule leaving output in /tmp/red…. Restore dir/dbfilename immediately afterwards and clean the task file; when distribution cron formats differ, adjust paths to the actual layout and record them."
     },
     "mitigation": {
-     "zh": "使用 Redis ACL 禁止非管理主体调用 CONFIG 与持久化命令；以不可写系统计划任务目录的专用账户运行 Redis，并启用 MAC/容器隔离；监控 Redis dir/dbfilename 变化、cron 目录写入和异常计划任务。修复后重放第 1 步序列，确认配置变更被拒绝。",
+     "zh": "Redis ACL 禁止非管理主体调用 CONFIG 与持久化命令；以不可写系统计划任务目录的专用账户运行，启用 MAC/容器隔离，监控 dir/dbfilename 变化与 cron 目录写入。\n    [Service]\n    User=redis\n    NoNewPrivileges=yes\n    ProtectSystem=strict\n    ReadWritePaths=/var/lib/redis\n    # redis.conf ACL\n    user appuser on >StrongPass +@read +@write -@config -@dangerous",
      "en": "Use Redis ACLs to block non-administrative principals from CONFIG and persistence commands; run Redis under a dedicated account that cannot write system task directories with MAC or container isolation; monitor dir/dbfilename changes, cron-directory writes, and anomalous scheduled tasks. After the fix, replay the step-1 sequence and confirm configuration changes are denied."
     },
     "difficulty": "advanced"
@@ -1969,7 +1969,7 @@
      "en": "In step 1, place external-domain protocol, path, port and casing variants into the Origin header one by one, recording ACAO and ACAC in responses; any malicious origin reflected with credentials allowed confirms the bypass. Judge success by the credentialed-header combination. Replace placeholders via the global variables menu; on a hit, complete verification by reading the response from a browser page."
     },
     "mitigation": {
-     "zh": "Origin 白名单做精确串匹配并归一化协议与端口，未命中一律省略 CORS 头；凭据接口叠加 CSRF Token。修复后重放第 1 步，全部变体的响应应不含 ACAO。",
+     "zh": "Origin 白名单做精确匹配并归一化协议与端口，未命中一律省略 CORS 头；凭据接口叠加 CSRF Token。\n    const ALLOWED = new Set(['https://app.example.com']);\n    const origin = req.headers.origin;\n    if (ALLOWED.has(origin)) {\n        res.set('Access-Control-Allow-Origin', origin);\n        res.set('Vary', 'Origin');\n    } // 未命中：不输出任何 CORS 头",
      "en": "Match origin allowlists on exact strings with normalized scheme and port, omitting CORS headers on any miss; stack CSRF tokens on credentialed APIs. After the fix, replay step 1: no variant's response should carry ACAO."
     },
     "difficulty": "intermediate"
@@ -2508,7 +2508,7 @@
      "en": "In step 1, submit empty and type-anomalous tokens in both header and body carriers to the authentication endpoint one by one per the script, recording allowed principals and responses; any variant authenticating confirms the validation defect, contrasted with random-invalid and valid tokens on both sides. Judge success by allowance records and principal identity. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "令牌入口强制字符串类型与非空断言，解析失败一律 401 并统一错误响应；中间件对未知字段拒绝。修复后重放第 1 步，全部异常 Token 应返回一致拒绝。",
+     "zh": "令牌入口强制字符串类型与非空断言，解析失败一律 401 并返回统一错误响应；中间件对未知字段拒绝。\n    function auth(req, res, next) {\n        const t = (req.headers.authorization || '').split(' ')[1];\n        if (typeof t !== 'string' || !/^[A-Za-z0-9._=-]{20,}$/.test(t))\n            return res.status(401).json({ error: 'unauthenticated' });\n        next();\n    }",
      "en": "Enforce string-type, non-empty assertions at the token entry, returning uniform 401 on parse failures; middleware should reject unknown fields. After the fix, replay step 1: every anomalous token should get a consistent rejection."
     },
     "difficulty": "beginner"
@@ -3028,7 +3028,7 @@
      "en": "In step 1, submit none and variant-algorithm tokens to confirm algorithm pinning per the script, then attempt offline verification of captured tokens against common weak keys, and finally tamper claims and re-sign with a known key before submitting; acceptance along any path confirms the corresponding layer defect. Judge success by forged tokens' authorization effects. Replace placeholders via the global variables menu; synthetic identities throughout."
     },
     "mitigation": {
-     "zh": "统一 JWT 安全基线：算法白名单、密钥强度审计、验签前不采信声明。修复后重放第 1 步三条路径，全部伪造令牌应被拒绝并触发告警。",
+     "zh": "统一 JWT 安全基线：算法白名单、密钥强度审计、验签前不采信任何声明。\n    const payload = jwt.verify(token, SECRET, {\n        algorithms: ['HS256'], // 显式白名单，拒绝 none\n        issuer: 'https://idp.example.com',\n    });",
      "en": "Adopt a unified JWT baseline: algorithm allowlists, key-strength audits, and no claim trust before verification. After the fix, replay all three step 1 paths: every forged token should be rejected with alerts."
     },
     "difficulty": "advanced"
@@ -3413,7 +3413,7 @@
      "en": "In step 1, submit stolen, expired, replayed and empty codes to the token endpoint one by one per the script, recording redemption outcomes; any non-current code still exchanging for tokens confirms missing binding or invalidation, also checking whether client credentials in redemption requests are verified. Judge success by the token-endpoint response matrix. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "授权码签发即绑定客户端与回调值，兑换成功或失败均立即烧毁并叠加 PKCE 强制。修复后重放第 1 步，全部异常 code 应返回 invalid_grant。",
+     "zh": "授权码签发即绑定客户端与 redirect_uri，兑换成功或失败均立即烧毁，并叠加 PKCE 强制。\n    const rec = await redis.getdel('oauth:code:' + code); // 一次性消费\n    if (!rec || rec.clientId !== client_id\n            || rec.redirect !== redirect_uri)\n        return res.status(400).json({ error: 'invalid_grant' });",
      "en": "Bind codes to client and callback values at issuance, burn them immediately on success or failure, and enforce PKCE on top. After the fix, replay step 1: every anomalous code should return invalid_grant."
     },
     "difficulty": "intermediate"
@@ -3673,7 +3673,7 @@
      "en": "In step 1, inject missing, empty, fixed and predictable state values into the OAuth callback flow one by one per the script, recording whether logins complete and which accounts bind; the server establishing sessions without state validation confirms login CSRF, evidenced by session snapshots. Judge success by callback-rejection records. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "state 由 CSPRNG 生成并与发起会话绑定存储，回调时严格比对并一次性消费。修复后重放第 1 步，全部异常 state 应被拒绝且无账号绑定发生。",
+     "zh": "state 由 CSPRNG 生成并与发起会话绑定存储，回调时严格比对并一次性消费。\n    const state = crypto.randomBytes(16).toString('hex');\n    req.session.oauthState = state;\n    // 回调处理\n    if (!req.session.oauthState || req.query.state !== req.session.oauthState)\n        return res.status(403).end('bad state');\n    delete req.session.oauthState;",
      "en": "Generate state with a CSPRNG bound to the initiating session, compare strictly on callback and consume once. After the fix, replay step 1: every anomalous state should be rejected with no account binding."
     },
     "difficulty": "intermediate"
@@ -4010,7 +4010,7 @@
      "en": "In step 1, build request variants per the script on a low-privilege test token with aud set to management services and elevated scopes, submitting each to the target API and recording allowances; over-scoped tokens succeeding confirms missing constraints. Judge success by unauthorized-access records. Replace placeholders via the global variables menu; also verify whether token-type fields are checked."
     },
     "mitigation": {
-     "zh": "资源服务器强制校验 aud 匹配本服务与 scope 覆盖所需权限，令牌类型按用途区分。修复后重放第 1 步矩阵，全部越权请求应返回 403。",
+     "zh": "资源服务器强制校验 aud 匹配本服务与 scope 覆盖所需权限，令牌类型按用途区分。\n    claims = jwt.decode(token, key=PUBLIC_KEY, algorithms=['RS256'],\n                        audience='orders-api')\n    if 'orders:write' not in claims.get('scope', '').split():\n        abort(403)",
      "en": "Resource servers must enforce aud matching their service and scope coverage of required permissions, distinguishing token types per purpose. After the fix, replay the step 1 matrix: every over-scope request should get 403."
     },
     "difficulty": "advanced"
@@ -4286,7 +4286,7 @@
      "en": "In step 1, submit token-exchange requests combining empty verifiers, forged values and missing challenge_method one by one per the script, recording redemption outcomes; any combination still exchanging tokens confirms PKCE binding is not enforced. Judge success by the token-endpoint response matrix. Replace placeholders via the global variables menu; confirm baseline viability with a legitimate verifier pair first."
     },
     "mitigation": {
-     "zh": "公共客户端强制 PKCE 且服务端校验 S256 方法与 verifier 匹配，缺失或不匹配一律拒绝交换。修复后重放第 1 步，全部异常组合应返回 invalid_grant。",
+     "zh": "公共客户端强制 PKCE，服务端校验 S256 方法与 verifier 匹配，缺失或不匹配一律拒绝交换。\n    const digest = crypto.createHash('sha256')\n        .update(code_verifier).digest('base64url');\n    if (method !== 'S256' || !challenge || digest !== challenge)\n        return res.status(400).json({ error: 'invalid_grant' });",
      "en": "Mandate PKCE for public clients with server-side S256 method and verifier matching, rejecting exchanges on absence or mismatch. After the fix, replay step 1: every anomalous combination should return invalid_grant."
     },
     "difficulty": "intermediate"
@@ -4682,7 +4682,7 @@
      "en": "In step 1, add variants such as mixed response_type values, unregistered client_ids and grant_type switches to authorization and token requests one by one per the script, recording behavioral differences; consent skips, implicit tokens issued directly or wrong flows confirm missing constraints. Judge success by the endpoint-behavior matrix. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "按客户端注册固化允许的 response_type 与 grant_type 组合，未知参数拒绝并审计异常流程请求。修复后重放第 1 步矩阵，全部变体应返回 invalid_request 或被拒绝。",
+     "zh": "按客户端注册固化允许的 response_type 与 grant_type 组合，未知参数拒绝并审计异常流程请求。\n    const REG = { 'web-app': { rt: ['code'], gt: ['authorization_code'] } };\n    const c = REG[req.body.client_id];\n    if (!c || (endpoint === 'authorize'\n            ? !c.rt.includes(req.body.response_type)\n            : !c.gt.includes(req.body.grant_type)))\n        return res.status(400).json({ error: 'invalid_request' });",
      "en": "Fix allowed response_type and grant_type combinations per client registration, rejecting unknown parameters and auditing anomalous flow requests. After the fix, replay the step 1 matrix: every variant should return invalid_request or be denied."
     },
     "difficulty": "advanced"
@@ -4942,7 +4942,7 @@
      "en": "In step 1, submit common usernames from the list to registration, login and reset entries one by one, recording message, status and latency differences; existing-user notices or measurable timing deltas confirm the enumeration surface, charted into a differential matrix as evidence. Judge success by distinguishability of response differences. Replace placeholders via the global variables menu; keep request rates within authorized thresholds."
     },
     "mitigation": {
-     "zh": "三类入口返回统一提示与常量耗时，注册流程延迟到邮件确认阶段暴露结果。修复后重放第 1 步，存在与不存在账号的响应应不可区分。",
+     "zh": "登录、注册、找回三类入口返回统一提示与常量耗时，注册结果延迟到邮件确认阶段暴露。\n    $u = $stmt->fetch();\n    $ok = $u && password_verify($password, $u['password_hash']);\n    http_response_code($ok ? 200 : 401);\n    exit(json_encode(['error' => 'invalid credentials'])); // 统一文案",
      "en": "Return uniform messages and constant latencies across the three entries, deferring registration outcomes to the email-confirmation stage. After the fix, replay step 1: responses for existing and absent accounts should be indistinguishable."
     },
     "difficulty": "beginner"
@@ -5216,7 +5216,7 @@
      "en": "In step 1, request user and admin path variants one by one per the script, recording status codes, response shapes and sizes; any path returning valid user data or differential errors confirms the enumeration surface, contrasting pre- and post-authentication to bound disclosure conditions. Judge success by the path-response matrix. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "用户资源改用不可枚举标识并统一错误响应结构，未授权访问一律返回通用 404。修复后重放第 1 步，全部路径应返回一致的匿名化响应。",
+     "zh": "用户资源改用不可枚举标识（UUID）并统一错误响应结构，未授权与不存在一律返回通用 404。\n    app.get('/api/user/:id', (req, res) => {\n        if (!req.user) return res.status(404).json({ error: 'not found' });\n        const u = users.get(req.params.id); // UUID 标识\n        if (!u) return res.status(404).json({ error: 'not found' });\n        res.json(mask(u));\n    });",
      "en": "Switch user resources to non-enumerable identifiers with unified error shapes, returning generic 404 for all unauthorized access. After the fix, replay step 1: every path should return consistent anonymized responses."
     },
     "difficulty": "intermediate"
@@ -5476,7 +5476,7 @@
      "en": "In step 1, issue user queries for known-existing and certainly-absent usernames and emails one by one per the script, recording return shapes and error texts; distinguishable responses confirm the enumeration surface, then query sensitive fields as an unauthorized identity to verify authorization gaps. Judge success by the response-difference matrix. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "未命中查询返回与空结果一致的统一结构并延迟到授权后才区分，用户标识改用不可枚举 ID。修复后重放第 1 步，两类查询的响应应不可区分。",
+     "zh": "未命中与未授权返回一致的统一错误结构，授权后才区分结果；用户标识改用不可枚举 ID 并施加字段级授权。\n    user: (parent, { username }, ctx) => {\n        if (!ctx.user) throw new GraphQLError('not found');\n        const u = db.findUser(username);\n        if (!u) throw new GraphQLError('not found'); // 与未授权同形\n        return ctx.user.id === u.id ? u : mask(u);\n    }",
      "en": "Return uniform shapes identical to empty results for misses, deferring distinctions until after authorization, and switch user identifiers to non-enumerable IDs. After the fix, replay step 1: both query classes should be indistinguishable."
     },
     "difficulty": "intermediate"
@@ -5710,7 +5710,7 @@
      "en": "In step 1, submit Set-Cookie injection variants one by one in echoable header values or path parameters, checking responses for attacker-controlled session cookies; on a hit, verify in a browser that the cookie is actually set, then access protected endpoints with the fixed session to prove full impact. Judge success by browser cookie state. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "会话值进入响应头前做严格字符校验并拒绝换行，框架层启用头注入防护；登录后轮换会话 ID。修复后重放第 1 步，全部变体应被过滤且无异常 Cookie 生成。",
+     "zh": "会话值写入响应头前做严格字符校验并拒绝换行，框架层启用头注入防护；登录成功后轮换会话 ID。\n    const sid = String(req.body.session_id || '').replace(/[^A-Za-z0-9,-]/g, '');\n    if (!sid || sid.length < 22) throw new Error('bad session id');\n    res.setHeader('Set-Cookie',\n        'session=' + sid + '; HttpOnly; Secure; SameSite=Lax');",
      "en": "Strictly validate characters before session values enter headers and reject newlines, enabling framework header-injection protections; rotate session IDs after login. After the fix, replay step 1: every variant should be filtered with no anomalous cookies set."
     },
     "difficulty": "advanced"
@@ -6331,7 +6331,7 @@
      "en": "In step 1, append session parameter names with preset values to target URLs per the script, recording which session source and principal the server adopts; adoption of the URL value confirms the exposure surface, then check access logs and Referer for leak paths. Judge success by the server's session decision. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "移除 URL 会话参数支持并强制 Cookie 承载会话，日志与监控对含会话样式的 URL 告警脱敏。修复后重放第 1 步，URL 参数应被忽略且历史链接无法复用会话。",
+     "zh": "移除 URL 会话参数支持，会话仅由安全 Cookie 承载并关闭透明 SID 与 URL 重写，日志对含会话样式的 URL 脱敏告警：\n    ; php.ini：禁用 URL 会话与透明 SID\n    session.use_only_cookies = 1\n    session.use_trans_sid = 0\n    # Tomcat context.xml：会话追踪仅 Cookie\n    <tracking-mode>COOKIE</tracking-mode>",
      "en": "Remove URL session-parameter support and enforce cookie-based sessions, masking and alerting on session-shaped URLs in logs. After the fix, replay step 1: URL parameters should be ignored and historical links unable to reuse sessions."
     },
     "difficulty": "intermediate"
@@ -6582,7 +6582,7 @@
      "en": "In step 1, inject Referer variants carrying session parameters into protected requests per the script, recording whether the server adopts the Referer value to establish or switch identity; a Referer-borne session being honored confirms the parsing flaw, contrasted with normal cookies for precedence. Judge success by the server's identity decision. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "删除从 Referer 提取凭据的兼容逻辑，会话仅从 Cookie 或 Authorization 读取并配置 Referrer-Policy 限制外泄。修复后重放第 1 步，Referer 会话值应被完全忽略。",
+     "zh": "删除从 Referer 提取会话的兼容逻辑，会话仅从 Cookie 或 Authorization 读取，边界层拒绝查询串会话参数并下发 Referrer-Policy：\n    # Nginx：查询串携带会话样式参数即拒绝并告警\n    if ($args ~* \"(?i)(session(id)?|phpsessid|jsessionid)=\") { return 403; }\n    add_header Referrer-Policy \"strict-origin-when-cross-origin\" always;",
      "en": "Remove credential-extraction compatibility from Referer handling, reading sessions only from Cookie or Authorization, and set Referrer-Policy to curb leaks. After the fix, replay step 1: Referer session values should be ignored entirely."
     },
     "difficulty": "advanced"
@@ -6826,7 +6826,7 @@
      "en": "In step 1, seed all-zero, all-f and sequential-character low-entropy values into session cookies against protected endpoints per the script, recording whether the server establishes sessions; on a hit, verify whether login generates fresh IDs. A low-entropy value gaining a session confirms the entropy defect. Judge success by session-establishment and rotation records. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "会话 ID 改用 128 位以上 CSPRNG 输出并拒绝客户端提供值，登录与会权变更强制轮换。修复后重放第 1 步，低熵值应全部被拒绝且登录生成全新 ID。",
+     "zh": "会话 ID 由 128 位以上 CSPRNG 生成并拒绝客户端提供值，登录与会权变更强制轮换：\n    // Servlet 3.1+：认证成功即轮换会话 ID\n    request.changeSessionId();\n    ; php.ini 与登录入口\n    session.sid_length = 48\n    session.sid_bits_per_character = 6\n    session_regenerate_id(true);",
      "en": "Generate session IDs from 128-bit-plus CSPRNG output, refuse client-supplied values, and force rotation on login and privilege changes. After the fix, replay step 1: low-entropy values should all be rejected and logins mint fresh IDs."
     },
     "difficulty": "intermediate"
@@ -7077,7 +7077,7 @@
      "en": "In step 1, deploy a reference-collection page on an external test domain, route the token-carrying target page toward it via jumps and subresource loads, and check whether collected Referers contain the token; a full token appearing completes the leak chain. Judge success by collection-page records. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "令牌改由请求头或 Cookie 传递并配置 strict-origin-when-cross-origin 等策略，外链跳转经中转页剥离来源。修复后重放第 1 步，收集页应收不到含令牌的 Referer。",
+     "zh": "令牌改由 Authorization 头或 HttpOnly Cookie 传递，全站下发 Referrer-Policy，外链跳转经中转页剥离来源：\n    # Nginx\n    add_header Referrer-Policy \"strict-origin-when-cross-origin\" always;\n    // Express：查询串出现令牌参数即拒绝\n    if (/(access_?token|jwt)=/i.test(req.url))\n      return res.status(400).send('token must not travel in URL');",
      "en": "Carry tokens via headers or cookies with strict-origin-when-cross-origin policies, and strip sources on outbound jumps through an interstitial. After the fix, replay step 1: the collection page should receive no token-bearing Referer."
     },
     "difficulty": "intermediate"
@@ -7455,7 +7455,7 @@
      "en": "In step 1, submit short-numeric, sequential and common-word tokens to the reset-confirm endpoint one by one with dry-run-style flags per the script, recording acceptances; any weak value entering the flow confirms the entropy defect, then check invalidation on resubmission of the same token. Judge success by the token-acceptance matrix. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "重置令牌以 CSPRNG 生成 128 位以上熵、限时有效、单次使用并绑定账号与请求会话。修复后重放第 1 步，全部弱令牌应被拒绝且真实令牌用后即失效。",
+     "zh": "重置令牌以 CSPRNG 生成 256 位熵、限时单次并绑定账号，存储端只保留哈希：\n    import secrets, hashlib, datetime as dt\n    token = secrets.token_urlsafe(32)\n    db.save(user, hashlib.sha256(token.encode()).hexdigest(),\n            expires=dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=15))\n    row = db.consume(user)   # 单次使用：读取即删；过期或哈希不符即 abort(403)",
      "en": "Generate reset tokens with a CSPRNG at 128-bit-plus entropy, short-lived, single-use, bound to account and request session. After the fix, replay step 1: every weak token should be rejected and genuine tokens die on first use."
     },
     "difficulty": "intermediate"
@@ -7865,7 +7865,7 @@
      "en": "In step 1, place test JWTs one by one under different URL parameter names against the target, then check proxy logs, browser history and an external Referer-collection page for captured tokens; any leak path confirms the transport defect, and replay the leaked token to prove in-validity reuse. Judge success by leak-path records. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "JWT 仅经 Authorization 头或安全 Cookie 传输，URL 形式彻底下线；日志对令牌样式脱敏并缩短有效期。修复后重放第 1 步，全部路径应无令牌外泄。",
+     "zh": "JWT 仅经 Authorization 头或 Secure HttpOnly Cookie 传输，URL 形式彻底下线，日志对令牌样式脱敏：\n    # Nginx：拒绝 URL 中的 JWT，访问日志不含查询串\n    if ($args ~* \"(?i)(access_token|token|jwt)=ey\") { return 401; }\n    log_format noquery '$remote_addr $request_method $uri $status';\n    access_log /var/log/nginx/app.access.log noquery;",
      "en": "Transmit JWTs only via Authorization headers or secure cookies, retiring URL forms entirely; mask token shapes in logs and shorten validity. After the fix, replay step 1: no path should leak tokens."
     },
     "difficulty": "intermediate"
@@ -8125,7 +8125,7 @@
      "en": "In step 1, place preset tokens one by one under different parameter names against protected endpoints per the script, recording which source the server trusts; then complete login carrying the preset value and reuse it to verify persistence. URL values outranking secure sources or persisting post-login confirm the defect. Judge success by source-trust and persistence records. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "令牌只从 Authorization 或 HttpOnly Cookie 读取并显式忽略查询参数，登录后强制轮换全部令牌。修复后重放第 1 步，URL 预设值应被忽略且登录产生新令牌。",
+     "zh": "令牌只从 Authorization 或 HttpOnly Cookie 读取并显式忽略查询参数，登录后强制轮换：\n    // Express：令牌唯一提取入口\n    const token = (req.headers.authorization || '').replace(/^Bearer /, '')\n      || req.cookies?.session;\n    if (/(access_token|jwt)=/i.test(req.url))\n      logger.warn('token-in-url', req.ip);   // 查询串令牌只告警不使用",
      "en": "Read tokens only from Authorization or HttpOnly cookies, explicitly ignoring query parameters, and force full token rotation after login. After the fix, replay step 1: URL preset values should be ignored and logins mint new tokens."
     },
     "difficulty": "advanced"
@@ -8386,7 +8386,7 @@
      "en": "In step 1, batch-submit millisecond-timestamp candidates around the target's business time to the token endpoint per the script and tally hits; adjacent-value hits confirm time-derived defects, repeating across multiple windows to rule out coincidence. Judge success by hit statistics. Replace placeholders via the global variables menu; keep candidate generation rates within authorization."
     },
     "mitigation": {
-     "zh": "令牌改用 CSPRNG 生成并禁止时间或计数器直接参与，服务端对令牌枚举速率限制与告警。修复后重放第 1 步，候选命中应为零且批量请求触发限流。",
+     "zh": "令牌改用 CSPRNG 生成并禁止时间戳或计数器参与，服务端对枚举速率限制与告警：\n    token = secrets.token_urlsafe(32)        # 无时间成分\n    # Flask-Limiter：令牌校验端点枚举限流\n    limiter = Limiter(key_func=get_remote_address)\n    @app.post('/verify')\n    @limiter.limit('3/minute')               # 超限自动 429\n    def verify():\n        return check_token(request.form['token'])",
      "en": "Generate tokens with a CSPRNG, barring direct timestamp or counter participation, and rate-limit plus alert on token enumeration. After the fix, replay step 1: candidate hits should be zero with batch requests throttled."
     },
     "difficulty": "advanced"
@@ -8682,7 +8682,7 @@
      "en": "In step 1, submit Base64 encodings of common usernames, passwords and combos to the authentication endpoint one by one per the script, recording allowances; any encoding gaining a session confirms the encoding-only defect, with decoded cross-checks proving no signature verification. Judge success by the allowance matrix. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "令牌改为带签名的结构（如 HMAC 或 JWT 严格校验）并由服务端保存会话状态，拒绝无法验签的值。修复后重放第 1 步，全部自造编码应被拒绝。",
+     "zh": "令牌改为带 HMAC/JWT 签名的结构并锁定算法白名单，验签失败即拒绝，身份以服务端状态为准：\n    # PHP：HMAC 签名与恒时比较\n    $sig = hash_hmac('sha256', $payload, $key);\n    if (!hash_equals($sig, $clientSig)) { http_response_code(401); exit; }\n    // Java (jjwt)：密钥固定，alg:none 被拒\n    Jwts.parser().verifyWith(key).build().parseSignedClaims(token);",
      "en": "Move tokens to signed structures such as HMAC or strictly validated JWTs with server-side session state, rejecting anything unverifiable. After the fix, replay step 1: every self-made encoding should be rejected."
     },
     "difficulty": "beginner"
@@ -9078,7 +9078,7 @@
      "en": "In step 1, first request the account API with a manual Origin null header recording response headers, then per the script fire the same request from a sandboxed iframe as a genuine null origin and attempt a read; reflection of null plus browser readability confirms the trust defect. Judge success by reflected headers and read results. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "从白名单移除 null 与通配值，无 Origin 请求按非浏览器流量处理并要求凭据接口显式校验。修复后重放第 1 步，null 源请求应无 ACAO 反射且读取被阻断。",
+     "zh": "白名单移除 null 与通配值，无 Origin 请求按非浏览器流量处理：\n    // Express：Origin 精确白名单\n    const ALLOW = new Set(['https://app.example.com']);\n    app.use((req, res, next) => {\n      const o = req.headers.origin;\n      if (o && ALLOW.has(o)) {\n        res.setHeader('Access-Control-Allow-Origin', o);\n        res.setHeader('Vary', 'Origin');\n      }                              // null/缺失/未知来源不设 ACAO\n      next();\n    });",
      "en": "Remove null and wildcard values from allowlists, treat Origin-less requests as non-browser traffic, and require explicit validation on credentialed APIs. After the fix, replay step 1: null-origin requests should carry no ACAO reflection and reads must be blocked."
     },
     "difficulty": "advanced"
@@ -9331,7 +9331,7 @@
      "en": "In step 1, place controllable subdomains, arbitrary-prefix subdomains and concatenated lookalikes into Origin one by one per the script, recording reflections and credential allowances; any unregistered origin passing confirms the overly broad boundary, with impact gauged by actual control of that subdomain. Judge success by the allowance matrix. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "白名单枚举确切主机名并纳入子域资产清单一并维护，禁用通配匹配；对遗留子域做接管检测。修复后重放第 1 步，全部非枚举来源应被拒绝。",
+     "zh": "白名单枚举确切主机名并纳入子域资产清单一并维护，禁用通配与后缀匹配：\n    # Nginx：map 精确匹配后才回显 Origin\n    map $http_origin $cors_acao {\n        default                    \"\";\n        \"https://app.example.com\"  $http_origin;\n        \"https://cdn.example.com\"  $http_origin;\n    }\n    add_header Access-Control-Allow-Origin $cors_acao always;",
      "en": "Enumerate exact hostnames in allowlists maintained alongside subdomain asset inventories, disabling wildcard matching, and run takeover checks on legacy subdomains. After the fix, replay step 1: every non-enumerated origin should be rejected."
     },
     "difficulty": "advanced"
@@ -9582,7 +9582,7 @@
      "en": "In step 1, place target-domain prefix concatenations, hyphen separations and lookalike spellings into Origin one by one per the script, recording validation outcomes; any lookalike domain reflected on credentialed responses confirms the regex boundary defect. Judge success by allowance and reflection records. Replace placeholders via the global variables menu; on hits, close the loop with a browser read."
     },
     "mitigation": {
-     "zh": "域名校验放弃正则改为解析后 host 精确比对，确需正则时补全锚点并转义点号。修复后重放第 1 步，全部相似域应被拒绝。",
+     "zh": "域名校验放弃正则改为解析后 host 精确比对，确需正则时补全起止锚点并转义点号：\n    // Java：URI 解析出 host 后精确比对\n    String host = URI.create(origin).getHost();\n    if (host == null || !ALLOWED_HOSTS.contains(host)) return false;\n    # 必须用正则时的安全写法（锚点+转义点号）\n    ^https://([a-z0-9-]+\\.)?example\\.com$",
      "en": "Replace domain regexes with parsed-host exact comparison; where regexes are unavoidable, add anchors and escape dots. After the fix, replay step 1: every lookalike domain should be rejected."
     },
     "difficulty": "intermediate"
@@ -9771,7 +9771,7 @@
      "en": "In step 1, send credentialed requests combining missing Origin with trusted Referer, conflicting header pairs and port variants one by one per the script, recording CORS verdicts; any combination passing confirms the arbitration defect, distinguishing fallback versus precedence root causes. Judge success by the verdict matrix. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "跨源判定仅以 Origin 为准且缺失即拒绝，Referer 不参与 CORS 决策；冲突日志并入监控。修复后重放第 1 步，全部组合应返回无凭据放行。",
+     "zh": "跨源判定仅以 Origin 为准且缺失即不产生 CORS 头，Referer 不参与决策，冲突日志并入监控：\n    // Spring：白名单精确 Origin，无 null、无通配\n    CorsConfiguration c = new CorsConfiguration();\n    c.setAllowedOrigins(List.of(\"https://app.example.com\"));\n    c.setAllowCredentials(true);\n    UrlBasedCorsConfigurationSource s = new UrlBasedCorsConfigurationSource();\n    s.setCorsConfigurations(Map.of(\"/api/**\", c));",
      "en": "Base cross-origin decisions solely on Origin, rejecting absence, and keep Referer out of CORS decisions; pipe conflicts into monitoring. After the fix, replay step 1: every combination should come back without credential allowance."
     },
     "difficulty": "advanced"
@@ -10024,7 +10024,7 @@
      "en": "In step 1, send state-changing requests from a cross-site page as form-encoded, multipart and text/plain per the script, recording server handling; writes landing without preflight confirm the boundary defect, distinguishing request delivery from response readability. Judge success by effective-write records. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "跨源防护不依赖预检，业务端点校验 Origin/Sec-Fetch-Site 并叠加 CSRF Token；简单请求同样纳入限速。修复后重放第 1 步，三类请求应全部被拒绝。",
+     "zh": "跨源防护不依赖预检：写操作端点校验 Sec-Fetch-Site，叠加 CSRF Token 与 SameSite Cookie，简单请求同样限速：\n    // Express：Fetch Metadata + CSRF 双保险\n    app.post('/api/:action', csrf({ cookie: true }), (req, res) => {\n      const s = req.headers['sec-fetch-site'];\n      if (s && !['same-origin', 'same-site', 'none'].includes(s))\n        return res.status(403).end();      // 跨站简单请求同样拦截\n    });\n    Set-Cookie: session=<id>; SameSite=Strict; Secure; HttpOnly",
      "en": "Never rely on preflight for cross-origin protection: business endpoints validate Origin and Sec-Fetch-Site with CSRF tokens stacked, and simple requests get rate-limited too. After the fix, replay step 1: all three request types should be rejected."
     },
     "difficulty": "intermediate"

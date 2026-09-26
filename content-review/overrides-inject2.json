@@ -190,7 +190,7 @@
      "en": "Per step 1, submit the complete stylesheet with the xmlns:php namespace and php:function('system','id') to the target transform entry; a hit is uid= command output in the transform result. Once execution is confirmed, swap function arguments for marker commands as evidence; without output, check in turn whether registerPHPFunctions is enabled, whether the stylesheet was fully accepted, and transform-process permissions—any missing means the chain fails."
     },
     "mitigation": {
-     "zh": "禁止用户控制可执行样式表；关闭 PHP XSL 扩展函数注册并采用无扩展的受限处理器；以低权限隔离转换进程、限制文件与网络访问，并对允许的模板做完整性校验。修复后重放第 1 步样式表，确认 php:function 被拒绝且正常转换可用。",
+     "zh": "禁止用户控制可执行样式表，关闭 PHP XSL 扩展函数注册，改用无扩展的受限处理器，转换进程低权限隔离并限制文件网络访问：\n    $proc = new XSLTProcessor();\n    // 生产绝不调用 $proc->registerPHPFunctions()\n    if (preg_match('/php:function/i', $styleXml)) {\n        throw new RuntimeException('样式表含扩展函数，已拒绝');\n    }\n    $proc->importStylesheet($trustedDom);  // 仅加载受信仓库 DOMDocument",
      "en": "Forbid user-controlled executable stylesheets; disable PHP XSL extension-function registration and use a restricted extension-free processor; isolate transform processes with low privilege, restrict file and network access, and verify template integrity. After the fix, replay the step-1 stylesheet and confirm php:function is rejected while normal transforms work."
     },
     "difficulty": "expert"
@@ -473,7 +473,7 @@
      "en": "Per step 1, submit the stylesheet mapping the java.lang.Runtime extension namespace, first validating the invocation chain with getRuntime and exec('id'); a hit is the corresponding command output in the transform result. Once confirmed, substitute marker commands; without output, confirm in turn that the processor is Xalan, extension functions are not disabled by secure processing, and the untrusted stylesheet genuinely participates in transformation—if any fails, the chain does not apply to the target."
     },
     "mitigation": {
-     "zh": "只执行受版本控制且签名的 XSLT；启用 JAXP 安全处理并禁止外部扩展函数与任意类解析；在无网络、只读文件系统和低权限账号中运行转换，同时监控异常子进程。修复后重放第 1 步样式表，确认扩展命名空间被拒绝。",
+     "zh": "只执行受版本控制且签名的 XSLT，启用 JAXP 安全处理并禁止外部扩展函数与任意类解析，在无网络低权限账号中运行转换并监控异常子进程：\n    TransformerFactory tf = TransformerFactory.newInstance();\n    tf.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);\n    tf.setFeature(\"http://www.oracle.com/xml/jaxp/properties/enableExtensionFunctions\", false);\n    if (styleXml.contains(\"xml.apache.org/xalan/java/\"))\n        throw new SAXException(\"拒绝扩展命名空间样式表\");",
      "en": "Execute only version-controlled, signed XSLT; enable JAXP secure processing and forbid external extension functions and arbitrary class resolution; run transforms without network, on read-only filesystems, under low-privilege accounts, and monitor anomalous child processes. After the fix, replay the step-1 stylesheet and confirm the extension namespace is rejected."
     },
     "difficulty": "expert"
@@ -766,7 +766,7 @@
      "en": "Per step 1, submit the complete stylesheet with msxsl:script and the xmlns:my namespace, launching a command via Process inside the script block and calling the user function from the template; a hit is the script code executing during transformation with command output. Once confirmed, swap commands for marker output; without output, check whether XslCompiledTransform has script settings enabled and whether the stylesheet fully participates in transformation—log compile errors separately."
     },
     "mitigation": {
-     "zh": "保持 XSLT 脚本功能关闭；只从受信仓库加载固定样式表并校验完整性；将转换放入低权限隔离进程，限制子进程、文件与网络能力并监控动态编译事件。修复后重放第 1 步样式表，确认脚本块被拒绝且正常转换可用。",
+     "zh": "保持 XSLT 脚本功能关闭，样式表只从受信仓库加载并校验完整性，转换进程低权限隔离并监控动态编译事件：\n    // .NET：XsltSettings(false, false) 同时关闭 script 与 document()\n    var xslt = new XslCompiledTransform();\n    xslt.Load(stylePath, new XsltSettings(false, false), null);\n    if (styleXml.Contains(\"msxsl:script\"))\n        throw new InvalidOperationException(\"样式表禁止脚本扩展\");",
      "en": "Keep XSLT scripting disabled; load fixed stylesheets only from trusted repositories with integrity checks; run transforms in low-privilege isolated processes, restricting child-process, file, and network capabilities, and monitor dynamic-compilation events. After the fix, replay the step-1 stylesheet and confirm script blocks are rejected while normal transforms work."
     },
     "difficulty": "expert"
@@ -1057,7 +1057,7 @@
      "en": "In step 1, inject percent-encoded and raw CRLF variants one by one into echoable header values or path parameters, checking responses for injected Set-Cookie, custom headers or Location pointers; any injected structure confirms header injection, distinguishing full response splitting from mere header pollution. Judge success by cookies the browser actually accepts and response structure. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "拒绝进入响应头的输入含回车换行并做严格编码，框架升级至禁止手动多头发头；对重定向 Location 统一白名单。修复后重放第 1 步，全部变体应被过滤或拒绝。",
+     "zh": "拒绝含回车换行的输入进入响应头并做严格编码，升级框架至禁止手工多头发头，重定向 Location 统一白名单（Spring 示例）：\n    @GetMapping(\"/redirect\")\n    public RedirectView redirect(@RequestParam String url) {\n        if (url.matches(\".*[\\\\r\\\\n].*\") || !url.startsWith(\"/\") || url.startsWith(\"//\"))\n            throw new IllegalArgumentException(\"非法跳转地址\");\n        return new RedirectView(url);\n    }\n    String safeHeader = value.replaceAll(\"[\\\\r\\\\n]\", \"\");  // 写响应头前统一清洗",
      "en": "Reject carriage returns in header-bound input with strict encoding, upgrade frameworks to forbid manual multi-header emission, and allowlist redirect Locations. After the fix, replay step 1: every variant should be filtered or rejected."
     },
     "difficulty": "advanced"
@@ -1683,7 +1683,7 @@
      "en": "Submit samples one by one per step 1: first confirm with the isAdmin variants that the shared prototype is overwritten and target objects inherit the value; then test whether innerHTML and src reach DOM or script sinks; in Node, test NODE_OPTIONS-style gadgets. A hit is inherited properties producing expected behavior. Prove the pollution primitive first, then verify gadgets one by one, archiving the two evidence stages separately."
     },
     "mitigation": {
-     "zh": "在所有对象路径入口拒绝 __proto__、prototype 和 constructor；使用无原型对象、Map 或经过审计的安全合并库；授权判断只读取自有属性并采用显式 Schema。修复后重放第 1 步全部变体，并为污染源与每个 gadget 分别建立回归测试。",
+     "zh": "在所有对象路径入口拒绝 __proto__、prototype、constructor 键，使用无原型对象、Map 或经审计的安全合并库，授权判断只读自有属性并设显式默认值：\n    const UNSAFE = ['__proto__', 'prototype', 'constructor'];\n    function assertSafe(o) {   // 入口递归校验键\n      for (const k of Object.keys(o)) {\n        if (UNSAFE.includes(k)) throw new Error('危险键: ' + k);\n        if (o[k] && typeof o[k] === 'object') assertSafe(o[k]);\n      }\n    }\n    const isAdmin = u => Object.prototype.hasOwnProperty.call(u, 'isAdmin') && u.isAdmin === true;",
      "en": "Reject __proto__, prototype, and constructor at every object-path entry; use prototype-less objects, Map, or audited safe merge libraries; read authorization decisions from own properties only with explicit schemas. After the fix, replay all step-1 variants and build separate regression tests for the pollution source and each gadget."
     },
     "difficulty": "advanced"
@@ -2076,7 +2076,7 @@
      "en": "In step 1, submit repeated parameters in safe-then-payload and payload-then-safe orders plus comma-merged form one by one, comparing edge validation verdicts against actual business-layer handling; divergent values with the malicious one winning confirms usable pollution, and layer logs pinpoint the divergence. Judge success by the business layer's actual value. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "各层统一重复参数解析策略并在入口丢弃多余同名参数，安全校验与业务读取复用同一取值函数。修复后重放第 1 步，三组提交应得到一致的拒绝结论。",
+     "zh": "各层统一重复参数解析策略并在入口丢弃多余同名参数，安全校验与业务读取复用同一取值函数：\n    // Express：同名参数统一取首值，校验与业务同源\n    const first = v => Array.isArray(v) ? v[0] : v;\n    app.post('/transfer', (req, res) => {\n      const to = first(req.body.to), amount = first(req.body.amount);\n      if (!WHITELIST.has(to) || !/^\\d+(\\.\\d{1,2})?$/.test(amount)) return res.sendStatus(400);\n      pay(to, amount);  // 业务复用同一取值，禁止重读原始请求\n    });",
      "en": "Unify repeated-parameter parsing across layers and drop extra same-name parameters at ingress, with security checks and business reads sharing one resolver. After the fix, replay step 1: all three submissions should get a consistent rejection."
     },
     "difficulty": "advanced"
@@ -2329,7 +2329,7 @@
      "en": "Write the step-1 formula samples into input fields the export feature accepts (e.g., name, remarks), generate the CSV, and open it in an isolated environment accepting the external-connection prompt; a hit is your HTTP log receiving shell.ps1/shell.exe downloads or IMPORTDATA callbacks after opening (or the target process launching). Replace the {ATTACKER_HOST} placeholder in the global variables menu. Record client software, version, and user interaction per sample; formulas displayed as text count as negative."
     },
     "mitigation": {
-     "zh": "导出前对可能被解释为公式的前缀采用可靠的文本化策略；根据目标客户端正确处理引号、分隔符与前导空白，禁止仅依赖黑名单；提供不执行公式的安全导出格式，并用主流客户端版本做文件级回归。修复后重放第 1 步样例并重新打开导出文件，确认无外带请求。",
+     "zh": "导出前对可能被解释为公式的前缀采用可靠文本化策略，正确处理引号、分隔符与前导空白，禁止仅依赖黑名单，并提供不执行公式的安全导出格式：\n    def csv_cell(v):\n        v = str(v)\n        if v[:1] in ('=', '+', '-', '@', '\\t'):\n            v = \"'\" + v                      # 前导单引号强制文本化\n        if any(c in v for c in ',\\t\"\\r\\n'):\n            v = '\"' + v.replace('\"', '\"\"') + '\"'\n        return v",
      "en": "Apply a reliable textification strategy to potential formula prefixes before export; handle quotes, delimiters, and leading whitespace correctly per target client and never rely on blacklists alone; provide safe export formats that do not evaluate formulas, and run file-level regression on mainstream client versions. After the fix, replay the step-1 samples, re-open the export, and confirm no callbacks occur."
     },
     "difficulty": "advanced"
@@ -2879,7 +2879,7 @@
      "en": "Submit the samples one by one per step 1, recording response and log differences: first T(java.lang.Runtime).getRuntime().exec('id') to confirm type references are reachable, then ProcessBuilder construction and ${} interpolation forms; a hit is uid= command output from expression evaluation. Without output, check the evaluation-context type (Standard vs Simple) and the expression entry; a parsed expression or mere syntax error is not a hit."
     },
     "mitigation": {
-     "zh": "不要对用户输入调用通用表达式求值器；使用 SimpleEvaluationContext 或业务专用白名单语法并禁用类型、构造器与反射访问；以低权限隔离进程并为路由、配置和模板入口建立求值回归测试。修复后重放第 1 步样例，确认类型引用被拒绝。",
+     "zh": "不对用户输入调用通用表达式求值器，使用 SimpleEvaluationContext 或业务专用白名单语法，禁用类型、构造器与反射访问并以低权限隔离进程：\n    ExpressionParser parser = new SpelExpressionParser();\n    Expression exp = parser.parseExpression(input);\n    // 只读数据绑定：T() 类型引用、构造器与静态方法均不可用\n    Object value = exp.getValue(SimpleEvaluationContext.forReadOnlyDataBinding().build());\n    if (input.contains(\"T(\") || input.contains(\"Runtime\"))\n        throw new IllegalArgumentException(\"表达式含类型引用\");",
      "en": "Never call generic expression evaluators on user input; use SimpleEvaluationContext or business-specific allowlisted syntax, disabling type, constructor, and reflection access; isolate processes with low privilege and build evaluation regression tests for route, configuration, and template entries. After the fix, replay the step-1 samples and confirm type references are rejected."
     },
     "difficulty": "expert"
@@ -3164,7 +3164,7 @@
      "en": "Start LDAP/RMI captors and DNS/HTTP observers attacker-side first, then submit the ldap://, rmi://, and ${jndi:...} URI forms one by one per step 1, recording response and log differences; a hit is the captor receiving the target's callback or outbound logs appearing. Layer the confirmation after a hit: prove the string reached lookup, then the outbound request, then whether object loading or execution is possible given JDK version and object-factory configuration. Replace {ATTACKER_HOST} and similar placeholders in the global variables menu."
     },
     "mitigation": {
-     "zh": "禁止不可信输入进入 JNDI 名称；升级相关 JDK、日志与命名组件并关闭远程对象工厂能力；限制 LDAP/RMI 出站网络和允许的命名协议，同时监控 lookup 调用与异常目录连接。修复后重放第 1 步 URI，确认捕获端无任何回连。",
+     "zh": "禁止不可信输入进入 JNDI 名称，升级相关 JDK、日志与命名组件并关闭远程对象工厂能力，限制 LDAP/RMI 出站并监控 lookup 调用：\n    private static final Set<String> ALLOW = Set.of(\"java:comp/env/jdbc/ds\");\n    Object lookup(String name) {\n        if (!ALLOW.contains(name))\n            throw new SecurityException(\"JNDI 名称拒绝: \" + name);\n        return new InitialContext().lookup(name);\n    }\n    # JVM 启动参数：禁止远程代码库加载\n    -Dcom.sun.jndi.ldap.object.trustURLCodebase=false",
      "en": "Keep untrusted input out of JNDI names; upgrade affected JDKs, logging, and naming components and disable remote object factories; restrict LDAP/RMI egress and allowed naming protocols while auditing lookup calls and anomalous directory connections. After the fix, replay the step-1 URIs and confirm the captors receive nothing."
     },
     "difficulty": "expert"
@@ -3425,7 +3425,7 @@
      "en": "In step 1, deploy a decoy page with a transparent iframe, align the target sensitive-action page above the decoy button, tune opacity and coordinates, then click; the target action executing without the victim's awareness confirms the hijack, and record response headers to verify missing protection. Judge success by execution records on the target side. Replace placeholders via the global variables menu; use lab synthetic actions to avoid real impact."
     },
     "mitigation": {
-     "zh": "敏感页面返回 frame-ancestors none 或 SAMEORIGIN，关键操作增加二次确认与随机化控件位置。修复后重放第 1 步，iframe 应被浏览器拒绝加载且操作无执行记录。",
+     "zh": "敏感页面返回 frame-ancestors 'none' 或 SAMEORIGIN，关键操作增加二次确认与随机化控件位置：\n    # Nginx：敏感站点统一加防嵌响应头\n    add_header Content-Security-Policy \"frame-ancestors 'none'\" always;\n    add_header X-Frame-Options \"DENY\" always;",
      "en": "Serve frame-ancestors none or SAMEORIGIN on sensitive pages, add second confirmation for critical actions, and randomize control positions. After the fix, replay step 1: the browser should refuse the iframe and no execution records appear."
     },
     "difficulty": "intermediate"
@@ -3778,7 +3778,7 @@
      "en": "In step 1, place external-domain, protocol-relative and backslash target variants into the url parameter against the redirect endpoint one by one, recording response Location and the browser's final address; also deploy a luring-hyperlink page to verify the full phishing chain. Any variant landing externally confirms missing validation. Judge success by final navigation address. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "跳转前解析 authority 并对照白名单，仅接受相对路径或注册域名，拒绝非常规分隔符。修复后重放第 1 步，全部变体应被拒绝或回退站内地址。",
+     "zh": "跳转目标必须在服务端解析后对照域名白名单，仅接受站内相对路径并拒绝 //、\\\\ 开头与协议混淆形式，未命中一律回退站内地址。\n    from urllib.parse import urlparse\n    ALLOWED_HOSTS = {\"www.example.com\", \"example.com\"}\n    def safe_target(url: str) -> str:\n        if url.startswith((\"/\", \"./\")) and not url.startswith(\"//\"):\n            return url\n        host = urlparse(url).hostname or \"\"\n        return url if host in ALLOWED_HOSTS else \"/\"",
      "en": "Parse the authority before redirecting and compare against an allowlist, accepting only relative paths or registered domains and rejecting unconventional separators. After the fix, replay step 1: every variant should be rejected or fall back in-site."
     },
     "difficulty": "intermediate"
@@ -4297,7 +4297,7 @@
      "en": "Use in Payload list order: step 1 starts a byte-recording Redis/TCP emulator on an isolated network and establishes an ordinary HTTP resource baseline; then render gopher iframes one by one (INFO frames, RESP commands, and database ports) — raw connections with decoded bytes at the corresponding ports confirm protocol-level SSRF; never send destructive fragments like flushall to real shared Redis; finally retest protection with gopher disabled and intranet ranges blocked. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "在解析器入口只允许 http/https 并拒绝协议混淆，在网络层阻断渲染容器到私网、回环与管理端口；对 URL 解码后目标再次校验，渲染沙箱以只读、无凭据身份运行。修复后用第 1 步样例回归，gopher 资源应全部被拒绝。",
+     "zh": "渲染入口只放行 http/https 资源并拒绝协议混淆，渲染沙箱以只读、无凭据身份运行；网络层默认阻断回环、私网与管理端口，WAF 拦截非常规协议引用。\n    # ModSecurity：拒绝 gopher/file 等协议资源\n    SecRule ARGS|REQUEST_BODY \"@rx (?i)(gopher|file|dict)://\" \"id:1201,phase:2,deny\"\n    # 渲染容器出站阻断私网与回环\n    iptables -A FORWARD -s <renderer_ip> -d 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8 -j DROP",
      "en": "Allow only http/https at the parser entrance and reject scheme confusion; block renderer-container access to private, loopback, and management ports at the network layer; revalidate decoded URL targets and run the render sandbox read-only without credentials. After the fix, regress with the step 1 sample: every gopher resource must be denied."
     },
     "difficulty": "expert"
@@ -4772,7 +4772,7 @@
      "en": "Use in Payload list order: step 1 records Prince's request characteristics, PDF attachment inventory, and hashes via a controlled public attachment; then render link rel=attachment and object variants one by one (file:///etc/passwd and http://127.0.0.1/) — matching content embedded in the PDF plus renderer logs of file/http access confirms, provided requests are proven to come from the Prince process rather than the user's browser; finally retest protection with a URL allowlist. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "只允许明确业务资源协议和域名，拒绝 file: 并在 DNS 与重定向后阻断回环、链路本地与私网；在独立低权限容器运行 Prince，使用只读临时目录并检查生成 PDF 的附件内容。修复后用第 1 步样例回归，附件与对象引用应全部失败。",
+     "zh": "资源引用仅允许业务 https 域名并拒绝 file:，DNS 与重定向后复查地址；Prince 运行于独立低权限只读容器，出站仅经白名单代理。\n    # 输入侧校验：拒绝非白名单资源\n    if not re.match(r\"^https://(cdn|static)\\.example\\.com/\", res_url):\n        raise ValueError(\"resource not allowed\")\n    # 渲染容器：无特权、只读\n    docker run --rm --cap-drop ALL --read-only --tmpfs /tmp prince-image prince in.html",
      "en": "Allow only explicit business resource schemes and domains, reject file:, and block loopback, link-local, and private ranges after DNS and redirects; run Prince in a dedicated low-privilege container with a read-only temp directory and inspect generated PDF attachments. After the fix, regress with the step 1 sample: attachment and object references must all fail."
     },
     "difficulty": "advanced"
@@ -5009,7 +5009,7 @@
      "en": "In step 1, probe API, console and schema paths one by one per the script, recording response signatures; GraphQL error structures or playground pages confirm live endpoints, then send a minimal query to each to confirm usability. Judge success by the live-endpoint matrix. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "生产环境关闭调试界面并把端点收敛到统一路径，未认证请求返回通用错误。修复后重放第 1 步，控制台路径应不可达且特征响应消失。",
+     "zh": "生产环境关闭调试控制台与内省，端点收敛到统一路径并由认证保护，未认证请求返回通用错误。\n    const { ApolloServer, ApolloServerPluginLandingPageDisabled } =\n          require('apollo-server-core');\n    const server = new ApolloServer({\n      typeDefs, resolvers,\n      introspection: false,  // 生产禁用内省\n      plugins: [ApolloServerPluginLandingPageDisabled()],  // 下线控制台\n    });",
      "en": "Close debug consoles in production and consolidate endpoints to one path, returning generic errors for unauthenticated requests. After the fix, replay step 1: console paths should be unreachable and signature responses gone."
     },
     "difficulty": "beginner"
@@ -5268,7 +5268,7 @@
      "en": "In step 1, submit the full introspection query as a low-privilege identity per the script, then downgrade to minimal type-name queries, recording differences across both levels; complete schema returns confirm introspection is open, while distinguishable differences indicate partial policy. Judge success by the introspection-return matrix. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "生产禁用或按角色限制内省，配合 Schema 裁剪工具隐藏敏感类型，定期以低权身份复核。修复后重放第 1 步，低权身份的内省应被拒绝或仅返回白名单类型。",
+     "zh": "生产禁用或按角色限制内省，配合 Schema 裁剪隐藏敏感类型，定期以低权身份复核。\n    const { ApolloServer } = require('apollo-server');\n    const { NoIntrospection } = require('graphql-disable-introspection');\n    const server = new ApolloServer({\n      typeDefs, resolvers,\n      validationRules: [NoIntrospection()],  // 按角色可自写规则放行 admin\n    });",
      "en": "Disable or role-restrict introspection in production, hide sensitive types with schema-pruning tools, and re-review periodically as a low-privileged identity. After the fix, replay step 1: low-privilege introspection should be rejected or return only allowlisted types."
     },
     "difficulty": "intermediate"
@@ -5640,7 +5640,7 @@
      "en": "In step 1, submit typename and introspection queries for each of the three root types per the script, recording visibility differences; root type names returning despite role policies confirm the exposure-boundary defect, then validate usability with real operations. Judge success by the root-type visibility matrix. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "按角色裁剪根类型可见性并拒绝未授权类型的解析，Subscription 名称同样纳入策略。修复后重放第 1 步，禁止类型的探测应返回验证错误而非结构信息。",
+     "zh": "按角色裁剪根操作类型可见性，拒绝未授权类型解析，Subscription 同样纳入策略。\n    const opGuard = (ctx) => ({\n      OperationDefinition(node) {\n        const role = ctx.getContext().req.user?.role ? \"guest\";\n        if (!ALLOWED_OPS[role].includes(node.operation))\n          ctx.reportError(new GraphQLError(`operation ${node.operation} not allowed`));\n      },\n    });\n    new ApolloServer({ typeDefs, resolvers, validationRules: [opGuard] });",
      "en": "Prune root-type visibility per role and refuse resolution of unauthorized types, bringing Subscription names under the same policy. After the fix, replay step 1: probes for forbidden types should return validation errors rather than structure."
     },
     "difficulty": "intermediate"
@@ -5863,7 +5863,7 @@
      "en": "In step 1, place backslash and consecutive-slash ladder variants into the jump parameter one by one per the script, recording response Location and the browser's final address; any variant resolving to an external authority and completing the jump confirms exploitable parsing divergence. Judge success by the final navigation domain. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "跳转前按 RFC 解析 authority 并与白名单精确匹配，拒绝含反斜杠与混合斜杠的目标。修复后重放第 1 步矩阵，全部变体应被拒绝或落在站内。",
+     "zh": "跳转前按 RFC 解析 authority 并与白名单精确匹配，拒绝含反斜杠与混合斜杠的目标。\n    from urllib.parse import urlsplit\n    ALLOWED = {\"www.example.com\", \"example.com\"}\n    def safe_redirect(target):\n        t = target.replace(chr(92), '/')  # 反斜杠先归一化\n        p = urlsplit(t if '//' in t else '//' + t)\n        if p.hostname not in ALLOWED or p.scheme not in ('', 'http', 'https'):\n            raise RedirectBlocked(target)\n        return t",
      "en": "Parse the authority per RFC before jumping and exact-match against allowlists, rejecting backslash and mixed-slash targets. After the fix, replay the step 1 matrix: every variant should be rejected or stay in-site."
     },
     "difficulty": "advanced"
@@ -6191,7 +6191,7 @@
      "en": "Use the step 1 command to inject script navigation line by line in plain and base64 data:text/html forms; the plain row navigating to {ATTACKER_HOST} confirms data: active-content execution, with base64-row domains manually re-encoded for replacement. Baseline first with data:text/plain for script-free display, then record final protocol, document origin, CSP, and navigation events at the real sink. Record negatives when payloads render as plain text or CSP blocks them — execution never counts."
     },
     "mitigation": {
-     "zh": "按业务只允许明确协议并默认拒绝 data:，DOM 属性赋值前用标准 URL 解析器与 Trusted Types 约束；部署限制 object-src、frame-src 与 script-src 的 CSP，避免把用户数据作为完整导航目标。",
+     "zh": "按业务只允许明确协议并默认拒绝 data:，DOM 赋值前用标准 URL 解析器约束；部署限制 object-src/frame-src/script-src 的 CSP。\n    function safeUrl(u) {\n      const url = new URL(u, location.origin);\n      return /^https?:$/.test(url.protocol) ? url.href : \"/\";  // data: 一律拒绝\n    }\n    add_header Content-Security-Policy \"default-src 'self'; script-src 'self';\n      object-src 'none'; frame-src 'self'; base-uri 'self'\" always;",
      "en": "Allow only explicit business protocols, default-denying data:; constrain DOM attribute assignment with standard URL parsers and Trusted Types; deploy CSP restricting object-src, frame-src, and script-src, and avoid using user data as complete navigation targets."
     },
     "difficulty": "intermediate"
@@ -7122,7 +7122,7 @@
      "en": "In step 1, submit double-encoded targets to the jump endpoint one by one per the script, recording decoded shapes in layer logs and the final Location; landing externally after the second decode confirms exploitable layer divergence. Judge success by the final navigation address and intermediate logs. Replace placeholders via the global variables menu; contrast single encoding to bound decode counts."
     },
     "mitigation": {
-     "zh": "统一各层解码为单次并在应用层循环解码至稳定后再校验，边缘层拒绝含双编码特征的目标。修复后重放第 1 步矩阵，全部双编码变体应被拒绝。",
+     "zh": "统一各层解码为单次，应用层循环解码至稳定后再校验，边缘层拒绝双编码特征目标。\n    from urllib.parse import unquote\n    def stable_decode(t, rounds=3):\n        for _ in range(rounds):  # 解码至稳定形态\n            nxt = unquote(t)\n            if nxt == t: break\n            t = nxt\n        return t\n    if stable_decode(target) != target:\n        raise RedirectBlocked(\"double-encoded\")  # 边缘层直接拒绝",
      "en": "Standardize single-pass decoding at every layer and loop to stability in the application before validating, with edge layers rejecting double-encoded shapes. After the fix, replay the step 1 matrix: every double-encoded variant should be rejected."
     },
     "difficulty": "expert"
@@ -7333,7 +7333,7 @@
      "en": "In step 1, submit plaintext, percent-encoded and double-encoded hash-mark variants to the jump endpoint one by one per the script, recording validation verdicts and the browser's final address; in-site verdicts with external landings confirm fragment confusion. Judge success by the side-by-side parse results. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "校验前按 URL 规范完整解析并剥离片段，对编码井号先归一化再判定 authority。修复后重放第 1 步矩阵，全部变体应在校验层即被拒绝。",
+     "zh": "校验前按 URL 规范完整解析并剥离片段，编码井号先归一化再判定 authority。\n    from urllib.parse import urlsplit\n    def check_redirect(t):\n        p = urlsplit(t.replace('%23', '#'))  # 编码井号归一化\n        host = (p.hostname or '').lower()\n        if p.fragment or host not in ALLOWED_HOSTS:  # 剥离片段后仍须白名单\n            raise RedirectBlocked(t)",
      "en": "Fully parse per URL semantics before validation, stripping fragments and normalizing encoded hash marks before authority checks. After the fix, replay the step 1 matrix: every variant should be rejected at the validation layer."
     },
     "difficulty": "advanced"
@@ -7544,7 +7544,7 @@
      "en": "Per step 1, submit the three system-property('xsl:vendor'), version, and vendor-url stylesheets to the target transform entry one by one; a hit is vendor/version information of the XSLT processor in the response. Record engine type and version and map its security switches and extension-namespace support; this fingerprint is the prerequisite input for choosing engine-specific validations that follow (extension functions, script blocks) and neither executes commands nor reads files."
     },
     "mitigation": {
-     "zh": "不要接受用户提供的可执行样式表；隐藏非必要的详细版本输出并保持处理器更新；将引擎选择固定在服务端配置，关闭不需要的扩展，并把指纹结果仅作为后续受控验证输入。修复后重放第 1 步查询，确认版本信息不再返回或入口已不可达。",
+     "zh": "不接受用户提供的可执行样式表，隐藏非必要版本输出并保持处理器更新；引擎选择固定在服务端并关闭不需要的扩展。\n    TransformerFactory tf = TransformerFactory.newInstance();\n    tf.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);  // 禁扩展函数\n    Source xsl = new StreamSource(new File(\"/etc/app/xslt/report.xsl\")); // 受信模板\n    tf.newTemplates(xsl);  // 用户输入只作 XML 数据，不作 XSLT",
      "en": "Never accept user-supplied executable stylesheets; hide non-essential version detail and keep processors updated; pin engine selection in server-side configuration, disable unneeded extensions, and treat fingerprint results only as input for subsequent controlled validation. After the fix, replay the step-1 queries and confirm version details no longer return or the entry is unreachable."
     },
     "difficulty": "beginner"
@@ -7757,7 +7757,7 @@
      "en": "Use the step 1 command to declare an external entity inside the XSLT reading the target file; file content in transformation output confirms the XSLT processor parses entities, with the /flag line a typical demo target to be replaced by an authorized marker before running. Prepare an isolated file holding only a random Canary and baseline output with a DTD-free stylesheet first, then capture parse logs and transformation results."
     },
     "mitigation": {
-     "zh": "在 XML/XSLT 处理器禁用 DTD、外部通用实体与参数实体；拒绝用户控制样式表并使用受信模板；以低权限只读文件系统运行转换，限制 file: 与网络解析并添加 Canary 回归。",
+     "zh": "在 XML/XSLT 处理器禁用 DTD 与外部实体；拒绝用户样式表并限制 file: 与网络解析。\n    SAXParserFactory spf = SAXParserFactory.newInstance();\n    spf.setFeature(\"http://apache.org/xml/features/disallow-doctype-decl\", true);\n    TransformerFactory tf = TransformerFactory.newInstance();\n    tf.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);\n    tf.setAttribute(\"http://javax.xml.XMLConstants/property/accessExternalStylesheet\", \"\");",
      "en": "Disable DTDs, external general entities, and parameter entities in XML/XSLT processors; reject user-controlled stylesheets and use trusted templates; run transformations with low privileges on read-only filesystems, restricting file: and network resolution with Canary regressions."
     },
     "difficulty": "advanced"
@@ -8261,7 +8261,7 @@
      "en": "Per step 1, embed the submitForm, app.alert, exportDataObject, and app.openDoc samples into test PDFs separately and open them in an isolated viewer; a hit is a form submission or mail action toward your address inside the isolated viewer (observed via a local proxy). Record reader version, trust prompts, and interaction requirements per sample; when app.openDoc targets a marker file, validate only the open permission without exfiltrating content."
     },
     "mitigation": {
-     "zh": "生成 PDF 时移除用户控制的 JavaScript、Launch、EmbeddedFile 和自动动作；在企业阅读器策略中禁用不需要的文档脚本和特权 API；对上传与生成文件做结构化解析、内容净化和隔离打开。修复后重放第 1 步样例，确认动作被阻断且正常文档可读。",
+     "zh": "生成 PDF 时移除用户控制的 JavaScript、Launch、EmbeddedFile 与自动动作；企业阅读器策略禁用文档脚本与特权 API，上传与生成文件结构化净化并隔离打开。\n    import pikepdf\n    pdf = pikepdf.open(\"out.pdf\", allow_overwriting_input=True)\n    for k in (\"/OpenAction\", \"/AA\"):\n        if k in pdf.Root:\n            del pdf.Root[k]\n    pdf.save(\"clean.pdf\")\n    reg add \"HKLM\\SOFTWARE\\Policies\\Adobe\\Adobe Acrobat\\DC\\FeatureLockDown\" /v bDisableJavaScript /t REG_DWORD /d 1 /f\n  修复后重放验证第 1 步样例，确认动作被阻断且正常文档可读。",
      "en": "Strip user-controlled JavaScript, Launch, EmbeddedFile, and automatic actions when generating PDFs; disable unneeded document scripts and privileged APIs in enterprise reader policy; run structured parsing, content sanitization, and isolated opening for uploads and generated files. After the fix, replay the step-1 samples and confirm actions are blocked while normal documents open."
     },
     "difficulty": "advanced"
@@ -8644,7 +8644,7 @@
      "en": "In step 1, inject newline-plus-Bcc and Cc variants into mail form fields one by one and send test messages, watching your test inbox for copies; arriving injected recipients confirm the header injection, with original recipients checked for awareness. Judge success by test-inbox reception records. Replace placeholders via the global variables menu; recipient addresses point only at lab mailboxes."
     },
     "mitigation": {
-     "zh": "邮件字段强制拒绝回车换行并做地址格式白名单，邮件库升级为头值编码模式；发信日志收件人纳入审计。修复后重放第 1 步，全部变体的注入收件应消失。",
+     "zh": "邮件字段强制拒绝回车换行并做地址格式白名单，邮件库升级为头值编码模式；发信日志收件人纳入审计。\n    if (preg_match('/[\\r\\n]/', $to . $cc . $bcc))\n        throw new InvalidArgumentException('header injection');\n    foreach ([$to, $cc, $bcc] as $addr)\n        if (!filter_var($addr, FILTER_VALIDATE_EMAIL))\n            throw new InvalidArgumentException('bad address');\n  修复后重放验证第 1 步，全部变体的注入收件应消失。",
      "en": "Reject carriage returns in mail fields with address-format allowlists, upgrade mail libraries to header-encoding modes, and audit recipients in send logs. After the fix, replay step 1: injected recipients should vanish across all variants."
     },
     "difficulty": "advanced"
@@ -8895,7 +8895,7 @@
      "en": "In step 1, submit plaintext and encoded subject-injection variants one by one through the mail feature and receive test messages, comparing actual subjects and added headers; tampered subjects or injected headers confirm the defect, recording ordering between original and injected headers. Judge success by received-message header structure. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "主题与其他头值做换行拒绝与长度限制，使用邮件库的头编码接口写入动态值。修复后重放第 1 步，全部变体的邮件应保持原主题且无新增头。",
+     "zh": "主题与其他头值做换行拒绝与长度限制，动态值一律经邮件库头编码接口写入。\n    if (subject.matches(\"(?s).*[\\r\\n].*\") || subject.length() > 255)\n        throw new IllegalArgumentException(\"bad subject\");\n    mimeMsg.setSubject(subject, \"UTF-8\");  // Jakarta Mail 规范头编码\n  修复后重放验证第 1 步，全部变体的邮件应保持原主题且无新增头。",
      "en": "Reject newlines and cap length on subjects and other header values, writing dynamic values through the mail library's encoding interfaces. After the fix, replay step 1: messages from every variant should keep the original subject with no added headers."
     },
     "difficulty": "intermediate"
@@ -9138,7 +9138,7 @@
      "en": "In step 1, submit boundary-declaration and Content-Type injection variants through the mail feature one by one and receive test messages, inspecting the structures clients parse; injected parts or reassembled bodies confirm MIME injection, archived with screenshots of parsing differences. Judge success by mail-client parse results. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "正文与附件字段拒绝换行输入，MIME 边界由邮件库随机生成并覆盖用户输入，升级解析库防御结构混淆。修复后重放第 1 步，全部变体邮件应保持原始单段结构。",
+     "zh": "正文与附件字段拒绝换行输入，MIME 边界由邮件库随机生成并覆盖用户输入，升级解析库防御结构混淆。\n    if re.search(r\"[\\r\\n]\", filename or \"\"):\n        abort(400)  # 文件名/正文含换行直接拒绝\n    from email.mime.multipart import MIMEMultipart\n    msg = MIMEMultipart()  # python-email 自动生成随机边界\n  修复后重放验证第 1 步，全部变体邮件应保持原始单段结构。",
      "en": "Reject newline input in body and attachment fields, let the mail library generate random MIME boundaries overriding user input, and upgrade parsing libraries against structure confusion. After the fix, replay step 1: messages from every variant should keep the original single-part structure."
     },
     "difficulty": "advanced"
@@ -9389,7 +9389,7 @@
      "en": "Use the step 1 command to inject headings, links, iframes, and tracking images into the HTML email body; recipient-side rendering triggering jumps or {ATTACKER_HOST} receiving egress requests confirms HTML email injection. Send a baseline email with only escaped text and allowed links first, then replay item by item recording final DOM, resource requests, and click targets across webmail, desktop, and mobile clients."
     },
     "mitigation": {
-     "zh": "使用严格 allowlist HTML 净化器删除脚本、iframe、危险协议、外部 CSS 与事件属性，纯文本与 HTML 部分分别上下文编码；限制可信邮件的远程资源域名，并在每个支持客户端回归最终 DOM。",
+     "zh": "用严格 allowlist 净化器删除脚本、iframe、危险协议、外部 CSS 与事件属性，纯文本与 HTML 部分分别上下文编码，限制远程资源域名。\n    String safe = Jsoup.clean(userHtml,\n        Safelist.relaxed().removeAttributes(\":all\", \"style\"));\n    Content-Security-Policy: default-src 'none'; img-src https://img.example.com\n  修复后重放验证第 1 步样例并回归最终 DOM，确认活动元素与外链被移除。",
      "en": "Use a strict allowlist HTML sanitizer removing scripts, iframes, dangerous protocols, external CSS, and event attributes, with context encoding applied separately to plain-text and HTML parts; restrict remote resource domains for trusted mail and regression-test final DOM on every supported client."
     },
     "difficulty": "advanced"
@@ -9685,7 +9685,7 @@
      "en": "In step 1, place protocol-command injection variants one by one into echoable fields and monitor lab mail-server logs; injected MAIL FROM or RCPT TO lines in logs confirm protocol injection, cross-checked against redirected mail arriving in test inboxes. Judge success by server session logs. Replace placeholders via the global variables menu; target only the authorized lab SMTP service."
     },
     "mitigation": {
-     "zh": "邮件中间层拒绝字段中的换行并对协议关键字转义，SMTP 客户端库启用参数化接口；网关记录完整会话供审计。修复后重放第 1 步，注入命令应不进入会话且日志无异常。",
+     "zh": "邮件中间层拒绝字段换行并对协议关键字转义，SMTP 客户端启用参数化接口，网关记录完整会话供审计。\n    if (addr.indexOf('\\r') >= 0 || addr.indexOf('\\n') >= 0)\n        throw new MessagingException(\"CRLF in address\");\n    msg.setFrom(new InternetAddress(addr, true));  // 严格地址解析\n    transport.sendMessage(msg, msg.getAllRecipients());\n  修复后重放验证第 1 步，注入命令应不进入会话且日志无异常。",
      "en": "Have the mail middle layer reject newlines in fields and escape protocol keywords, use parameterized SMTP client interfaces, and log full sessions at the gateway for audit. After the fix, replay step 1: injected commands must never enter sessions and logs stay clean."
     },
     "difficulty": "expert"
@@ -10099,7 +10099,7 @@
      "en": "Use the step 1 command to redirect via window.open/void/eval/setTimeout variants line by line; a jump to {ATTACKER_HOST} confirms that javascript: execution form works, with atob rows manually re-encoded per target domain. Baseline protocol policy with plain HTTPS and a rejected basic javascript:alert first, then replay item by item recording final DOM values, call stacks, popup/navigation, and CSP. Record negatives when popups are blocked or policy stops execution, judging each variant separately."
     },
     "mitigation": {
-     "zh": "只允许业务需要的 http/https 等协议并使用标准 URL 解析器；避免用户值进入 href、src、location 与字符串计时器等代码汇，禁止 eval；部署 nonce/hash CSP、Trusted Types 与 DOM XSS 回归覆盖等价 API。",
+     "zh": "只允许业务需要的 http/https 协议并用标准 URL 解析器，用户值不进入 href/src/location 与字符串计时器，禁止 eval；部署 nonce CSP 与 Trusted Types。\n    const u = new URL(input, location.origin);\n    if (![\"http:\", \"https:\"].includes(u.protocol))\n        throw new TypeError(\"scheme denied\");\n    location.assign(u.href);\n    Content-Security-Policy: script-src 'self' 'nonce-r4nd0m'; require-trusted-types-for 'script'\n  修复后重放验证第 1 步矩阵，全部语义等价形式应被拒绝。",
      "en": "Allow only business-needed protocols like http/https with standard URL parsers; keep user values out of code sinks such as href, src, location, and string timers, banning eval; deploy nonce/hash CSP, Trusted Types, and DOM XSS regressions covering equivalent APIs."
     },
     "difficulty": "advanced"

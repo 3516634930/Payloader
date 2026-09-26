@@ -336,7 +336,7 @@
      "en": "Submit w'h'o'am'i, w\"h\"o\"am\"i, and similar quote-split variants one by one to the target command entry per step 1; a hit is the quote-split command still executing and returning corresponding output (such as uid= from id). Record response and logs per variant, confirming the shell reassembles quoted fragments into one command name; also verify the filter layer passed the raw text as rule-blind-spot evidence."
     },
     "mitigation": {
-     "zh": "禁止拼接 Shell 命令，使用固定可执行文件和 argv；不要以关键词黑名单或引号删除代替结构化调用。修复后用同一正常、阳性和阴性样例回归，确认合法功能保留且引号变体不再重组为可执行命令。",
+     "zh": "禁止拼接 Shell 命令，使用固定可执行文件与 argv 参数数组直接 execve；不以关键词黑名单或引号删除代替结构化调用：\n    // Java ProcessBuilder：无 Shell 直传 argv\n    Process p = new ProcessBuilder(List.of(\"/usr/bin/7z\", \"x\", archiveName)).start();\n    # Python subprocess 等价\n    subprocess.run([\"/usr/bin/7z\", \"x\", archive], shell=False, check=True)",
      "en": "Forbid splicing shell commands and use fixed executables with argv; never substitute keyword blacklists or quote stripping for structured invocation. After the fix, regress with the same normal, positive, and negative samples, confirming legitimate features persist and quote variants no longer reassemble into executable commands."
     },
     "difficulty": "intermediate"
@@ -608,7 +608,7 @@
      "en": "Submit $(printf '\\x63\\x61\\x74\\x20\\x2f\\x66\\x6c\\x61\\x67') and similar hex-encoded variants one by one per step 1, covering cat, id, whoami, and ls commands with both $() and backtick substitution syntaxes; a hit is the printf-decoded command executing and returning corresponding output (/flag contents, uid=, etc.). Record response and logs per variant; when encoded content is keyword-blocked, first check whether the filter matched plaintext or ciphertext, then broaden the encoding contrast."
     },
     "mitigation": {
-     "zh": "移除 Shell 和动态命令替换，允许的业务动作映射到固定函数；对编码输入解码一次后按数据类型验证。修复后用同一正常、阳性和阴性样例回归，确认合法功能保留且解码结果不再进入命令解释。",
+     "zh": "移除 Shell 与动态命令替换，允许的业务动作映射到固定函数；对编码输入解码一次后按数据类型严格校验，解码结果不进入命令解释：\n    ACTIONS = {\"restart\": svc_restart, \"status\": svc_status}\n    fn = ACTIONS.get(request.form.get(\"action\"))\n    if fn is None: abort(400)\n    fn()                       # 固定函数，无命令替换\n    if not re.fullmatch(r\"[a-z0-9.:/_-]{1,128}\", arg): abort(400)",
      "en": "Remove shell and dynamic command substitution, mapping allowed business actions to fixed functions; decode encoded input once and validate by data type. After the fix, regress with the same normal, positive, and negative samples, confirming legitimate features persist and decoded results never enter command interpretation."
     },
     "difficulty": "advanced"
@@ -890,7 +890,7 @@
      "en": "Submit $(echo Y2F0IC9mbGFn|base64 -d) and similar variants one by one per step 1, covering cat /flag, id, whoami, and ls commands; a hit is the base64 -d decoded command executing and returning corresponding output. Record response and logs per variant; to craft new commands, generate the encoding with echo -n 'cmd'|base64 and embed it in $() before submitting. Distinguish merely decoded output from genuinely executed results."
     },
     "mitigation": {
-     "zh": "业务代码不得把解码结果送入 Shell；Base64 仅作为数据格式，解码后执行严格类型校验并使用固定程序 argv。修复后用同一正常、阳性和阴性样例回归，确认合法功能保留且解码结果不再进入命令解释。",
+     "zh": "业务代码不把 Base64 解码结果送入 Shell；Base64 仅作数据格式，解码后执行严格类型校验并使用固定程序 argv：\n    byte[] data = Base64.getDecoder().decode(input);   // 非法输入抛异常\n    String s = new String(data, StandardCharsets.UTF_8);\n    if (!s.matches(\"[a-zA-Z0-9._-]{1,64}\")) throw new IllegalArgumentException(\"bad\");\n    new ProcessBuilder(List.of(\"/usr/bin/tool\", s)).start();",
      "en": "Business code must never feed decoded results into a shell; treat Base64 purely as a data format, validate strictly by type after decoding, and use fixed program argv. After the fix, regress with the same normal, positive, and negative samples, confirming legitimate features persist and decoded results never enter command interpretation."
     },
     "difficulty": "advanced"
@@ -2657,7 +2657,7 @@
      "en": "Per step 1, split the cat/wget/curl keywords with the four variant classes c${undefined}at, c${DOESNOTEXIST}at, c\\a\\t, and c''at and execute one by one; a hit is /etc/passwd content in the response or shell.sh download requests in your HTTP log. Record expansion and reassembly behavior per class, confirming how the target shell treats empty variables, backslashes, and empty quotes; keep filter-pass records as rule-blind-spot evidence."
     },
     "mitigation": {
-     "zh": "使用无 Shell 的参数数组调用，清理不需要的环境变量并允许列表化可执行动作；禁止依赖字符串关键词阻断。修复后用同一正常、阳性和阴性样例回归，确认合法功能保留且拆分关键字不再重组为可执行命令。",
+     "zh": "使用无 Shell 的参数数组调用，清理不需要的环境变量并对可执行动作允许列表化；禁止依赖字符串关键词阻断：\n    // Java：argv 直传并清空环境变量注入面\n    ProcessBuilder pb = new ProcessBuilder(\"ffmpeg\", \"-i\", upload, \"-vf\", scale);\n    pb.environment().clear();\n    pb.environment().put(\"PATH\", \"/usr/bin:/bin\");\n    pb.start();",
      "en": "Invoke via shell-free argument arrays, clean unneeded environment variables, and allowlist executable actions; never rely on string-keyword blocking. After the fix, regress with the same normal, positive, and negative samples, confirming legitimate features persist and split keywords no longer reassemble into executable commands."
     },
     "difficulty": "advanced"
@@ -3016,7 +3016,7 @@
      "en": "Per step 1, submit complete expressions with command bodies—;cat /etc/passwd, |cat, ||cat, &cat—submitting each mechanism individually rather than pasting blocks; a hit is uid= output or /etc/passwd content in the response once a separator takes effect. Then extend to command substitution, IFS, and brace-expansion mechanisms the same way, recording each; after confirming control, keep commands harmless for evidence."
     },
     "mitigation": {
-     "zh": "移除动态 Shell 字符串，使用固定可执行文件和参数数组；对业务动作建立显式映射，并限制子进程权限和出站网络。修复后用同一正常、阳性和阴性样例回归，确认合法功能保留且各展开阶段不再改变命令结构。",
+     "zh": "移除动态 Shell 字符串，使用固定可执行文件与参数数组；对业务动作建立显式映射，并限制子进程权限与出站网络：\n    import subprocess, re\n    host = request.args.get(\"host\", \"\")\n    if not re.fullmatch(r\"[a-z0-9.-]{1,253}\", host): abort(400)\n    subprocess.run([\"ping\", \"-c\", \"1\", host], shell=False, check=True)",
      "en": "Remove dynamic shell strings and use fixed executables with argument arrays; build explicit maps for business actions and restrict child-process permissions and egress. After the fix, regress with the same normal, positive, and negative samples, confirming legitimate features persist and no expansion stage changes command structure."
     },
     "difficulty": "advanced"
@@ -3652,7 +3652,7 @@
      "en": "Per step 1, confirm FFI is enabled first, then submit the FFI::cdef declaration with $ffi->system to validate the libc path; on Windows targets test COM's WScript.Shell with Run; a hit is corresponding output in the response or logs. The environment-variable path needs downstream program versions confirmed first; validate the three mechanisms separately, recording preconditions."
     },
     "mitigation": {
-     "zh": "关闭生产 FFI 和不需要的 COM，升级 Shellshock 相关组件，以容器/低权限隔离 PHP，并用系统级执行控制替代函数黑名单。修复后用同一正常、阳性和阴性样例回归，确认合法功能保留且三条通道均不可达。",
+     "zh": "关闭生产 FFI 与不需要的 COM，升级 Shellshock 相关组件，以容器/低权限隔离 PHP，并用系统级执行控制替代函数黑名单：\n    ; php.ini（重启生效）\n    ffi.enable = false\n    com.allow_dcom = false\n    # systemd：禁止 FPM 启动新进程\n    [Service]\n    NoNewPrivileges=yes\n    SystemCallFilter=~@execve",
      "en": "Disable FFI in production and unneeded COM, upgrade Shellshock-affected components, isolate PHP in containers or low privilege, and replace function blacklists with system-level execution control. After the fix, regress with the same normal, positive, and negative samples, confirming legitimate features persist and all three channels are unreachable."
     },
     "difficulty": "expert"
@@ -3897,7 +3897,7 @@
      "en": "Save the step-1 four lines (push graphic-context through pop graphic-context) as an MVG file and submit the whole to the target image-processing entry, replacing the {ATTACKER_HOST} placeholder in the global variables menu; a hit is the delegate executing the injected command during processing with ls -la output entering the response or error log. First confirm the delegate chain with a harmless command, then run marker commands for evidence; after a hit, assess escalation to reverse shells or file reads within authorization."
     },
     "mitigation": {
-     "zh": "升级 ImageMagick，使用严格 security-policy 禁用 MVG、URL 和不需要的委托，在低权限无网络沙箱处理上传文件。修复后重放第 1 步 MVG 文档与正常图片对照，确认委托不再执行注入命令且正常图像处理可用。",
+     "zh": "升级 ImageMagick 至安全版本，security-policy 禁用 MVG、URL coder 与不需要的委托，上传文件在低权限无网络沙箱处理：\n    <!-- /etc/ImageMagick-7/policy.xml -->\n    <policymap>\n      <policy domain=\"coder\" rights=\"none\" pattern=\"MVG\"/>\n      <policy domain=\"coder\" rights=\"none\" pattern=\"URL\"/>\n      <policy domain=\"delegate\" rights=\"none\" pattern=\"*\"/>\n      <policy domain=\"path\" rights=\"none\" pattern=\"*\"/>\n    </policymap>",
      "en": "Upgrade ImageMagick, use a strict security-policy disabling MVG, URL, and unneeded delegates, and process uploads in low-privilege no-network sandboxes. After the fix, replay the step-1 MVG document against a normal-image control and confirm delegates no longer execute injected commands while normal image processing works."
     },
     "difficulty": "expert"
@@ -4202,7 +4202,7 @@
      "en": "Use in Payload list order: step 1 first identifies the target's cloud platform and authorization scope; then, on a cloned or isolated cloud instance, choose only the platform's non-sensitive paths (e.g., instance-id, project-id), add required headers, and record egress connections without requesting credential bodies; metadata-service logs, the egress proxy, and fixed non-sensitive fields jointly prove access. Never batch-send multi-platform URLs. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "阻断链路本地出站，使用 URL 允许列表与出站代理；强制各云平台最新元数据保护（IMDSv2、Metadata-Flavor 等）并为实例配置最小角色，监控元数据路径请求。修复后用同一正常、阳性和阴性样例回归，元数据端点访问被网络层拒绝。",
+     "zh": "阻断链路本地出站，使用 URL 允许列表与出站代理；强制平台最新元数据保护（IMDSv2、Metadata-Flavor），实例配置最小角色并监控元数据路径：\n    # AWS：强制 IMDSv2\n    aws ec2 modify-instance-metadata-options \\\n      --instance-id i-1234567890abcdef0 \\\n      --http-tokens required --http-endpoint enabled --hop-limit 1\n    # 主机出站阻断元数据网段\n    iptables -A OUTPUT -d 169.254.169.254/32 -j DROP",
      "en": "Block link-local egress and apply URL allowlists with an outbound proxy; enforce each cloud platform's latest metadata protections (IMDSv2, Metadata-Flavor, etc.), assign minimal instance roles, and monitor metadata-path requests. After the fix, regress with the same positive, negative, and normal samples: metadata endpoint access denied at the network layer."
     },
     "difficulty": "expert"
@@ -4883,7 +4883,7 @@
      "en": "Use in Payload list order: step 1 first queries A/AAAA and TTLs offline for domains like 169.254.169.254.nip.io and 192.168.1.1.nip.io, confirming embedded addresses match resolutions; then have the application request one fixed marker path and capture the final connected IP — agreement between the intranet service's log and the HTTP client's connection address confirms the bypass. DNS success or a public service page is not evidence. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "对解析后的所有地址执行网段阻断，避免基于字符串后缀允许 URL，并在每次重定向和 DNS 刷新后重新校验。修复后用同一正常、阳性和阴性样例回归：通配域名目标被拒绝，合法域名保留。",
+     "zh": "对解析后的所有地址执行网段阻断，不基于域名后缀字符串放行 URL；每次重定向与 DNS 刷新后重新校验：\n    // Java：DNS 解析后逐地址分类\n    for (InetAddress a : InetAddress.getAllByName(host)) {\n      if (a.isLoopbackAddress() || a.isSiteLocalAddress()\n          || a.isLinkLocalAddress() || a.isAnyLocalAddress())\n        throw new SecurityException(\"internal target\");\n    }",
      "en": "Apply network-range blocking to all resolved addresses, avoid allowing URLs by string suffix, and revalidate after every redirect and DNS refresh. After the fix, regress with the same positive, negative, and normal samples: wildcard-domain targets denied, legitimate names preserved."
     },
     "difficulty": "advanced"
@@ -5387,7 +5387,7 @@
      "en": "Use in Payload list order: step 1 first queries the six hosts like make-127-0-0-1-rr.1u.ms in a test resolver, recording answers and TTLs; then pick one sample resolving to a controlled marker service, have the application request it, and record DNS, connection, and request token — dual agreement between the resolved address and the controlled service log confirms the gap. Name formats that merely look like encoded IPs, resolution timeouts, or NXDOMAIN do not confirm. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "不要依赖域名外观，解析全部结果并做二进制地址分类；固定允许地址并通过出站代理阻断内网和元数据。修复后用同一正常、阳性和阴性样例回归：编码域名目标被拒绝，合法域名保留。",
+     "zh": "不依赖域名文本外观，发起请求前独立解析全部 A/AAAA 并做二进制地址分类，仅允许固定业务网段，出站经代理阻断内网与元数据地址。\n    InetAddress[] addrs = InetAddress.getAllByName(host);\n    for (InetAddress a : addrs) {\n        if (a.isLoopbackAddress() || a.isLinkLocalAddress()\n                || a.isSiteLocalAddress() || a.isAnyAddress())\n            throw new SecurityException(\"blocked target: \" + a);\n    }",
      "en": "Never rely on domain appearance: resolve all answers and classify addresses in binary form; pin allowed addresses and block intranet and metadata via an egress proxy. After the fix, regress with the same positive, negative, and normal samples: encoded-domain targets denied, legitimate names preserved."
     },
     "difficulty": "advanced"
@@ -5715,7 +5715,7 @@
      "en": "Use in Payload list order: step 1 first confirms offline that localtest.me resolves to 127.0.0.1; then pick one controlled local port and one closed port as controls, requesting each once via the application and recording connections — the local marker service receiving the application request with a loopback connection address confirms the string-rule gap. DNS resolution, port-error differences, or browser-initiated requests are insufficient. Replace placeholders via the global variables menu."
     },
     "mitigation": {
-     "zh": "对所有 DNS 结果进行地址分类并阻断回环，不为域名字符串设例外；使用出站允许列表限制端口和目标。修复后用同一正常、阳性和阴性样例回归：回环别名域名被拒绝，合法目标保留。",
+     "zh": "不为域名字符串设任何例外，按解析后的 IP 判定安全性：分类全部解析结果并阻断回环与内网，出站允许列表限制端口与目标。\n    import socket, ipaddress\n    infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)\n    for info in infos:\n        ip = ipaddress.ip_address(info[4][0])\n        assert not (ip.is_loopback or ip.is_private or ip.is_link_local)",
      "en": "Classify all DNS results by address and block loopback with no exceptions for domain strings; restrict ports and targets via an egress allowlist. After the fix, regress with the same positive, negative, and normal samples: loopback-alias domains denied, legitimate targets preserved."
     },
     "difficulty": "intermediate"
