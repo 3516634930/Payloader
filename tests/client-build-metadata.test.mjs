@@ -465,17 +465,18 @@ test('Windows assisted installers use the fast per-user path and allow every arc
   const installerInclude = await readFile(new URL('../server/client-installer.nsh', import.meta.url), 'utf8');
 
   assert.equal(nsis.oneClick, false);
-  assert.equal(nsis.perMachine, false);
-  assert.equal(nsis.allowElevation, false);
+  assert.equal(nsis.perMachine, true);
+  assert.equal(nsis.allowElevation, true);
   assert.equal(nsis.allowToChangeInstallationDirectory, true);
-  assert.equal(nsis.packElevateHelper, false);
+  assert.equal(nsis.packElevateHelper, true);
   assert.equal(nsis.differentialPackage, false);
   assert.equal(nsis.useZip, false);
   assert.equal(nsis.include, 'installer.nsh');
-  assert.match(installerInclude, /!macro\s+customInstallMode[\s\S]*StrCpy\s+\$isForceCurrentInstall\s+"1"[\s\S]*!macroend/);
+  assert.match(installerInclude, /!macro\s+customInstallMode\s*\r?\n!macroend/);
+  assert.doesNotMatch(installerInclude, /isForceCurrentInstall/);
   assert.equal(windowsTargets.length, 3);
   for (const target of windowsTargets) {
-    assert.equal(target.installType, 'Assisted NSIS installer with custom directory');
+    assert.equal(target.installType, 'Assisted NSIS installer with user scope and directory choice');
   }
 });
 

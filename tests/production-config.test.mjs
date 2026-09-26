@@ -162,11 +162,15 @@ test('official client shells use native runners, smoke native archives, and publ
   assert.match(workflow, /name:\s*Merge and verify release assets[\s\S]*?timeout-minutes:\s*45/);
   assert.match(workflow, /name:\s*Publish client Release[\s\S]*?timeout-minutes:\s*60/);
   assert.ok((workflow.match(/compression-level:\s*0/g) || []).length >= 4);
-  assert.match(workflow, /<<'RELEASE_NOTES'/);
+  assert.match(workflow, /<<'APPEND_NOTES'/);
   assert.doesNotMatch(workflow, /<<EOF/);
   assert.doesNotMatch(workflow, /`SHA256SUMS\.txt`/);
-  assert.match(workflow, /## __RELEASE_VERSION__ 相比 1\.0\.0/);
+  // 发布说明主权在 CHANGELOG 精简简述：workflow 只在缺失时追加下载表，不覆盖版本内容。
+  assert.match(workflow, /发布说明主权在仓库 CHANGELOG/);
+  assert.match(workflow, /grep -q "Direct client downloads"/);
+  assert.doesNotMatch(workflow, /## __RELEASE_VERSION__ 相比 1\.0\.0/);
   assert.doesNotMatch(workflow, /## 2\.0\.0 相比 1\.0\.0/);
+  assert.match(workflow, /gh release edit "\$RELEASE_TAG" --draft=false/);
   assert.match(workflow, /gh release create[^\n]*--draft/);
   assert.match(workflow, /isDraft/);
   assert.match(workflow, /Refusing to overwrite a published Release/);

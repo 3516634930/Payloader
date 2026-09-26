@@ -133,10 +133,12 @@ const clientSecurityPolicy = Object.freeze({
 });
 const windowsNsisOptions = Object.freeze({
   oneClick: false,
-  perMachine: false,
-  allowElevation: false,
+  // 向导提供「为所有用户 / 仅为当前用户」选择页（默认所有用户），
+  // 选所有用户时经 UAC 提权安装到 Program Files；per-user 装到用户目录。
+  perMachine: true,
+  allowElevation: true,
   allowToChangeInstallationDirectory: true,
-  packElevateHelper: false,
+  packElevateHelper: true,
   differentialPackage: false,
   useZip: false,
   include: 'installer.nsh',
@@ -164,7 +166,7 @@ const clientTargetMatrix = Object.freeze([
     recommended: true,
     cpuFamily: 'x86_64',
     minOsVersion: 'Windows 10/11 64-bit',
-    installType: 'Assisted NSIS installer with custom directory',
+    installType: 'Assisted NSIS installer with user scope and directory choice',
   },
   {
     id: 'win-arm64-nsis',
@@ -182,7 +184,7 @@ const clientTargetMatrix = Object.freeze([
     recommended: true,
     cpuFamily: 'ARM64',
     minOsVersion: 'Windows 11 ARM64',
-    installType: 'Assisted NSIS installer with custom directory',
+    installType: 'Assisted NSIS installer with user scope and directory choice',
   },
   {
     id: 'win-ia32-nsis',
@@ -200,7 +202,7 @@ const clientTargetMatrix = Object.freeze([
     recommended: false,
     cpuFamily: 'x86 32-bit',
     minOsVersion: 'Windows 10 32-bit',
-    installType: 'Assisted NSIS installer with custom directory',
+    installType: 'Assisted NSIS installer with user scope and directory choice',
   },
   {
     id: 'linux-x64-appimage',

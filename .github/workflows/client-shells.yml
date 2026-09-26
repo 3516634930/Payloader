@@ -332,22 +332,16 @@ jobs:
             exit 1
           fi
 
+          # 发布说明主权在仓库 CHANGELOG 精简简述（发版时手动写入）；此处不覆盖，
+          # 仅在缺少直链下载表时追加下载与签名说明，然后 publish。
           if [[ "$UNSIGNED_WINDOWS" == "true" ]]; then
             WINDOWS_NOTE='Windows installers in this release are unsigned and may trigger Microsoft Defender SmartScreen. Verify SHA-256 before running.'
           else
             WINDOWS_NOTE='Windows installers are Authenticode-signed and verified before publishing. Free code signing provided by SignPath.io, certificate by SignPath Foundation.'
           fi
-          RELEASE_NOTES_CONTENT=$(cat <<'RELEASE_NOTES'
-          ## __RELEASE_VERSION__ 相比 1.0.0
-
-          对比基线：[1.0.0 首次发布介绍](https://mp.weixin.qq.com/s/iRGZFihwerukDJcJF_2DBw)。
-
-          - 新增带独立鉴权边界的系统后台，统一维护内容、导航、站点、备份、账号、版本和客户端制品。
-          - 默认内容由 300+ Payload、114 条工具命令扩充到 790 个 Payload、379 个工具条目和 4,845 条工具命令。
-          - 编解码由 6 种基础格式扩展到 7 类 144 项操作，并加入智能多层识别。
-          - 790 个初始 Payload 全部完成编辑审查，并通过自动内容质量门禁。
-          - 新增版本固定的官方壳、后台多平台客户端生成、直接原生客户端和 Release/源码版本检查。
-
+          EXISTING_BODY=$(gh release view "$RELEASE_TAG" --json body --jq .body)
+          if ! grep -q "Direct client downloads" <<<"$EXISTING_BODY"; then
+            APPEND_NOTES=$(cat <<'APPEND_NOTES'
           ## Direct client downloads
 
           | System | Download |
@@ -364,14 +358,16 @@ jobs:
 
           __WINDOWS_NOTE__
 
-          Windows 三个架构的安装器均使用向导模式并允许自定义安装目录。Linux AppImage 是便携客户端，授予执行权限后可从用户选择的任意目录运行。macOS DMG 可将应用复制到 Applications 或其他用户选择的可写目录。未配置 Apple 签名凭据时，macOS 包不会经过公证。所有直接客户端和后台官方壳都由 SHA256SUMS.txt 覆盖。
+          Windows 三个架构的安装器均为向导模式：可选择为所有用户或仅当前用户安装、自定义安装目录。Linux AppImage 是便携客户端，授予执行权限后可从用户选择的任意目录运行。macOS DMG 可将应用复制到 Applications 或其他用户选择的可写目录；未配置 Apple 签名凭据时，macOS 包不会经过公证。所有直接客户端和后台官方壳都由 SHA256SUMS.txt 覆盖。
 
-          [Code signing policy](https://github.com/__GH_REPO__/blob/main/CODE_SIGNING_POLICY.md) | [Privacy policy](https://github.com/__GH_REPO__/blob/main/PRIVACY.md) | [Full changelog](https://github.com/__GH_REPO__/commits/__RELEASE_TAG__)
-          RELEASE_NOTES
-          )
-          RELEASE_NOTES_CONTENT=${RELEASE_NOTES_CONTENT//__GH_REPO__/$GH_REPO}
-          RELEASE_NOTES_CONTENT=${RELEASE_NOTES_CONTENT//__RELEASE_TAG__/$RELEASE_TAG}
-          RELEASE_NOTES_CONTENT=${RELEASE_NOTES_CONTENT//__RELEASE_VERSION__/$RELEASE_VERSION}
-          RELEASE_NOTES_CONTENT=${RELEASE_NOTES_CONTENT//__WINDOWS_NOTE__/$WINDOWS_NOTE}
-          printf '%s\n' "$RELEASE_NOTES_CONTENT" > release-notes.md
-          gh release edit "$RELEASE_TAG" --notes-file release-notes.md --draft=false
+          [Code signing policy](https://github.com/__GH_REPO__/blob/main/CODE_SIGNING_POLICY.md) | [Privacy policy](https://github.com/__GH_REPO__/blob/main/PRIVACY.md) | [Full changelog](https://github.com/__GH_REPO__/blob/main/CHANGELOG.md)
+          APPEND_NOTES
+            )
+            APPEND_NOTES=${APPEND_NOTES//__GH_REPO__/$GH_REPO}
+            APPEND_NOTES=${APPEND_NOTES//__RELEASE_TAG__/$RELEASE_TAG}
+            APPEND_NOTES=${APPEND_NOTES//__RELEASE_VERSION__/$RELEASE_VERSION}
+            APPEND_NOTES=${APPEND_NOTES//__WINDOWS_NOTE__/$WINDOWS_NOTE}
+            printf '%s\n\n%s\n' "$EXISTING_BODY" "$APPEND_NOTES" > release-notes.md
+            gh release edit "$RELEASE_TAG" --notes-file release-notes.md
+          fi
+          gh release edit "$RELEASE_TAG" --draft=false
