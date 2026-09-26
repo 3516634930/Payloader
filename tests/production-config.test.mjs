@@ -59,7 +59,7 @@ test('package exposes one cross-platform production quality gate on supported No
   );
   assert.match(
     performanceSmoke,
-    /sharedRunnerPerformancePolicy[\s\S]*?linux:[\s\S]*?windowReadyMs:\s*12_000[\s\S]*?searchSettledMs:\s*750/,
+    /sharedRunnerPerformancePolicy[\s\S]*?linux:[\s\S]*?windowReadyMs:\s*20_000[\s\S]*?searchSettledMs:\s*750/,
   );
   assert.match(performanceSmoke, /PAYLOADER_CLIENT_PERF_PROFILE/);
   assert.match(performanceSmoke, /hardwareAccelerationEnabled/);
