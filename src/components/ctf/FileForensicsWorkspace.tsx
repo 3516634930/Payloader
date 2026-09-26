@@ -131,6 +131,105 @@ const IMAGE_MIME_MAP: Record<string, string> = { png: 'image/png', jpg: 'image/j
 const STRINGS_EXTRACT_LIMIT = 20000;
 const HEX_PAGE_BYTES = 512;
 
+// 二级菜单分组（批次 FF-NAV，仿 WebWorkspace WEB_TOOL_GROUPS）：左侧分组选工具、右侧单工具视图。
+// 每个视图 id 对应下方一个 ctf-toolpanel；卡片归属按语义分组（概览=报告头，其余按载体类型）。
+const FF_TOOL_GROUPS: ReadonlyArray<{
+  id: string;
+  zh: string;
+  en: string;
+  tools: ReadonlyArray<{ id: string; zh: string; en: string }>;
+}> = [
+  {
+    id: 'overview',
+    zh: '概览',
+    en: 'Overview',
+    tools: [
+      { id: 'summary', zh: '概要与报告', en: 'Summary & report' },
+    ],
+  },
+  {
+    id: 'image',
+    zh: '图片',
+    en: 'Images',
+    tools: [
+      { id: 'preview', zh: '图片预览', en: 'Preview' },
+      { id: 'planes', zh: '位平面与色道', en: 'Bit planes & channels' },
+      { id: 'imageops', zh: '图像运算与转换', en: 'Image operations' },
+      { id: 'imagestego', zh: '置乱与频域隐写', en: 'Scramble & frequency' },
+      { id: 'jpegstego', zh: 'JPEG DCT 隐写', en: 'JPEG DCT stego' },
+      { id: 'steghide-bmp', zh: 'steghide（BMP）', en: 'steghide (BMP)' },
+    ],
+  },
+  {
+    id: 'media',
+    zh: '媒体',
+    en: 'Media',
+    tools: [
+      { id: 'audio', zh: '音频隐写', en: 'Audio stego' },
+      { id: 'steghide-wav', zh: 'steghide（WAV）', en: 'steghide (WAV)' },
+      { id: 'gif', zh: 'GIF 解析', en: 'GIF inspect' },
+    ],
+  },
+  {
+    id: 'docs',
+    zh: '文档与压缩',
+    en: 'Docs & Archives',
+    tools: [
+      { id: 'pdf', zh: 'PDF 取证', en: 'PDF forensics' },
+      { id: 'rar', zh: 'RAR 解析', en: 'RAR inspect' },
+      { id: 'apk', zh: 'APK 逆向', en: 'APK analysis' },
+      { id: 'router', zh: '路由器备份', en: 'Router backup' },
+      { id: 'zipbrute', zh: 'ZIP 密码爆破', en: 'ZIP brute force' },
+    ],
+  },
+  {
+    id: 'structure',
+    zh: '结构与取证',
+    en: 'Structure',
+    tools: [
+      { id: 'repair', zh: '文件修复', en: 'Repair' },
+      { id: 'ntfs', zh: 'NTFS 数据流', en: 'NTFS streams' },
+      { id: 'embedded', zh: '嵌入数据与 chunk', en: 'Embedded & chunks' },
+      { id: 'pyc', zh: 'pyc 字节码', en: 'pyc bytecode' },
+    ],
+  },
+  {
+    id: 'general',
+    zh: '通用分析',
+    en: 'General',
+    tools: [
+      { id: 'strings', zh: '可读字符串', en: 'Strings' },
+      { id: 'hexdump', zh: 'HEX 转储', en: 'Hexdump' },
+    ],
+  },
+];
+
+// cardId → 二级视图 id：顶部菜单 / 推荐工具条 / 题型选择卡定位时先切视图再滚动。
+// ff-card-steghide 由 BMP/WAV 两个载体视图共用同一卡 id（渲染条件互斥），按当前文件魔数动态路由，不进本表。
+const CARD_VIEW_MAP: Record<string, string> = {
+  'ff-card-summary': 'summary',
+  'ff-card-flag': 'summary',
+  'ff-card-suspicious': 'summary',
+  'ff-card-preview': 'preview',
+  'ff-card-bitplanes': 'planes',
+  'ff-card-channels': 'planes',
+  'ff-card-imageops': 'imageops',
+  'ff-card-imagestego': 'imagestego',
+  'ff-card-jpegstego': 'jpegstego',
+  'ff-card-audio': 'audio',
+  'ff-card-gif': 'gif',
+  'ff-card-pdf': 'pdf',
+  'ff-card-rar': 'rar',
+  'ff-card-pyc': 'pyc',
+  'ff-card-zipbrute': 'zipbrute',
+  'ff-card-repair': 'repair',
+  'ff-card-ntfs': 'ntfs',
+  'ff-card-embedded': 'embedded',
+  'ff-card-chunks': 'embedded',
+  'ff-card-strings': 'strings',
+  'ff-card-hexdump': 'hexdump',
+};
+
 const toBinaryString = (bytes: Uint8Array): string => {
   let binary = '';
   const chunkSize = 0x8000;
@@ -141,6 +240,8 @@ const toBinaryString = (bytes: Uint8Array): string => {
 };
 
 // 杂项取证域工作区（批次 K）：文件拖入/选择 → 本地探测 → 按需分析。
+// 批次 FF-NAV 改造：卡片平铺改为二级菜单（ctf-toolnav，左列分组选工具、右侧单工具视图，
+// hidden 保挂载切换不丢状态；模式同 ReverseWorkspace/WebWorkspace）。
 // 文件只读字节、不执行、不上传；超过 20MB 直接拒绝并说明原因。
 function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, onSwitchModule, onOpenCipherOperation }: FileForensicsWorkspaceProps) {
   const { language } = useLanguage();
@@ -162,6 +263,8 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
   const [planeStatus, setPlaneStatus] = useState<'idle' | 'loading' | 'ready' | 'failed'>('idle');
   const inputRef = useRef<HTMLInputElement | null>(null);
   const lastTokenRef = useRef(0);
+  // 二级菜单当前视图（批次 FF-NAV）：默认概览；载入新文件后由 loadAndShow 重置回概览。
+  const [activeTool, setActiveTool] = useState('summary');
 
   const loadFile = useCallback(async (file: File) => {
     if (file.size > MAX_FILE_BYTES) {
@@ -236,19 +339,36 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
 
   const openPicker = () => inputRef.current?.click();
 
+  // 载入完成后回到概览视图：在 loadFile 的 promise 回调里 setState，避开 set-state-in-effect 红线（同 ReverseWorkspace）。
+  const loadAndShow = useCallback((file: File) => {
+    void loadFile(file).then(() => setActiveTool('summary'));
+  }, [loadFile]);
+
+  // cardId → 二级视图：静态映射表 + steghide 双载体特判（BMP/WAV 渲染条件互斥，按当前文件魔数路由）。
+  const resolveCardView = useCallback((cardId: string): string | null => {
+    if (cardId === 'ff-card-steghide') {
+      const bytes = analysis?.bytes;
+      const isWav = !!bytes && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46;
+      return isWav ? 'steghide-wav' : 'steghide-bmp';
+    }
+    return CARD_VIEW_MAP[cardId] ?? null;
+  }, [analysis]);
+
   // 顶部菜单栏（域联动）：文件与图片类菜单只在杂项取证域展示（工作区仅在本域挂载，天然满足）。
   // 未加载文件时一律先打开选择器；目标卡未渲染（该文件没有对应内容）时给出说明。
-  // 注意：推荐工具条渲染在 analysis 非空分支内，因此 scrollToCard 的"无文件开选择器"分支
-  // 对推荐条不可达——若把推荐条移出 ff-layout，需先给 soon 工具补显式守卫。
-  const scrollToCard = useCallback((cardId: string, missingMessage: { zh: string; en: string }) => {
+  // 批次 FF-NAV：定位语义升级为 openCard——先按 cardId 映射切二级视图（hidden 面板里 scrollIntoView
+  // 不会滚动页面），等下一帧布局生效再滚动；无映射的 cardId 保持原滚动行为。
+  const openCard = useCallback((cardId: string, missingMessage: { zh: string; en: string }) => {
     if (!analysis) {
       inputRef.current?.click();
       return;
     }
+    const viewId = resolveCardView(cardId);
+    if (viewId && viewId !== activeTool) setActiveTool(viewId);
     const node = document.getElementById(cardId);
-    if (node) node.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (node) requestAnimationFrame(() => node.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     else notifications.show({ message: missingMessage[language] });
-  }, [analysis, language]);
+  }, [analysis, activeTool, language, resolveCardView]);
 
   // 推荐工具条（文件探测驱动）：按探测类型映射适用操作，报告头部直达；纯映射在 recommendTools.ts。
   const recommendedTools = useMemo(
@@ -266,7 +386,8 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
       onSwitchModule?.(tool.targetModuleId);
       return;
     }
-    if (tool.cardId) scrollToCard(tool.cardId, tool.missingMessage);
+    // 域内锚点走 openCard：先切二级视图再滚动（handoffFile/targetModuleId 跨域分支不动）。
+    if (tool.cardId) openCard(tool.cardId, tool.missingMessage);
   };
 
   const fileMenus: WorkbenchMenuDef[] = useMemo(() => [{
@@ -276,33 +397,33 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
       label: null,
       entries: [
         { key: 'pick', label: language === 'zh' ? '【选择文件】' : '[Choose file]', onSelect: () => inputRef.current?.click() },
-        { key: 'summary', label: language === 'zh' ? '【文件概要】' : '[Summary]', onSelect: () => scrollToCard('ff-card-summary', { zh: '请先选择文件。', en: 'Choose a file first.' }) },
-        { key: 'suspicious', label: language === 'zh' ? '【可疑内容】' : '[Suspicious]', onSelect: () => scrollToCard('ff-card-suspicious', { zh: '当前文件未发现可疑内容，没有可展示的部分。', en: 'No suspicious content was found in this file.' }) },
-        { key: 'bitplanes', label: language === 'zh' ? '【位平面】' : '[Bit planes]', onSelect: () => scrollToCard('ff-card-bitplanes', { zh: '位平面分析仅支持图片文件，请先选择一张图片。', en: 'Bit-plane analysis applies to image files; choose an image first.' }) },
-        { key: 'imageops', label: language === 'zh' ? '【图像运算与转换】' : '[Image operations]', onSelect: () => scrollToCard('ff-card-imageops', { zh: '图像运算需要先加载一张图片。', en: 'Load an image first.' }) },
-        { key: 'imagestego', label: language === 'zh' ? '【置乱与频域隐写】' : '[Scramble & freq stego]', onSelect: () => scrollToCard('ff-card-imagestego', { zh: '置乱/频域工具需要先加载一张图片。', en: 'Load an image first.' }) },
-        { key: 'embedded', label: language === 'zh' ? '【嵌入数据】' : '[Embedded data]', onSelect: () => scrollToCard('ff-card-embedded', { zh: '当前文件没有检出嵌入文件或尾附数据。', en: 'No embedded files or trailing data were detected in this file.' }) },
-        { key: 'chunks', label: language === 'zh' ? '【PNG chunk】' : '[PNG chunks]', onSelect: () => scrollToCard('ff-card-chunks', { zh: 'chunk 枚举仅支持 PNG 文件。', en: 'Chunk enumeration applies to PNG files only.' }) },
-        { key: 'ntfs', label: language === 'zh' ? '【NTFS 数据流】' : '[NTFS streams]', onSelect: () => scrollToCard('ff-card-ntfs', { zh: '未发现 NTFS 数据流，或当前文件不是 ZIP 载体。', en: 'No NTFS data streams found, or the file is not a ZIP carrier.' }) },
-        { key: 'strings', label: language === 'zh' ? '【可读字符串】' : '[Strings]', onSelect: () => scrollToCard('ff-card-strings', { zh: '当前文件没有提取到可读字符串。', en: 'No readable strings were extracted from this file.' }) },
-        { key: 'hexdump', label: language === 'zh' ? '【HEX 转储】' : '[Hexdump]', onSelect: () => scrollToCard('ff-card-hexdump', { zh: '当前文件没有 hexdump 预览。', en: 'No hexdump preview for this file.' }) },
+        { key: 'summary', label: language === 'zh' ? '【文件概要】' : '[Summary]', onSelect: () => openCard('ff-card-summary', { zh: '请先选择文件。', en: 'Choose a file first.' }) },
+        { key: 'suspicious', label: language === 'zh' ? '【可疑内容】' : '[Suspicious]', onSelect: () => openCard('ff-card-suspicious', { zh: '当前文件未发现可疑内容，没有可展示的部分。', en: 'No suspicious content was found in this file.' }) },
+        { key: 'bitplanes', label: language === 'zh' ? '【位平面】' : '[Bit planes]', onSelect: () => openCard('ff-card-bitplanes', { zh: '位平面分析仅支持图片文件，请先选择一张图片。', en: 'Bit-plane analysis applies to image files; choose an image first.' }) },
+        { key: 'imageops', label: language === 'zh' ? '【图像运算与转换】' : '[Image operations]', onSelect: () => openCard('ff-card-imageops', { zh: '图像运算需要先加载一张图片。', en: 'Load an image first.' }) },
+        { key: 'imagestego', label: language === 'zh' ? '【置乱与频域隐写】' : '[Scramble & freq stego]', onSelect: () => openCard('ff-card-imagestego', { zh: '置乱/频域工具需要先加载一张图片。', en: 'Load an image first.' }) },
+        { key: 'embedded', label: language === 'zh' ? '【嵌入数据】' : '[Embedded data]', onSelect: () => openCard('ff-card-embedded', { zh: '当前文件没有检出嵌入文件或尾附数据。', en: 'No embedded files or trailing data were detected in this file.' }) },
+        { key: 'chunks', label: language === 'zh' ? '【PNG chunk】' : '[PNG chunks]', onSelect: () => openCard('ff-card-chunks', { zh: 'chunk 枚举仅支持 PNG 文件。', en: 'Chunk enumeration applies to PNG files only.' }) },
+        { key: 'ntfs', label: language === 'zh' ? '【NTFS 数据流】' : '[NTFS streams]', onSelect: () => openCard('ff-card-ntfs', { zh: '未发现 NTFS 数据流，或当前文件不是 ZIP 载体。', en: 'No NTFS data streams found, or the file is not a ZIP carrier.' }) },
+        { key: 'strings', label: language === 'zh' ? '【可读字符串】' : '[Strings]', onSelect: () => openCard('ff-card-strings', { zh: '当前文件没有提取到可读字符串。', en: 'No readable strings were extracted from this file.' }) },
+        { key: 'hexdump', label: language === 'zh' ? '【HEX 转储】' : '[Hexdump]', onSelect: () => openCard('ff-card-hexdump', { zh: '当前文件没有 hexdump 预览。', en: 'No hexdump preview for this file.' }) },
       ],
     }],
-  }], [language, scrollToCard]);
+  }], [language, openCard]);
 
   useEffect(() => {
     if (!pendingFile || pendingFile.token === lastTokenRef.current) return;
     lastTokenRef.current = pendingFile.token;
     onFileConsumed?.();
-    void loadFile(pendingFile.file);
-  }, [pendingFile, onFileConsumed, loadFile]);
+    loadAndShow(pendingFile.file);
+  }, [pendingFile, onFileConsumed, loadAndShow]);
 
   const onDrop = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     // 阻止冒泡到 CtfToolkit 的页面级 drop，避免同一文件被两处重复读取。
     event.stopPropagation();
     const file = event.dataTransfer.files?.[0];
-    if (file) void loadFile(file);
+    if (file) loadAndShow(file);
   };
 
   const extensionMatches = useMemo(() => {
@@ -444,6 +565,22 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
     setJpgFix({ status: 'done', jpg: result });
   };
 
+  // 未加载文件时任何二级视图的统一空态：提示选择文件并给出入口（拖拽仍由外层容器承接，原整页 dropzone 拆到各视图）。
+  const pickFileNote = (
+    <div className="ff-dropzone">
+      <div className="ff-dropzone-icon" aria-hidden="true">🧩</div>
+      <strong>{language === 'zh' ? '请先选择文件，再使用该工具' : 'Choose a file to use this tool'}</strong>
+      <small>
+        {language === 'zh'
+          ? '把文件拖到这里，或点击下方按钮选择；自动识别文件类型并按需分析。文件仅在本浏览器内处理，不会上传，上限 20MB。'
+          : 'Drop a file here, or click the button below; types are detected automatically. Files never leave your browser. 20MB limit.'}
+      </small>
+      <button type="button" className="ff-button ff-button-primary" onClick={openPicker}>
+        {language === 'zh' ? '选择文件' : 'Choose file'}
+      </button>
+    </div>
+  );
+
   return (
     <div className="file-forensics" onDragOver={event => event.preventDefault()} onDrop={onDrop}>
       <input
@@ -454,7 +591,7 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
         style={{ display: 'none' }}
           onChange={event => {
             const file = event.target.files?.[0];
-            if (file) void loadFile(file);
+            if (file) loadAndShow(file);
             event.target.value = '';
           }}
         />
@@ -469,33 +606,44 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
         hasFile={Boolean(analysis)}
         onPickFile={openPicker}
         onScrollToCard={(cardId) => {
+          // 题型卡定位同样走"先切视图再滚动"：hidden 面板内的 scrollIntoView 不会滚动页面。
+          const viewId = resolveCardView(cardId);
+          if (viewId && viewId !== activeTool) setActiveTool(viewId);
           const node = document.getElementById(cardId);
-          if (node) {
-            node.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            return true;
-          }
-          return false;
+          if (!node) return false;
+          requestAnimationFrame(() => node.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+          return true;
         }}
         onOpenCipherOperation={operationId => { onOpenCipherOperation?.(operationId); }}
         onSwitchModule={moduleId => { onSwitchModule?.(moduleId); }}
         onHandOffCurrentFile={analysis && onHandOffFile ? () => { onHandOffFile(analysis.file); } : undefined}
       />
 
-      {!analysis ? (
-        <div className="ff-dropzone">
-          <div className="ff-dropzone-icon" aria-hidden="true">🧩</div>
-          <strong>{language === 'zh' ? '把文件拖到这里，或点击选择' : 'Drop a file here, or click to browse'}</strong>
-          <small>
-            {language === 'zh'
-              ? '自动识别文件类型、信息熵、可读字符串与可疑内容；文件仅在本浏览器内分析，不会上传。上限 20MB。'
-              : 'Automatic type detection, entropy, strings, and suspicious-content scanning. Files never leave your browser. 20MB limit.'}
-          </small>
-          <button type="button" className="ff-button ff-button-primary" onClick={openPicker}>
-            {language === 'zh' ? '选择文件' : 'Choose file'}
-          </button>
-        </div>
-      ) : (
-        <div className="ff-layout">
+      {/* 二级菜单（批次 FF-NAV）：左侧分组选工具、右侧单工具视图；hidden 保挂载（同 ReverseWorkspace），
+          切换视图不丢各卡的过滤/翻页/搜索状态。未加载文件时每个视图显示"请先选择文件"。 */}
+      <div className="ctf-toolnav">
+        <nav className="ctf-toolnav-menu" aria-label={language === 'zh' ? '杂项取证工具选择' : 'Forensics tools'}>
+          {FF_TOOL_GROUPS.map(group => (
+            <div className="ctf-toolnav-group" key={group.id}>
+              <div className="ctf-toolnav-group-title">{language === 'zh' ? group.zh : group.en}</div>
+              {group.tools.map(tool => (
+                <button
+                  key={tool.id}
+                  type="button"
+                  className={`ctf-toolnav-item ${activeTool === tool.id ? 'active' : ''}`}
+                  aria-current={activeTool === tool.id ? 'true' : undefined}
+                  onClick={() => setActiveTool(tool.id)}
+                >
+                  {language === 'zh' ? tool.zh : tool.en}
+                </button>
+              ))}
+            </div>
+          ))}
+        </nav>
+        <div className="ctf-toolnav-body">
+          {/* 概览视图：推荐工具条 + 文件概要 + flag 命中 + 可疑内容（报告头内容集中在概览） */}
+          <div className="ctf-toolpanel" hidden={activeTool !== 'summary'}>
+            {!analysis ? pickFileNote : (<>
           {recommendedTools.length > 0 && (
             <nav className="ff-recommend" aria-label={language === 'zh' ? '推荐工具' : 'Recommended tools'}>
               <span className="ff-recommend-label">{language === 'zh' ? '推荐工具' : 'Recommended'}</span>
@@ -567,7 +715,304 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
             </section>
           )}
 
-          {report && (report.png || report.zip || repairTarget?.bmp || repairTarget?.gif || repairTarget?.jpg) && (
+          {report && (report.suspicious.flags.length > 0 || report.suspicious.base64Candidates.length > 0 || report.suspicious.keywordHits.length > 0 || report.zeroWidth.zeroWidthCount > 0) && (
+            <section id="ff-card-suspicious" className="ff-card" aria-label={language === 'zh' ? '可疑内容' : 'Suspicious content'}>
+              <div className="ff-card-head">
+                <strong>{language === 'zh' ? '可疑内容' : 'Suspicious content'}</strong>
+              </div>
+              {report.suspicious.base64Candidates.length > 0 && (
+                <div className="ff-tool">
+                  <span className="ff-label">{language === 'zh' ? '疑似 Base64 片段（点击复制，可用「密码与编码」域解码）' : 'Base64-like fragments (click to copy; decode in Ciphers & Encoding)'}</span>
+                  {report.suspicious.base64Candidates.map(candidate => (
+                    <button
+                      key={candidate}
+                      type="button"
+                      className="ff-code ff-code-click"
+                      title={language === 'zh' ? '点击复制' : 'Click to copy'}
+                      onClick={() => { void copyToClipboard(candidate); }}
+                    >
+                      {candidate.length > 96 ? `${candidate.slice(0, 96)}…` : candidate}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {report.suspicious.keywordHits.length > 0 && (
+                <div className="ff-row">
+                  <span className="ff-label">{language === 'zh' ? '关键词命中' : 'Keyword hits'}</span>
+                  {report.suspicious.keywordHits.map(keyword => <span key={keyword} className="ff-badge">{keyword}</span>)}
+                </div>
+              )}
+              {report.zeroWidth.zeroWidthCount > 0 && (
+                <div className="ff-tool">
+                  <span className="ff-label">{language === 'zh' ? `发现 ${report.zeroWidth.zeroWidthCount} 个零宽字符` : `${report.zeroWidth.zeroWidthCount} zero-width characters found`}</span>
+                  {report.zeroWidth.payload
+                    ? <code className="ff-code"><FlagAutoText text={report.zeroWidth.payload} /></code>
+                    : <span className="ff-note">{language === 'zh' ? '零宽字符未凑满完整字节序列，无法按零宽编码解码；可能只是不可见水印或分隔符。' : 'Zero-width characters do not form complete bytes; they may be watermarks or separators.'}</span>}
+                </div>
+              )}
+            </section>
+          )}
+            </>)}
+          </div>
+
+          {/* 图片预览：仅浏览器可解码且 ≤5MB 的图片有 data URL */}
+          <div className="ctf-toolpanel" hidden={activeTool !== 'preview'}>
+            {!analysis ? pickFileNote : imagePreviewUrl ? (
+            <section id="ff-card-preview" className="ff-card" aria-label={language === 'zh' ? '图片预览' : 'Image preview'}>
+              <div className="ff-card-head">
+                <strong>{language === 'zh' ? '图片预览' : 'Image preview'}</strong>
+                <button
+                  type="button"
+                  className="ff-button"
+                  onClick={() => { void copyToClipboard(imagePreviewUrl); }}
+                >
+                  {language === 'zh' ? '复制 data URL' : 'Copy data URL'}
+                </button>
+              </div>
+              <img className="ff-preview" src={imagePreviewUrl} alt={analysis.name} />
+            </section>
+            ) : (
+              <p className="ff-note">
+                {language === 'zh'
+                  ? '图片预览仅支持浏览器可直接解码的图片（png/jpg/gif/bmp/webp/ico），且不超过 5MB；当前文件不满足条件。'
+                  : 'Preview applies to browser-decodable images (png/jpg/gif/bmp/webp/ico) up to 5MB; this file does not qualify.'}
+              </p>
+            )}
+          </div>
+
+          {/* 位平面与色道（ImagePlanesCard 内含 ff-card-bitplanes / ff-card-channels 两张卡） */}
+          <div className="ctf-toolpanel" hidden={activeTool !== 'planes'}>
+            {!analysis ? pickFileNote : planeStatus !== 'idle' ? (
+            <ImagePlanesCard
+              key={`planes-${analysis.name}:${analysis.size}`}
+              fileName={analysis.name}
+              image={planeImage}
+              status={planeStatus}
+              language={language}
+            />
+            ) : (
+              <p className="ff-note">
+                {language === 'zh'
+                  ? '位平面与色道分析仅支持浏览器可解码的图片文件；当前文件不是可解码的图片。'
+                  : 'Bit-plane and channel analysis applies to browser-decodable images; this file is not a decodable image.'}
+              </p>
+            )}
+          </div>
+
+          {/* 图像运算与转换 */}
+          <div className="ctf-toolpanel" hidden={activeTool !== 'imageops'}>
+            {!analysis ? pickFileNote : planeStatus === 'ready' && planeImage !== null ? (
+            <ImageOpsCard
+              key={`ops-${analysis.name}:${analysis.size}`}
+              image={planeImage}
+              language={language}
+            />
+            ) : (
+              <p className="ff-note">
+                {language === 'zh'
+                  ? '图像运算需要先成功解码一张图片：当前文件不是图片，或浏览器解码失败。'
+                  : 'Image operations need a successfully decoded image: this file is not an image, or decoding failed.'}
+              </p>
+            )}
+          </div>
+
+          {/* 置乱与频域隐写 */}
+          <div className="ctf-toolpanel" hidden={activeTool !== 'imagestego'}>
+            {!analysis ? pickFileNote : planeStatus === 'ready' && planeImage !== null ? (
+            <ImageStegoCard
+              key={`stego-${analysis.name}:${analysis.size}`}
+              image={planeImage}
+              language={language}
+            />
+            ) : (
+              <p className="ff-note">
+                {language === 'zh'
+                  ? '置乱/频域工具需要先成功解码一张图片：当前文件不是图片，或浏览器解码失败。'
+                  : 'Scramble and frequency tools need a decoded image: this file is not an image, or decoding failed.'}
+              </p>
+            )}
+          </div>
+
+          {/* JPEG DCT 隐写（魔数 FF D8 路由） */}
+          <div className="ctf-toolpanel" hidden={activeTool !== 'jpegstego'}>
+            {!analysis ? pickFileNote : analysis.bytes[0] === 0xff && analysis.bytes[1] === 0xd8 ? (
+            <JpegStegoCard
+              key={`jpegstego-${analysis.name}:${analysis.size}`}
+              bytes={analysis.bytes}
+              language={language}
+            />
+            ) : (
+              <p className="ff-note">
+                {language === 'zh'
+                  ? 'JPEG DCT 隐写仅支持以 FF D8 魔数开头的 JPEG 文件。'
+                  : 'JPEG DCT stego applies to files starting with the FF D8 JPEG signature.'}
+              </p>
+            )}
+          </div>
+
+          {/* steghide（BMP 载体，魔数「BM」路由） */}
+          <div className="ctf-toolpanel" hidden={activeTool !== 'steghide-bmp'}>
+            {!analysis ? pickFileNote : analysis.bytes[0] === 0x42 && analysis.bytes[1] === 0x4d ? (
+            <SteghideCard
+              key={`steghide-bmp-${analysis.name}:${analysis.size}`}
+              bytes={analysis.bytes}
+              kind="bmp"
+              language={language}
+            />
+            ) : (
+              <p className="ff-note">
+                {language === 'zh'
+                  ? 'steghide（BMP）仅支持以「BM」开头的 BMP 载体文件。'
+                  : 'steghide (BMP) applies to BMP carriers starting with "BM".'}
+              </p>
+            )}
+          </div>
+
+          {/* 音频隐写（WAV/MP3/FLAC/OGG 类型路由；频谱图等由卡内 Web Audio 处理） */}
+          <div className="ctf-toolpanel" hidden={activeTool !== 'audio'}>
+            {!analysis ? pickFileNote : report && report.types.some(type => ['wav', 'mp3', 'flac', 'ogg'].includes(type.ext)) ? (
+            <AudioStegoCard
+              key={`audio-${analysis.name}:${analysis.size}`}
+              file={analysis.file}
+              language={language}
+            />
+            ) : (
+              <p className="ff-note">
+                {language === 'zh'
+                  ? '音频隐写分析仅支持 WAV/MP3/FLAC/OGG 文件。'
+                  : 'Audio stego applies to WAV/MP3/FLAC/OGG files.'}
+              </p>
+            )}
+          </div>
+
+          {/* steghide（WAV 载体，魔数 RIFF 路由） */}
+          <div className="ctf-toolpanel" hidden={activeTool !== 'steghide-wav'}>
+            {!analysis ? pickFileNote : analysis.bytes[0] === 0x52 && analysis.bytes[1] === 0x49 && analysis.bytes[2] === 0x46 && analysis.bytes[3] === 0x46 ? (
+            <SteghideCard
+              key={`steghide-wav-${analysis.name}:${analysis.size}`}
+              bytes={analysis.bytes}
+              kind="wav"
+              language={language}
+            />
+            ) : (
+              <p className="ff-note">
+                {language === 'zh'
+                  ? 'steghide（WAV）仅支持以「RIFF」开头的 WAV 载体文件。'
+                  : 'steghide (WAV) applies to WAV carriers starting with "RIFF".'}
+              </p>
+            )}
+          </div>
+
+          {/* GIF 解析 */}
+          <div className="ctf-toolpanel" hidden={activeTool !== 'gif'}>
+            {!analysis ? pickFileNote : report && report.types.some(type => type.ext === 'gif') ? (
+            <GifInspectCard
+              key={`gif-${analysis.name}:${analysis.size}`}
+              fileName={analysis.name}
+              bytes={analysis.bytes}
+              language={language}
+            />
+            ) : (
+              <p className="ff-note">
+                {language === 'zh'
+                  ? 'GIF 解析仅支持 GIF 文件。'
+                  : 'GIF inspection applies to GIF files.'}
+              </p>
+            )}
+          </div>
+
+          {/* PDF 取证（魔数 %PDF 路由） */}
+          <div className="ctf-toolpanel" hidden={activeTool !== 'pdf'}>
+            {!analysis ? pickFileNote : report && report.types.some(type => type.ext === 'pdf') ? (
+            <PdfInspectCard
+              key={`pdf-${analysis.name}:${analysis.size}`}
+              fileName={analysis.name}
+              bytes={analysis.bytes}
+              language={language}
+            />
+            ) : (
+              <p className="ff-note">
+                {language === 'zh'
+                  ? 'PDF 取证仅支持以「%PDF」开头的 PDF 文件。'
+                  : 'PDF forensics applies to files starting with the "%PDF" signature.'}
+              </p>
+            )}
+          </div>
+
+          {/* RAR 解析（RAR4/RAR5 魔数路由） */}
+          <div className="ctf-toolpanel" hidden={activeTool !== 'rar'}>
+            {!analysis ? pickFileNote : report && report.types.some(type => type.ext === 'rar4' || type.ext === 'rar5') ? (
+            <RarInspectCard
+              key={`rar-${analysis.name}:${analysis.size}`}
+              fileName={analysis.name}
+              bytes={analysis.bytes}
+              language={language}
+            />
+            ) : (
+              <p className="ff-note">
+                {language === 'zh'
+                  ? 'RAR 解析仅支持 RAR4/RAR5 文件。'
+                  : 'RAR inspection applies to RAR4/RAR5 archives.'}
+              </p>
+            )}
+          </div>
+
+          {/* APK 逆向（扩展名 .apk 路由） */}
+          <div className="ctf-toolpanel" hidden={activeTool !== 'apk'}>
+            {!analysis ? pickFileNote : report && analysis.name.toLowerCase().endsWith('.apk') ? (
+            <ApkInspectCard
+              key={`apk-${analysis.name}:${analysis.size}`}
+              bytes={analysis.bytes}
+              fileName={analysis.name}
+              language={language}
+            />
+            ) : (
+              <p className="ff-note">
+                {language === 'zh'
+                  ? 'APK 逆向按扩展名 .apk 路由；当前文件不是 .apk。'
+                  : 'APK analysis routes by the .apk extension; this file is not an .apk.'}
+              </p>
+            )}
+          </div>
+
+          {/* 路由器备份（扩展名 .cfg/.conf/.bin/rom-0 路由；.apk 优先归 APK 视图） */}
+          <div className="ctf-toolpanel" hidden={activeTool !== 'router'}>
+            {!analysis ? pickFileNote : report && /\.(cfg|conf|bin|rom-0|rom0)$/i.test(analysis.name) && !analysis.name.toLowerCase().endsWith('.apk') ? (
+            <RouterConfigCard
+              key={`router-${analysis.name}:${analysis.size}`}
+              bytes={analysis.bytes}
+              fileName={analysis.name}
+              language={language}
+            />
+            ) : (
+              <p className="ff-note">
+                {language === 'zh'
+                  ? '路由器备份分析按扩展名 .cfg/.conf/.bin/rom-0 路由；当前文件不匹配。'
+                  : 'Router backup analysis routes by .cfg/.conf/.bin/rom-0 extensions; no match.'}
+              </p>
+            )}
+          </div>
+
+          {/* ZIP 密码爆破（检测到加密/伪加密标志时可用） */}
+          <div className="ctf-toolpanel" hidden={activeTool !== 'zipbrute'}>
+            {!analysis ? pickFileNote : report && report.zip !== null && (report.zip.state === 'encrypted' || report.zip.state === 'pseudo') ? (
+            <ZipBruteCard
+              key={`zipbrute-${analysis.name}:${analysis.size}`}
+              bytes={analysis.bytes}
+              language={language}
+            />
+            ) : (
+              <p className="ff-note">
+                {language === 'zh'
+                  ? 'ZIP 密码爆破在检测到加密/伪加密标志时可用；当前 ZIP 未加密，或不是 ZIP 文件。'
+                  : 'ZIP brute force applies when encryption or pseudo-encryption flags are detected; this ZIP is plain, or the file is not a ZIP.'}
+              </p>
+            )}
+          </div>
+
+          {/* 文件修复：PNG 宽高 / ZIP 伪加密 / BMP / GIF / JPG（魔数命中或扩展名兜底） */}
+          <div className="ctf-toolpanel" hidden={activeTool !== 'repair'}>
+            {!analysis ? pickFileNote : report && (report.png || report.zip || repairTarget?.bmp || repairTarget?.gif || repairTarget?.jpg) ? (
             <section id="ff-card-repair" className="ff-card" aria-label={language === 'zh' ? '文件修复工具' : 'Repair tools'}>
               <div className="ff-card-head">
                 <strong>{language === 'zh' ? '修复工具' : 'Repair tools'}</strong>
@@ -705,9 +1150,18 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
                 </div>
               )}
             </section>
-          )}
+            ) : (
+              <p className="ff-note">
+                {language === 'zh'
+                  ? '当前文件没有命中的修复工具（PNG 宽高 / ZIP 伪加密 / BMP / GIF / JPG）。'
+                  : 'No repair tool matches this file (PNG dimensions / ZIP pseudo-encryption / BMP / GIF / JPG).'}
+              </p>
+            )}
+          </div>
 
-          {report?.ntfs && report.ntfs.streams.length > 0 && (
+          {/* NTFS 数据流（ZIP 载体专属） */}
+          <div className="ctf-toolpanel" hidden={activeTool !== 'ntfs'}>
+            {!analysis ? pickFileNote : report?.ntfs && report.ntfs.streams.length > 0 ? (
             <section id="ff-card-ntfs" className="ff-card" aria-label={language === 'zh' ? 'NTFS 数据流' : 'NTFS data streams'}>
               <div className="ff-card-head">
                 <strong>{language === 'zh' ? `NTFS 数据流（${report.ntfs.streams.length}）` : `NTFS data streams (${report.ntfs.streams.length})`}</strong>
@@ -736,213 +1190,94 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
                 <div className="ff-note">{report.ntfs.diagnosis.map((line, index) => <div key={index}>{line}</div>)}</div>
               )}
             </section>
-          )}
+            ) : (
+              <p className="ff-note">
+                {language === 'zh'
+                  ? '未发现 NTFS 数据流，或当前文件不是 ZIP 载体。'
+                  : 'No NTFS data streams found, or the file is not a ZIP carrier.'}
+              </p>
+            )}
+          </div>
 
-          {report && (report.suspicious.flags.length > 0 || report.suspicious.base64Candidates.length > 0 || report.suspicious.keywordHits.length > 0 || report.zeroWidth.zeroWidthCount > 0) && (
-            <section id="ff-card-suspicious" className="ff-card" aria-label={language === 'zh' ? '可疑内容' : 'Suspicious content'}>
-              <div className="ff-card-head">
-                <strong>{language === 'zh' ? '可疑内容' : 'Suspicious content'}</strong>
-              </div>
-              {report.suspicious.base64Candidates.length > 0 && (
-                <div className="ff-tool">
-                  <span className="ff-label">{language === 'zh' ? '疑似 Base64 片段（点击复制，可用「密码与编码」域解码）' : 'Base64-like fragments (click to copy; decode in Ciphers & Encoding)'}</span>
-                  {report.suspicious.base64Candidates.map(candidate => (
-                    <button
-                      key={candidate}
-                      type="button"
-                      className="ff-code ff-code-click"
-                      title={language === 'zh' ? '点击复制' : 'Click to copy'}
-                      onClick={() => { void copyToClipboard(candidate); }}
-                    >
-                      {candidate.length > 96 ? `${candidate.slice(0, 96)}…` : candidate}
-                    </button>
-                  ))}
-                </div>
-              )}
-              {report.suspicious.keywordHits.length > 0 && (
-                <div className="ff-row">
-                  <span className="ff-label">{language === 'zh' ? '关键词命中' : 'Keyword hits'}</span>
-                  {report.suspicious.keywordHits.map(keyword => <span key={keyword} className="ff-badge">{keyword}</span>)}
-                </div>
-              )}
-              {report.zeroWidth.zeroWidthCount > 0 && (
-                <div className="ff-tool">
-                  <span className="ff-label">{language === 'zh' ? `发现 ${report.zeroWidth.zeroWidthCount} 个零宽字符` : `${report.zeroWidth.zeroWidthCount} zero-width characters found`}</span>
-                  {report.zeroWidth.payload
-                    ? <code className="ff-code"><FlagAutoText text={report.zeroWidth.payload} /></code>
-                    : <span className="ff-note">{language === 'zh' ? '零宽字符未凑满完整字节序列，无法按零宽编码解码；可能只是不可见水印或分隔符。' : 'Zero-width characters do not form complete bytes; they may be watermarks or separators.'}</span>}
-                </div>
-              )}
-            </section>
-          )}
+          {/* 嵌入数据与 PNG chunk（EmbeddedCard 内含 ff-card-embedded / ff-card-chunks；无命中时返回 null，此时补空态说明） */}
+          <div className="ctf-toolpanel" hidden={activeTool !== 'embedded'}>
+            {!analysis ? pickFileNote : !report ? (
+              <p className="ff-note">{language === 'zh' ? '正在分析文件，嵌入扫描稍后可用。' : 'Analyzing; the embedded scan will be available shortly.'}</p>
+            ) : (
+              <>
+                <EmbeddedCard
+                  key={`embedded-${analysis.name}:${analysis.size}`}
+                  fileName={analysis.name}
+                  bytes={analysis.bytes}
+                  embedded={report.embedded}
+                  chunks={report.chunks}
+                  language={language}
+                />
+                {report.embedded.hits.length === 0 && !report.embedded.pngTrailer && !report.embedded.jpgTrailer && (report.chunks?.chunks.length ?? 0) === 0 && (
+                  <p className="ff-note">
+                    {language === 'zh'
+                      ? '当前文件没有检出嵌入文件、尾附数据或 PNG chunk。'
+                      : 'No embedded files, trailing data, or PNG chunks were detected in this file.'}
+                  </p>
+                )}
+              </>
+            )}
+          </div>
 
-          {imagePreviewUrl && (
-            <section id="ff-card-preview" className="ff-card" aria-label={language === 'zh' ? '图片预览' : 'Image preview'}>
-              <div className="ff-card-head">
-                <strong>{language === 'zh' ? '图片预览' : 'Image preview'}</strong>
-                <button
-                  type="button"
-                  className="ff-button"
-                  onClick={() => { void copyToClipboard(imagePreviewUrl); }}
-                >
-                  {language === 'zh' ? '复制 data URL' : 'Copy data URL'}
-                </button>
-              </div>
-              <img className="ff-preview" src={imagePreviewUrl} alt={analysis.name} />
-            </section>
-          )}
-
-          {planeStatus !== 'idle' && (
-            <ImagePlanesCard
-              key={`planes-${analysis.name}:${analysis.size}`}
-              fileName={analysis.name}
-              image={planeImage}
-              status={planeStatus}
-              language={language}
-            />
-          )}
-
-          {planeStatus === 'ready' && planeImage !== null && (
-            <ImageOpsCard
-              key={`ops-${analysis.name}:${analysis.size}`}
-              image={planeImage}
-              language={language}
-            />
-          )}
-
-          {planeStatus === 'ready' && planeImage !== null && (
-            <ImageStegoCard
-              key={`stego-${analysis.name}:${analysis.size}`}
-              image={planeImage}
-              language={language}
-            />
-          )}
-
-          {analysis.bytes[0] === 0xff && analysis.bytes[1] === 0xd8 && (
-            <JpegStegoCard
-              key={`jpegstego-${analysis.name}:${analysis.size}`}
-              bytes={analysis.bytes}
-              language={language}
-            />
-          )}
-
-          {analysis.bytes[0] === 0x42 && analysis.bytes[1] === 0x4d && (
-            <SteghideCard
-              key={`steghide-bmp-${analysis.name}:${analysis.size}`}
-              bytes={analysis.bytes}
-              kind="bmp"
-              language={language}
-            />
-          )}
-
-          {analysis.bytes[0] === 0x52 && analysis.bytes[1] === 0x49 && analysis.bytes[2] === 0x46 && analysis.bytes[3] === 0x46 && (
-            <SteghideCard
-              key={`steghide-wav-${analysis.name}:${analysis.size}`}
-              bytes={analysis.bytes}
-              kind="wav"
-              language={language}
-            />
-          )}
-
-          {report && report.types.some(type => ['wav', 'mp3', 'flac', 'ogg'].includes(type.ext)) && (
-            <AudioStegoCard
-              key={`audio-${analysis.name}:${analysis.size}`}
-              file={analysis.file}
-              language={language}
-            />
-          )}
-
-          {report && report.types.some(type => type.ext === 'gif') && (
-            <GifInspectCard
-              key={`gif-${analysis.name}:${analysis.size}`}
-              fileName={analysis.name}
-              bytes={analysis.bytes}
-              language={language}
-            />
-          )}
-
-          {report && report.types.some(type => type.ext === 'pdf') && (
-            <PdfInspectCard
-              key={`pdf-${analysis.name}:${analysis.size}`}
-              fileName={analysis.name}
-              bytes={analysis.bytes}
-              language={language}
-            />
-          )}
-
-          {report && report.types.some(type => type.ext === 'rar4' || type.ext === 'rar5') && (
-            <RarInspectCard
-              key={`rar-${analysis.name}:${analysis.size}`}
-              fileName={analysis.name}
-              bytes={analysis.bytes}
-              language={language}
-            />
-          )}
-
-          {report && analysis.name.toLowerCase().endsWith('.apk') && (
-            <ApkInspectCard
-              key={`apk-${analysis.name}:${analysis.size}`}
-              bytes={analysis.bytes}
-              fileName={analysis.name}
-              language={language}
-            />
-          )}
-
-          {report && /\.(cfg|conf|bin|rom-0|rom0)$/i.test(analysis.name) && !analysis.name.toLowerCase().endsWith('.apk') && (
-            <RouterConfigCard
-              key={`router-${analysis.name}:${analysis.size}`}
-              bytes={analysis.bytes}
-              fileName={analysis.name}
-              language={language}
-            />
-          )}
-
-          {report && repairTarget?.pyc && (
+          {/* pyc 字节码（扩展名 .pyc/.pyo 路由；pyc 魔数随版本漂移无法魔数探测） */}
+          <div className="ctf-toolpanel" hidden={activeTool !== 'pyc'}>
+            {!analysis ? pickFileNote : report && repairTarget?.pyc ? (
             <PycInspectCard
               key={`pyc-${analysis.name}:${analysis.size}`}
               bytes={analysis.bytes}
               language={language}
             />
-          )}
+            ) : (
+              <p className="ff-note">
+                {language === 'zh'
+                  ? 'pyc 解析按扩展名 .pyc/.pyo 路由；当前文件不匹配。'
+                  : 'pyc inspection routes by the .pyc/.pyo extension; no match.'}
+              </p>
+            )}
+          </div>
 
-          {report && report.zip !== null && (report.zip.state === 'encrypted' || report.zip.state === 'pseudo') && (
-            <ZipBruteCard
-              key={`zipbrute-${analysis.name}:${analysis.size}`}
-              bytes={analysis.bytes}
-              language={language}
-            />
-          )}
-
-          {report && (
-            <EmbeddedCard
-              key={`embedded-${analysis.name}:${analysis.size}`}
-              fileName={analysis.name}
-              bytes={analysis.bytes}
-              embedded={report.embedded}
-              chunks={report.chunks}
-              language={language}
-            />
-          )}
-
-          {report && report.strings.total > 0 && (
+          {/* 可读字符串 */}
+          <div className="ctf-toolpanel" hidden={activeTool !== 'strings'}>
+            {!analysis ? pickFileNote : report && report.strings.total > 0 ? (
             <StringsCard
               key={`strings-${analysis.name}:${analysis.size}`}
               fileName={analysis.name}
               bytes={analysis.bytes}
               language={language}
             />
-          )}
+            ) : (
+              <p className="ff-note">
+                {language === 'zh'
+                  ? '当前文件没有提取到可读字符串。'
+                  : 'No readable strings were extracted from this file.'}
+              </p>
+            )}
+          </div>
 
-          {report && report.hexdump && (
+          {/* HEX 转储 */}
+          <div className="ctf-toolpanel" hidden={activeTool !== 'hexdump'}>
+            {!analysis ? pickFileNote : report && report.hexdump ? (
             <HexdumpCard
               key={`hexdump-${analysis.name}:${analysis.size}`}
               bytes={analysis.bytes}
               size={analysis.size}
               language={language}
             />
-          )}
+            ) : (
+              <p className="ff-note">
+                {language === 'zh'
+                  ? '正在分析文件，hexdump 预览稍后可用。'
+                  : 'Analyzing; the hexdump preview will be available shortly.'}
+              </p>
+            )}
+          </div>
         </div>
-      )}
+      </div>
 
       {(busy || analyzing) && <div className="ff-busy" role="status">{language === 'zh' ? (analyzing ? '正在分析文件…' : '正在读取文件…') : (analyzing ? 'Analyzing file…' : 'Reading file…')}</div>}
 

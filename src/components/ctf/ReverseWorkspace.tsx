@@ -76,6 +76,7 @@ function ReverseWorkspace({ pendingFile, onFileConsumed, onSwitchModule }: CtfWo
   const [analyzing, setAnalyzing] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const lastTokenRef = useRef(0);
+  const [activeTool, setActiveTool] = useState('overview');
 
   const loadFile = useCallback(async (file: File) => {
     if (file.size > MAX_FILE_BYTES) {
@@ -132,19 +133,24 @@ function ReverseWorkspace({ pendingFile, onFileConsumed, onSwitchModule }: CtfWo
     }
   }, [zh]);
 
+  // 载入成功后回到概览视图（异步回调里 setState，避开 set-state-in-effect 红线）
+  const loadAndShow = useCallback((file: File) => {
+    void loadFile(file).then(() => setActiveTool('overview'));
+  }, [loadFile]);
+
   useEffect(() => {
     if (!pendingFile || pendingFile.token === lastTokenRef.current) return;
     lastTokenRef.current = pendingFile.token;
     onFileConsumed?.();
-    void loadFile(pendingFile.file);
-  }, [pendingFile, onFileConsumed, loadFile]);
+    loadAndShow(pendingFile.file);
+  }, [pendingFile, onFileConsumed, loadAndShow]);
 
   const onDrop = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     // 阻止冒泡到 CtfToolkit 的页面级 drop，避免同一文件被两处重复读取。
     event.stopPropagation();
     const file = event.dataTransfer.files?.[0];
-    if (file) void loadFile(file);
+    if (file) loadAndShow(file);
   };
 
   // 推荐工具条：复用杂项域映射；其中"常量扫描（逆向域）"锚点在本域内改为域内滚动到指纹卡。
@@ -157,7 +163,11 @@ function ReverseWorkspace({ pendingFile, onFileConsumed, onSwitchModule }: CtfWo
     ));
   }, [report]);
 
-  const scrollToCard = (cardId: string) => {
+  // 推荐工具跳转：域内锚点 → 切视图 + 滚动（批次 NAV 起二级视图取代平铺锚点）
+  const openCard = (cardId: string) => {
+    if (cardId === 'rv-card-fingerprints' || cardId === 'ff-card-summary') {
+      setActiveTool('overview');
+    }
     document.getElementById(cardId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
@@ -171,7 +181,7 @@ function ReverseWorkspace({ pendingFile, onFileConsumed, onSwitchModule }: CtfWo
         style={{ display: 'none' }}
         onChange={event => {
           const file = event.target.files?.[0];
-          if (file) void loadFile(file);
+          if (file) loadAndShow(file);
           event.target.value = '';
         }}
       />
@@ -190,138 +200,196 @@ function ReverseWorkspace({ pendingFile, onFileConsumed, onSwitchModule }: CtfWo
           </button>
         </div>
       ) : (
-        <div className="ff-layout">
-          {recommendedTools.length > 0 && (
-            <nav className="ff-recommend" aria-label={zh ? '推荐工具' : 'Recommended tools'}>
-              <span className="ff-recommend-label">{zh ? '推荐工具' : 'Recommended'}</span>
-              <div className="ff-recommend-tools">
-                {recommendedTools.map(tool => (
-                  <button
-                    key={tool.id}
-                    type="button"
-                    className={tool.soon ? 'ff-button ff-recommend-soon' : 'ff-button ff-recommend-hit'}
-                    onClick={() => { if (tool.cardId) scrollToCard(tool.cardId); }}
-                    title={tool.label[language]}
-                  >
-                    {tool.label[language]}
-                    {tool.soon && <span className="ff-recommend-soon-tag">{zh ? '即将上线' : 'soon'}</span>}
-                  </button>
-                ))}
-              </div>
-            </nav>
-          )}
-
-          <section id="ff-card-summary" className="ff-card" aria-label={zh ? '文件概要' : 'File summary'}>
-            <div className="ff-card-head">
-              <strong>{zh ? '文件概要' : 'Summary'}</strong>
-              <button type="button" className="ff-button" onClick={() => inputRef.current?.click()}>{zh ? '换一个文件' : 'Replace'}</button>
+        <div className="ctf-toolnav">
+          <nav className="ctf-toolnav-menu" aria-label={zh ? '逆向工具选择' : 'Reverse tools'}>
+            <div className="ctf-toolnav-group">
+              <div className="ctf-toolnav-group-title">{zh ? '目标分析' : 'Target'}</div>
+              <button type="button" className={`ctf-toolnav-item ${activeTool === 'overview' ? 'active' : ''}`} aria-current={activeTool === 'overview' ? 'true' : undefined} onClick={() => setActiveTool('overview')}>
+                {zh ? '概览与指纹' : 'Overview'}
+              </button>
+              <button type="button" className={`ctf-toolnav-item ${activeTool === 'structure' ? 'active' : ''}`} aria-current={activeTool === 'structure' ? 'true' : undefined} onClick={() => setActiveTool('structure')}>
+                {zh ? 'ELF/PE 结构' : 'Structure'}
+              </button>
+              {report?.isUpx && (
+                <button type="button" className={`ctf-toolnav-item ${activeTool === 'upx' ? 'active' : ''}`} aria-current={activeTool === 'upx' ? 'true' : undefined} onClick={() => setActiveTool('upx')}>
+                  {zh ? 'UPX 脱壳' : 'UPX unpack'}
+                </button>
+              )}
+              <button type="button" className={`ctf-toolnav-item ${activeTool === 'entropy' ? 'active' : ''}`} aria-current={activeTool === 'entropy' ? 'true' : undefined} onClick={() => setActiveTool('entropy')}>
+                {zh ? '熵图' : 'Entropy map'}
+              </button>
+              <button type="button" className={`ctf-toolnav-item ${activeTool === 'strings' ? 'active' : ''}`} aria-current={activeTool === 'strings' ? 'true' : undefined} onClick={() => setActiveTool('strings')}>
+                {zh ? '字符串' : 'Strings'}
+              </button>
+              <button type="button" className={`ctf-toolnav-item ${activeTool === 'hexdump' ? 'active' : ''}`} aria-current={activeTool === 'hexdump' ? 'true' : undefined} onClick={() => setActiveTool('hexdump')}>
+                {zh ? 'Hexdump' : 'Hexdump'}
+              </button>
             </div>
-            <div className="ff-summary">
-              <span className="ff-name" title={analysis.name}>{analysis.name}</span>
-              <span className="ff-size">{formatBytes(analysis.size)}</span>
+            <div className="ctf-toolnav-group">
+              <div className="ctf-toolnav-group-title">{zh ? '速查' : 'Reference'}</div>
+              <button type="button" className={`ctf-toolnav-item ${activeTool === 'cheatsheet' ? 'active' : ''}`} aria-current={activeTool === 'cheatsheet' ? 'true' : undefined} onClick={() => setActiveTool('cheatsheet')}>
+                {zh ? '速查表' : 'Cheatsheet'}
+              </button>
             </div>
-            {report && (
-              <>
-                <div className="ff-row">
-                  <span className="ff-label">{zh ? '探测类型' : 'Detected type'}</span>
-                  {report.types.length
-                    ? report.types.map(type => <span key={type.ext} className="ff-badge" title={type.name}>{type.name}</span>)
-                    : <span className="ff-badge ff-badge-warn">{zh ? '未知类型（无已知魔数）' : 'Unknown (no magic match)'}</span>}
-                  <span className="ff-label">{zh ? '信息熵' : 'Entropy'}</span>
-                  <span className="ff-mono">{report.entropy.toFixed(3)} / 8</span>
-                </div>
-                <p className="ff-note">{entropyVerdictText(report.level, language)}</p>
-              </>
-            )}
-          </section>
-
-          <section id="rv-card-fingerprints" className="ff-card" aria-label={zh ? '常量指纹扫描' : 'Constant fingerprint scan'}>
-            <div className="ff-card-head">
-              <strong>{zh ? `常量指纹扫描（前 ${formatBytes(FINGERPRINT_SCAN_LIMIT)}）` : `Constant fingerprint scan (first ${formatBytes(FINGERPRINT_SCAN_LIMIT)})`}</strong>
-            </div>
-            {report && report.fingerprints.length > 0 ? (
-              report.fingerprints.map(hit => (
-                <article key={hit.id} className="rv-fingerprint">
-                  <div className="ff-row">
-                    <span className="ff-badge">{CATEGORY_LABEL[hit.category][language]}</span>
-                    <span className="rv-fingerprint-name">{hit.name}</span>
-                    <span className="ff-mono">@ {toHex(hit.offset)}</span>
-                    {hit.hits > 1 && <span className="ff-badge">{zh ? `${hit.hits} 处命中` : `${hit.hits} hits`}</span>}
-                    {hit.label && <span className="ff-badge">{hit.label[language]}</span>}
-                  </div>
-                  <p className="ff-note">{hit.meaning[language]}</p>
-                  <div className="ff-row">
-                    <span className="rv-fingerprint-suggest">➜ {hit.suggestion[language]}</span>
-                    {hit.switchModuleId && (
+          </nav>
+          <div className="ctf-toolnav-body">
+            {/* hidden 保挂载：切换视图不丢结构/字符串等重组件状态 */}
+            <div className="ctf-toolpanel" hidden={activeTool !== 'overview'}>
+              {recommendedTools.length > 0 && (
+                <nav className="ff-recommend" aria-label={zh ? '推荐工具' : 'Recommended tools'}>
+                  <span className="ff-recommend-label">{zh ? '推荐工具' : 'Recommended'}</span>
+                  <div className="ff-recommend-tools">
+                    {recommendedTools.map(tool => (
                       <button
+                        key={tool.id}
                         type="button"
-                        className="ff-button ff-button-primary"
-                        onClick={() => onSwitchModule?.(hit.switchModuleId!)}
+                        className={tool.soon ? 'ff-button ff-recommend-soon' : 'ff-button ff-recommend-hit'}
+                        onClick={() => { if (tool.cardId) openCard(tool.cardId); }}
+                        title={tool.label[language]}
                       >
-                        {zh ? '去密码与编码域' : 'Open Ciphers & Encoding'}
+                        {tool.label[language]}
+                        {tool.soon && <span className="ff-recommend-soon-tag">{zh ? '即将上线' : 'soon'}</span>}
                       </button>
-                    )}
+                    ))}
                   </div>
-                </article>
-              ))
-            ) : (
-              <p className="ff-note">
-                {report
-                  ? (zh
-                    ? '未命中已知常量——不代表没有加密：结合右侧熵图与下方 strings 判断，自定义算法或混淆样本需要动态调试（见底部速查）。'
-                    : 'No known constants hit — that does not rule out crypto: combine the entropy map and strings below; custom algorithms need dynamic analysis (see the cheat sheet).')
-                  : (zh ? '正在扫描…' : 'Scanning…')}
-              </p>
-            )}
-          </section>
+                </nav>
+              )}
 
-          {report && (
-            <BinaryStructurePanel
-              key={`structure-${analysis.name}:${analysis.size}`}
-              elf={report.elf}
-              pe={report.pe}
-              bytes={analysis.bytes}
-              language={language}
-            />
-          )}
+              <section id="ff-card-summary" className="ff-card" aria-label={zh ? '文件概要' : 'File summary'}>
+                <div className="ff-card-head">
+                  <strong>{zh ? '文件概要' : 'Summary'}</strong>
+                  <button type="button" className="ff-button" onClick={() => inputRef.current?.click()}>{zh ? '换一个文件' : 'Replace'}</button>
+                </div>
+                <div className="ff-summary">
+                  <span className="ff-name" title={analysis.name}>{analysis.name}</span>
+                  <span className="ff-size">{formatBytes(analysis.size)}</span>
+                </div>
+                {report && (
+                  <>
+                    <div className="ff-row">
+                      <span className="ff-label">{zh ? '探测类型' : 'Detected type'}</span>
+                      {report.types.length
+                        ? report.types.map(type => <span key={type.ext} className="ff-badge" title={type.name}>{type.name}</span>)
+                        : <span className="ff-badge ff-badge-warn">{zh ? '未知类型（无已知魔数）' : 'Unknown (no magic match)'}</span>}
+                      <span className="ff-label">{zh ? '信息熵' : 'Entropy'}</span>
+                      <span className="ff-mono">{report.entropy.toFixed(3)} / 8</span>
+                    </div>
+                    <p className="ff-note">{entropyVerdictText(report.level, language)}</p>
+                  </>
+                )}
+              </section>
 
-          {report && report.isUpx && (
-            <UpxCard
-              key={`upx-${analysis.name}:${analysis.size}`}
-              bytes={analysis.bytes}
-              fileName={analysis.name}
-              language={language}
-            />
-          )}
+              <section id="rv-card-fingerprints" className="ff-card" aria-label={zh ? '常量指纹扫描' : 'Constant fingerprint scan'}>
+                <div className="ff-card-head">
+                  <strong>{zh ? `常量指纹扫描（前 ${formatBytes(FINGERPRINT_SCAN_LIMIT)}）` : `Constant fingerprint scan (first ${formatBytes(FINGERPRINT_SCAN_LIMIT)})`}</strong>
+                </div>
+                {report && report.fingerprints.length > 0 ? (
+                  report.fingerprints.map(hit => (
+                    <article key={hit.id} className="rv-fingerprint">
+                      <div className="ff-row">
+                        <span className="ff-badge">{CATEGORY_LABEL[hit.category][language]}</span>
+                        <span className="rv-fingerprint-name">{hit.name}</span>
+                        <span className="ff-mono">@ {toHex(hit.offset)}</span>
+                        {hit.hits > 1 && <span className="ff-badge">{zh ? `${hit.hits} 处命中` : `${hit.hits} hits`}</span>}
+                        {hit.label && <span className="ff-badge">{hit.label[language]}</span>}
+                      </div>
+                      <p className="ff-note">{hit.meaning[language]}</p>
+                      <div className="ff-row">
+                        <span className="rv-fingerprint-suggest">➜ {hit.suggestion[language]}</span>
+                        {hit.switchModuleId && (
+                          <button
+                            type="button"
+                            className="ff-button ff-button-primary"
+                            onClick={() => onSwitchModule?.(hit.switchModuleId!)}
+                          >
+                            {zh ? '去密码与编码域' : 'Open Ciphers & Encoding'}
+                          </button>
+                        )}
+                      </div>
+                    </article>
+                  ))
+                ) : (
+                  <p className="ff-note">
+                    {report
+                      ? (zh
+                        ? '未命中已知常量——不代表没有加密：结合熵图与字符串判断，自定义算法或混淆样本需要动态调试（见速查）。'
+                        : 'No known constants hit — that does not rule out crypto: combine the entropy map and strings; custom algorithms need dynamic analysis (see the cheat sheet).')
+                      : (zh ? '正在扫描…' : 'Scanning…')}
+                  </p>
+                )}
+              </section>
+            </div>
 
-          {report && (
-            <EntropyMapCard
-              key={`entropy-${analysis.name}:${analysis.size}`}
-              blocks={report.entropyBlocks}
-              ranges={report.highRanges}
-              language={language}
-            />
-          )}
+            <div className="ctf-toolpanel" hidden={activeTool !== 'structure'}>
+              {report ? (
+                <BinaryStructurePanel
+                  key={`structure-${analysis.name}:${analysis.size}`}
+                  elf={report.elf}
+                  pe={report.pe}
+                  bytes={analysis.bytes}
+                  language={language}
+                />
+              ) : (
+                <p className="ff-note">{zh ? '正在解析结构…' : 'Parsing structure…'}</p>
+              )}
+            </div>
 
-          {report && report.stringsTotal > 0 && (
-            <StringsCard
-              key={`strings-${analysis.name}:${analysis.size}`}
-              fileName={analysis.name}
-              bytes={analysis.bytes}
-              language={language}
-            />
-          )}
+            <div className="ctf-toolpanel" hidden={activeTool !== 'upx'}>
+              {report?.isUpx ? (
+                <UpxCard
+                  key={`upx-${analysis.name}:${analysis.size}`}
+                  bytes={analysis.bytes}
+                  fileName={analysis.name}
+                  language={language}
+                />
+              ) : (
+                <p className="ff-note">{zh ? '当前文件未检测到 UPX 壳。' : 'No UPX packing detected.'}</p>
+              )}
+            </div>
 
-          {report && (
-            <HexdumpCard
-              key={`hexdump-${analysis.name}:${analysis.size}`}
-              bytes={analysis.bytes}
-              size={analysis.size}
-              language={language}
-            />
-          )}
+            <div className="ctf-toolpanel" hidden={activeTool !== 'entropy'}>
+              {report ? (
+                <EntropyMapCard
+                  key={`entropy-${analysis.name}:${analysis.size}`}
+                  blocks={report.entropyBlocks}
+                  ranges={report.highRanges}
+                  language={language}
+                />
+              ) : (
+                <p className="ff-note">{zh ? '正在计算熵…' : 'Computing entropy…'}</p>
+              )}
+            </div>
 
-          <CheatsheetSection moduleId="reverse" variant="footer" />
+            <div className="ctf-toolpanel" hidden={activeTool !== 'strings'}>
+              {report && report.stringsTotal > 0 ? (
+                <StringsCard
+                  key={`strings-${analysis.name}:${analysis.size}`}
+                  fileName={analysis.name}
+                  bytes={analysis.bytes}
+                  language={language}
+                />
+              ) : (
+                <p className="ff-note">{zh ? '未提取到可读字符串。' : 'No readable strings.'}</p>
+              )}
+            </div>
+
+            <div className="ctf-toolpanel" hidden={activeTool !== 'hexdump'}>
+              {report ? (
+                <HexdumpCard
+                  key={`hexdump-${analysis.name}:${analysis.size}`}
+                  bytes={analysis.bytes}
+                  size={analysis.size}
+                  language={language}
+                />
+              ) : (
+                <p className="ff-note">{zh ? '正在准备 hexdump…' : 'Preparing hexdump…'}</p>
+              )}
+            </div>
+
+            <div className="ctf-toolpanel" hidden={activeTool !== 'cheatsheet'}>
+              <CheatsheetSection moduleId="reverse" variant="footer" />
+            </div>
+          </div>
         </div>
       )}
 

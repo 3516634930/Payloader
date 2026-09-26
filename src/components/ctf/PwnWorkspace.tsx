@@ -871,6 +871,45 @@ function BinaryWorkbench({ binary, zh, onClear }: { binary: LoadedBinary; zh: bo
   );
 }
 
+// 二级菜单（批次 NAV）：目标分析 / payload 构造 / 速查——先选工具再看工具
+const PWN_TOOL_GROUPS: ReadonlyArray<{
+  id: string;
+  zh: string;
+  en: string;
+  tools: ReadonlyArray<{ id: string; zh: string; en: string }>;
+}> = [
+  {
+    id: 'target',
+    zh: '目标分析',
+    en: 'Target',
+    tools: [
+      { id: 'binary', zh: 'ELF 分析', en: 'ELF analysis' },
+    ],
+  },
+  {
+    id: 'build',
+    zh: 'Payload 构造',
+    en: 'Payloads',
+    tools: [
+      { id: 'cyclic', zh: 'cyclic 偏移', en: 'Cyclic' },
+      { id: 'badchar', zh: '坏字符', en: 'Bad chars' },
+      { id: 'fmtstr', zh: '格式化字符串测试', en: 'Fmt test' },
+      { id: 'fmtstrgen', zh: 'fmtstr 写入生成', en: 'Fmt writer' },
+      { id: 'rop', zh: 'ROP 组装', en: 'ROP chain' },
+      { id: 'shellcode', zh: 'shellcode', en: 'Shellcode' },
+      { id: 'exp', zh: 'exp 模板', en: 'Exp template' },
+    ],
+  },
+  {
+    id: 'ref',
+    zh: '速查',
+    en: 'Reference',
+    tools: [
+      { id: 'cheatsheet', zh: '速查表', en: 'Cheatsheet' },
+    ],
+  },
+];
+
 // Pwn 域工作台：文件分析（checksec/libc/gadget）+ payload 构造（cyclic/坏字符/格式化字符串/ROP/fmtstr 生成/shellcode/exp 模板）。
 // 全部本地计算：ELF 解析纯 JS，反汇编走内置 capstone WASM（离线打包，零联网）。
 function PwnWorkspace({ pendingFile, onFileConsumed }: {
@@ -881,19 +920,24 @@ function PwnWorkspace({ pendingFile, onFileConsumed }: {
   const zh = language === 'zh';
   const { binary, error, loading, loadFile, clear, inputRef } = useBinaryLoader(zh);
   const lastTokenRef = useRef(0);
+  const [activeTool, setActiveTool] = useState('binary');
+  // 载入成功后自动切到 ELF 分析视图（异步回调里 setState，避开 set-state-in-effect 红线）
+  const loadAndShow = useCallback((file: File) => {
+    void loadFile(file).then(() => setActiveTool('binary'));
+  }, [loadFile]);
 
   useEffect(() => {
     if (!pendingFile || pendingFile.token === lastTokenRef.current) return;
     lastTokenRef.current = pendingFile.token;
     onFileConsumed?.();
-    void loadFile(pendingFile.file);
-  }, [pendingFile, onFileConsumed, loadFile]);
+    loadAndShow(pendingFile.file);
+  }, [pendingFile, onFileConsumed, loadAndShow]);
 
   const onDrop = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
     const file = event.dataTransfer.files?.[0];
-    if (file) void loadFile(file);
+    if (file) loadAndShow(file);
   };
 
   return (
@@ -906,7 +950,7 @@ function PwnWorkspace({ pendingFile, onFileConsumed }: {
         style={{ display: 'none' }}
         onChange={event => {
           const file = event.target.files?.[0];
-          if (file) void loadFile(file);
+          if (file) loadAndShow(file);
           event.target.value = '';
         }}
       />
@@ -914,8 +958,8 @@ function PwnWorkspace({ pendingFile, onFileConsumed }: {
         <strong>{zh ? 'Pwn 工作台：checksec → 泄漏 → ROP 全链路' : 'Pwn workbench: checksec → leak → ROP'}</strong>
         <p>
           {zh
-            ? '拖入 ELF（题目二进制或 libc）自动出 checksec 攻击路径建议、libc 符号偏移、gadget 扫描；下方 payload 计算器覆盖 cyclic/坏字符/格式化字符串/ROP 组装/exp 模板。全部本地计算，反汇编引擎随应用内置（capstone WASM，零联网）。'
-            : 'Drop an ELF (challenge binary or libc) for checksec verdicts, libc offsets, and gadget scanning; payload calculators below cover cyclic, bad characters, format strings, ROP assembly, and exp templates. Fully local — the capstone WASM disassembler ships with the app.'}
+            ? '左侧选工具、右侧使用：拖入 ELF（题目二进制或 libc）自动出 checksec 攻击路径建议、libc 符号偏移、gadget 扫描；payload 计算器覆盖 cyclic/坏字符/格式化字符串/ROP 组装/exp 模板。全部本地计算，反汇编引擎随应用内置（capstone WASM，零联网）。'
+            : 'Pick a tool on the left, use it on the right: drop an ELF (challenge binary or libc) for checksec verdicts, libc offsets, and gadget scanning; payload calculators cover cyclic, bad characters, format strings, ROP assembly, and exp templates. Fully local — the capstone WASM disassembler ships with the app.'}
         </p>
         <div className="ff-controls">
           <button type="button" className="ff-button ff-button-primary" onClick={() => inputRef.current?.click()}>
@@ -933,24 +977,48 @@ function PwnWorkspace({ pendingFile, onFileConsumed }: {
       )}
       {loading && <div className="ff-busy" role="status">{zh ? '解析中…' : 'Parsing…'}</div>}
 
-      {binary ? (
-        <BinaryWorkbench binary={binary} zh={zh} onClear={clear} />
-      ) : (
-        <p className="ff-note">
-          {zh
-            ? '还没有加载文件：cyclic / 坏字符 / 格式化字符串 / ROP / shellcode / exp 模板可直接使用；拖入 ELF 后解锁 checksec、libc、gadget 三卡。'
-            : 'No file loaded yet: cyclic / bad-char / format-string / ROP / shellcode / exp tools below work standalone; dropping an ELF unlocks checksec, libc, and gadget cards.'}
-        </p>
-      )}
-
-      <CyclicCard />
-      <BadCharCard />
-      <FormatStringCard />
-      <FmtstrGenCard zh={zh} />
-      <RopCard zh={zh} />
-      <ShellcodeCard zh={zh} />
-      <ExpTemplateCard zh={zh} />
-      <CheatsheetSection moduleId="pwn" variant="footer" />
+      <div className="ctf-toolnav">
+        <nav className="ctf-toolnav-menu" aria-label={zh ? 'Pwn 工具选择' : 'Pwn tools'}>
+          {PWN_TOOL_GROUPS.map(group => (
+            <div className="ctf-toolnav-group" key={group.id}>
+              <div className="ctf-toolnav-group-title">{zh ? group.zh : group.en}</div>
+              {group.tools.map(tool => (
+                <button
+                  key={tool.id}
+                  type="button"
+                  className={`ctf-toolnav-item ${activeTool === tool.id ? 'active' : ''}`}
+                  aria-current={activeTool === tool.id ? 'true' : undefined}
+                  onClick={() => setActiveTool(tool.id)}
+                >
+                  {zh ? tool.zh : tool.en}
+                </button>
+              ))}
+            </div>
+          ))}
+        </nav>
+        <div className="ctf-toolnav-body">
+          {/* hidden 保挂载：切换工具不丢各卡输入状态 */}
+          <div className="ctf-toolpanel" hidden={activeTool !== 'binary'}>
+            {binary ? (
+              <BinaryWorkbench binary={binary} zh={zh} onClear={clear} />
+            ) : (
+              <p className="ff-note">
+                {zh
+                  ? '还没有加载文件：cyclic / 坏字符 / 格式化字符串 / ROP / shellcode / exp 模板在「Payload 构造」分组可直接使用；拖入 ELF 后这里出 checksec、libc、gadget 三卡。'
+                  : 'No file loaded yet: cyclic / bad-char / format-string / ROP / shellcode / exp tools under "Payloads" work standalone; dropping an ELF unlocks checksec, libc, and gadget cards here.'}
+              </p>
+            )}
+          </div>
+          <div className="ctf-toolpanel" hidden={activeTool !== 'cyclic'}><CyclicCard /></div>
+          <div className="ctf-toolpanel" hidden={activeTool !== 'badchar'}><BadCharCard /></div>
+          <div className="ctf-toolpanel" hidden={activeTool !== 'fmtstr'}><FormatStringCard /></div>
+          <div className="ctf-toolpanel" hidden={activeTool !== 'fmtstrgen'}><FmtstrGenCard zh={zh} /></div>
+          <div className="ctf-toolpanel" hidden={activeTool !== 'rop'}><RopCard zh={zh} /></div>
+          <div className="ctf-toolpanel" hidden={activeTool !== 'shellcode'}><ShellcodeCard zh={zh} /></div>
+          <div className="ctf-toolpanel" hidden={activeTool !== 'exp'}><ExpTemplateCard zh={zh} /></div>
+          <div className="ctf-toolpanel" hidden={activeTool !== 'cheatsheet'}><CheatsheetSection moduleId="pwn" variant="footer" /></div>
+        </div>
+      </div>
     </div>
   );
 }
