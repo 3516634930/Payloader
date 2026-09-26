@@ -1095,6 +1095,17 @@ const renderSettingsForm = () => {
         ${textFields('browser-title', '浏览器标题', item.browserTitle)}
       </div>
     `)}
+    ${section('功能模块', '部署给他人使用时，可关闭仅面向自己使用的解题功能。', `
+      <div class="form-grid form-grid-single">
+        <label class="settings-toggle">
+          <input type="checkbox" id="ctf-enabled" ${item.ctfEnabled !== false ? 'checked' : ''}/>
+          <span class="settings-toggle-body">
+            <strong>CTF 解题模块</strong>
+            <small>关闭后前台隐藏「CTF 解题」标签页，并停用题目请求代理与端口扫描接口。本机离线客户端不受影响。</small>
+          </span>
+        </label>
+      </div>
+    `)}
     <div class="form-actions">
       <button class="btn primary" type="submit">保存站点设置</button>
     </div>
@@ -1745,6 +1756,7 @@ const collectSettings = () => ({
   browserTitle: makeText($('browser-title-zh')?.value, $('browser-title-en')?.value),
   logoIcon: state.draft?.logoIcon || state.settings?.logoIcon || '⚡',
   logoUrl: sanitizeLogoUrl($('logo-url')?.value),
+  ctfEnabled: $('ctf-enabled')?.checked !== false,
 });
 
 const collectPayload = () => ({

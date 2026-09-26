@@ -50,6 +50,7 @@ import { createAuthRoutes } from './routes-auth.mjs';
 import { createAdminRoutes } from './routes-admin.mjs';
 import { createLogoUploader } from './routes-logo.mjs';
 import { createCtfProxyRoutes } from './routes-ctf-proxy.mjs';
+import { createCtfPortscanRoutes } from './routes-ctf-portscan.mjs';
 import { createStaticHandlers } from './static.mjs';
 
 const rootDir = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -201,7 +202,10 @@ createAdminRoutes({
   saveAdminCredentials,
 }).registerAdminRoutes(router);
 createLogoUploader({ logoUploadDir, safeResolve }).registerLogoRoutes(router);
-createCtfProxyRoutes().registerCtfProxyRoutes(router);
+// CTF 解题模块开关（批次 TG）：settings.ctfEnabled 缺省即开；proxy/portscan 端点服务端强制执行
+const isCtfEnabled = async () => (await getSettings()).ctfEnabled !== false;
+createCtfProxyRoutes({ isCtfEnabled }).registerCtfProxyRoutes(router);
+createCtfPortscanRoutes({ isCtfEnabled }).registerCtfPortscanRoutes(router);
 staticHandlers.registerStaticRoutes(router);
 
 export const ensureApplicationReady = async () => {

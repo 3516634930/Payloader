@@ -25,6 +25,7 @@ const defaultSettings = {
   logoIcon: '⚡',
   logoUrl: '',
   projectUrl,
+  ctfEnabled: true,
 };
 const json = value => JSON.stringify(value ?? null);
 const parseJson = value => {
@@ -62,6 +63,7 @@ export const sanitizeSettings = value => {
     logoIcon: String(merged.logoIcon ?? defaultSettings.logoIcon).trim() || defaultSettings.logoIcon,
     logoUrl: sanitizeLogoUrl(merged.logoUrl),
     projectUrl,
+    ctfEnabled: merged.ctfEnabled !== false,
   };
 };
 

@@ -26,6 +26,7 @@ export const defaultSettings = (): SiteSettings => ({
   logoUrl: '',
   projectUrl: publicProjectRoute,
   xeyeEnabled: true,
+  ctfEnabled: true,
 });
 
 export const emptyPublicData = (): PublicData => ({
@@ -53,6 +54,7 @@ export const parsePublicData = (value: unknown): PublicData => {
         : fallback.settings.logoUrl,
       projectUrl: publicProjectRoute,
       xeyeEnabled: rawSettings.xeyeEnabled !== false,
+      ctfEnabled: rawSettings.ctfEnabled !== false,
     },
     globalVariables: isArray<GlobalVariable>(value.globalVariables),
     ctfCheatsheets: isObject(value.ctfCheatsheets)

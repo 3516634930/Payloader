@@ -44,8 +44,13 @@ function Header({ sidebarCollapsed, setSidebarCollapsed, clientBuildInfo, showCl
     setSelectedToolId(null);
   };
 
-  // WAI-ARIA tabs 模式：roving tabindex + 左右方向键在三个内容 tab 间移动并激活
-  const contentTabs: ActiveTab[] = ['payloads', 'tools', 'ctf'];
+  // WAI-ARIA tabs 模式：roving tabindex + 左右方向键在内容 tab 间移动并激活
+  // CTF 模块被管理员关闭时 ctf 按钮不渲染——导航数组同步收窄，方向键不会切进不存在的 tab（reviewer P1-2）
+  const contentTabs: ActiveTab[] = [
+    'payloads',
+    'tools',
+    ...(settings.ctfEnabled !== false ? (['ctf'] as const) : []),
+  ];
   const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, tab: ActiveTab) => {
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
     event.preventDefault();
@@ -182,18 +187,20 @@ function Header({ sidebarCollapsed, setSidebarCollapsed, clientBuildInfo, showCl
             >
               {t('header.tabTools', language)}
             </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={activeTab === 'ctf'}
-              aria-controls="main-content"
-              tabIndex={activeTab === 'ctf' ? 0 : -1}
-              className={`tab-btn ${activeTab === 'ctf' ? 'active' : ''}`}
-              onClick={() => switchTab('ctf')}
-              onKeyDown={event => handleTabKeyDown(event, 'ctf')}
-            >
-              {t('header.tabCtf', language)}
-            </button>
+            {settings.ctfEnabled !== false && (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === 'ctf'}
+                aria-controls="main-content"
+                tabIndex={activeTab === 'ctf' ? 0 : -1}
+                className={`tab-btn ${activeTab === 'ctf' ? 'active' : ''}`}
+                onClick={() => switchTab('ctf')}
+                onKeyDown={event => handleTabKeyDown(event, 'ctf')}
+              >
+                {t('header.tabCtf', language)}
+              </button>
+            )}
           </div>
         </div>
 

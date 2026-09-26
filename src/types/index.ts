@@ -96,6 +96,7 @@ export interface SiteSettings {
   logoUrl: string;
   projectUrl: string;
   xeyeEnabled: boolean;
+  ctfEnabled: boolean;
 }
 
 export interface CheatJump {

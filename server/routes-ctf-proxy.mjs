@@ -23,7 +23,7 @@ const readRequestBody = request => new Promise((resolve, reject) => {
   request.on('error', reject);
 });
 
-export const createCtfProxyRoutes = () => {
+export const createCtfProxyRoutes = ({ isCtfEnabled = null } = {}) => {
   const registerCtfProxyRoutes = router => {
     router.route(['POST', 'OPTIONS'], '/api/ctf/proxy', async (request, response) => {
       // CORS 预检（dev 前端在 5173、Electron 壳内同源直连）
@@ -33,6 +33,11 @@ export const createCtfProxyRoutes = () => {
       if (request.method === 'OPTIONS') {
         response.writeHead(204);
         response.end();
+        return;
+      }
+      // 管理员模块开关（批次 TG）：关闭后代理端点整体停用——服务端强制，不只是藏前端
+      if (isCtfEnabled && !(await isCtfEnabled())) {
+        json(response, 403, { error: 'CTF 解题模块已被管理员关闭。' });
         return;
       }
       let spec;

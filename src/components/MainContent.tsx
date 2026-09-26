@@ -25,7 +25,9 @@ function MainContent({ clientBuildInfo }: MainContentProps) {
     activeView,
     setActiveView,
   } = useNav();
-  const { dataLoading, dataError, allPayloads, allToolCommands, allPayloadNavigation, allToolNavigation } = useStaticData();
+  const { dataLoading, dataError, allPayloads, allToolCommands, allPayloadNavigation, allToolNavigation, settings } = useStaticData();
+  // CTF 模块管理员开关（批次 TG）：关闭时不渲染 CtfToolkit，回落常规内容
+  const ctfEnabled = settings.ctfEnabled !== false;
   const { deferredSearchQuery, searchMatches, setSearchQuery } = useSearch();
   const { language } = useLanguage();
 
@@ -173,7 +175,7 @@ function MainContent({ clientBuildInfo }: MainContentProps) {
       return <ClientDownloads clientBuildInfo={clientBuildInfo} />;
     }
 
-    if (activeTab === 'ctf' && !query) {
+    if (activeTab === 'ctf' && !query && ctfEnabled) {
       return (
         <Suspense fallback={<div className="lazy-loading" role="status" aria-live="polite">正在加载 CTF 解题工具箱...</div>}>
           <LazyCtfToolkit />
