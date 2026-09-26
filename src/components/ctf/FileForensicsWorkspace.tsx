@@ -677,7 +677,7 @@ function FileForensicsWorkspace({ pendingFile, onFileConsumed, onHandOffFile, on
                   <span className="ff-label">{language === 'zh' ? '信息熵' : 'Entropy'}</span>
                   <span className="ff-mono">{report.entropy.toFixed(3)} / 8</span>
                 </div>
-                <p className="ff-note">{entropyVerdictText(report.level, language)}</p>
+                <p className="ff-note">{entropyVerdictText(report.level, language, report.types)}</p>
               </>
             )}
           </section>

@@ -563,7 +563,11 @@ test('CTF workbench renders the menubar mode while the pentest view stays unchan
   assert.match(workbench, /mode \? 'pentest'|mode = 'pentest'/);
   assert.match(workbench, /ctf-nav-mode/);
   // F4 拆分：动作标记法工厂迁至 workbenchActions.ts，断言跟随
-  assert.match(workbenchActions, /【\$\{name\}解密】/);
+  // （UX 批次：动词按类别区分——crypto 加/解密、compress 压/解压、其余 编/解码，不得对编码类用"解密"）
+  assert.match(workbenchActions, /actionVerbsOf/);
+  assert.match(workbenchActions, /\['解密', '加密'\]/);
+  assert.match(workbenchActions, /\['解码', '编码'\]/);
+  assert.match(workbenchActions, /\['解压', '压缩'\]/);
   // CTF 态操作导航只走顶部菜单栏：平铺备选网格（action-fold）必须不存在
   assert.doesNotMatch(workbench, /action-fold/);
   assert.match(menuBar, /withinPortal/);
@@ -626,4 +630,23 @@ test('CTF magic routing derives from the authoritative route table', async () =>
   assert.doesNotMatch(toolkit, /new Set\(\['elf', 'exe', 'macho', 'machobe'\]\)/);
   assert.match(recommend, /ROUTE_EXT_GROUPS/);
   assert.doesNotMatch(recommend, /new Set\(\['elf', 'exe', 'macho'\]\)/);
+});
+
+test('workbench action marks use category-appropriate verbs (behavioral)', () => {
+  // 行为级断言（UX 批次）：编码类操作不得用"解密"字眼；动词已含在名称尾部时省略防叠字；
+  // 密码类保持加/解密。防 markWith 拼接逻辑回归——源码正则断言防不住这类破坏。
+  const workbenchActions = loadTsModule('src/components/codec/workbenchActions.ts');
+  const { operations } = loadTsModule('src/utils/codec/operations.ts');
+  const byId = id => operations.find(op => op.id === id);
+  const marksOf = (id, lang = 'zh') => workbenchActions.actionsOfOperation(byId(id), lang).map(a => a.mark);
+
+  // URL 组件编码（web 类）：解码动词正确 + 名称尾部叠字省略
+  const urlMarks = marksOf('url-component');
+  assert.ok(urlMarks.some(m => m === '【URL 组件编码解码】'), `URL 解码标记错误: ${urlMarks.join(',')}`);
+  assert.ok(urlMarks.some(m => m === '【URL 组件编码】'), `URL 编码标记应省略叠字: ${urlMarks.join(',')}`);
+  assert.ok(!urlMarks.some(m => m.includes('解密') || m.includes('加密')), `编码类不得用加解密字眼: ${urlMarks.join(',')}`);
+
+  // Vigenere（crypto 类）：保持加/解密
+  const vigenereMarks = marksOf('vigenere');
+  assert.ok(vigenereMarks.some(m => m === '【Vigenere解密】'), `密码类应保持解密: ${vigenereMarks.join(',')}`);
 });

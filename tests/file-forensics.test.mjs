@@ -45,8 +45,8 @@ function makePng(width, height) {
   return Buffer.concat([signature, length, type, data, crc, iend]);
 }
 
-function makeZip({ lfhEnc, cdEnc }) {
-  const name = Buffer.from('flag.txt', 'utf8');
+function makeZip({ lfhEnc, cdEnc, entryName = 'flag.txt' }) {
+  const name = Buffer.from(entryName, 'utf8');
   const data = Buffer.from('flag{zip_pseudo_enc}', 'utf8');
   const lfh = Buffer.alloc(30);
   lfh.writeUInt32LE(0x04034b50, 0);
@@ -76,7 +76,7 @@ test('detectFileTypes 识别常见魔数', () => {
     ['89 50 4E 47 0D 0A 1A 0A 00 00 00 0D', 'png'],
     ['FF D8 FF E0 00 10', 'jpg'],
     ['47 49 46 38 39 61', 'gif'],
-    ['50 4B 03 04 14 00', 'jar'],
+    ['50 4B 03 04 14 00', 'zip'],
     ['25 50 44 46 2D 31 2E', 'pdf'],
     ['D4 C3 B2 A1 02 00', 'pcap'],
     ['7F 45 4C 46 02 01', 'elf'],
@@ -96,6 +96,42 @@ test('detectFileTypes 识别常见魔数', () => {
   // CAFEBABE 是 Java class 魔数，不得误报为 Mach-O（fat binary 需更多上下文，暂不收录）
   const javaClass = Uint8Array.from([0xca, 0xfe, 0xba, 0xbe, 0x00, 0x00, 0x00, 0x02]);
   assert.ok(!fileDetect.detectFileTypes(javaClass).some(hit => hit.ext.startsWith('macho')), 'Java class 不得误报 Mach-O');
+});
+
+test('ZIP 容器按 central directory 细分 jar/apk，普通 ZIP 不误报', () => {
+  // 普通条目名：只报泛称 ZIP archive，绝不误报 Java archive / Android package
+  const plainZip = makeZip({ lfhEnc: false, cdEnc: false });
+  const plainExts = fileDetect.detectFileTypes(plainZip).map(hit => hit.ext);
+  assert.ok(plainExts.includes('zip'), `普通 ZIP 应报 zip，实际: ${plainExts.join(',')}`);
+  assert.ok(!plainExts.includes('jar') && !plainExts.includes('apk'), `普通 ZIP 不得误报 jar/apk，实际: ${plainExts.join(',')}`);
+
+  // META-INF/MANIFEST.MF 条目 → Java archive 细分（泛称 zip 仍保留，提示可用 ZIP 工具解）
+  const jarZip = makeZip({ lfhEnc: false, cdEnc: false, entryName: 'META-INF/MANIFEST.MF' });
+  const jarExts = fileDetect.detectFileTypes(jarZip).map(hit => hit.ext);
+  assert.ok(jarExts.includes('jar') && jarExts.includes('zip'), `MANIFEST.MF 应细分 jar+zip，实际: ${jarExts.join(',')}`);
+
+  // AndroidManifest.xml 条目 → Android package 细分
+  const apkZip = makeZip({ lfhEnc: false, cdEnc: false, entryName: 'AndroidManifest.xml' });
+  const apkExts = fileDetect.detectFileTypes(apkZip).map(hit => hit.ext);
+  assert.ok(apkExts.includes('apk') && apkExts.includes('zip'), `AndroidManifest.xml 应细分 apk+zip，实际: ${apkExts.join(',')}`);
+
+  // 只有魔数、没有 central directory（截断样本）：降级泛称 zip，不抛异常
+  // （沙箱模块返回的数组是沙箱 realm 的 Array，deepStrictEqual 前先转主 realm 数组）
+  const headOnly = plainZip.subarray(0, 30);
+  const headExts = Array.from(fileDetect.detectFileTypes(headOnly), hit => hit.ext);
+  assert.deepEqual(headExts, ['zip']);
+});
+
+test('压缩容器的熵提示区分"格式常态"与"疑似加密"', () => {
+  // PNG（压缩容器）：高熵提示指向结构解析，不再说"可能已加密"
+  const png = fileDetect.entropyVerdictText('high', 'zh', [{ ext: 'png', name: 'PNG image' }]);
+  assert.ok(png.includes('压缩容器') && png.includes('属正常'), `PNG 高熵应提示格式常态，实际: ${png}`);
+  // ELF（非压缩容器）：保持"可能已加密或压缩"的原判读
+  const elf = fileDetect.entropyVerdictText('high', 'zh', [{ ext: 'elf', name: 'ELF executable' }]);
+  assert.ok(elf.includes('可能已加密或压缩'), `ELF 高熵应保持疑似加密判读，实际: ${elf}`);
+  // 不传类型（调用方无探测结果时）：保持原文案
+  const bare = fileDetect.entropyVerdictText('high', 'zh');
+  assert.ok(bare.includes('可能已加密或压缩'), `无类型上下文应保持原文案，实际: ${bare}`);
 });
 
 // ---- 信息熵 ----

@@ -16,17 +16,30 @@ export interface WorkbenchAction {
   summary: { zh: string; en: string };
 }
 
+// 方括号动作动词按操作类别走：密码类是加解密、压缩类是压解压、其余（编码/转换/令牌）是编解码——
+// "URL 编码解密"这类字眼会误导使用者去找密钥。
+const actionVerbsOf = (operation: Operation): { zh: [string, string]; en: [string, string] } => {
+  if (operation.category === 'crypto') return { zh: ['解密', '加密'], en: ['decrypt', 'encrypt'] };
+  if (operation.category === 'compress') return { zh: ['解压', '压缩'], en: ['decompress', 'compress'] };
+  return { zh: ['解码', '编码'], en: ['decode', 'encode'] };
+};
+
 export const actionsOfOperation = (operation: Operation, language: 'zh' | 'en'): WorkbenchAction[] => {
   const actions: WorkbenchAction[] = [];
   const name = label(operation.name, language);
+  const [decodeVerb, encodeVerb] = actionVerbsOf(operation)[language];
+  // 名称已以动词收尾（如"URL 组件编码"+"编码"）时省略动词，避免"编码编码"式叠字
+  const markWith = (verb: string) => language === 'zh'
+    ? (name.endsWith(verb) ? `【${name}】` : `【${name}${verb}】`)
+    : (name.toLowerCase().endsWith(verb) ? `[${name}]` : `[${name} ${verb}]`);
   if (operation.supportsDecode !== false) {
     const mark = operation.id === 'smart-decode'
       ? (language === 'zh' ? '【智能识别】' : '[Smart identify]')
-      : language === 'zh' ? `【${name}解密】` : `[${name} dec]`;
+      : markWith(decodeVerb);
     actions.push({ id: operation.id, direction: 'decode', mark, summary: operation.summary });
   }
   if (operation.supportsEncode !== false) {
-    actions.push({ id: operation.id, direction: 'encode', mark: language === 'zh' ? `【${name}加密】` : `[${name} enc]`, summary: operation.summary });
+    actions.push({ id: operation.id, direction: 'encode', mark: markWith(encodeVerb), summary: operation.summary });
   }
   return actions;
 };

@@ -22,8 +22,9 @@ export const MAGIC_TABLE: MagicRule[] = [
   { ext: 'bmp', name: 'BMP image', offset: 0, bytes: [0x42, 0x4d] },
   { ext: 'webp', name: 'WebP image', offset: 0, bytes: [0x52, 0x49, 0x46, 0x46, null, null, null, null, 0x57, 0x45, 0x42, 0x50] },
   { ext: 'ico', name: 'ICO icon', offset: 0, bytes: [0x00, 0x00, 0x01, 0x00] },
-  { ext: 'jar', name: 'Java archive', offset: 0, bytes: [0x50, 0x4b, 0x03, 0x04] },
-  { ext: 'apk', name: 'Android package', offset: 0, bytes: [0x50, 0x4b, 0x03, 0x04] },
+  // ZIP 家族（PK\x03\x04）无法凭魔数区分 zip/jar/apk——统一登记为 zip，
+  // jar/apk 由 detectFileTypes 内的 zipContainerKinds 按 central directory 条目名细分。
+  { ext: 'zip', name: 'ZIP archive', offset: 0, bytes: [0x50, 0x4b, 0x03, 0x04] },
   { ext: 'rar4', name: 'RAR v4 archive', offset: 0, bytes: [0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x00] },
   { ext: 'rar5', name: 'RAR v5 archive', offset: 0, bytes: [0x52, 0x61, 0x72, 0x21, 0x1a, 0x07, 0x01, 0x00] },
   { ext: '7z', name: '7-Zip archive', offset: 0, bytes: [0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c] },
@@ -80,12 +81,45 @@ const magicBytesMatch = (bytes: Uint8Array, rule: MagicRule): boolean => {
   return true;
 };
 
+// ZIP 容器细分：魔数 PK\x03\x04 只能证明是 ZIP 家族；jar 看 META-INF 清单条目、
+// apk 看 AndroidManifest.xml（业界 file-type 同款做法），无证据时只报泛称 ZIP archive。
+// 只扫 central directory（PK\x01\x02）条目名，读到越界或损坏结构就按已有证据收尾。
+// 不导出：调用方应走 detectFileTypes（魔数已命中才细分），直接调用非 ZIP 字节也会得到 zip 泛称。
+const zipContainerKinds = (bytes: Uint8Array): DetectedType[] => {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let hasJarManifest = false;
+  let hasAndroidManifest = false;
+  for (let position = 0; position + 46 <= bytes.length; position += 1) {
+    if (!(bytes[position] === 0x50 && bytes[position + 1] === 0x4b && bytes[position + 2] === 0x01 && bytes[position + 3] === 0x02)) continue;
+    const nameLength = view.getUint16(position + 28, true);
+    const extraLength = view.getUint16(position + 30, true);
+    const commentLength = view.getUint16(position + 32, true);
+    const nameStart = position + 46;
+    if (nameStart + nameLength > bytes.length) break;
+    let name = '';
+    for (let index = 0; index < nameLength; index += 1) {
+      const char = bytes[nameStart + index];
+      if (char === 0) break;
+      name += String.fromCharCode(char);
+    }
+    const lower = name.toLowerCase();
+    if (lower === 'meta-inf/manifest.mf' || (lower.startsWith('meta-inf/') && lower.endsWith('.sf'))) hasJarManifest = true;
+    if (lower === 'androidmanifest.xml') hasAndroidManifest = true;
+    position = nameStart + nameLength + extraLength + commentLength - 1;
+  }
+  const kinds: DetectedType[] = [];
+  if (hasJarManifest) kinds.push({ ext: 'jar', name: 'Java archive' });
+  if (hasAndroidManifest) kinds.push({ ext: 'apk', name: 'Android package' });
+  kinds.push({ ext: 'zip', name: 'ZIP archive' });
+  return kinds;
+};
+
 // 长签名优先（WEBP/PCAPNG 的联合判定优先于裸 RIFF/裸块类型），同家族按签名长度稳定排序。
 export const detectFileTypes = (bytes: Uint8Array): DetectedType[] => {
   const hits = MAGIC_TABLE.filter(rule => magicBytesMatch(bytes, rule));
   hits.sort((left, right) => right.bytes.length - left.bytes.length);
   const seen = new Set<string>();
-  return hits
+  return (hits.some(rule => rule.ext === 'zip') ? [...zipContainerKinds(bytes), ...hits.filter(rule => rule.ext !== 'zip')] : hits)
     .map(rule => ({ ext: rule.ext, name: rule.name }))
     .filter(hit => {
       if (seen.has(hit.name)) return false;
@@ -118,11 +152,30 @@ export const entropyLevel = (entropy: number, size: number): EntropyLevel => {
   return 'low';
 };
 
-export const entropyVerdictText = (level: EntropyLevel, language: 'zh' | 'en'): string => {
+// 本身就是压缩/编码容器的格式：整体高熵是常态，"可能已加密"的提示对它们没有信息量。
+// jar/apk 不单列：细分探测命中它们时必同时报 zip（zipContainerKinds 保证），zip 已覆盖。
+const COMPRESSED_CONTAINER_EXTS = new Set(['png', 'jpg', 'gif', 'webp', 'zip', '7z', 'rar4', 'rar5', 'gz', 'bz2', 'xz', 'zst', 'mp3', 'flac', 'ogg', 'mp4']);
+
+// 集合与魔数表的一致性自检（对齐 ROUTE_EXT_GROUPS 的 throw 模式）：集合内扩展名必须可被探测，
+// 否则该格式的熵提示分支永不命中。
+for (const compressedExt of COMPRESSED_CONTAINER_EXTS) {
+  if (!MAGIC_TABLE.some(rule => rule.ext === compressedExt)) {
+    throw new Error(`COMPRESSED_CONTAINER_EXTS 引用了魔数表之外的扩展名：${compressedExt}`);
+  }
+}
+
+export const entropyVerdictText = (level: EntropyLevel, language: 'zh' | 'en', types?: DetectedType[]): string => {
   if (level === 'empty') return language === 'zh' ? '空文件，没有可分析的数据。' : 'Empty file; nothing to analyze.';
-  if (level === 'high') return language === 'zh'
-    ? '熵值极高（≥7.5）：数据很可能已加密或压缩，直接 strings 大概率看不到明文。'
-    : 'Very high entropy (≥7.5): the data is likely encrypted or compressed; plaintext strings are unlikely.';
+  if (level === 'high') {
+    if (types?.some(type => COMPRESSED_CONTAINER_EXTS.has(type.ext))) {
+      return language === 'zh'
+        ? '熵值极高：该格式本身是压缩容器，高熵属正常——strings 看不到明文不是异常，优先用结构解析与嵌入扫描。'
+        : 'Very high entropy is normal for this compressed container format; use structure parsing and embedded scans instead of strings.';
+    }
+    return language === 'zh'
+      ? '熵值极高（≥7.5）：数据很可能已加密或压缩，直接 strings 大概率看不到明文。'
+      : 'Very high entropy (≥7.5): the data is likely encrypted or compressed; plaintext strings are unlikely.';
+  }
   if (level === 'medium') return language === 'zh'
     ? '熵值中等：可能是混合内容（文本 + 内嵌数据），建议结合 strings 与 hexdump 判断。'
     : 'Medium entropy: likely mixed content; check strings and the hexdump together.';

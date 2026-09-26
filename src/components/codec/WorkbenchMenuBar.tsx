@@ -6,7 +6,7 @@ import '../../styles/workbench-menu-bar.css';
 
 export interface WorkbenchMenuEntry {
   key: string;
-  // 预渲染文案（含【名解密】方向标记），由调用方按语言生成
+  // 预渲染文案（含【名 + 类别动词】方向标记：加/解密、编/解码、压/解压），由调用方按语言生成
   label: string;
   title?: string;
   active?: boolean;

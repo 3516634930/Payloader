@@ -277,7 +277,7 @@ function ReverseWorkspace({ pendingFile, onFileConsumed, onSwitchModule }: CtfWo
                       <span className="ff-label">{zh ? '信息熵' : 'Entropy'}</span>
                       <span className="ff-mono">{report.entropy.toFixed(3)} / 8</span>
                     </div>
-                    <p className="ff-note">{entropyVerdictText(report.level, language)}</p>
+                    <p className="ff-note">{entropyVerdictText(report.level, language, report.types)}</p>
                   </>
                 )}
               </section>
