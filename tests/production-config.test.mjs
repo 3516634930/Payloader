@@ -13,7 +13,7 @@ test('package exposes one cross-platform production quality gate on supported No
     readProjectFile('scripts/run-production-build.mjs'),
   ]);
   const packageJson = JSON.parse(packageSource);
-  assert.equal(packageJson.version, '2.0.0');
+  assert.equal(packageJson.version, '2.0.1');
   assert.equal(typeof packageJson.dependencies?.semver, 'string');
   assert.equal(packageJson.engines?.node, '>=22.13.0');
   assert.match(packageJson.devDependencies?.vite || '', /^\^8\./);

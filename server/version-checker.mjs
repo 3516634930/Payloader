@@ -31,7 +31,7 @@ export class VersionCheckError extends Error {
 
 const safeClone = value => JSON.parse(JSON.stringify(value));
 const shortenedCommit = value => commitPattern.test(String(value || '')) ? String(value).slice(0, 12) : '';
-const cleanText = (value, maxLength) => String(value || '')
+export const cleanText = (value, maxLength) => String(value || '')
   .replace(/\p{Cc}/gu, character => '\t\n\r'.includes(character) ? character : '')
   .trim()
   .slice(0, maxLength);
@@ -128,7 +128,7 @@ export const compareStableVersions = (currentVersion, remoteVersion) => {
   return 'up-to-date';
 };
 
-const readBoundedText = async (response, maxBytes) => {
+export const readBoundedText = async (response, maxBytes) => {
   const declaredLength = Number(response.headers.get('content-length'));
   if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
     throw new VersionCheckError('response-too-large', 'GitHub returned an oversized version response.');

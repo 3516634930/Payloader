@@ -37,6 +37,11 @@ import {
 import { officialProjectUrl, publicProjectRoute } from './project-attribution.mjs';
 import { createShutdownController } from './server-lifecycle.mjs';
 import { createVersionChecker, VERSION_STATUS_METADATA_KEY } from './version-checker.mjs';
+import {
+  createRepoMonitor,
+  REPO_MONITOR_STATUS_METADATA_KEY,
+  REPO_MONITOR_SUBSCRIPTIONS_METADATA_KEY,
+} from './repo-monitor.mjs';
 import { baseResponseHeaders, json, methodNotAllowed, safeErrorPayload, text } from './http-helpers.mjs';
 
 export { readBody } from './http-helpers.mjs';
@@ -51,6 +56,7 @@ import { createAdminRoutes } from './routes-admin.mjs';
 import { createLogoUploader } from './routes-logo.mjs';
 import { createCtfProxyRoutes } from './routes-ctf-proxy.mjs';
 import { createCtfPortscanRoutes } from './routes-ctf-portscan.mjs';
+import { createRepoMonitorRoutes } from './routes-repo-monitor.mjs';
 import { createStaticHandlers } from './static.mjs';
 
 const rootDir = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -149,6 +155,13 @@ const services = {
     loadStatus: () => getMetadataValue(VERSION_STATUS_METADATA_KEY, ''),
     saveStatus: value => setMetadataValue(VERSION_STATUS_METADATA_KEY, value),
   }),
+  // 订阅仓库监控（v2.0.1）：Atom 通道多目标引擎，token 仅取环境变量，端点全走管理端鉴权
+  repoMonitor: createRepoMonitor({
+    loadSubscriptions: () => getMetadataValue(REPO_MONITOR_SUBSCRIPTIONS_METADATA_KEY, null),
+    saveSubscriptions: value => setMetadataValue(REPO_MONITOR_SUBSCRIPTIONS_METADATA_KEY, value),
+    loadStatuses: () => getMetadataValue(REPO_MONITOR_STATUS_METADATA_KEY, null),
+    saveStatuses: value => setMetadataValue(REPO_MONITOR_STATUS_METADATA_KEY, value),
+  }),
 };
 
 const router = new Router();
@@ -206,6 +219,7 @@ createLogoUploader({ logoUploadDir, safeResolve }).registerLogoRoutes(router);
 const isCtfEnabled = async () => (await getSettings()).ctfEnabled !== false;
 createCtfProxyRoutes({ isCtfEnabled }).registerCtfProxyRoutes(router);
 createCtfPortscanRoutes({ isCtfEnabled }).registerCtfPortscanRoutes(router);
+createRepoMonitorRoutes({ repoMonitor: services.repoMonitor }).registerRepoMonitorRoutes(router);
 staticHandlers.registerStaticRoutes(router);
 
 export const ensureApplicationReady = async () => {
@@ -254,8 +268,12 @@ const handleRequest = async (request, response) => {
 
 export const createAdminServer = (options = {}) => {
   if (options.versionChecker) services.versionChecker = options.versionChecker;
+  if (options.repoMonitor) services.repoMonitor = options.repoMonitor;
   const server = createServer((request, response) => handleRequest(request, response));
-  server.once('close', () => services.versionChecker.stop());
+  server.once('close', () => {
+    services.versionChecker.stop();
+    services.repoMonitor.stop();
+  });
   return server;
 };
 
@@ -265,10 +283,15 @@ export const startAdminServer = async () => {
   await ensureApplicationReady();
   const credentials = await getAdminCredentials();
   await services.versionChecker.start();
-  const server = createAdminServer({ versionChecker: services.versionChecker });
+  await services.repoMonitor.start();
+  const server = createAdminServer({
+    versionChecker: services.versionChecker,
+    repoMonitor: services.repoMonitor,
+  });
   await new Promise((resolveListen, rejectListen) => {
     const onError = error => {
       services.versionChecker.stop();
+      services.repoMonitor.stop();
       rejectListen(error);
     };
     server.once('error', onError);

@@ -70,6 +70,10 @@ const state = {
   clientBuildGenerating: false,
   versionStatus: null,
   versionChecking: false,
+  repoMonitorData: null,
+  repoMonitorCheckingIds: new Set(),
+  repoMonitorCheckingAll: false,
+  repoMonitorAdding: false,
   account: null,
   accessToken: sessionStorage.getItem(adminTokenStorageKey) || '',
   navCollapsed: localStorage.getItem('payloader-admin-nav-collapsed') === '1',
@@ -1303,9 +1307,18 @@ const renderVersionUpdateCenter = () => {
           ` : ''}
         </section>
       ` : ''}
+
+      ${renderRepoMonitorSection()}
     </div>
   `;
+  // 重渲染保留订阅输入框的未提交内容与焦点（后台检查完成触发重绘时不打断正在输入的管理员）
+  const previousInput = $('repo-monitor-input');
+  const restoreValue = previousInput ? previousInput.value : null;
+  const hadInputFocus = document.activeElement === previousInput;
   $('editor-form').innerHTML = body;
+  const nextInput = $('repo-monitor-input');
+  if (nextInput && restoreValue !== null) nextInput.value = restoreValue;
+  if (hadInputFocus && nextInput) nextInput.focus();
 };
 
 const formatLargeBytes = value => {
@@ -2248,12 +2261,171 @@ const checkVersionNow = async () => {
   }
 };
 
+// ---- 订阅仓库监控（v2.0.1 GitHub 仓库监控线） ----
+
+const repoMonitorItems = () => (Array.isArray(state.repoMonitorData?.items) ? state.repoMonitorData.items : []);
+
+const mergeRepoMonitorItem = item => {
+  const data = state.repoMonitorData || { items: [], nextCheckAt: null };
+  const items = Array.isArray(data.items) ? [...data.items] : [];
+  const index = items.findIndex(entry => entry.id === item.id);
+  if (index === -1) items.push(item);
+  else items[index] = item;
+  state.repoMonitorData = { ...data, items };
+};
+
+const loadRepoMonitors = async () => {
+  state.repoMonitorData = await api('/api/admin/repo-monitors');
+  if (state.module === 'updates') renderVersionUpdateCenter();
+  return state.repoMonitorData;
+};
+
+const checkRepoMonitor = async id => {
+  if (!id || state.repoMonitorCheckingIds.has(id)) return;
+  state.repoMonitorCheckingIds.add(id);
+  if (state.module === 'updates') renderVersionUpdateCenter();
+  try {
+    const result = await api(`/api/admin/repo-monitors/${encodeURIComponent(id)}/check`, { method: 'POST' });
+    for (const item of (Array.isArray(result?.items) ? result.items : [])) mergeRepoMonitorItem(item);
+  } catch (error) {
+    notice(error.message || '仓库检查失败');
+  } finally {
+    state.repoMonitorCheckingIds.delete(id);
+    if (state.module === 'updates') renderVersionUpdateCenter();
+  }
+};
+
+const checkAllRepoMonitors = async () => {
+  if (state.repoMonitorCheckingAll) return;
+  state.repoMonitorCheckingAll = true;
+  renderVersionUpdateCenter();
+  try {
+    state.repoMonitorData = await api('/api/admin/repo-monitors/check', { method: 'POST' });
+    notice('订阅仓库已全部检查');
+  } catch (error) {
+    notice(error.message || '批量检查失败');
+  } finally {
+    state.repoMonitorCheckingAll = false;
+    if (state.module === 'updates') renderVersionUpdateCenter();
+  }
+};
+
+const addRepoMonitor = async () => {
+  if (state.repoMonitorAdding) return;
+  const input = $('repo-monitor-input');
+  const repository = String(input?.value || '').trim();
+  if (!repository) {
+    notice('请输入仓库（owner/repo 或 GitHub 仓库 URL）');
+    input?.focus();
+    return;
+  }
+  state.repoMonitorAdding = true;
+  const button = document.querySelector('[data-action="add-repo-monitor"]');
+  if (button) button.disabled = true;
+  try {
+    const added = await api('/api/admin/repo-monitors', { method: 'POST', body: JSON.stringify({ repository }) });
+    if (input) input.value = '';
+    mergeRepoMonitorItem(added);
+    if (state.module === 'updates') renderVersionUpdateCenter();
+    notice(`已订阅 ${added.owner}/${added.repository}，正在检查…`);
+    void checkRepoMonitor(added.id);
+  } catch (error) {
+    notice(error.message || '添加订阅失败');
+  } finally {
+    state.repoMonitorAdding = false;
+    const addButton = document.querySelector('[data-action="add-repo-monitor"]');
+    if (addButton) addButton.disabled = false;
+    addButton?.focus?.();
+  }
+};
+
+const removeRepoMonitor = async id => {
+  if (!id) return;
+  const item = repoMonitorItems().find(entry => entry.id === id);
+  const label = item ? `${item.owner}/${item.repository}` : '该订阅';
+  if (!confirm(`确认移除订阅 ${label}？移除后可随时重新添加。`)) return;
+  try {
+    await api(`/api/admin/repo-monitors/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    const data = state.repoMonitorData || { items: [], nextCheckAt: null };
+    state.repoMonitorData = { ...data, items: repoMonitorItems().filter(entry => entry.id !== id) };
+    notice(`已移除 ${label}`);
+    renderVersionUpdateCenter();
+  } catch (error) {
+    notice(error.message || '移除订阅失败');
+  }
+};
+
+const repoMonitorStateLabel = monitorState => ({
+  idle: '尚未检查',
+  checking: '正在检查',
+  checked: '已检查',
+  error: '检查失败',
+}[monitorState] || '尚未检查');
+
+const renderRepoMonitorSection = () => {
+  const items = repoMonitorItems();
+  const checkingAll = state.repoMonitorCheckingAll;
+  const nextCheckAt = state.repoMonitorData?.nextCheckAt || null;
+  const rows = items.map(item => {
+    const status = item.status || {};
+    const checking = state.repoMonitorCheckingIds.has(item.id) || status.state === 'checking';
+    const release = status.release || null;
+    const commit = status.commit || null;
+    const error = status.error || null;
+    const releaseText = release
+      ? `${release.tag || release.title || 'Release'}${release.updatedAt ? ` · ${formatVersionDate(release.updatedAt, '')}` : ''}`
+      : (status.state === 'checked' ? '无 Release' : '—');
+    const commitText = commit
+      ? `${commit.message || ''}${commit.committedAt ? ` · ${formatVersionDate(commit.committedAt, '')}` : ''}`
+      : '—';
+    return `
+      <li class="repo-monitor-item" data-id="${escapeHtml(item.id)}">
+        <div class="repo-monitor-item-main">
+          <div class="repo-monitor-item-title">
+            <a href="${escapeHtml(item.githubUrl || `https://github.com/${item.owner}/${item.repository}`)}" target="_blank" rel="noopener">${escapeHtml(item.owner)}/${escapeHtml(item.repository)}</a>
+            ${item.preset ? '<span class="repo-monitor-badge">预置</span>' : ''}
+            ${status.changed ? '<span class="repo-monitor-badge fresh">有新动态</span>' : ''}
+            ${checking ? '<span class="repo-monitor-state">正在检查…</span>' : status.state !== 'idle' ? `<span class="repo-monitor-state">${escapeHtml(repoMonitorStateLabel(status.state))}</span>` : ''}
+          </div>
+          ${item.note ? `<p class="repo-monitor-note">${escapeHtml(item.note)}</p>` : ''}
+          <dl>
+            <div><dt>最新 Release</dt><dd>${escapeHtml(releaseText)}</dd></div>
+            <div><dt>最新提交</dt><dd>${commit ? `<code>${escapeHtml(commit.shaShort)}</code> ${escapeHtml(commitText)}` : '—'}</dd></div>
+            <div><dt>上次检查</dt><dd>${escapeHtml(formatVersionDate(status.checkedAt))}</dd></div>
+          </dl>
+          ${error ? `<p class="repo-monitor-error">${escapeHtml(error.message || '检查失败')}</p>` : ''}
+        </div>
+        <div class="repo-monitor-item-actions">
+          <button class="btn" type="button" data-action="check-repo-monitor" data-id="${escapeHtml(item.id)}" ${checking || checkingAll ? 'disabled' : ''}>${checking ? '检查中' : '检查'}</button>
+          <button class="btn" type="button" data-action="remove-repo-monitor" data-id="${escapeHtml(item.id)}" ${checkingAll ? 'disabled' : ''}>移除</button>
+        </div>
+      </li>`;
+  }).join('');
+
+  return `
+    <section class="repo-monitor-section">
+      <header class="repo-monitor-head">
+        <div>
+          <h4>订阅仓库监控</h4>
+          <p>跟踪任意 GitHub 内容源仓库的 Release 与默认分支提交动态（Atom 通道，不占 API 配额）。${nextCheckAt ? `下次自动检查：${escapeHtml(formatVersionDate(nextCheckAt, ''))}。` : ''}</p>
+        </div>
+        <button class="btn" type="button" data-action="check-all-repo-monitors" ${checkingAll || !items.length ? 'disabled' : ''}>${checkingAll ? '正在检查全部…' : '全部检查'}</button>
+      </header>
+      <div class="repo-monitor-add">
+        <input id="repo-monitor-input" type="text" placeholder="owner/repo 或 https://github.com/owner/repo" maxlength="300" autocomplete="off" spellcheck="false">
+        <button class="btn primary" type="button" data-action="add-repo-monitor"${state.repoMonitorAdding ? ' disabled' : ''}>添加订阅</button>
+      </div>
+      ${items.length ? `<ul class="repo-monitor-list">${rows}</ul>` : '<p class="repo-monitor-empty">暂无订阅仓库，输入 owner/repo 添加。</p>'}
+    </section>
+  `;
+};
+
 const loadAll = async () => {
   await loadSession();
   state.loading = true;
   updateTopbar();
   try {
-    const [settings, payloads, tools, navigation, clientBuildStatus, versionStatus, account] = await Promise.all([
+    const [settings, payloads, tools, navigation, clientBuildStatus, versionStatus, account, repoMonitorData] = await Promise.all([
       api('/api/admin/settings'),
       api('/api/admin/payloads'),
       api('/api/admin/tools'),
@@ -2261,6 +2433,7 @@ const loadAll = async () => {
       api('/api/admin/client-builds/status'),
       api('/api/admin/version-status'),
       api('/api/admin/credentials'),
+      api('/api/admin/repo-monitors'),
     ]);
     state.settings = settings || defaultSettings();
     state.payloads = Array.isArray(payloads.items) ? payloads.items : [];
@@ -2268,6 +2441,7 @@ const loadAll = async () => {
     state.navigation = Array.isArray(navigation.items) ? navigation.items : [];
     state.clientBuildStatus = clientBuildStatus;
     state.versionStatus = versionStatus;
+    state.repoMonitorData = repoMonitorData;
     state.account = account;
     if (!isSingletonModule() && !selectedItem()) {
       state.selectedId = activeItems()[0]?.id || null;
@@ -2591,6 +2765,26 @@ document.addEventListener('click', event => {
     return;
   }
 
+  if (button.dataset.action === 'add-repo-monitor') {
+    void addRepoMonitor();
+    return;
+  }
+
+  if (button.dataset.action === 'check-all-repo-monitors') {
+    void checkAllRepoMonitors();
+    return;
+  }
+
+  if (button.dataset.action === 'check-repo-monitor') {
+    void checkRepoMonitor(button.dataset.id);
+    return;
+  }
+
+  if (button.dataset.action === 'remove-repo-monitor') {
+    void removeRepoMonitor(button.dataset.id);
+    return;
+  }
+
   if (button.matches('.module-btn')) {
     const nextModule = button.dataset.module;
     if (!nextModule || nextModule === state.module) return;
@@ -2612,6 +2806,7 @@ document.addEventListener('click', event => {
     }
     if (state.module === 'updates') {
       loadVersionStatus({ quiet: true }).catch(error => notice(error.message || '读取版本状态失败'));
+      loadRepoMonitors().catch(error => notice(error.message || '读取订阅仓库失败'));
     }
     return;
   }
@@ -2960,6 +3155,11 @@ document.addEventListener('click', event => {
 });
 
 document.addEventListener('keydown', event => {
+  if (event.key === 'Enter' && event.target?.id === 'repo-monitor-input') {
+    event.preventDefault();
+    void addRepoMonitor();
+    return;
+  }
   if (event.key === 'Escape' && $('more-actions').getAttribute('aria-expanded') === 'true') {
     setMoreActionsOpen(false);
     $('more-actions').focus();
