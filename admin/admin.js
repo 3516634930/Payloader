@@ -697,20 +697,20 @@ const section = (title, desc, body, actions = '') => {
       </div>
       <span class="section-edit-label">编辑</span>
     </button>
-    <button class="section-backdrop" type="button" data-action="close-section" aria-label="收起编辑弹窗"></button>
+    <button class="section-backdrop" type="button" data-action="close-section" aria-label="关闭编辑弹窗"></button>
     <div class="section-modal" role="dialog" aria-modal="true" aria-labelledby="${titleId}">
       <div class="section-modal-head">
         <div>
           <h3>${title}</h3>
           ${desc ? `<p>${desc}</p>` : ''}
         </div>
-        <button class="icon-btn" type="button" data-action="close-section">收起</button>
+        <button class="icon-btn au-modal-close" type="button" data-action="close-section" aria-label="关闭编辑弹窗" title="关闭">✕</button>
       </div>
       ${actions ? `<div class="section-actions">${actions}</div>` : ''}
       <div class="section-body">${body}</div>
       <div class="section-modal-foot">
         <span class="section-modal-hint">修改会先暂存在本页，点击「保存更改」提交到服务器。</span>
-        <button class="btn" type="button" data-action="close-section">收起</button>
+        <button class="btn" type="button" data-action="close-section">关闭</button>
         <button class="btn primary" type="button" data-action="save-section">保存更改</button>
       </div>
     </div>
@@ -1123,11 +1123,29 @@ const formatBuildDate = value => {
   return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
 };
 
+const officialRepository = { url: 'https://github.com/3516634930/Payloader', label: '3516634930/Payloader' };
+
 const formatVersionDate = (value, fallback = '尚未检查') => {
   if (!value) return fallback;
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+  if (Number.isNaN(date.getTime())) return String(value);
+  const pad = part => String(part).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 };
+
+// 引擎层错误按稳定 code 映射为中文操作引导（engine 的英文 message 不进 UI）
+const engineErrorText = (error, fallback = '检查失败，请稍后重试。') => ({
+  timeout: '请求 GitHub 超时（10 秒上限），通常是网络波动，请稍后重试。',
+  'network-error': '暂时无法连接 GitHub，请检查服务器网络后重试。',
+  'rate-limited': 'GitHub 请求频率受限，请稍后再检查。',
+  'github-error': 'GitHub 返回了异常响应，请稍后重试。',
+  'not-found': '仓库不存在或为私有仓库，请确认订阅地址。',
+  'invalid-response': 'GitHub 返回的内容无法解析，请稍后重试。',
+  'too-many-redirects': '仓库重定向次数过多，已停止跟随，请确认当前仓库地址。',
+  'response-too-large': 'GitHub 响应超出大小上限，已中止下载。',
+  interrupted: '上次检查被中断，请重新检查。',
+  'check-failed': '请稍后重试。',
+}[error?.code] || error?.message || fallback);
 
 const versionStatePresentation = value => ({
   idle: ['neutral', '等待检查'],
@@ -1147,7 +1165,7 @@ const stableStateLabel = value => ({
   unavailable: '尚未正式发布',
   unchecked: '尚未检查',
   unknown: '无法比较',
-}[value] || '等待确认');
+}[value] || '尚未检查');
 
 const sourceStateLabel = value => ({
   synchronized: '提交一致',
@@ -1157,7 +1175,7 @@ const sourceStateLabel = value => ({
   unrelated: '无法确认提交关系',
   'unknown-local-commit': '本地提交号未记录',
   unchecked: '尚未检查',
-}[value] || '等待确认');
+}[value] || '尚未检查');
 
 const stableSourceLabel = value => ({
   release: 'GitHub Release',
@@ -1248,6 +1266,7 @@ const renderVersionUpdateCenter = () => {
           <dl>
             <div><dt>提交</dt><dd><code>${escapeHtml(installed.commitShort || '未记录')}</code></dd></div>
             <div><dt>源码状态</dt><dd>${escapeHtml(sourceStateLabel(source.state))}</dd></div>
+            <div><dt>监控官方仓库</dt><dd><a class="au-repo-link" href="${escapeHtml(officialRepository.url)}" target="_blank" rel="noopener">${escapeHtml(officialRepository.label)} ↗</a></dd></div>
           </dl>
         </section>
 
@@ -1284,7 +1303,7 @@ const renderVersionUpdateCenter = () => {
 
       ${error ? `
         <section class="version-update-error" role="status">
-          <strong>${escapeHtml(error.message || '版本检查失败')}</strong>
+          <strong>${escapeHtml(engineErrorText(error, '版本检查失败'))}</strong>
           <span>${error.retryAt ? `预计恢复：${escapeHtml(formatVersionDate(error.retryAt))}` : '系统会保留上次成功结果。'}</span>
         </section>
       ` : ''}
@@ -1584,9 +1603,10 @@ const renderAccountForm = () => {
             <input id="account-new-password" type="password" autocomplete="new-password" maxlength="128" />
             <small class="field-hint">留空表示只改用户名；如填写，至少 10 位，并包含大小写字母、数字、符号中的三类。</small>
           </label>
-          <label class="field">
+          <label class="field field-full">
             <span>确认新密码</span>
             <input id="account-confirm-password" type="password" autocomplete="new-password" maxlength="128" />
+            <small class="field-hint">再次输入新密码，与新密码保持一致。</small>
           </label>
         </div>
       `)}
@@ -2355,13 +2375,6 @@ const removeRepoMonitor = async id => {
   }
 };
 
-const repoMonitorStateLabel = monitorState => ({
-  idle: '尚未检查',
-  checking: '正在检查',
-  checked: '已检查',
-  error: '检查失败',
-}[monitorState] || '尚未检查');
-
 const renderRepoMonitorSection = () => {
   const items = repoMonitorItems();
   const checkingAll = state.repoMonitorCheckingAll;
@@ -2375,25 +2388,32 @@ const renderRepoMonitorSection = () => {
     const releaseText = release
       ? `${release.tag || release.title || 'Release'}${release.updatedAt ? ` · ${formatVersionDate(release.updatedAt, '')}` : ''}`
       : (status.state === 'checked' ? '无 Release' : '—');
-    const commitText = commit
-      ? `${commit.message || ''}${commit.committedAt ? ` · ${formatVersionDate(commit.committedAt, '')}` : ''}`
+    // 提交行分层：7 位短码徽标 + 标题（可截断）+ 时间（右对齐不换行）
+    const commitMarkup = commit
+      ? `<span class="au-commit"><code class="au-sha">${escapeHtml((commit.shaShort || commit.sha || '').slice(0, 7))}</code><span class="au-commit-title" title="${escapeHtml(commit.message || '')}">${escapeHtml(commit.message || '—')}</span>${commit.committedAt ? `<span class="au-commit-time">${escapeHtml(formatVersionDate(commit.committedAt, ''))}</span>` : ''}</span>`
       : '—';
+    const stateBadge = checking
+      ? '<span class="repo-monitor-state">正在检查…</span>'
+      : status.state === 'error'
+        ? '<span class="repo-monitor-badge danger">检查失败</span>'
+        : status.state === 'checked' && status.changed
+          ? '<span class="repo-monitor-badge fresh">有新动态</span>'
+          : '';
     return `
       <li class="repo-monitor-item" data-id="${escapeHtml(item.id)}">
         <div class="repo-monitor-item-main">
           <div class="repo-monitor-item-title">
             <a href="${escapeHtml(item.githubUrl || `https://github.com/${item.owner}/${item.repository}`)}" target="_blank" rel="noopener">${escapeHtml(item.owner)}/${escapeHtml(item.repository)}</a>
             ${item.preset ? '<span class="repo-monitor-badge">预置</span>' : ''}
-            ${status.changed ? '<span class="repo-monitor-badge fresh">有新动态</span>' : ''}
-            ${checking ? '<span class="repo-monitor-state">正在检查…</span>' : status.state !== 'idle' ? `<span class="repo-monitor-state">${escapeHtml(repoMonitorStateLabel(status.state))}</span>` : ''}
+            ${stateBadge}
           </div>
           ${item.note ? `<p class="repo-monitor-note">${escapeHtml(item.note)}</p>` : ''}
           <dl>
             <div><dt>最新 Release</dt><dd>${escapeHtml(releaseText)}</dd></div>
-            <div><dt>最新提交</dt><dd>${commit ? `<code>${escapeHtml(commit.shaShort)}</code> ${escapeHtml(commitText)}` : '—'}</dd></div>
+            <div><dt>最新提交</dt><dd class="au-commit-cell">${commitMarkup}</dd></div>
             <div><dt>上次检查</dt><dd>${escapeHtml(formatVersionDate(status.checkedAt))}</dd></div>
           </dl>
-          ${error ? `<p class="repo-monitor-error">${escapeHtml(error.message || '检查失败')}</p>` : ''}
+          ${error ? `<p class="repo-monitor-error"><strong>检查失败</strong>${escapeHtml(engineErrorText(error))}</p>` : ''}
         </div>
         <div class="repo-monitor-item-actions">
           <button class="btn" type="button" data-action="check-repo-monitor" data-id="${escapeHtml(item.id)}" ${checking || checkingAll ? 'disabled' : ''}>${checking ? '检查中' : '检查'}</button>
@@ -2407,7 +2427,7 @@ const renderRepoMonitorSection = () => {
       <header class="repo-monitor-head">
         <div>
           <h4>订阅仓库监控</h4>
-          <p>跟踪任意 GitHub 内容源仓库的 Release 与默认分支提交动态（Atom 通道，不占 API 配额）。${nextCheckAt ? `下次自动检查：${escapeHtml(formatVersionDate(nextCheckAt, ''))}。` : ''}</p>
+          <p>跟踪任意 GitHub 内容源仓库的 Release 与默认分支提交动态（Atom 通道，不占 API 配额）。${nextCheckAt ? `下次自动检查：${escapeHtml(formatVersionDate(nextCheckAt, ''))}。` : '尚未计划自动检查。'}</p>
         </div>
         <button class="btn" type="button" data-action="check-all-repo-monitors" ${checkingAll || !items.length ? 'disabled' : ''}>${checkingAll ? '正在检查全部…' : '全部检查'}</button>
       </header>
