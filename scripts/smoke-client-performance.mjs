@@ -29,7 +29,8 @@ const sharedRunnerPerformancePolicy = Object.freeze({
     idleCpuPercentOneCore: 5,
   }),
   linux: Object.freeze({
-    windowReadyMs: 12_000,
+    // 共享 runner 的 xvfb 软渲染冷启动抖动大（实测 14.5s），预算留足余量只防趋势性回归。
+    windowReadyMs: 20_000,
     searchSettledMs: 750,
     idleWorkingSetMb: 750,
     interactionWorkingSetMb: 850,
