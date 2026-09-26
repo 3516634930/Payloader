@@ -53,12 +53,19 @@ const CtfToolkit = memo(function CtfToolkit() {
     focusApiRef.current?.(pending.id, pending.seed);
   }, [activeModuleId]);
 
-  const handleHeroInput = (value: string) => {
+  // 引用稳定（heroNode useMemo 与 keepMounted 工作区消费这些回调，裸函数每渲染换引用会击穿 memo）。
+  // clear 已在 hook 内 useCallback 稳定，提出局部变量做依赖，避免整只 hero 对象进依赖数组。
+  const heroClear = hero.clear;
+  const handleHeroInput = useCallback((value: string) => {
     setHeroInput(value);
-    if (!value.trim()) hero.clear();
-  };
+    if (!value.trim()) heroClear();
+  }, [heroClear]);
 
-  const applyDetection = (operationId: OperationId) => {
+  // 种子输入走 latest-ref：applyDetection 还喂给全部 keepMounted 工作区（onOpenCipherOperation），
+  // 若直接闭包 heroInput 则每次击键换引用、击穿工作区 memo；调用时读取 ref 即为当前输入。
+  const heroInputRef = useRef('');
+  heroInputRef.current = heroInput;
+  const applyDetection = useCallback((operationId: OperationId) => {
     if (operationId === 'smart-decode') {
       heroRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       return;
@@ -66,12 +73,12 @@ const CtfToolkit = memo(function CtfToolkit() {
     if (!isOperationVisible(operationId, 'ctf')) return;
     if (activeModuleId === CIPHER_MODULE_ID) {
       // 芯片跳转把 hero 当前输入一并带进工作台（空输入不覆盖工作台现场）。
-      focusApiRef.current?.(operationId, heroInput || undefined);
+      focusApiRef.current?.(operationId, heroInputRef.current || undefined);
       return;
     }
-    pendingFocusRef.current = { id: operationId, seed: heroInput || undefined };
+    pendingFocusRef.current = { id: operationId, seed: heroInputRef.current || undefined };
     setActiveModuleId(CIPHER_MODULE_ID);
-  };
+  }, [activeModuleId]);
 
   const activeModule = ctfModules.find(module => module.id === activeModuleId) ?? ctfModules[0];
   const showFileEntry = activeModule?.entryKinds.includes('file') ?? false;
@@ -160,7 +167,7 @@ const CtfToolkit = memo(function CtfToolkit() {
       onUseAsInput={() => { setHeroInput(hero.pureResult); hero.clear(); }}
       onClear={() => { handleHeroInput(''); }}
     />
-  ) : null, [showHero, heroInput, hero, showFileEntry, activeModuleId, activeModule]);
+  ) : null, [showHero, heroInput, hero, showFileEntry, activeModuleId, activeModule, handleHeroInput, applyDetection]);
 
   return (
     <div

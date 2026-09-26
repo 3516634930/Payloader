@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { buildCtfGroups, isOperationVisible } from '../../utils/codec/audience';
 import {
   detectFlagFormats,
@@ -86,12 +86,14 @@ export const useSmartIdentify = (input: string): SmartIdentifyState => {
     return () => debounced.cancel();
   }, [input, debounced]);
 
-  const clear = () => {
+  // 引用稳定：消费者（CtfToolkit heroNode useMemo）把 clear 传进 memo 边界，
+  // 裸函数每次渲染换引用会击穿下游 memo。内部只有 setState/ref 写，依赖恒空。
+  const clear = useCallback(() => {
     runTokenRef.current += 1;
     setOutput('');
     setError('');
     setRunning(false);
-  };
+  }, []);
 
   return {
     detections,
