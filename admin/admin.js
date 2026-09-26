@@ -1183,6 +1183,35 @@ const stableSourceLabel = value => ({
   package: '远端 package.json',
 }[value] || '暂无来源');
 
+// 状态语义色：warning=需关注（分歧/落后/新提交），faint=未知或未发布，空串=正常
+// 注意正常态映射为 ''，不能用 || 兜底（空串会被吞成 fallback）
+const sourceStateTones = {
+  synchronized: '',
+  'local-ahead': '',
+  'remote-ahead': 'warning',
+  diverged: 'warning',
+  unrelated: 'warning',
+  'unknown-local-commit': 'warning',
+  unchecked: 'faint',
+};
+const sourceStateTone = value => (value in sourceStateTones ? sourceStateTones[value] : 'faint');
+
+const stableStateTones = {
+  'update-available': 'warning',
+  'up-to-date': '',
+  'local-newer': '',
+  unavailable: 'faint',
+  unchecked: 'faint',
+  unknown: 'faint',
+};
+const stableStateTone = value => (value in stableStateTones ? stableStateTones[value] : 'faint');
+
+// 空值统一灰显（与有效值拉开层级）
+const emptyValuePattern = /^(?:未发布|未获取|未记录|未知|尚未检查|尚未正式发布|无法比较|未返回|未计划|暂无来源|—)$/;
+const dimWhenEmpty = text => emptyValuePattern.test(String(text).trim())
+  ? `<span class="au-empty">${escapeHtml(text)}</span>`
+  : escapeHtml(text);
+
 const plainReleaseNote = value => String(value || '')
   .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
   .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
@@ -1243,6 +1272,18 @@ const renderVersionUpdateCenter = () => {
     : stableSourceLabel(stable.source);
   const installedVersion = installed.version ? `v${installed.version}` : '未知';
   const releaseNotes = summarizeReleaseNotes(stable.notes);
+  // API 配额可视化：有 remaining/limit 时内联迷你进度条，剩余 <20% 转琥珀
+  // isFinite 防御：rateLimit 经 localStorage 持久化回读，类型无契约，NaN 会让宽度样式失效误显满格
+  const quotaRemaining = Number(rateLimit.remaining);
+  const quotaLimit = Number(rateLimit.limit);
+  const quota = rateLimit.remaining !== null && rateLimit.remaining !== undefined
+    && Number.isFinite(quotaRemaining) && Number.isFinite(quotaLimit) && quotaLimit > 0
+    ? { remaining: quotaRemaining, limit: quotaLimit }
+    : null;
+  const quotaMarkup = quota
+    ? `<span class="au-quota${quota.remaining / quota.limit < 0.2 ? ' low' : ''}"><span class="au-quota-fill" style="width:${Math.max(0, Math.min(100, Math.round((quota.remaining / quota.limit) * 100)))}%"></span></span>`
+    : '';
+  const quotaText = quota ? `${quota.remaining} / ${quota.limit}` : '未返回';
   const body = `
     <div class="version-update-shell">
       <section class="version-update-summary" data-tone="${escapeHtml(tone)}">
@@ -1265,7 +1306,7 @@ const renderVersionUpdateCenter = () => {
           </header>
           <dl>
             <div><dt>提交</dt><dd><code>${escapeHtml(installed.commitShort || '未记录')}</code></dd></div>
-            <div><dt>源码状态</dt><dd>${escapeHtml(sourceStateLabel(source.state))}</dd></div>
+            <div><dt>源码状态</dt><dd${sourceStateTone(source.state) ? ` data-tone="${sourceStateTone(source.state)}"` : ''}>${escapeHtml(sourceStateLabel(source.state))}</dd></div>
             <div><dt>监控官方仓库</dt><dd><a class="au-repo-link" href="${escapeHtml(officialRepository.url)}" target="_blank" rel="noopener">${escapeHtml(officialRepository.label)} ↗</a></dd></div>
           </dl>
         </section>
@@ -1276,9 +1317,9 @@ const renderVersionUpdateCenter = () => {
             <strong>${escapeHtml(stableVersion)}</strong>
           </header>
           <dl>
-            <div><dt>发布状态</dt><dd>${escapeHtml(stableStateLabel(stable.state))}</dd></div>
-            <div><dt>版本来源</dt><dd>${escapeHtml(stableChannelSource)}</dd></div>
-            <div><dt>发布时间</dt><dd>${escapeHtml(formatVersionDate(stable.publishedAt, '未发布'))}</dd></div>
+            <div><dt>发布状态</dt><dd${stableStateTone(stable.state) ? ` data-tone="${stableStateTone(stable.state)}"` : ''}>${escapeHtml(stableStateLabel(stable.state))}</dd></div>
+            <div><dt>版本来源</dt><dd${stable.developmentMetadata ? ' data-tone="faint"' : ''}>${escapeHtml(stableChannelSource)}</dd></div>
+            <div><dt>发布时间</dt><dd>${dimWhenEmpty(formatVersionDate(stable.publishedAt, '未发布'))}</dd></div>
           </dl>
         </section>
 
@@ -1288,17 +1329,17 @@ const renderVersionUpdateCenter = () => {
             <strong>${escapeHtml(source.branch || '未获取')}</strong>
           </header>
           <dl>
-            <div><dt>同步状态</dt><dd>${escapeHtml(sourceStateLabel(source.state))}</dd></div>
+            <div><dt>同步状态</dt><dd${sourceStateTone(source.state) ? ` data-tone="${sourceStateTone(source.state)}"` : ''}>${escapeHtml(sourceStateLabel(source.state))}</dd></div>
             <div><dt>远端提交</dt><dd><code>${escapeHtml(source.commitShort || '未获取')}</code></dd></div>
-            <div><dt>提交时间</dt><dd>${escapeHtml(formatVersionDate(source.committedAt, '未获取'))}</dd></div>
+            <div><dt>提交时间</dt><dd>${dimWhenEmpty(formatVersionDate(source.committedAt, '未获取'))}</dd></div>
           </dl>
         </section>
       </div>
 
       <section class="version-update-timeline">
-        <div><span>本次检查</span><strong>${escapeHtml(formatVersionDate(status.checkedAt))}</strong></div>
-        <div><span>下次计划</span><strong>${escapeHtml(formatVersionDate(status.nextCheckAt, '未计划'))}</strong></div>
-        <div><span>API 剩余</span><strong>${rateLimit.remaining === null || rateLimit.remaining === undefined ? '未返回' : `${Number(rateLimit.remaining)} / ${Number(rateLimit.limit || 0)}`}</strong></div>
+        <div><span>本次检查</span><strong>${dimWhenEmpty(formatVersionDate(status.checkedAt, '—'))}</strong></div>
+        <div><span>下次计划</span><strong>${dimWhenEmpty(formatVersionDate(status.nextCheckAt, '未计划'))}</strong></div>
+        <div><span>API 剩余</span><strong>${quota ? `${quotaMarkup}${quotaText}` : dimWhenEmpty('未返回')}</strong></div>
       </section>
 
       ${error ? `
