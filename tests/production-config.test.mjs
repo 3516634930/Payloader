@@ -334,15 +334,21 @@ test('all mutable server artifacts honor the configured data directory', async (
 });
 
 test('public metadata does not claim an unconfigured domain or stale inventory', async () => {
-  const [indexHtml, appSource, robots] = await Promise.all([
+  const [indexHtml, appSource, routesPublic] = await Promise.all([
     readProjectFile('index.html'),
     readProjectFile('src/App.tsx'),
-    readProjectFile('public/robots.txt'),
+    readProjectFile('server/routes-public.mjs'),
   ]);
   assert.doesNotMatch(indexHtml, /payloader\.app/i);
   assert.doesNotMatch(indexHtml, /178\s*(?:个)?Web Payload|129\s*(?:条)?内网|114\s*(?:条)?工具/);
   assert.doesNotMatch(appSource, /178\s*(?:个)?Web Payload|129\s*(?:条)?内网|114\s*(?:条)?工具/);
-  assert.doesNotMatch(robots, /^Sitemap:/im);
+  // robots/sitemap 由服务端动态生成（origin 取请求 Host），仓库内不得残留静态声明或硬编码域名
+  assert.doesNotMatch(routesPublic, /payloader\.app/i);
+  assert.match(routesPublic, /request\.headers\?\.\s*host/);
+  assert.match(routesPublic, /'\/robots\.txt'/);
+  assert.match(routesPublic, /'\/sitemap\.xml'/);
+  const staticRobots = await readFile(new URL('../public/robots.txt', import.meta.url)).then(() => true, () => false);
+  assert.equal(staticRobots, false, 'public/robots.txt 应由服务端动态生成，仓库不保留静态副本');
   assert.match(indexHtml, /安全测试知识与编解码工作台/);
 });
 

@@ -18,6 +18,7 @@ import type { GlobalVariable, PublicClientBuildInfo, PublicData } from './types'
 import type { Language } from './i18n';
 import { getText } from './i18n';
 import { buildSearchIndex, matchSearchIndex } from './searchIndex';
+import { applyPageSeo, installDeepLinking, syncHashForState } from './utils/seo';
 
 const LazyEncodingTools = lazy(() => import('./components/EncodingTools'));
 
@@ -113,17 +114,44 @@ function App() {
     setGlobalVariables(next);
   }, []);
 
+  // SEO：title/description/OG 跟随当前选中内容页（payload/工具），无选中回落站点默认
+  const seoSubject = useMemo(() => {
+    if (selectedPayloadId) {
+      const p = allPayloads.find(item => item.id === selectedPayloadId);
+      return p ? { title: getText(p.name, language), description: getText(p.description, language) } : null;
+    }
+    if (selectedToolId) {
+      const t = allToolCommands.find(item => item.id === selectedToolId);
+      return t ? { title: getText(t.name, language), description: getText(t.description, language) } : null;
+    }
+    return null;
+  }, [selectedPayloadId, selectedToolId, allPayloads, allToolCommands, language]);
+
+  const fallbackBrowserTitle = getText(settings.browserTitle, language) || 'Payloader';
+  const fallbackDescription = language === 'zh'
+    ? '面向授权安全测试与研究的本地知识工作台，提供可检索的载荷与工具命令、变量替换、内容管理、离线客户端和编解码工具。'
+    : 'A local security knowledge workbench with searchable payloads, tool commands, variable replacement, content management, offline clients, and codec utilities.';
+
   useEffect(() => {
-    document.title = getText(settings.browserTitle, language) || 'Payloader';
-  }, [settings.browserTitle, language]);
+    applyPageSeo(seoSubject, fallbackBrowserTitle, fallbackDescription);
+  }, [seoSubject, fallbackBrowserTitle, fallbackDescription]);
 
   useEffect(() => {
     document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en';
-    const desc = language === 'zh'
-      ? '面向授权安全测试与研究的本地知识工作台，提供可检索的载荷与工具命令、变量替换、内容管理、离线客户端和编解码工具。'
-      : 'A local security knowledge workbench with searchable payloads, tool commands, variable replacement, content management, offline clients, and codec utilities.';
-    document.querySelector('meta[name="description"]')?.setAttribute('content', desc);
   }, [language]);
+
+  // 深链路由：选中状态 → hash URL（可分享/可收藏）；挂载与后退时从 URL 恢复
+  useEffect(() => {
+    syncHashForState({ tab: activeTab, payloadId: selectedPayloadId, toolId: selectedToolId, waf: bypassMode === 'waf' });
+  }, [activeTab, selectedPayloadId, selectedToolId, bypassMode]);
+
+  useEffect(() => installDeepLinking(route => {
+    if (!route) return;
+    if (route.tab && route.tab !== activeTab) setActiveTab(route.tab as ActiveTab);
+    if (route.waf !== (bypassMode === 'waf')) setBypassMode(route.waf ? 'waf' : 'normal');
+    if (route.payloadId !== selectedPayloadId) setSelectedPayloadId(route.payloadId);
+    if (route.toolId !== selectedToolId) setSelectedToolId(route.toolId);
+  }), [activeTab, bypassMode, selectedPayloadId, selectedToolId]);
 
   useEffect(() => {
     const media = window.matchMedia('(max-width: 900px)');

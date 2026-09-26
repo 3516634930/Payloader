@@ -23,7 +23,42 @@ export const createPublicRoutes = ({
     });
   };
 
+  // SEO：站点 origin 取请求 Host（本地/公网部署一致），sitemap/robots 动态生成（内容在 DB）。
+  const requestOrigin = request => `http://${request.headers?.host || '127.0.0.1:8081'}`;
+  const xmlEscape = value => String(value ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
   const registerPublicRoutes = router => {
+    router.route(['GET', 'HEAD'], '/sitemap.xml', async (request, response) => {
+      const origin = requestOrigin(request);
+      const data = await getPublicData();
+      const entry = loc => `  <url>\n    <loc>${xmlEscape(loc)}</loc>\n  </url>`;
+      const urls = [
+        entry(`${origin}/`),
+        ...(data.payloads || []).map(p => entry(`${origin}/#/payload/${encodeURIComponent(p.id)}`)),
+        ...(data.tools || []).map(t => entry(`${origin}/#/tool/${encodeURIComponent(t.id)}`)),
+      ];
+      const body = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>\n`;
+      response.writeHead(200, { ...baseResponseHeaders, 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'public, max-age=3600' });
+      response.end(body);
+    }, { group: 'public' });
+
+    router.route(['GET', 'HEAD'], '/robots.txt', (request, response) => {
+      const origin = requestOrigin(request);
+      const body = [
+        'User-agent: *',
+        'Allow: /',
+        'Disallow: /api/',
+        'Disallow: /admin',
+        'Disallow: /uploads/',
+        '',
+        `Sitemap: ${origin}/sitemap.xml`,
+        '',
+      ].join('\n');
+      response.writeHead(200, { ...baseResponseHeaders, 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'public, max-age=3600' });
+      response.end(body);
+    }, { group: 'public' });
+
     router.route(['GET'], '/api/health', (request, response) => {
       json(response, 200, { status: 'ok' });
     }, { group: 'public' });
