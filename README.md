@@ -31,17 +31,17 @@ Payloader 将安全测试资料、操作模板和日常编码工具整理为一�
 
 ## 界面预览
 
+| CTF 解题工具箱（密码与编码域） | CTF 流量分析域 |
+| --- | --- |
+| ![CTF 解题工具箱](screenshots/readme/10-ctf-cipher-workbench.png) | ![CTF 流量分析](screenshots/readme/11-ctf-traffic-workbench.png) |
+
 | 安全知识工作台 | Payload 详情 |
 | --- | --- |
 | ![工作台搜索与导航](screenshots/readme/01-workspace-search.png) | ![Payload 详情与命令](screenshots/readme/02-payload-detail.png) |
 
-| 编解码工作台 | 后台内容管理 |
+| 后台内容管理 | 自定义内容 |
 | --- | --- |
-| ![编解码工作台](screenshots/readme/03-encoding-workbench.png) | ![后台内容管理](screenshots/readme/04-admin-content.png) |
-
-| 自定义内容 |
-| --- |
-| ![自定义内容目标选择](screenshots/readme/05-custom-content.png) |
+| ![后台内容管理](screenshots/readme/04-admin-content.png) | ![自定义内容目标选择](screenshots/readme/05-custom-content.png) |
 
 | 客户端生成 | 系统更新 |
 | --- | --- |
