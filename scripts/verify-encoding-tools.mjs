@@ -46,6 +46,10 @@ let sharedLoadModule = null;
 // hydrateCodecHeavyData 以 require 显式补挂）。
 const compileEncodingToolsModule = () => {
   const { context, loadModule } = createTsModuleLoader({
+    // 共享 CI runner 单位时间迭代少，古典无密钥破译（模拟退火）默认 15s 预算内可能
+    // 不收敛；沙箱 globalThis 与主 realm 隔离，经 sandboxGlobal 注入放大预算
+    // （终端用户不受影响，见 smartHelpers.ts 的 CLASSICAL_BREAK_TOTAL_BUDGET_MS）。
+    sandboxGlobal: { PAYLOADER_CLASSICAL_BUDGET_MS: 45000 },
     injectExports: {
       'src/utils/codec/index.ts':
         `\nmodule.exports = { ${ENTRY_EXPORTS.join(', ')} };\n`
@@ -100,10 +104,6 @@ const digestHexToOrderInt = (digestHex, order) => {
 const expect = (condition, message) => {
   if (!condition) throw new Error(message);
 };
-
-// 共享 CI runner 单位时间迭代少，古典密码无密钥破译（模拟退火启发式）在默认 15s
-// 预算内可能不收敛；校验环境放大墙上预算（终端用户不受影响，见 smartHelpers.ts）。
-(globalThis).PAYLOADER_CLASSICAL_BUDGET_MS = 45000;
 
 const codecExports = compileEncodingToolsModule();
 const missingExports = ENTRY_EXPORTS.filter(name => !(name in codecExports));
@@ -2046,7 +2046,9 @@ await run('古典密码无密钥破译：Playfair/Bifid/Trifid/ADFGX/ADFGVX/列�
       elapsed += Date.now() - tStart;
       if (fuzzyIncludes(output, 'KEYLESSBREAK') && output.includes('无密钥破译')) { solved = true; break; }
     }
-    expect(elapsed < 60000, testCase.op + ' 破译耗时 ' + elapsed + 'ms 超上限');
+    // 时限随破译预算同比例放大（默认 15s 预算对应 60s 基准，见 sandboxGlobal 注入）
+    const budgetScale = 45000 / 15000;
+    expect(elapsed < 60000 * budgetScale, testCase.op + ' 破译耗时 ' + elapsed + 'ms 超上限');
     expect(!/FLAG{[A-Z0-9_]+}/i.test(output.replace(/KEYLESSBREAK/gi, '')), testCase.op + ' 产出伪 flag');
     if (testCase.op === 'trifid') {
       // 概率性：不强断言还原成功，但必须走安全路径（破译输出或诚实无识别）
@@ -2062,7 +2064,7 @@ await run('古典密码无密钥破译：Playfair/Bifid/Trifid/ADFGX/ADFGVX/列�
   const t1 = Date.now();
   const out1 = String(await transform('smart-decode', 'decode', garbage, defaultParams));
   const dt1 = Date.now() - t1;
-  expect(dt1 < 30000, '垃圾输入破译耗时 ' + dt1 + 'ms 超上限');
+  expect(dt1 < 30000 * (45000 / 15000), '垃圾输入破译耗时 ' + dt1 + 'ms 超上限');
   expect(!/FLAG{[A-Z0-9_]+}/i.test(out1), '垃圾输入不得产出伪 flag');
 });
 

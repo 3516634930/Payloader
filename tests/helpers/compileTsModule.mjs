@@ -14,6 +14,8 @@ export const projectRoot = path.resolve(import.meta.dirname, '..', '..');
  * 创建独立沙箱加载器：每次调用一个 vm context + module cache，多份加载互不污染。
  * injectExports: { [cwd 相对路径]: 追加到该模块源尾的 CJS 片段 } —— 用于给 barrel 入口
  * 补挂白名单导出（getter 型 re-export 无法被 shorthand 引用，见 verify 的 hydrateCodecHeavyData）。
+ * sandboxGlobal: 合并进沙箱 globalThis 的键值（沙箱全局与主 realm 隔离，模块内读
+ * globalThis.X 只能看到这里注入的键；verify 用它传古典破译预算覆盖）。
  */
 export const createTsModuleLoader = (options = {}) => {
   const injectExports = options.injectExports ?? {};
@@ -37,7 +39,7 @@ export const createTsModuleLoader = (options = {}) => {
     DecompressionStream,
     setTimeout,
     clearTimeout,
-    globalThis: { Blob, CompressionStream, DecompressionStream },
+    globalThis: { Blob, CompressionStream, DecompressionStream, ...(options.sandboxGlobal ?? {}) },
   };
   context.global = context;
   vm.createContext(context);
