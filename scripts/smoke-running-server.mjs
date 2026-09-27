@@ -142,7 +142,18 @@ if (clientTarget) {
   assert.ok(artifact);
   assert.ok(artifact.size > 1_000_000);
   assert.match(artifact.sha256, /^[a-f0-9]{64}$/);
-  await request(`/api/client-build/download/${encodeURIComponent(artifact.fileName)}`, { method: 'HEAD' });
+  // 构建收尾阶段服务端可能仍忙（制品哈希/清理），HEAD 探测带就绪重试。
+  const artifactPath = `/api/client-build/download/${encodeURIComponent(artifact.fileName)}`;
+  const downloadDeadline = Date.now() + 120_000;
+  for (;;) {
+    try {
+      await request(artifactPath, { method: 'HEAD' });
+      break;
+    } catch (error) {
+      if (Date.now() >= downloadDeadline) throw error;
+      await delay(3_000);
+    }
+  }
 }
 
 console.log(`Release smoke passed${clientTarget ? ` with ${clientTarget}` : ''}: ${baseUrl}`);
