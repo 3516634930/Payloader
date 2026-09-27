@@ -554,3 +554,15 @@ test('client performance policy declares measurable runtime budgets', async t =>
   assert.ok(policy.linux?.windowReadyMs <= 2500);
   assert.ok(policy.macos?.windowReadyMs <= 2500);
 });
+
+test('client snapshot always ships CTF toolkit regardless of server-side toggle', async t => {
+  const temp = await makeTempBuildRoot('client-ctf-snapshot');
+  t.after(() => rm(temp.root, { recursive: true, force: true }));
+  const builder = await importBuilder(temp.buildRoot, 'client-ctf-snapshot');
+  const sanitize = builder.__clientBuildTest.sanitizeClientPublicData;
+  // 离线客户端的 CTF 工具全部纯前端本地运行，不受服务端部署的管理员开关影响。
+  assert.equal(sanitize({ settings: { ctfEnabled: false } }).settings.ctfEnabled, true);
+  assert.equal(sanitize({ settings: {} }).settings.ctfEnabled, true);
+  assert.equal(sanitize({ settings: { ctfEnabled: true } }).settings.ctfEnabled, true);
+  assert.equal(sanitize({}).settings.ctfEnabled, true);
+});

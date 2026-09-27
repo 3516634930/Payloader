@@ -1166,6 +1166,9 @@ const sanitizeClientPublicData = data => {
     ...snapshot,
     settings: {
       ...settings,
+      // 离线客户端默认带 CTF 解题能力：客户端 CTF 工具全部纯前端本地运行，
+      // 不含题目代理/端口扫描端点，服务端部署的管理员开关只约束在线实例。
+      ctfEnabled: true,
       projectUrl: clientProjectRoute,
       logoUrl: referencedLogoUrl(snapshot),
     },
