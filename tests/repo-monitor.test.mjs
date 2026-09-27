@@ -199,7 +199,11 @@ test('checkNow：releases.atom 404 → 无 Release 正常态；commits.atom 404 
 
 test('checkNow：超时与超大响应分别映射 timeout / response-too-large，坏仓库不拖垮同批其它仓库', async () => {
   const hangingFetch = async (url, requestOptions = {}) => new Promise((_, reject) => {
+    // mock 无真实 socket，需自持 timer 保活事件循环（AbortSignal.timeout 的
+    // timer 在 Node 22 为 unref，否则 Promise 尚未决而事件循环已空）。
+    const keepAlive = setTimeout(() => reject(new Error('mock fetch keep-alive expired')), 30_000);
     requestOptions.signal?.addEventListener('abort', () => {
+      clearTimeout(keepAlive);
       const error = new Error('aborted');
       error.name = 'AbortError';
       reject(error);
