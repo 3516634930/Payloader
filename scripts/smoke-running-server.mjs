@@ -127,7 +127,16 @@ if (clientTarget) {
   const deadline = Date.now() + timeoutMs;
   let completed;
   while (Date.now() < deadline) {
-    const { body: status } = await request('/api/admin/client-builds/status', { headers: adminHeaders });
+    // 构建重载阶段（打包/哈希/清理）服务器响应慢，轮询请求自身要容错——
+    // 网络层失败（如 headers 超时）不判死，下一轮再试，由 deadline 兜底。
+    let status;
+    try {
+      status = (await request('/api/admin/client-builds/status', { headers: adminHeaders })).body;
+    } catch (error) {
+      if (Date.now() >= deadline) throw error;
+      await delay(5_000);
+      continue;
+    }
     if (status.lastFailure?.id === jobId) {
       throw new Error(`Client package failed: ${status.lastFailure.message}\n${(status.lastFailure.logs || []).join('\n')}`);
     }
