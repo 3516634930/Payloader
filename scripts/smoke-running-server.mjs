@@ -26,7 +26,12 @@ const parseResponse = async response => {
 };
 
 const request = async (path, options = {}, expectedStatuses = [200]) => {
-  const response = await fetch(`${baseUrl}${path}`, options);
+  // undici 默认 headersTimeout 300s：服务器忙时单次请求挂满 5 分钟才失败，
+  // 会吞掉调用方的重试窗口——统一压到 30s 让失败快速暴露，由调用方决定重试。
+  const response = await fetch(`${baseUrl}${path}`, {
+    ...options,
+    signal: options.signal ?? AbortSignal.timeout(30_000),
+  });
   const body = await parseResponse(response);
   assert.ok(
     expectedStatuses.includes(response.status),
