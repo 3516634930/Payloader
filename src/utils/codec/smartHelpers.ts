@@ -347,7 +347,13 @@ export {
   injectClassicalNgramTable,
 } from './ngram';
 
-export const CLASSICAL_BREAK_TOTAL_BUDGET_MS = 15000;
+// 无密钥破译总预算（墙上时钟）。浏览器/终端用户固定 15s；校验管线等慢机环境可经
+// globalThis.PAYLOADER_CLASSICAL_BUDGET_MS 放大（共享 CI runner 单位时间迭代少，
+// 默认预算内启发式可能不收敛），只读 globalThis 以兼容浏览器（无 process.env）。
+const classicalBudgetOverride = Number((globalThis as { PAYLOADER_CLASSICAL_BUDGET_MS?: unknown }).PAYLOADER_CLASSICAL_BUDGET_MS);
+export const CLASSICAL_BREAK_TOTAL_BUDGET_MS = Number.isFinite(classicalBudgetOverride) && classicalBudgetOverride > 0
+  ? classicalBudgetOverride
+  : 15000;
 // 评分参照：真密钥约 -320~-335（视文本长度），随机串约 -630
 export const CLASSICAL_ADOPT_PER_LETTER = -560;
 export const CLASSICAL_CONFIDENT_PER_LETTER = -530;
@@ -1084,8 +1090,8 @@ export const trySmartClassicalKeylessBreak = async (value: string): Promise<stri
     for (const step of plan) {
       if (Date.now() >= globalDeadline) break;
       if (!step.eligible) continue;
-      // 每攻击独立墙上限（全局预算的 55%）：防前序攻击（如 trifid 复合收尾）吃光共享预算
-      const stepDeadline = Math.min(globalDeadline, Date.now() + 9000);
+      // 每攻击独立墙上限（随总预算比例，防前序攻击吃光共享预算；基准 15s 时为 9s）
+      const stepDeadline = Math.min(globalDeadline, Date.now() + Math.max(9000, CLASSICAL_BREAK_TOTAL_BUDGET_MS * 0.6));
       if (step.method === 'columnar') {
         const codes = new Uint8Array(columnarText.length);
         for (let index = 0; index < columnarText.length; index += 1) {

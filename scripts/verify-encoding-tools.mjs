@@ -101,6 +101,10 @@ const expect = (condition, message) => {
   if (!condition) throw new Error(message);
 };
 
+// 共享 CI runner 单位时间迭代少，古典密码无密钥破译（模拟退火启发式）在默认 15s
+// 预算内可能不收敛；校验环境放大墙上预算（终端用户不受影响，见 smartHelpers.ts）。
+(globalThis).PAYLOADER_CLASSICAL_BUDGET_MS = 45000;
+
 const codecExports = compileEncodingToolsModule();
 const missingExports = ENTRY_EXPORTS.filter(name => !(name in codecExports));
 if (missingExports.length > 0) {
