@@ -1,4 +1,10 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+
+const packageVersion = JSON.parse(
+  await readFile(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'),
+).version;
 
 const baseUrl = String(process.env.PAYLOADER_SMOKE_BASE_URL || 'http://127.0.0.1:8081').replace(/\/+$/, '');
 const username = process.env.PAYLOADER_SMOKE_ADMIN_USER || 'smoke-admin';
@@ -84,7 +90,7 @@ const adminHeaders = {
   'user-agent': userAgent,
 };
 const { body: versionStatus } = await request('/api/admin/version-status', { headers: adminHeaders });
-assert.equal(versionStatus.installed.version, '2.0.0');
+assert.equal(versionStatus.installed.version, packageVersion);
 assert.equal(typeof versionStatus.installed.commitShort, 'string');
 assert.match(versionStatus.projectRoute, /^\//);
 
