@@ -253,7 +253,10 @@ test('repairGifWithSize：手工指定宽高确定性重写（含坏头自愈）
 
 // ---- JPG（真题资产 + 合成向量）----
 
+// 真题资产夹具不随开源仓库分发（.gitignore）；缺失环境（CI）自动跳过两条
+// 真题用例，合成向量用例不受影响。本地放置夹具后即恢复全量运行。
 const JPG_ASSET = path.join(projectRoot, 'tests', 'real-challenges', '09_trailing_zip', 'epic-floss-meme.jpg');
+const jpgAssetTest = fs.existsSync(JPG_ASSET) ? test : test.skip;
 
 const findFirstEoi = bytes => {
   for (let index = 2; index + 1 < bytes.length; index += 1) {
@@ -262,7 +265,7 @@ const findFirstEoi = bytes => {
   return -1;
 };
 
-test('repairJpg：真题资产段结构枚举 + SOF2 宽高读出 + 尾附数据提示（不截断）', async () => {
+jpgAssetTest('repairJpg：真题资产段结构枚举 + SOF2 宽高读出 + 尾附数据提示（不截断）', async () => {
   const original = fs.readFileSync(JPG_ASSET);
   const result = await repairJpg(original);
   // 测试侧独立解析 SOF2（FFC2@187：高 BE u16@192、宽 BE u16@194）与模块读数比对。
@@ -289,7 +292,7 @@ test('repairJpg：真题资产段结构枚举 + SOF2 宽高读出 + 尾附数据
   assert.ok(bytesEqual(result.bytes, original), '无需修复时逐字节原样返回');
 });
 
-test('repairJpg：尾部截断（EOI 缺失）→ 补写 FFD9 后等于完整 jpg', async () => {
+jpgAssetTest('repairJpg：尾部截断（EOI 缺失）→ 补写 FFD9 后等于完整 jpg', async () => {
   const original = fs.readFileSync(JPG_ASSET);
   const eoi = findFirstEoi(original);
   const complete = original.subarray(0, eoi + 2);
